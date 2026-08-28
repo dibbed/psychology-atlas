@@ -23,7 +23,7 @@
     "activity_progress",
     "dashboard_v2",
     "mini_concept_map",
-    "global_error_and_loading_states"
+    "global_error_loading_and_not_found_states"
   ],
   "content": {
     "disorders": 30,
@@ -35,9 +35,15 @@
   },
   "validation": {
     "django_check": "pass",
-    "backend_tests": "7 passed",
+    "backend_tests": "16 passed",
+    "python_compileall": "pass",
+    "pip_check": "pass",
+    "migration_drift_check": "pass",
     "typescript_typecheck": "pass",
-    "next_production_build": "pass"
+    "next_production_build": "pass",
+    "npm_audit": "0 vulnerabilities",
+    "api_permission_and_hidden_answer_checks": "pass",
+    "all_seeded_detail_route_smoke_test": "pass"
   },
   "source_files_excluding_dependencies_and_build_output": 68
 }

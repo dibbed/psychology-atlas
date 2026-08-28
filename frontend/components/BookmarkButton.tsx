@@ -7,12 +7,13 @@ import { hasToken } from "@/lib/auth";
 export default function BookmarkButton({ slug }: { slug: string }) {
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (!hasToken()) return;
     api<any[]>("/bookmarks/", {}, true)
       .then(items => setSaved(items.some(x => x.disorder.slug === slug)))
-      .catch(() => {});
+      .catch(() => setError("وضعیت ذخیره‌شدن موضوع دریافت نشد."));
   }, [slug]);
 
   async function toggle() {
@@ -20,7 +21,9 @@ export default function BookmarkButton({ slug }: { slug: string }) {
       location.href = "/login";
       return;
     }
+    if (busy) return;
     setBusy(true);
+    setError("");
     try {
       if (saved) {
         await api(`/bookmarks/${slug}/`, { method: "DELETE" }, true);
@@ -29,14 +32,19 @@ export default function BookmarkButton({ slug }: { slug: string }) {
         await api("/bookmarks/", { method: "POST", body: JSON.stringify({ slug }) }, true);
         setSaved(true);
       }
+    } catch (e: any) {
+      setError(e.message || "تغییر وضعیت ذخیره موضوع انجام نشد.");
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <button className="button" onClick={toggle} disabled={busy}>
-      {busy ? "در حال ذخیره..." : saved ? "ذخیره شده ✓" : "ذخیره موضوع"}
-    </button>
+    <div>
+      <button className="button" onClick={toggle} disabled={busy}>
+        {busy ? "در حال ذخیره..." : saved ? "ذخیره شده ✓" : "ذخیره موضوع"}
+      </button>
+      {error && <div className="error small" style={{ marginTop: 8 }}>{error}</div>}
+    </div>
   );
 }

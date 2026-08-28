@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
+import { faNumber } from "@/lib/fa";
 import type { Disorder, DisorderDetail } from "@/lib/types";
 
 export default function CompareClient({ initialSlug }: { initialSlug?: string }) {
@@ -11,9 +12,10 @@ export default function CompareClient({ initialSlug }: { initialSlug?: string })
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [comparing, setComparing] = useState(false);
 
   useEffect(() => {
-    api<{ results: Disorder[] }>("/disorders/")
+    api<{ results: Disorder[] }>("/disorders/?page_size=100")
       .then(x => setAll(x.results))
       .catch((e: any) => setError(e.message || "دریافت اختلالات انجام نشد."))
       .finally(() => setLoading(false));
@@ -34,12 +36,16 @@ export default function CompareClient({ initialSlug }: { initialSlug?: string })
   }
 
   async function compare() {
-    if (selected.length < 2) return;
+    if (selected.length < 2 || comparing) return;
     try {
+      setComparing(true);
       setError("");
       setItems(await api<DisorderDetail[]>(`/disorders/compare/?slugs=${selected.join(",")}`));
     } catch (e: any) {
+      setItems([]);
       setError(e.message || "مقایسه انجام نشد.");
+    } finally {
+      setComparing(false);
     }
   }
 
@@ -48,7 +54,7 @@ export default function CompareClient({ initialSlug }: { initialSlug?: string })
       <div className="card stack" style={{ gap: 14 }}>
         <div>
           <h3>۲ تا ۴ اختلال انتخاب کن</h3>
-          <p className="muted small">{selected.length} اختلال انتخاب شده است.</p>
+          <p className="muted small">{faNumber(selected.length)} اختلال انتخاب شده است.</p>
         </div>
         <input className="search" value={query} onChange={e => setQuery(e.target.value)} placeholder="جست‌وجو برای افزودن به مقایسه..." />
         {loading ? <p className="muted">در حال دریافت اختلالات...</p> : (
@@ -66,7 +72,7 @@ export default function CompareClient({ initialSlug }: { initialSlug?: string })
           </div>
         )}
         <div className="actions">
-          <button className="button primary" disabled={selected.length < 2} onClick={compare}>ساخت جدول مقایسه</button>
+          <button className="button primary" disabled={selected.length < 2 || comparing} onClick={compare}>{comparing ? "در حال مقایسه..." : "ساخت جدول مقایسه"}</button>
           {selected.length > 0 && <button className="button" onClick={() => { setSelected([]); setItems([]); }}>پاک‌کردن انتخاب‌ها</button>}
         </div>
         {error && <p className="error">{error}</p>}

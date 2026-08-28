@@ -5,7 +5,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import (
     Bookmark, CaseChoice, CaseQuestion, CaseStep, Category, ClinicalCase,
-    Disorder, Quiz, UserNote, UserProgress,
+    Disorder, DisorderSymptom, Quiz, QuizChoice, QuizQuestion, Symptom,
+    UserNote, UserProgress,
 )
 
 
@@ -70,6 +71,20 @@ class AtlasApiTests(APITestCase):
         self.assertGreaterEqual(progress.progress_percent, 25)
         self.assertFalse(UserProgress.objects.filter(user=self.user_b, disorder=self.disorder).exists())
 
+    def test_authenticated_disorder_detail_never_regresses_progress(self):
+        UserProgress.objects.create(
+            user=self.user_a,
+            disorder=self.disorder,
+            progress_percent=85,
+            status=UserProgress.Status.COMPLETED,
+        )
+        self.auth(self.user_a)
+        response = self.client.get(f"/api/disorders/{self.disorder.slug}/")
+        self.assertEqual(response.status_code, 200)
+        progress = UserProgress.objects.get(user=self.user_a, disorder=self.disorder)
+        self.assertEqual(progress.progress_percent, 85)
+        self.assertEqual(progress.status, UserProgress.Status.COMPLETED)
+
     def test_dashboard_includes_v2_metrics(self):
         self.auth(self.user_a)
         response = self.client.get("/api/dashboard/")
@@ -103,3 +118,75 @@ class AtlasApiTests(APITestCase):
         progress = UserProgress.objects.get(user=self.user_a, disorder=self.disorder)
         self.assertGreaterEqual(progress.progress_percent, 85)
         self.assertEqual(progress.status, UserProgress.Status.COMPLETED)
+
+    def test_disorder_search_matches_symptom_name(self):
+        symptom = Symptom.objects.create(slug="special-symptom", name_en="Special Symptom", name_fa="نشانه ویژه")
+        DisorderSymptom.objects.create(disorder=self.disorder, symptom=symptom)
+        response = self.client.get("/api/disorders/?q=نشانه ویژه&page_size=100")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["count"], 1)
+        self.assertEqual(response.json()["results"][0]["slug"], self.disorder.slug)
+
+    def test_compare_rejects_unknown_disorder(self):
+        response = self.client.get(f"/api/disorders/compare/?slugs={self.disorder.slug},missing-disorder")
+        self.assertEqual(response.status_code, 404)
+
+    def test_compare_rejects_duplicate_disorder(self):
+        response = self.client.get(f"/api/disorders/compare/?slugs={self.disorder.slug},{self.disorder.slug}")
+        self.assertEqual(response.status_code, 400)
+
+    def test_blank_note_removes_existing_note(self):
+        UserNote.objects.create(user=self.user_a, disorder=self.disorder, body="old")
+        self.auth(self.user_a)
+        response = self.client.put(
+            f"/api/notes/{self.disorder.slug}/",
+            {"body": "   "},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(UserNote.objects.filter(user=self.user_a, disorder=self.disorder).exists())
+        self.assertFalse(response.json()["exists"])
+
+    def test_quiz_submit_rejects_malformed_answers_with_400(self):
+        quiz = Quiz.objects.create(slug="validation-quiz", title="Validation", disorder=self.disorder, is_active=True)
+        question = QuizQuestion.objects.create(quiz=quiz, prompt="Q", sort_order=1)
+        choice = QuizChoice.objects.create(question=question, text="A", is_correct=True, sort_order=1)
+        self.auth(self.user_a)
+
+        invalid_payloads = [
+            {"answers": None},
+            {"answers": [{"question_id": "abc", "choice_id": choice.id}]},
+            {"answers": [{"question_id": question.id, "choice_id": choice.id}, {"question_id": question.id, "choice_id": choice.id}]},
+        ]
+        for payload in invalid_payloads:
+            with self.subTest(payload=payload):
+                response = self.client.post("/api/quizzes/validation-quiz/submit/", payload, format="json")
+                self.assertEqual(response.status_code, 400)
+
+    def test_case_submit_rejects_null_answers_with_400(self):
+        case = ClinicalCase.objects.create(
+            slug="validation-case",
+            title="Validation Case",
+            patient_summary="summary",
+            primary_disorder=self.disorder,
+            is_active=True,
+        )
+        step = CaseStep.objects.create(case=case, title="step", narrative="narrative", sort_order=1)
+        question = CaseQuestion.objects.create(step=step, prompt="question", sort_order=1)
+        CaseChoice.objects.create(question=question, text="choice", score_value=1, sort_order=1)
+        self.auth(self.user_a)
+        response = self.client.post("/api/cases/validation-case/submit/", {"answers": None}, format="json")
+        self.assertEqual(response.status_code, 400)
+
+    def test_disorder_pagination_can_return_full_v02_catalog(self):
+        for index in range(29):
+            Disorder.objects.create(
+                category=self.category,
+                slug=f"extra-{index}",
+                name_en=f"Extra {index}",
+                is_active=True,
+            )
+        response = self.client.get("/api/disorders/?page_size=100")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["count"], 30)
+        self.assertEqual(len(response.json()["results"]), 30)

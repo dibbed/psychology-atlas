@@ -1,10 +1,18 @@
+import { notFound } from "next/navigation";
 import QuizRunner from "@/components/QuizRunner";
-import { publicFetch } from "@/lib/api";
+import { ApiError, publicFetch } from "@/lib/api";
 import type { Quiz } from "@/lib/types";
 
 export default async function QuizPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const quiz = await publicFetch<Quiz>(`/quizzes/${slug}/`);
+  let quiz: Quiz;
+  try {
+    quiz = await publicFetch<Quiz>(`/quizzes/${slug}/`);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) notFound();
+    throw error;
+  }
+
   return (
     <main className="shell page">
       <div className="detail-header">

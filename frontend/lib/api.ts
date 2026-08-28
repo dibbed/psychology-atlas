@@ -3,7 +3,19 @@ import { clearTokens, getAccessToken, getRefreshToken, setTokens } from "./auth"
 export const API_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api";
 
-async function refreshAccessToken(): Promise<string | null> {
+export class ApiError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+let refreshInFlight: Promise<string | null> | null = null;
+
+async function performRefresh(): Promise<string | null> {
   const refresh = getRefreshToken();
   if (!refresh) return null;
 
@@ -24,6 +36,15 @@ async function refreshAccessToken(): Promise<string | null> {
   return data.access;
 }
 
+function refreshAccessToken(): Promise<string | null> {
+  if (!refreshInFlight) {
+    refreshInFlight = performRefresh().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
 async function parseError(response: Response) {
   let detail = `خطای درخواست (${response.status})`;
   try {
@@ -40,7 +61,9 @@ export async function api<T>(
 ): Promise<T> {
   const makeRequest = async (token?: string | null) => {
     const headers = new Headers(options.headers);
-    headers.set("Content-Type", "application/json");
+    if (options.body != null && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
     if (authenticated && token) headers.set("Authorization", `Bearer ${token}`);
 
     return fetch(`${API_URL}${path}`, {
@@ -62,7 +85,7 @@ export async function api<T>(
 
   if (!response.ok) {
     if (response.status === 401) clearTokens();
-    throw new Error(await parseError(response));
+    throw new ApiError(response.status, await parseError(response));
   }
 
   if (response.status === 204) return undefined as T;
@@ -71,6 +94,6 @@ export async function api<T>(
 
 export async function publicFetch<T>(path: string): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, { cache: "no-store" });
-  if (!response.ok) throw new Error(await parseError(response));
+  if (!response.ok) throw new ApiError(response.status, await parseError(response));
   return response.json();
 }

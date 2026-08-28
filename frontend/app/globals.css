@@ -252,7 +252,17 @@ button { cursor: pointer; }
   .stats { grid-template-columns: 1fr 1fr; }
   .stats-6 { grid-template-columns: repeat(2, 1fr); }
   .stat { border-bottom: 1px solid var(--border); }
-  .nav-links { display: none; }
+  .nav-inner { flex-wrap: wrap; gap: 12px; padding: 10px 0; }
+  .nav-links {
+    display: flex;
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+    gap: 16px;
+    padding: 2px 0 6px;
+    white-space: nowrap;
+    scrollbar-width: thin;
+  }
   .concept-map { grid-template-columns: 1fr; min-height: unset; }
   .concept-center { order: -1; }
   .differential-card { grid-template-columns: 1fr; }

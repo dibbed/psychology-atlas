@@ -11,7 +11,11 @@ export default function Nav() {
     const sync = () => setLoggedIn(hasToken());
     sync();
     window.addEventListener("auth-change", sync);
-    return () => window.removeEventListener("auth-change", sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener("auth-change", sync);
+      window.removeEventListener("storage", sync);
+    };
   }, []);
 
   return (

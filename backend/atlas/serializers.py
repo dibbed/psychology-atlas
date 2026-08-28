@@ -141,14 +141,13 @@ class DisorderDetailSerializer(DisorderListSerializer):
         return SourceSerializer([x.source for x in obj.source_links.all()], many=True).data
 
     def get_study_resources(self, obj):
+        quizzes = sorted((q for q in obj.quizzes.all() if q.is_active), key=lambda q: q.title)[:4]
+        cases = sorted((c for c in obj.clinical_cases.all() if c.is_active), key=lambda c: c.title)[:4]
         return {
-            "quizzes": [
-                {"slug": q.slug, "title": q.title}
-                for q in obj.quizzes.filter(is_active=True).order_by("title")[:4]
-            ],
+            "quizzes": [{"slug": q.slug, "title": q.title} for q in quizzes],
             "cases": [
                 {"slug": c.slug, "title": c.title, "difficulty": c.difficulty}
-                for c in obj.clinical_cases.filter(is_active=True).order_by("title")[:4]
+                for c in cases
             ],
         }
 

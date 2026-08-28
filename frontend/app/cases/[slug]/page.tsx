@@ -1,5 +1,6 @@
+import { notFound } from "next/navigation";
 import CaseRunner from "@/components/CaseRunner";
-import { publicFetch } from "@/lib/api";
+import { ApiError, publicFetch } from "@/lib/api";
 import type { ClinicalCase } from "@/lib/types";
 
 function difficultyLabel(value: string) {
@@ -11,7 +12,14 @@ function difficultyLabel(value: string) {
 
 export default async function CasePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const item = await publicFetch<ClinicalCase>(`/cases/${slug}/`);
+  let item: ClinicalCase;
+  try {
+    item = await publicFetch<ClinicalCase>(`/cases/${slug}/`);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) notFound();
+    throw error;
+  }
+
   return (
     <main className="shell page">
       <div className="detail-header">

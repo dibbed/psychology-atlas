@@ -20,19 +20,29 @@ export default function SearchDisorders() {
   }, []);
 
   useEffect(() => {
+    const controller = new AbortController();
     const id = setTimeout(() => {
       setLoading(true);
       setError("");
       const params = new URLSearchParams();
+      params.set("page_size", "100");
       if (q.trim()) params.set("q", q.trim());
       if (category) params.set("category", category);
-      const suffix = params.toString() ? `?${params.toString()}` : "";
-      api<{ results: Disorder[] }>(`/disorders/${suffix}`)
+
+      api<{ results: Disorder[] }>(`/disorders/?${params.toString()}`, { signal: controller.signal })
         .then(data => setItems(data.results))
-        .catch((e: any) => setError(e.message || "دریافت اختلالات انجام نشد."))
-        .finally(() => setLoading(false));
+        .catch((e: any) => {
+          if (e?.name !== "AbortError") setError(e.message || "دریافت اختلالات انجام نشد.");
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setLoading(false);
+        });
     }, 220);
-    return () => clearTimeout(id);
+
+    return () => {
+      clearTimeout(id);
+      controller.abort();
+    };
   }, [q, category]);
 
   return (
@@ -47,7 +57,7 @@ export default function SearchDisorders() {
         />
         <select className="filter-select" value={category} onChange={e => setCategory(e.target.value)} aria-label="فیلتر دسته‌بندی">
           <option value="">همه دسته‌ها</option>
-          {categories.map(c => <option value={c.slug} key={c.slug}>{c.name_fa || c.name_en} ({c.disorder_count})</option>)}
+          {categories.map(c => <option value={c.slug} key={c.slug}>{c.name_fa || c.name_en} ({c.disorder_count.toLocaleString("fa-IR")})</option>)}
         </select>
       </div>
 

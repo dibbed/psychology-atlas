@@ -58,6 +58,10 @@
   - recent quizzes/cases/notes/saved topics
 - Global error UI and loading UI
 - CORS support for both `localhost:3000` and `127.0.0.1:3000`
+- Defensive API validation for malformed quiz/case submissions
+- Full 30-disorder catalog pagination support
+- Symptom-aware disorder search
+- Read-only locking of earlier case decisions after later information is revealed
 
 ## Data safety / architecture
 
@@ -134,7 +138,10 @@ Frontend:
 ```powershell
 npm run typecheck
 npm run build
+npm audit
 ```
+
+Current deep-audit baseline: 16 backend tests pass and npm reports 0 known vulnerabilities.
 
 ## Important API routes
 

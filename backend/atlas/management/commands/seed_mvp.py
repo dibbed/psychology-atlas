@@ -199,6 +199,13 @@ RELATIONS = [
     ("schizoid-personality-disorder", "avoidant-personality-disorder", "differential", "فاصله اجتماعی در اسکیزوئید بیشتر با علاقه کم به نزدیکی همراه است؛ در شخصیت اجتنابی میل به رابطه ممکن است وجود داشته باشد اما ترس از ارزیابی مانع شود."),
     ("narcissistic-personality-disorder", "histrionic-personality-disorder", "related", "هر دو ممکن است با نیاز به توجه همراه باشند، اما کیفیت خودپنداره، نیاز به تحسین و شیوه روابط می‌تواند متفاوت باشد."),
     ("dependent-personality-disorder", "avoidant-personality-disorder", "related", "هر دو می‌توانند با اضطراب بین‌فردی همراه باشند، اما در وابسته نیاز به مراقبت و دشواری استقلال برجسته‌تر است."),
+    ("specific-phobia", "social-anxiety-disorder", "differential", "در فوبیای خاص ترس بر یک محرک یا موقعیت مشخص متمرکز است؛ در اضطراب اجتماعی، ارزیابی منفی و نگاه دیگران محور اصلی ترس است."),
+    ("separation-anxiety-disorder", "generalized-anxiety-disorder", "differential", "در اضطراب جدایی نگرانی عمدتاً حول دوری یا از دست دادن افراد دلبستگی شکل می‌گیرد؛ در اضطراب فراگیر نگرانی معمولاً چند حوزه زندگی را دربر می‌گیرد."),
+    ("obsessive-compulsive-disorder", "hoarding-disorder", "differential", "احتکار با دشواری پایدار در دور ریختن و انباشت اشیا مشخص می‌شود؛ در OCD الگوی وسواس و رفتار اجباری می‌تواند شکل متفاوتی داشته باشد."),
+    ("obsessive-compulsive-disorder", "body-dysmorphic-disorder", "related", "هر دو می‌توانند با اشتغال ذهنی و رفتارهای تکراری همراه باشند، اما در بدشکلی بدن تمرکز اصلی بر نقص ظاهری ادراک‌شده است."),
+    ("trichotillomania", "excoriation-disorder", "related", "هر دو در گروه رفتارهای تکراری متمرکز بر بدن قرار می‌گیرند؛ رفتار محوری در یکی کندن مو و در دیگری کندن پوست است."),
+    ("major-depressive-disorder", "premenstrual-dysphoric-disorder", "differential", "نشانه‌های خلقی می‌توانند همپوشانی داشته باشند، اما در PMDD ارتباط زمانی منظم با چرخه قاعدگی برای ارزیابی اهمیت دارد."),
+    ("antisocial-personality-disorder", "narcissistic-personality-disorder", "related", "هر دو ممکن است با مشکلات بین‌فردی همراه باشند، اما الگوی نقض حقوق دیگران در شخصیت ضداجتماعی با بزرگ‌منشی و نیاز به تحسین در شخصیت خودشیفته یکسان نیست."),
 ]
 
 QUIZZES = [

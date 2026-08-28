@@ -5,20 +5,45 @@ from rest_framework.exceptions import ValidationError
 from .models import (
     CaseAttempt,
     CaseAttemptAnswer,
-    CaseChoice,
     QuizAttempt,
     QuizAttemptAnswer,
-    QuizChoice,
     UserProgress,
 )
+
+
+def _normalize_answers(answers, expected_question_ids, *, label):
+    if not isinstance(answers, list):
+        raise ValidationError(f"پاسخ‌های {label} باید به‌صورت یک فهرست ارسال شوند.")
+    if len(answers) != len(expected_question_ids):
+        raise ValidationError(f"به همه سؤال‌های {label} باید دقیقاً یک بار پاسخ داده شود.")
+
+    normalized = []
+    submitted_ids = set()
+    for item in answers:
+        if not isinstance(item, dict):
+            raise ValidationError(f"ساختار یکی از پاسخ‌های {label} معتبر نیست.")
+        try:
+            question_id = int(item.get("question_id"))
+            choice_id = int(item.get("choice_id"))
+        except (TypeError, ValueError):
+            raise ValidationError(f"شناسه سؤال یا گزینه در {label} معتبر نیست.")
+
+        if question_id in submitted_ids:
+            raise ValidationError(f"هر سؤال {label} فقط یک بار باید پاسخ داده شود.")
+        submitted_ids.add(question_id)
+        normalized.append((question_id, choice_id))
+
+    if submitted_ids != expected_question_ids:
+        raise ValidationError(f"به همه سؤال‌های {label} باید دقیقاً یک بار پاسخ داده شود.")
+    return normalized
 
 
 @transaction.atomic
 def submit_quiz(*, user, quiz, answers):
     question_ids = set(quiz.questions.values_list("id", flat=True))
-    submitted_ids = {int(a["question_id"]) for a in answers}
-    if submitted_ids != question_ids:
-        raise ValidationError("به همه سؤال‌های آزمون باید دقیقاً یک بار پاسخ داده شود.")
+    if not question_ids:
+        raise ValidationError("این آزمون هنوز سؤال قابل پاسخ ندارد.")
+    normalized_answers = _normalize_answers(answers, question_ids, label="آزمون")
 
     attempt = QuizAttempt.objects.create(
         user=user,
@@ -30,9 +55,7 @@ def submit_quiz(*, user, quiz, answers):
     feedback = []
     questions = {q.id: q for q in quiz.questions.prefetch_related("choices").all()}
 
-    for item in answers:
-        qid = int(item["question_id"])
-        cid = int(item["choice_id"])
+    for qid, cid in normalized_answers:
         question = questions[qid]
         try:
             choice = next(c for c in question.choices.all() if c.id == cid)
@@ -58,11 +81,13 @@ def submit_quiz(*, user, quiz, answers):
     attempt.status = QuizAttempt.Status.COMPLETED
     attempt.completed_at = timezone.now()
     attempt.save(update_fields=("correct_count", "score", "status", "completed_at", "updated_at"))
+
     if quiz.disorder_id:
         progress, _ = UserProgress.objects.get_or_create(user=user, disorder=quiz.disorder)
         progress.progress_percent = max(progress.progress_percent, 65)
         progress.last_viewed_at = timezone.now()
         progress.save(update_fields=("progress_percent", "last_viewed_at", "updated_at"))
+
     return attempt, feedback
 
 
@@ -73,9 +98,9 @@ def submit_case(*, user, clinical_case, answers):
         for q in step.questions.all():
             questions[q.id] = q
 
-    submitted_ids = {int(a["question_id"]) for a in answers}
-    if submitted_ids != set(questions):
-        raise ValidationError("به همه سؤال‌های کیس بالینی باید دقیقاً یک بار پاسخ داده شود.")
+    if not questions:
+        raise ValidationError("این کیس بالینی هنوز سؤال قابل پاسخ ندارد.")
+    normalized_answers = _normalize_answers(answers, set(questions), label="کیس بالینی")
 
     max_score = sum(
         max([c.score_value for c in q.choices.all()] or [0])
@@ -89,9 +114,7 @@ def submit_case(*, user, clinical_case, answers):
 
     score = 0
     feedback = []
-    for item in answers:
-        qid = int(item["question_id"])
-        cid = int(item["choice_id"])
+    for qid, cid in normalized_answers:
         question = questions[qid]
         try:
             choice = next(c for c in question.choices.all() if c.id == cid)
@@ -120,6 +143,7 @@ def submit_case(*, user, clinical_case, answers):
     attempt.status = CaseAttempt.Status.COMPLETED
     attempt.completed_at = timezone.now()
     attempt.save(update_fields=("score", "status", "completed_at", "updated_at"))
+
     if clinical_case.primary_disorder_id:
         progress, _ = UserProgress.objects.get_or_create(user=user, disorder=clinical_case.primary_disorder)
         next_percent = max(progress.progress_percent, 85 if score == max_score else 75)
@@ -129,4 +153,5 @@ def submit_case(*, user, clinical_case, answers):
             progress.status = UserProgress.Status.COMPLETED
             progress.completed_at = timezone.now()
         progress.save(update_fields=("progress_percent", "last_viewed_at", "status", "completed_at", "updated_at"))
+
     return attempt, feedback

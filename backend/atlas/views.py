@@ -1,5 +1,5 @@
 from django.contrib.auth.models import User
-from django.db.models import Count, Q
+from django.db.models import Case, Count, IntegerField, Q, Value, When
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, permissions, status
@@ -56,7 +56,9 @@ def me(request):
 @api_view(["GET"])
 def categories(request):
     data = []
-    qs = Category.objects.filter(is_active=True).annotate(disorder_count=Count("disorders"))
+    qs = Category.objects.filter(is_active=True).annotate(
+        disorder_count=Count("disorders", filter=Q(disorders__is_active=True))
+    )
     for category in qs:
         data.append({
             "slug": category.slug,
@@ -83,7 +85,12 @@ class DisorderListView(generics.ListAPIView):
                 | Q(name_fa__icontains=q)
                 | Q(slug__icontains=q)
                 | Q(short_description__icontains=q)
-            )
+                | Q(overview__icontains=q)
+                | Q(clinical_features__icontains=q)
+                | Q(symptom_links__symptom__name_en__icontains=q)
+                | Q(symptom_links__symptom__name_fa__icontains=q)
+                | Q(symptom_links__symptom__description__icontains=q)
+            ).distinct()
         return qs
 
 
@@ -106,11 +113,10 @@ class DisorderDetailView(generics.RetrieveAPIView):
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
         if request.user.is_authenticated:
-            UserProgress.objects.update_or_create(
-                user=request.user,
-                disorder=instance,
-                defaults={"last_viewed_at": timezone.now(), "progress_percent": 20},
-            )
+            progress, _ = UserProgress.objects.get_or_create(user=request.user, disorder=instance)
+            progress.progress_percent = max(progress.progress_percent, 20)
+            progress.last_viewed_at = timezone.now()
+            progress.save(update_fields=("progress_percent", "last_viewed_at", "updated_at"))
         return super().retrieve(request, *args, **kwargs)
 
 
@@ -118,20 +124,32 @@ class DisorderDetailView(generics.RetrieveAPIView):
 def compare_disorders(request):
     slugs = [x.strip() for x in request.query_params.get("slugs", "").split(",") if x.strip()]
     if not 2 <= len(slugs) <= 4:
-        return Response({"detail": "Choose between 2 and 4 disorders."}, status=400)
+        return Response({"detail": "بین ۲ تا ۴ اختلال انتخاب کن."}, status=400)
+    if len(set(slugs)) != len(slugs):
+        return Response({"detail": "هر اختلال فقط یک بار می‌تواند در مقایسه باشد."}, status=400)
     qs = (
         Disorder.objects.filter(slug__in=slugs, is_active=True)
         .select_related("category")
-        .prefetch_related("symptom_links__symptom", "outgoing_relationships__related_disorder", "incoming_relationships__disorder", "source_links__source")
+        .prefetch_related(
+            "symptom_links__symptom",
+            "outgoing_relationships__related_disorder",
+            "incoming_relationships__disorder",
+            "source_links__source",
+            "quizzes",
+            "clinical_cases",
+        )
     )
     by_slug = {x.slug: x for x in qs}
-    ordered = [by_slug[s] for s in slugs if s in by_slug]
+    missing = [slug for slug in slugs if slug not in by_slug]
+    if missing:
+        return Response({"detail": "یک یا چند اختلال انتخاب‌شده پیدا نشد."}, status=404)
+    ordered = [by_slug[s] for s in slugs]
     return Response(DisorderDetailSerializer(ordered, many=True).data)
 
 
 class QuizListView(generics.ListAPIView):
     serializer_class = QuizListSerializer
-    queryset = Quiz.objects.filter(is_active=True).select_related("disorder", "disorder__category").order_by("title", "id")
+    queryset = Quiz.objects.filter(is_active=True).select_related("disorder", "disorder__category").prefetch_related("questions").order_by("title", "id")
 
 
 class QuizDetailView(generics.RetrieveAPIView):
@@ -156,7 +174,21 @@ def quiz_submit(request, slug):
 
 class ClinicalCaseListView(generics.ListAPIView):
     serializer_class = ClinicalCaseListSerializer
-    queryset = ClinicalCase.objects.filter(is_active=True).select_related("primary_disorder", "primary_disorder__category").order_by("difficulty", "title", "id")
+    queryset = (
+        ClinicalCase.objects.filter(is_active=True)
+        .select_related("primary_disorder", "primary_disorder__category")
+        .prefetch_related("steps")
+        .annotate(
+            difficulty_order=Case(
+                When(difficulty=ClinicalCase.Difficulty.INTRODUCTORY, then=Value(0)),
+                When(difficulty=ClinicalCase.Difficulty.INTERMEDIATE, then=Value(1)),
+                When(difficulty=ClinicalCase.Difficulty.ADVANCED, then=Value(2)),
+                default=Value(3),
+                output_field=IntegerField(),
+            )
+        )
+        .order_by("difficulty_order", "title", "id")
+    )
 
 
 class ClinicalCaseDetailView(generics.RetrieveAPIView):
@@ -238,15 +270,22 @@ def note_detail(request, slug):
             note.delete()
         return Response(status=204)
 
-    body = str(request.data.get("body", "")).strip()
+    raw_body = request.data.get("body", "")
+    body = "" if raw_body is None else str(raw_body).strip()
     if len(body) > 12000:
         return Response({"detail": "یادداشت بیش از حد طولانی است."}, status=400)
+    if not body:
+        if note:
+            note.delete()
+        return Response({"disorder_slug": slug, "body": "", "exists": False})
     note, _ = UserNote.objects.update_or_create(
         user=request.user,
         disorder=disorder,
         defaults={"body": body},
     )
-    return Response(UserNoteSerializer(note).data)
+    data = UserNoteSerializer(note).data
+    data["exists"] = True
+    return Response(data)
 
 
 @api_view(["GET"])
@@ -266,18 +305,18 @@ def dashboard(request):
     completed_cases = case_attempts.count()
     case_percentages = [
         round(a.score * 100 / a.max_score) if a.max_score else 0
-        for a in case_attempts[:100]
+        for a in case_attempts
     ]
     avg_case_score = round(sum(case_percentages) / len(case_percentages)) if case_percentages else 0
 
     activity_dates = set()
-    for value in quiz_attempts.values_list("completed_at", flat=True)[:100]:
+    for value in quiz_attempts.values_list("completed_at", flat=True):
         if value:
             activity_dates.add(value.date())
-    for value in case_attempts.values_list("completed_at", flat=True)[:100]:
+    for value in case_attempts.values_list("completed_at", flat=True):
         if value:
             activity_dates.add(value.date())
-    for value in progress_qs.values_list("last_viewed_at", flat=True)[:100]:
+    for value in progress_qs.values_list("last_viewed_at", flat=True):
         if value:
             activity_dates.add(value.date())
 

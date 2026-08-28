@@ -11,6 +11,7 @@ export default function CaseRunner({ item }: { item: ClinicalCase }) {
   const allQuestions = useMemo(() => steps.flatMap(s => s.questions), [steps]);
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [currentStep, setCurrentStep] = useState(0);
+  const [furthestStep, setFurthestStep] = useState(0);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -79,7 +80,7 @@ export default function CaseRunner({ item }: { item: ClinicalCase }) {
             <p style={{ marginTop: 8 }}>{f.explanation}</p>
           </div>
         ))}
-        <button className="button" onClick={() => { setResult(null); setAnswers({}); setCurrentStep(0); }}>حل دوباره کیس</button>
+        <button className="button" onClick={() => { setResult(null); setAnswers({}); setCurrentStep(0); setFurthestStep(0); }}>حل دوباره کیس</button>
       </div>
     );
   }
@@ -88,7 +89,7 @@ export default function CaseRunner({ item }: { item: ClinicalCase }) {
     <div className="case-runner">
       <div className="case-progress">
         {steps.map((_, index) => (
-          <div className={`case-progress-step ${index <= currentStep ? "active" : ""}`} key={index}>
+          <div className={`case-progress-step ${index <= furthestStep ? "active" : ""}`} key={index}>
             <span>{faNumber(index + 1)}</span>
           </div>
         ))}
@@ -108,6 +109,7 @@ export default function CaseRunner({ item }: { item: ClinicalCase }) {
                 className={`choice ${answers[q.id] === choice.id ? "selected" : ""}`}
                 key={choice.id}
                 onClick={() => setAnswers(a => ({ ...a, [q.id]: choice.id }))}
+                disabled={currentStep < furthestStep || busy}
               >
                 {choice.text}
               </button>
@@ -115,12 +117,21 @@ export default function CaseRunner({ item }: { item: ClinicalCase }) {
           </div>
         ))}
 
+        {currentStep < furthestStep && <p className="muted small">این مرحله پس از مشاهده اطلاعات مرحله بعد قفل شده و فقط برای مرور نمایش داده می‌شود.</p>}
         {error && <p className="error">{error}</p>}
         <div className="actions" style={{ marginTop: 18 }}>
           {currentStep > 0 && <button className="button" onClick={() => setCurrentStep(x => x - 1)}>مرحله قبل</button>}
           {!isLast ? (
-            <button className="button primary" disabled={!currentAnswered} onClick={() => setCurrentStep(x => x + 1)}>
-              نمایش مرحله بعد
+            <button
+              className="button primary"
+              disabled={!currentAnswered}
+              onClick={() => {
+                const nextStep = currentStep + 1;
+                setFurthestStep(x => Math.max(x, nextStep));
+                setCurrentStep(nextStep);
+              }}
+            >
+              {currentStep < furthestStep ? "بازگشت به مرحله بعد" : "نمایش مرحله بعد"}
             </button>
           ) : (
             <button
