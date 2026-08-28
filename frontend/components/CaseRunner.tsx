@@ -21,6 +21,7 @@ export default function CaseRunner({ item }: { item: ClinicalCase }) {
   const isLast = currentStep === steps.length - 1;
 
   async function submit() {
+    if (busy) return;
     if (!hasToken()) {
       location.href = "/login";
       return;

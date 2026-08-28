@@ -1,5 +1,7 @@
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
+from django.db import IntegrityError
+from django.db.models import Q
 from rest_framework import serializers
 
 from .models import (
@@ -29,17 +31,22 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     def validate_email(self, value):
         value = value.strip().lower()
-        if User.objects.filter(username=value).exists():
+        if User.objects.filter(Q(username__iexact=value) | Q(email__iexact=value)).exists():
             raise serializers.ValidationError("قبلاً با این ایمیل حساب ساخته شده است.")
         return value
 
-    def validate_password(self, value):
-        validate_password(value)
-        return value
+    def validate(self, attrs):
+        email = attrs["email"]
+        candidate = User(username=email, email=email)
+        validate_password(attrs["password"], user=candidate)
+        return attrs
 
     def create(self, validated_data):
         email = validated_data["email"].lower()
-        return User.objects.create_user(username=email, email=email, password=validated_data["password"])
+        try:
+            return User.objects.create_user(username=email, email=email, password=validated_data["password"])
+        except IntegrityError:
+            raise serializers.ValidationError({"email": "قبلاً با این ایمیل حساب ساخته شده است."})
 
 
 class UserSerializer(serializers.ModelSerializer):

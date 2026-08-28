@@ -1,9 +1,12 @@
+from collections.abc import Mapping
+
 from django.contrib.auth.models import User
 from django.db.models import Case, Count, IntegerField, Q, Value, When
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, permissions, status
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -29,6 +32,12 @@ from .serializers import (
     UserSerializer,
 )
 from .services import submit_case, submit_quiz
+
+
+def _object_payload(request):
+    if not isinstance(request.data, Mapping):
+        raise ValidationError({"detail": "بدنه درخواست باید یک شیء JSON باشد."})
+    return request.data
 
 
 class RegisterView(generics.CreateAPIView):
@@ -117,7 +126,7 @@ class DisorderDetailView(generics.RetrieveAPIView):
             progress.progress_percent = max(progress.progress_percent, 20)
             progress.last_viewed_at = timezone.now()
             progress.save(update_fields=("progress_percent", "last_viewed_at", "updated_at"))
-        return super().retrieve(request, *args, **kwargs)
+        return Response(self.get_serializer(instance).data)
 
 
 @api_view(["GET"])
@@ -162,7 +171,8 @@ class QuizDetailView(generics.RetrieveAPIView):
 @permission_classes([permissions.IsAuthenticated])
 def quiz_submit(request, slug):
     quiz = get_object_or_404(Quiz.objects.prefetch_related("questions__choices"), slug=slug, is_active=True)
-    attempt, feedback = submit_quiz(user=request.user, quiz=quiz, answers=request.data.get("answers", []))
+    payload = _object_payload(request)
+    attempt, feedback = submit_quiz(user=request.user, quiz=quiz, answers=payload.get("answers", []))
     return Response({
         "attempt_id": attempt.id,
         "score": attempt.score,
@@ -201,7 +211,8 @@ class ClinicalCaseDetailView(generics.RetrieveAPIView):
 @permission_classes([permissions.IsAuthenticated])
 def case_submit(request, slug):
     case = get_object_or_404(ClinicalCase.objects.prefetch_related("steps__questions__choices"), slug=slug, is_active=True)
-    attempt, feedback = submit_case(user=request.user, clinical_case=case, answers=request.data.get("answers", []))
+    payload = _object_payload(request)
+    attempt, feedback = submit_case(user=request.user, clinical_case=case, answers=payload.get("answers", []))
     return Response({
         "attempt_id": attempt.id,
         "score": attempt.score,
@@ -217,7 +228,11 @@ def bookmarks(request):
         qs = Bookmark.objects.filter(user=request.user).select_related("disorder", "disorder__category").order_by("-created_at")
         return Response(BookmarkSerializer(qs, many=True).data)
 
-    slug = request.data.get("slug")
+    payload = _object_payload(request)
+    slug = payload.get("slug")
+    if not isinstance(slug, str) or not slug.strip():
+        raise ValidationError({"slug": "شناسه اختلال باید یک slug معتبر باشد."})
+    slug = slug.strip()
     disorder = get_object_or_404(Disorder, slug=slug, is_active=True)
     bookmark, created = Bookmark.objects.get_or_create(user=request.user, disorder=disorder)
     return Response(BookmarkSerializer(bookmark).data, status=201 if created else 200)
@@ -270,8 +285,14 @@ def note_detail(request, slug):
             note.delete()
         return Response(status=204)
 
-    raw_body = request.data.get("body", "")
-    body = "" if raw_body is None else str(raw_body).strip()
+    payload = _object_payload(request)
+    raw_body = payload.get("body", "")
+    if raw_body is None:
+        body = ""
+    elif isinstance(raw_body, str):
+        body = raw_body.strip()
+    else:
+        raise ValidationError({"body": "متن یادداشت باید رشته متنی باشد."})
     if len(body) > 12000:
         return Response({"detail": "یادداشت بیش از حد طولانی است."}, status=400)
     if not body:

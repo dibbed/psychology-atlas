@@ -30,6 +30,23 @@ class AtlasApiTests(APITestCase):
         response = self.client.get("/api/disorders/")
         self.assertEqual(response.status_code, 200)
 
+    def test_register_rejects_email_already_used_on_another_user(self):
+        User.objects.create_user(username="legacy-user", email="legacy@example.com", password="ComplexPass123!")
+        response = self.client.post(
+            "/api/auth/register/",
+            {"email": "LEGACY@example.com", "password": "AnotherComplexPass123!"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_register_password_validation_uses_email_context(self):
+        response = self.client.post(
+            "/api/auth/register/",
+            {"email": "freshperson@example.com", "password": "freshperson@example.com"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
     def test_bookmark_is_scoped_to_authenticated_user(self):
         Bookmark.objects.create(user=self.user_a, disorder=self.disorder)
         self.auth(self.user_b)
@@ -154,8 +171,11 @@ class AtlasApiTests(APITestCase):
         self.auth(self.user_a)
 
         invalid_payloads = [
+            [],
             {"answers": None},
             {"answers": [{"question_id": "abc", "choice_id": choice.id}]},
+            {"answers": [{"question_id": True, "choice_id": choice.id}]},
+            {"answers": [{"question_id": float(question.id), "choice_id": choice.id}]},
             {"answers": [{"question_id": question.id, "choice_id": choice.id}, {"question_id": question.id, "choice_id": choice.id}]},
         ]
         for payload in invalid_payloads:
@@ -175,8 +195,21 @@ class AtlasApiTests(APITestCase):
         question = CaseQuestion.objects.create(step=step, prompt="question", sort_order=1)
         CaseChoice.objects.create(question=question, text="choice", score_value=1, sort_order=1)
         self.auth(self.user_a)
-        response = self.client.post("/api/cases/validation-case/submit/", {"answers": None}, format="json")
-        self.assertEqual(response.status_code, 400)
+        for payload in ({"answers": None}, []):
+            with self.subTest(payload=payload):
+                response = self.client.post("/api/cases/validation-case/submit/", payload, format="json")
+                self.assertEqual(response.status_code, 400)
+
+    def test_object_payload_endpoints_reject_malformed_data(self):
+        self.auth(self.user_a)
+        responses = [
+            self.client.post("/api/bookmarks/", [], format="json"),
+            self.client.post("/api/bookmarks/", {}, format="json"),
+            self.client.put(f"/api/notes/{self.disorder.slug}/", [], format="json"),
+            self.client.put(f"/api/notes/{self.disorder.slug}/", {"body": {"unexpected": True}}, format="json"),
+        ]
+        for response in responses:
+            self.assertEqual(response.status_code, 400)
 
     def test_disorder_pagination_can_return_full_v02_catalog(self):
         for index in range(29):

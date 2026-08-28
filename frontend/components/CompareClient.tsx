@@ -7,7 +7,7 @@ import type { Disorder, DisorderDetail } from "@/lib/types";
 
 export default function CompareClient({ initialSlug }: { initialSlug?: string }) {
   const [all, setAll] = useState<Disorder[]>([]);
-  const [selected, setSelected] = useState<string[]>(initialSlug ? [initialSlug] : []);
+  const [selected, setSelected] = useState<string[]>([]);
   const [items, setItems] = useState<DisorderDetail[]>([]);
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
@@ -22,8 +22,10 @@ export default function CompareClient({ initialSlug }: { initialSlug?: string })
   }, []);
 
   useEffect(() => {
-    if (initialSlug) setSelected(s => s.includes(initialSlug) ? s : [initialSlug, ...s].slice(0, 4));
-  }, [initialSlug]);
+    if (initialSlug && all.some(d => d.slug === initialSlug)) {
+      setSelected(s => s.includes(initialSlug) ? s : [initialSlug, ...s].slice(0, 4));
+    }
+  }, [initialSlug, all]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

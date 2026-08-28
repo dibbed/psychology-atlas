@@ -22,10 +22,19 @@ def _normalize_answers(answers, expected_question_ids, *, label):
     for item in answers:
         if not isinstance(item, dict):
             raise ValidationError(f"ساختار یکی از پاسخ‌های {label} معتبر نیست.")
-        try:
-            question_id = int(item.get("question_id"))
-            choice_id = int(item.get("choice_id"))
-        except (TypeError, ValueError):
+        question_raw = item.get("question_id")
+        choice_raw = item.get("choice_id")
+        if isinstance(question_raw, bool) or isinstance(choice_raw, bool):
+            raise ValidationError(f"شناسه سؤال یا گزینه در {label} معتبر نیست.")
+        if not isinstance(question_raw, (int, str)) or not isinstance(choice_raw, (int, str)):
+            raise ValidationError(f"شناسه سؤال یا گزینه در {label} معتبر نیست.")
+        if isinstance(question_raw, str) and not question_raw.isdigit():
+            raise ValidationError(f"شناسه سؤال یا گزینه در {label} معتبر نیست.")
+        if isinstance(choice_raw, str) and not choice_raw.isdigit():
+            raise ValidationError(f"شناسه سؤال یا گزینه در {label} معتبر نیست.")
+        question_id = int(question_raw)
+        choice_id = int(choice_raw)
+        if question_id <= 0 or choice_id <= 0:
             raise ValidationError(f"شناسه سؤال یا گزینه در {label} معتبر نیست.")
 
         if question_id in submitted_ids:
