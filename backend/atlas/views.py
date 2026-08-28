@@ -10,7 +10,14 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .learning import activity_heatmap, challenge_attempt_for_today, current_streak, get_recommendations, record_activity
+from .learning import (
+    activity_heatmap,
+    available_flashcards,
+    challenge_attempt_for_today,
+    current_streak,
+    get_recommendations,
+    record_activity,
+)
 from .models import (
     Bookmark,
     Category,
@@ -18,7 +25,6 @@ from .models import (
     ConceptBookmark,
     ConceptNote,
     Disorder,
-    Flashcard,
     Quiz,
     StudyActivity,
     UserConceptProgress,
@@ -26,6 +32,7 @@ from .models import (
     UserNote,
     UserProgress,
 )
+from .search_utils import icontains_any
 from .serializers import (
     BookmarkSerializer,
     ClinicalCaseDetailSerializer,
@@ -45,6 +52,18 @@ def _object_payload(request):
     if not isinstance(request.data, Mapping):
         raise ValidationError({"detail": "بدنه درخواست باید یک شیء JSON باشد."})
     return request.data
+
+
+def available_quizzes():
+    return Quiz.objects.filter(is_active=True).filter(
+        Q(disorder__isnull=True) | Q(disorder__is_active=True)
+    )
+
+
+def available_clinical_cases():
+    return ClinicalCase.objects.filter(is_active=True).filter(
+        Q(primary_disorder__isnull=True) | Q(primary_disorder__is_active=True)
+    )
 
 
 class RegisterView(generics.CreateAPIView):
@@ -96,17 +115,20 @@ class DisorderListView(generics.ListAPIView):
         if category:
             qs = qs.filter(category__slug=category)
         if q:
-            qs = qs.filter(
-                Q(name_en__icontains=q)
-                | Q(name_fa__icontains=q)
-                | Q(slug__icontains=q)
-                | Q(short_description__icontains=q)
-                | Q(overview__icontains=q)
-                | Q(clinical_features__icontains=q)
-                | Q(symptom_links__symptom__name_en__icontains=q)
-                | Q(symptom_links__symptom__name_fa__icontains=q)
-                | Q(symptom_links__symptom__description__icontains=q)
-            ).distinct()
+            qs = qs.filter(icontains_any(
+                (
+                    "name_en",
+                    "name_fa",
+                    "slug",
+                    "short_description",
+                    "overview",
+                    "clinical_features",
+                    "symptom_links__symptom__name_en",
+                    "symptom_links__symptom__name_fa",
+                    "symptom_links__symptom__description",
+                ),
+                q,
+            )).distinct()
         return qs
 
 
@@ -167,19 +189,19 @@ def compare_disorders(request):
 
 class QuizListView(generics.ListAPIView):
     serializer_class = QuizListSerializer
-    queryset = Quiz.objects.filter(is_active=True).select_related("disorder", "disorder__category").prefetch_related("questions").order_by("title", "id")
+    queryset = available_quizzes().select_related("disorder", "disorder__category").prefetch_related("questions").order_by("title", "id")
 
 
 class QuizDetailView(generics.RetrieveAPIView):
     serializer_class = QuizDetailSerializer
     lookup_field = "slug"
-    queryset = Quiz.objects.filter(is_active=True).select_related("disorder", "disorder__category").prefetch_related("questions__choices")
+    queryset = available_quizzes().select_related("disorder", "disorder__category").prefetch_related("questions__choices")
 
 
 @api_view(["POST"])
 @permission_classes([permissions.IsAuthenticated])
 def quiz_submit(request, slug):
-    quiz = get_object_or_404(Quiz.objects.prefetch_related("questions__choices"), slug=slug, is_active=True)
+    quiz = get_object_or_404(available_quizzes().prefetch_related("questions__choices"), slug=slug)
     payload = _object_payload(request)
     attempt, feedback = submit_quiz(user=request.user, quiz=quiz, answers=payload.get("answers", []))
     return Response({
@@ -194,7 +216,7 @@ def quiz_submit(request, slug):
 class ClinicalCaseListView(generics.ListAPIView):
     serializer_class = ClinicalCaseListSerializer
     queryset = (
-        ClinicalCase.objects.filter(is_active=True)
+        available_clinical_cases()
         .select_related("primary_disorder", "primary_disorder__category")
         .prefetch_related("steps")
         .annotate(
@@ -213,13 +235,13 @@ class ClinicalCaseListView(generics.ListAPIView):
 class ClinicalCaseDetailView(generics.RetrieveAPIView):
     serializer_class = ClinicalCaseDetailSerializer
     lookup_field = "slug"
-    queryset = ClinicalCase.objects.filter(is_active=True).select_related("primary_disorder", "primary_disorder__category").prefetch_related("steps__questions__choices")
+    queryset = available_clinical_cases().select_related("primary_disorder", "primary_disorder__category").prefetch_related("steps__questions__choices")
 
 
 @api_view(["POST"])
 @permission_classes([permissions.IsAuthenticated])
 def case_submit(request, slug):
-    case = get_object_or_404(ClinicalCase.objects.prefetch_related("steps__questions__choices"), slug=slug, is_active=True)
+    case = get_object_or_404(available_clinical_cases().prefetch_related("steps__questions__choices"), slug=slug)
     payload = _object_payload(request)
     attempt, feedback = submit_case(user=request.user, clinical_case=case, answers=payload.get("answers", []))
     return Response({
@@ -298,13 +320,9 @@ def note_detail(request, slug):
         return Response(status=204)
 
     payload = _object_payload(request)
-    raw_body = payload.get("body", "")
-    if raw_body is None:
-        body = ""
-    elif isinstance(raw_body, str):
-        body = raw_body.strip()
-    else:
+    if "body" not in payload or not isinstance(payload["body"], str):
         raise ValidationError({"body": "متن یادداشت باید رشته متنی باشد."})
+    body = payload["body"].strip()
     if len(body) > 12000:
         return Response({"detail": "یادداشت بیش از حد طولانی است."}, status=400)
     if not body:
@@ -327,18 +345,27 @@ def note_detail(request, slug):
 def dashboard(request):
     bookmarks_qs = Bookmark.objects.filter(user=request.user, disorder__is_active=True).select_related("disorder", "disorder__category").order_by("-created_at")
     progress_qs = UserProgress.objects.filter(user=request.user, disorder__is_active=True).select_related("disorder", "disorder__category").order_by("-last_viewed_at")
-    quiz_attempts = request.user.quiz_attempts.filter(status="completed", quiz__is_active=True).select_related("quiz", "quiz__disorder").order_by("-completed_at")
-    case_attempts = request.user.case_attempts.filter(status="completed", case__is_active=True).select_related("case", "case__primary_disorder").order_by("-completed_at")
+    quiz_attempts = request.user.quiz_attempts.filter(
+        Q(quiz__disorder__isnull=True) | Q(quiz__disorder__is_active=True),
+        status="completed",
+        quiz__is_active=True,
+    ).select_related("quiz", "quiz__disorder").order_by("-completed_at")
+    case_attempts = request.user.case_attempts.filter(
+        Q(case__primary_disorder__isnull=True) | Q(case__primary_disorder__is_active=True),
+        status="completed",
+        case__is_active=True,
+    ).select_related("case", "case__primary_disorder").order_by("-completed_at")
     notes_qs = UserNote.objects.filter(user=request.user, disorder__is_active=True).select_related("disorder", "disorder__category").order_by("-updated_at")
     concept_bookmarks_qs = ConceptBookmark.objects.filter(user=request.user, concept__is_active=True).select_related("concept").order_by("-created_at")
     concept_notes_qs = ConceptNote.objects.filter(user=request.user, concept__is_active=True).select_related("concept").order_by("-updated_at")
     concept_progress_qs = UserConceptProgress.objects.filter(user=request.user, concept__is_active=True).select_related("concept")
+    visible_cards = available_flashcards()
     due_flashcards = UserFlashcardProgress.objects.filter(
         user=request.user,
-        flashcard__is_active=True,
+        flashcard_id__in=visible_cards.values_list("id", flat=True),
         due_at__lte=timezone.now(),
     ).count()
-    unseen_flashcards = Flashcard.objects.filter(is_active=True).exclude(
+    unseen_flashcards = visible_cards.exclude(
         id__in=UserFlashcardProgress.objects.filter(user=request.user).values_list("flashcard_id", flat=True)
     ).count()
 

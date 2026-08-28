@@ -4,6 +4,7 @@ import math
 from datetime import timedelta
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from .models import (
@@ -16,6 +17,13 @@ from .models import (
     UserFlashcardProgress,
     UserProgress,
 )
+
+
+def available_flashcards():
+    return Flashcard.objects.filter(is_active=True).filter(
+        Q(concept__isnull=True) | Q(concept__is_active=True),
+        Q(disorder__isnull=True) | Q(disorder__is_active=True),
+    )
 
 
 def record_activity(user, activity_type, **links):
@@ -160,8 +168,9 @@ def review_flashcard(*, user, flashcard: Flashcard, rating: str):
 
 def get_review_queue(user, *, limit=20, concept_slug=None, disorder_slug=None):
     now = timezone.now()
-    due_qs = UserFlashcardProgress.objects.filter(user=user, flashcard__is_active=True, due_at__lte=now)
-    new_qs = Flashcard.objects.filter(is_active=True)
+    visible_ids = available_flashcards().values_list("id", flat=True)
+    due_qs = UserFlashcardProgress.objects.filter(user=user, flashcard_id__in=visible_ids, due_at__lte=now)
+    new_qs = available_flashcards()
     if concept_slug:
         due_qs = due_qs.filter(flashcard__concept__slug=concept_slug)
         new_qs = new_qs.filter(concept__slug=concept_slug)
@@ -247,12 +256,13 @@ def activity_heatmap(user, *, days=42):
 
 def get_recommendations(user, *, limit=6):
     recommendations = []
+    visible_cards = available_flashcards()
     due_count = UserFlashcardProgress.objects.filter(
         user=user,
-        flashcard__is_active=True,
+        flashcard_id__in=visible_cards.values_list("id", flat=True),
         due_at__lte=timezone.now(),
     ).count()
-    unseen_count = Flashcard.objects.filter(is_active=True).exclude(
+    unseen_count = visible_cards.exclude(
         id__in=UserFlashcardProgress.objects.filter(user=user).values_list("flashcard_id", flat=True)
     ).count()
     review_count = due_count or min(unseen_count, 10)
@@ -295,7 +305,16 @@ def get_recommendations(user, *, limit=6):
 
 
 def today_challenge():
-    challenges = list(DailyChallenge.objects.filter(is_active=True).prefetch_related("choices").order_by("sort_order", "id"))
+    challenges = list(
+        DailyChallenge.objects.filter(is_active=True)
+        .filter(
+            Q(concept__isnull=True) | Q(concept__is_active=True),
+            Q(disorder__isnull=True) | Q(disorder__is_active=True),
+        )
+        .select_related("concept", "disorder")
+        .prefetch_related("choices")
+        .order_by("sort_order", "id")
+    )
     if not challenges:
         return None
     index = timezone.localdate().toordinal() % len(challenges)
@@ -305,6 +324,6 @@ def today_challenge():
 def challenge_attempt_for_today(user):
     return (
         DailyChallengeAttempt.objects.filter(user=user, activity_date=timezone.localdate())
-        .select_related("challenge", "selected_choice")
+        .select_related("challenge", "challenge__concept", "challenge__disorder", "selected_choice")
         .first()
     )

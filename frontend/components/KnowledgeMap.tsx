@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { normalizePersianSearch } from "@/lib/text";
 
 type MapNode = {
   id: string;
@@ -68,8 +69,12 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: MapData; i
   }, [data.edges, nodeById, selected]);
 
   const filteredNodes = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return data.nodes.filter(node => (type === "all" || node.type === type) && (!q || `${node.label} ${node.slug}`.toLowerCase().includes(q)));
+    const q = normalizePersianSearch(query.trim());
+    return data.nodes.filter(node => (
+      type === "all" || node.type === type
+    ) && (
+      !q || normalizePersianSearch(`${node.label} ${node.slug}`).includes(q)
+    ));
   }, [data.nodes, query, type]);
 
   if (!selected) return <div className="card">نقشه هنوز داده‌ای ندارد.</div>;

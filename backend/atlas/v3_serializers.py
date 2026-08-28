@@ -161,9 +161,19 @@ class DailyChallengeChoiceSerializer(serializers.ModelSerializer):
 
 class DailyChallengeSerializer(serializers.ModelSerializer):
     choices = DailyChallengeChoiceSerializer(many=True)
-    concept = ConceptListSerializer(read_only=True)
-    disorder = DisorderListSerializer(read_only=True)
+    concept = serializers.SerializerMethodField()
+    disorder = serializers.SerializerMethodField()
 
     class Meta:
         model = DailyChallenge
         fields = ("id", "prompt", "choices", "concept", "disorder")
+
+    def get_concept(self, obj):
+        if not obj.concept_id or not obj.concept.is_active:
+            return None
+        return ConceptListSerializer(obj.concept).data
+
+    def get_disorder(self, obj):
+        if not obj.disorder_id or not obj.disorder.is_active:
+            return None
+        return DisorderListSerializer(obj.disorder).data

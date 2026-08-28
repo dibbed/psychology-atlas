@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
+import { normalizePersianSearch } from "@/lib/text";
 import type { Concept } from "@/lib/types";
 import ConceptCard, { conceptKindLabel } from "./ConceptCard";
 
@@ -22,10 +23,10 @@ export default function ConceptExplorer() {
   }, []);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = normalizePersianSearch(query.trim());
     return concepts.filter(item => {
       const matchesKind = !kind || item.kind === kind;
-      const haystack = `${item.name_fa} ${item.name_en} ${item.simple_definition}`.toLowerCase();
+      const haystack = normalizePersianSearch(`${item.name_fa} ${item.name_en} ${item.simple_definition}`);
       return matchesKind && (!q || haystack.includes(q));
     });
   }, [concepts, query, kind]);

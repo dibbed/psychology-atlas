@@ -120,6 +120,8 @@ class DisorderDetailSerializer(DisorderListSerializer):
         seen = set()
         for relation in obj.outgoing_relationships.all():
             other = relation.related_disorder
+            if not other.is_active:
+                continue
             key = (other.slug, relation.relationship_type)
             if key in seen:
                 continue
@@ -133,6 +135,8 @@ class DisorderDetailSerializer(DisorderListSerializer):
             })
         for relation in obj.incoming_relationships.all():
             other = relation.disorder
+            if not other.is_active:
+                continue
             key = (other.slug, relation.relationship_type)
             if key in seen:
                 continue

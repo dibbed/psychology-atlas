@@ -384,11 +384,11 @@ POST /api/cases/<slug>/submit/
 
 ## Release validation baseline
 
-Validated on the v0.3 working tree before release commit:
+Validated on the v0.3 working tree after the deep bug audit:
 
 ```text
 Django system check                 PASS
-Backend tests                       29 / 29 PASS
+Backend tests                       42 / 42 PASS
 Migration drift                     none
 Python compileall                   PASS
 pip check                           PASS

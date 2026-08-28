@@ -59,7 +59,7 @@
   ],
   "validation": {
     "django_check": "pass",
-    "backend_tests": "29/29 passed",
+    "backend_tests": "42/42 passed",
     "python_compileall": "pass",
     "pip_check": "pass",
     "migration_drift_check": "pass",

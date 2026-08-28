@@ -1,7 +1,6 @@
 from collections.abc import Mapping
 
 from django.db import IntegrityError, transaction
-from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, permissions, status
@@ -11,6 +10,7 @@ from rest_framework.response import Response
 
 from .learning import (
     activity_heatmap,
+    available_flashcards,
     challenge_attempt_for_today,
     current_streak,
     get_recommendations,
@@ -24,15 +24,17 @@ from .models import (
     Concept,
     ConceptBookmark,
     ConceptNote,
+    ConceptRelationship,
     DailyChallengeAttempt,
     Disorder,
+    DisorderConcept,
     DisorderSymptom,
-    Flashcard,
     StudyActivity,
     Symptom,
     UserConceptProgress,
     UserFlashcardProgress,
 )
+from .search_utils import icontains_any
 from .serializers import DisorderListSerializer
 from .v3_serializers import (
     ConceptBookmarkSerializer,
@@ -72,14 +74,10 @@ class ConceptListView(generics.ListAPIView):
         if kind:
             qs = qs.filter(kind=kind)
         if q:
-            qs = qs.filter(
-                Q(name_en__icontains=q)
-                | Q(name_fa__icontains=q)
-                | Q(slug__icontains=q)
-                | Q(simple_definition__icontains=q)
-                | Q(academic_definition__icontains=q)
-                | Q(example__icontains=q)
-            )
+            qs = qs.filter(icontains_any(
+                ("name_en", "name_fa", "slug", "simple_definition", "academic_definition", "example"),
+                q,
+            ))
         return qs
 
 
@@ -102,7 +100,7 @@ class FlashcardListView(generics.ListAPIView):
     serializer_class = FlashcardSerializer
 
     def get_queryset(self):
-        qs = Flashcard.objects.filter(is_active=True).select_related("concept", "disorder", "disorder__category")
+        qs = available_flashcards().select_related("concept", "disorder", "disorder__category")
         concept = self.request.query_params.get("concept", "").strip()
         disorder = self.request.query_params.get("disorder", "").strip()
         difficulty = self.request.query_params.get("difficulty", "").strip()
@@ -135,26 +133,27 @@ def global_search(request):
 
     disorders = (
         Disorder.objects.filter(is_active=True)
-        .filter(
-            Q(name_en__icontains=q)
-            | Q(name_fa__icontains=q)
-            | Q(short_description__icontains=q)
-            | Q(symptom_links__symptom__name_en__icontains=q)
-            | Q(symptom_links__symptom__name_fa__icontains=q)
-        )
+        .filter(icontains_any(
+            (
+                "slug",
+                "name_en",
+                "name_fa",
+                "short_description",
+                "symptom_links__symptom__name_en",
+                "symptom_links__symptom__name_fa",
+            ),
+            q,
+        ))
         .select_related("category")
         .distinct()[:10]
     )
-    concepts = Concept.objects.filter(is_active=True).filter(
-        Q(name_en__icontains=q)
-        | Q(name_fa__icontains=q)
-        | Q(simple_definition__icontains=q)
-        | Q(academic_definition__icontains=q)
-        | Q(example__icontains=q)
-    )[:10]
+    concepts = Concept.objects.filter(is_active=True).filter(icontains_any(
+        ("slug", "name_en", "name_fa", "simple_definition", "academic_definition", "example"),
+        q,
+    ))[:10]
     symptoms = (
         Symptom.objects.filter(disorder_links__disorder__is_active=True)
-        .filter(Q(slug__icontains=q) | Q(name_en__icontains=q) | Q(name_fa__icontains=q) | Q(description__icontains=q))
+        .filter(icontains_any(("slug", "name_en", "name_fa", "description"), q))
         .distinct()[:10]
     )
 
@@ -193,20 +192,36 @@ def concept_map(request):
     edges = []
     disorder_ids = set()
 
-    for concept in concepts:
-        for relation in concept.outgoing_concept_relationships.select_related("target_concept").filter(target_concept_id__in=concept_ids):
-            edges.append({
-                "source": f"concept:{concept.slug}",
-                "target": f"concept:{relation.target_concept.slug}",
-                "kind": relation.relationship_type,
-            })
-        for link in concept.disorder_links.select_related("disorder", "disorder__category").filter(disorder__is_active=True):
-            disorder_ids.add(link.disorder_id)
-            edges.append({
-                "source": f"disorder:{link.disorder.slug}",
-                "target": f"concept:{concept.slug}",
-                "kind": link.role,
-            })
+    concept_relations = (
+        ConceptRelationship.objects.filter(
+            source_concept_id__in=concept_ids,
+            target_concept_id__in=concept_ids,
+        )
+        .select_related("source_concept", "target_concept")
+        .order_by("id")
+    )
+    for relation in concept_relations:
+        edges.append({
+            "source": f"concept:{relation.source_concept.slug}",
+            "target": f"concept:{relation.target_concept.slug}",
+            "kind": relation.relationship_type,
+        })
+
+    disorder_concept_links = (
+        DisorderConcept.objects.filter(
+            concept_id__in=concept_ids,
+            disorder__is_active=True,
+        )
+        .select_related("concept", "disorder", "disorder__category")
+        .order_by("disorder_id", "sort_order", "id")
+    )
+    for link in disorder_concept_links:
+        disorder_ids.add(link.disorder_id)
+        edges.append({
+            "source": f"disorder:{link.disorder.slug}",
+            "target": f"concept:{link.concept.slug}",
+            "kind": link.role,
+        })
 
     symptom_links = list(
         DisorderSymptom.objects.filter(disorder__is_active=True)
@@ -290,9 +305,8 @@ def flashcard_review(request, slug):
     if not isinstance(rating, str):
         raise ValidationError({"rating": "ارزیابی کارت معتبر نیست."})
     flashcard = get_object_or_404(
-        Flashcard.objects.select_related("concept", "disorder"),
+        available_flashcards().select_related("concept", "disorder"),
         slug=slug,
-        is_active=True,
     )
     try:
         progress = review_flashcard(user=request.user, flashcard=flashcard, rating=rating)
@@ -349,13 +363,9 @@ def concept_note_detail(request, slug):
         return Response(status=204)
 
     payload = _object_payload(request)
-    raw_body = payload.get("body", "")
-    if raw_body is None:
-        body = ""
-    elif isinstance(raw_body, str):
-        body = raw_body.strip()
-    else:
+    if "body" not in payload or not isinstance(payload["body"], str):
         raise ValidationError({"body": "متن یادداشت باید رشته متنی باشد."})
+    body = payload["body"].strip()
     if len(body) > 12000:
         raise ValidationError({"body": "یادداشت بیش از حد طولانی است."})
     if not body:
@@ -376,14 +386,11 @@ def concept_note_detail(request, slug):
 @api_view(["GET", "POST"])
 @permission_classes([permissions.AllowAny])
 def daily_challenge(request):
-    challenge = today_challenge()
-    if not challenge:
-        return Response({"detail": "چالش روزانه هنوز آماده نشده است."}, status=404)
-
     if request.method == "GET":
         attempt = challenge_attempt_for_today(request.user) if request.user.is_authenticated else None
-        if attempt:
-            challenge = attempt.challenge
+        challenge = attempt.challenge if attempt else today_challenge()
+        if not challenge:
+            return Response({"detail": "چالش روزانه هنوز آماده نشده است."}, status=404)
         data = DailyChallengeSerializer(challenge).data
         data["date"] = timezone.localdate().isoformat()
         data["attempt"] = None
@@ -397,6 +404,7 @@ def daily_challenge(request):
 
     if not request.user.is_authenticated:
         return Response({"detail": "برای ثبت پاسخ باید وارد حساب شوی."}, status=status.HTTP_401_UNAUTHORIZED)
+
     existing = challenge_attempt_for_today(request.user)
     if existing:
         return Response({
@@ -404,6 +412,10 @@ def daily_challenge(request):
             "correct": existing.is_correct,
             "explanation": existing.challenge.explanation,
         }, status=status.HTTP_409_CONFLICT)
+
+    challenge = today_challenge()
+    if not challenge:
+        return Response({"detail": "چالش روزانه هنوز آماده نشده است."}, status=404)
 
     payload = _object_payload(request)
     choice_id = _positive_int(payload.get("choice_id"), field="choice_id")
@@ -417,28 +429,30 @@ def daily_challenge(request):
                 selected_choice=choice,
                 is_correct=choice.is_correct,
             )
+            record_activity(
+                request.user,
+                StudyActivity.Kind.DAILY_CHALLENGE,
+                concept=challenge.concept,
+                disorder=challenge.disorder,
+                metadata={"correct": choice.is_correct},
+            )
+            if challenge.concept_id:
+                progress, _ = UserConceptProgress.objects.get_or_create(user=request.user, concept=challenge.concept)
+                progress.progress_percent = max(progress.progress_percent, 70 if choice.is_correct else 30)
+                progress.last_reviewed_at = timezone.now()
+                if progress.progress_percent >= 85:
+                    progress.status = UserConceptProgress.Status.COMPLETED
+                    progress.completed_at = progress.completed_at or timezone.now()
+                progress.save(update_fields=("progress_percent", "last_reviewed_at", "status", "completed_at", "updated_at"))
     except IntegrityError:
         existing = challenge_attempt_for_today(request.user)
+        if not existing:
+            raise
         return Response({
             "detail": "چالش امروز قبلاً پاسخ داده شده است.",
-            "correct": existing.is_correct if existing else False,
-            "explanation": existing.challenge.explanation if existing else challenge.explanation,
+            "correct": existing.is_correct,
+            "explanation": existing.challenge.explanation,
         }, status=status.HTTP_409_CONFLICT)
-    record_activity(
-        request.user,
-        StudyActivity.Kind.DAILY_CHALLENGE,
-        concept=challenge.concept,
-        disorder=challenge.disorder,
-        metadata={"correct": choice.is_correct},
-    )
-    if challenge.concept_id:
-        progress, _ = UserConceptProgress.objects.get_or_create(user=request.user, concept=challenge.concept)
-        progress.progress_percent = max(progress.progress_percent, 70 if choice.is_correct else 30)
-        progress.last_reviewed_at = timezone.now()
-        if progress.progress_percent >= 85:
-            progress.status = UserConceptProgress.Status.COMPLETED
-            progress.completed_at = progress.completed_at or timezone.now()
-        progress.save(update_fields=("progress_percent", "last_reviewed_at", "status", "completed_at", "updated_at"))
     return Response({
         "correct": attempt.is_correct,
         "selected_choice_id": choice.id,
@@ -449,16 +463,22 @@ def daily_challenge(request):
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
 def study_overview(request):
+    visible_cards = available_flashcards()
+    visible_card_ids = visible_cards.values_list("id", flat=True)
     due_count = UserFlashcardProgress.objects.filter(
         user=request.user,
-        flashcard__is_active=True,
+        flashcard_id__in=visible_card_ids,
         due_at__lte=timezone.now(),
     ).count()
-    unseen_count = Flashcard.objects.filter(is_active=True).exclude(
+    unseen_count = visible_cards.exclude(
         id__in=UserFlashcardProgress.objects.filter(user=request.user).values_list("flashcard_id", flat=True)
     ).count()
-    reviewed_cards = UserFlashcardProgress.objects.filter(user=request.user, last_reviewed_at__isnull=False).count()
-    concept_rows = UserConceptProgress.objects.filter(user=request.user)
+    reviewed_cards = UserFlashcardProgress.objects.filter(
+        user=request.user,
+        flashcard_id__in=visible_card_ids,
+        last_reviewed_at__isnull=False,
+    ).count()
+    concept_rows = UserConceptProgress.objects.filter(user=request.user, concept__is_active=True)
     attempt = challenge_attempt_for_today(request.user)
     return Response({
         "streak": current_streak(request.user),

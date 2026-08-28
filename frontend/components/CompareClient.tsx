@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { faNumber } from "@/lib/fa";
+import { normalizePersianSearch } from "@/lib/text";
 import type { Disorder, DisorderDetail } from "@/lib/types";
 
 export default function CompareClient({ initialSlug }: { initialSlug?: string }) {
@@ -28,9 +29,9 @@ export default function CompareClient({ initialSlug }: { initialSlug?: string })
   }, [initialSlug, all]);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = normalizePersianSearch(query.trim());
     if (!q) return all;
-    return all.filter(d => `${d.name_fa} ${d.name_en} ${d.category}`.toLowerCase().includes(q));
+    return all.filter(d => normalizePersianSearch(`${d.name_fa} ${d.name_en} ${d.category}`).includes(q));
   }, [all, query]);
 
   function toggle(slug: string) {
