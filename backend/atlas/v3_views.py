@@ -1,6 +1,7 @@
 from collections.abc import Mapping
 
 from django.db import IntegrityError, transaction
+from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, permissions, status
@@ -21,13 +22,17 @@ from .learning import (
     today_challenge,
 )
 from .models import (
+    Category,
+    ClinicalCase,
     Concept,
     ConceptBookmark,
     ConceptNote,
     ConceptRelationship,
+    DailyChallenge,
     DailyChallengeAttempt,
     Disorder,
     DisorderConcept,
+    Quiz,
     DisorderSymptom,
     StudyActivity,
     Symptom,
@@ -38,6 +43,7 @@ from .search_utils import icontains_any
 from .serializers import DisorderListSerializer
 from .v3_serializers import (
     ConceptBookmarkSerializer,
+    ConceptCatalogSerializer,
     ConceptDetailSerializer,
     ConceptListSerializer,
     ConceptNoteSerializer,
@@ -65,10 +71,15 @@ def _positive_int(value, *, field):
 
 
 class ConceptListView(generics.ListAPIView):
-    serializer_class = ConceptListSerializer
+    serializer_class = ConceptCatalogSerializer
 
     def get_queryset(self):
-        qs = Concept.objects.filter(is_active=True)
+        qs = Concept.objects.filter(is_active=True).prefetch_related(
+            "disorder_links__disorder",
+            "flashcards",
+            "outgoing_concept_relationships__target_concept",
+            "incoming_concept_relationships__source_concept",
+        )
         kind = self.request.query_params.get("kind", "").strip()
         q = self.request.query_params.get("q", "").strip()
         if kind:
@@ -147,20 +158,30 @@ def global_search(request):
         .select_related("category")
         .distinct()[:10]
     )
-    concepts = Concept.objects.filter(is_active=True).filter(icontains_any(
-        ("slug", "name_en", "name_fa", "simple_definition", "academic_definition", "example"),
-        q,
-    ))[:10]
-    symptoms = (
+    concepts = (
+        Concept.objects.filter(is_active=True)
+        .filter(icontains_any(
+            ("slug", "name_en", "name_fa", "simple_definition", "academic_definition", "example"),
+            q,
+        ))
+        .prefetch_related(
+            "disorder_links__disorder",
+            "flashcards",
+            "outgoing_concept_relationships__target_concept",
+            "incoming_concept_relationships__source_concept",
+        )[:10]
+    )
+    symptoms = list(
         Symptom.objects.filter(disorder_links__disorder__is_active=True)
         .filter(icontains_any(("slug", "name_en", "name_fa", "description"), q))
+        .prefetch_related("disorder_links__disorder__category")
         .distinct()[:10]
     )
 
     return Response({
         "query": q,
         "disorders": DisorderListSerializer(disorders, many=True).data,
-        "concepts": ConceptListSerializer(concepts, many=True).data,
+        "concepts": ConceptCatalogSerializer(concepts, many=True).data,
         "symptoms": [
             {
                 "slug": symptom.slug,
@@ -168,8 +189,92 @@ def global_search(request):
                 "name_fa": symptom.name_fa,
                 "description": symptom.description,
                 "domain": symptom.domain,
+                "disorders": DisorderListSerializer(
+                    [
+                        link.disorder
+                        for link in symptom.disorder_links.all()
+                        if link.disorder.is_active
+                    ][:4],
+                    many=True,
+                ).data,
             }
             for symptom in symptoms
+        ],
+    })
+
+
+@api_view(["GET"])
+def atlas_overview(request):
+    valid_quizzes = Quiz.objects.filter(is_active=True).filter(
+        Q(disorder__isnull=True) | Q(disorder__is_active=True)
+    )
+    valid_cases = ClinicalCase.objects.filter(is_active=True).filter(
+        Q(primary_disorder__isnull=True) | Q(primary_disorder__is_active=True)
+    )
+    valid_challenges = DailyChallenge.objects.filter(is_active=True).filter(
+        Q(concept__isnull=True) | Q(concept__is_active=True),
+        Q(disorder__isnull=True) | Q(disorder__is_active=True),
+    )
+    categories = list(
+        Category.objects.filter(is_active=True)
+        .annotate(disorder_count=Count("disorders", filter=Q(disorders__is_active=True)))
+        .filter(disorder_count__gt=0)
+        .order_by("sort_order", "name_en")
+    )
+    concept_kinds = list(
+        Concept.objects.filter(is_active=True)
+        .values("kind")
+        .annotate(count=Count("id"))
+        .order_by("-count", "kind")
+    )
+    symptom_count = (
+        Symptom.objects.filter(disorder_links__disorder__is_active=True)
+        .distinct()
+        .count()
+    )
+    graph_edge_count = (
+        ConceptRelationship.objects.filter(
+            source_concept__is_active=True,
+            target_concept__is_active=True,
+        ).count()
+        + DisorderConcept.objects.filter(
+            disorder__is_active=True,
+            concept__is_active=True,
+        ).count()
+        + DisorderSymptom.objects.filter(disorder__is_active=True).count()
+    )
+
+    return Response({
+        "counts": {
+            "categories": len(categories),
+            "disorders": Disorder.objects.filter(is_active=True).count(),
+            "concepts": Concept.objects.filter(is_active=True).count(),
+            "symptoms": symptom_count,
+            "flashcards": available_flashcards().count(),
+            "daily_challenges": valid_challenges.count(),
+            "quizzes": valid_quizzes.count(),
+            "clinical_cases": valid_cases.count(),
+        },
+        "graph": {
+            "nodes": Disorder.objects.filter(is_active=True).count() + Concept.objects.filter(is_active=True).count() + symptom_count,
+            "edges": graph_edge_count,
+        },
+        "categories": [
+            {
+                "slug": category.slug,
+                "name_en": category.name_en,
+                "name_fa": category.name_fa,
+                "count": category.disorder_count,
+            }
+            for category in categories
+        ],
+        "concept_kinds": [
+            {
+                "kind": row["kind"],
+                "label": Concept.Kind(row["kind"]).label,
+                "count": row["count"],
+            }
+            for row in concept_kinds
         ],
     })
 
@@ -184,7 +289,11 @@ def concept_map(request):
             "type": "concept",
             "slug": concept.slug,
             "label": concept.name_fa or concept.name_en,
+            "name_en": concept.name_en,
+            "name_fa": concept.name_fa,
             "kind": concept.kind,
+            "group": concept.get_kind_display(),
+            "summary": concept.simple_definition,
             "href": f"/concepts/{concept.slug}",
         }
         for concept in concepts
@@ -205,6 +314,7 @@ def concept_map(request):
             "source": f"concept:{relation.source_concept.slug}",
             "target": f"concept:{relation.target_concept.slug}",
             "kind": relation.relationship_type,
+            "explanation": relation.explanation,
         })
 
     disorder_concept_links = (
@@ -221,6 +331,7 @@ def concept_map(request):
             "source": f"disorder:{link.disorder.slug}",
             "target": f"concept:{link.concept.slug}",
             "kind": link.role,
+            "explanation": link.explanation,
         })
 
     symptom_links = list(
@@ -236,6 +347,7 @@ def concept_map(request):
             "source": f"disorder:{link.disorder.slug}",
             "target": f"symptom:{link.symptom.slug}",
             "kind": f"symptom_{link.prominence}",
+            "explanation": link.note,
         })
 
     disorders = Disorder.objects.filter(id__in=disorder_ids, is_active=True).select_related("category").order_by("name_en")
@@ -244,7 +356,11 @@ def concept_map(request):
         "type": "disorder",
         "slug": disorder.slug,
         "label": disorder.name_fa or disorder.name_en,
+        "name_en": disorder.name_en,
+        "name_fa": disorder.name_fa,
         "kind": disorder.category.slug,
+        "group": disorder.category.name_fa or disorder.category.name_en,
+        "summary": disorder.short_description,
         "href": f"/disorders/{disorder.slug}",
     } for disorder in disorders)
 
@@ -254,11 +370,39 @@ def concept_map(request):
         "type": "symptom",
         "slug": symptom.slug,
         "label": symptom.name_fa or symptom.name_en,
+        "name_en": symptom.name_en,
+        "name_fa": symptom.name_fa,
         "kind": symptom.domain,
+        "group": symptom.get_domain_display(),
+        "summary": symptom.description,
         "href": f"/search?q={symptom.slug}",
     } for symptom in symptoms)
 
-    return Response({"nodes": nodes, "edges": edges})
+    degree = {node["id"]: 0 for node in nodes}
+    edge_kinds = {}
+    for edge in edges:
+        degree[edge["source"]] = degree.get(edge["source"], 0) + 1
+        degree[edge["target"]] = degree.get(edge["target"], 0) + 1
+        edge_kinds[edge["kind"]] = edge_kinds.get(edge["kind"], 0) + 1
+    for node in nodes:
+        node["degree"] = degree.get(node["id"], 0)
+
+    node_types = {
+        "concept": sum(1 for node in nodes if node["type"] == "concept"),
+        "disorder": sum(1 for node in nodes if node["type"] == "disorder"),
+        "symptom": sum(1 for node in nodes if node["type"] == "symptom"),
+    }
+
+    return Response({
+        "meta": {
+            "node_count": len(nodes),
+            "edge_count": len(edges),
+            "node_types": node_types,
+            "edge_kinds": edge_kinds,
+        },
+        "nodes": nodes,
+        "edges": edges,
+    })
 
 
 @api_view(["GET"])

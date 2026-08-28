@@ -85,6 +85,14 @@ Seeded graph baseline:
 
 The map supports node browsing, node-type filters, direct-neighbor exploration and deep links such as:
 
+- live graph/node/edge counts
+- per-node degree from real edges
+- edge-type filtering
+- structured edge explanations when available
+- exploration history/path
+- high-connectivity node shortcuts
+- richer node metadata (English/Persian name, group and summary)
+
 ```text
 /map?node=concept:avoidance
 ```
@@ -351,6 +359,7 @@ GET  /api/concepts/<slug>/
 POST /api/concepts/<slug>/view/
 
 GET  /api/concept-map/
+GET  /api/atlas-overview/
 GET  /api/search/?q=<query>
 
 GET  /api/flashcards/
@@ -388,7 +397,7 @@ Validated on the v0.3 working tree after the deep bug audit:
 
 ```text
 Django system check                 PASS
-Backend tests                       42 / 42 PASS
+Backend tests                       46 / 46 PASS
 Migration drift                     none
 Python compileall                   PASS
 pip check                           PASS

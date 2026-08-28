@@ -42,5 +42,6 @@ urlpatterns = [
     path("daily-challenge/", v3_views.daily_challenge),
     path("study/overview/", v3_views.study_overview),
     path("search/", v3_views.global_search),
+    path("atlas-overview/", v3_views.atlas_overview),
     path("concept-map/", v3_views.concept_map),
 ]

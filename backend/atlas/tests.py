@@ -823,3 +823,91 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(study.json()["concepts"]["studied"], 0)
         self.assertEqual(dashboard.json()["disorders_studied"], 0)
         self.assertEqual(dashboard.json()["concepts_studied"], 0)
+
+    def test_v3_atlas_overview_uses_live_database_counts(self):
+        concept = Concept.objects.create(
+            slug="overview-concept",
+            name_en="Overview Concept",
+            simple_definition="definition",
+            is_active=True,
+        )
+        Flashcard.objects.create(
+            slug="overview-card",
+            front="Front",
+            back="Back",
+            concept=concept,
+            is_active=True,
+        )
+        response = self.client.get("/api/atlas-overview/")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["counts"]["disorders"], 1)
+        self.assertEqual(data["counts"]["concepts"], 1)
+        self.assertEqual(data["counts"]["flashcards"], 1)
+        self.assertEqual(data["graph"]["nodes"], 2)
+        self.assertEqual(data["categories"][0]["count"], 1)
+
+    def test_v3_concept_catalog_exposes_real_connection_counts(self):
+        concept = Concept.objects.create(
+            slug="catalog-metrics",
+            name_en="Catalog Metrics",
+            simple_definition="definition",
+            is_active=True,
+        )
+        other = Concept.objects.create(
+            slug="catalog-other",
+            name_en="Catalog Other",
+            simple_definition="definition",
+            is_active=True,
+        )
+        DisorderConcept.objects.create(disorder=self.disorder, concept=concept, role="associated")
+        ConceptRelationship.objects.create(
+            source_concept=concept,
+            target_concept=other,
+            relationship_type="related",
+            explanation="structured relation",
+        )
+        Flashcard.objects.create(slug="catalog-card", front="Front", back="Back", concept=concept, is_active=True)
+        response = self.client.get("/api/concepts/?q=Catalog Metrics&page_size=100")
+        self.assertEqual(response.status_code, 200)
+        row = response.json()["results"][0]
+        self.assertEqual(row["disorder_count"], 1)
+        self.assertEqual(row["flashcard_count"], 1)
+        self.assertEqual(row["relationship_count"], 1)
+
+    def test_v3_graph_exposes_node_metadata_degree_and_edge_explanation(self):
+        concept = Concept.objects.create(
+            slug="metadata-concept",
+            name_en="Metadata Concept",
+            name_fa="مفهوم متادیتا",
+            simple_definition="structured definition",
+            is_active=True,
+        )
+        DisorderConcept.objects.create(
+            disorder=self.disorder,
+            concept=concept,
+            role="core",
+            explanation="why these nodes are linked",
+        )
+        response = self.client.get("/api/concept-map/")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["meta"]["node_count"], 2)
+        concept_node = next(node for node in data["nodes"] if node["id"] == f"concept:{concept.slug}")
+        self.assertEqual(concept_node["summary"], "structured definition")
+        self.assertEqual(concept_node["degree"], 1)
+        edge = next(edge for edge in data["edges"] if edge["target"] == f"concept:{concept.slug}")
+        self.assertEqual(edge["explanation"], "why these nodes are linked")
+
+    def test_v3_symptom_search_returns_active_related_disorders(self):
+        symptom = Symptom.objects.create(
+            slug="linked-search-symptom",
+            name_en="Linked Search Symptom",
+            name_fa="نشانه متصل",
+            domain="cognitive",
+        )
+        DisorderSymptom.objects.create(disorder=self.disorder, symptom=symptom)
+        response = self.client.get("/api/search/?q=نشانه متصل")
+        self.assertEqual(response.status_code, 200)
+        row = response.json()["symptoms"][0]
+        self.assertEqual(row["disorders"][0]["slug"], self.disorder.slug)

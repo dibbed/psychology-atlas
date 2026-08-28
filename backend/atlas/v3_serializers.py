@@ -29,20 +29,42 @@ class ConceptListSerializer(serializers.ModelSerializer):
         )
 
 
-class ConceptDetailSerializer(ConceptListSerializer):
-    relationships = serializers.SerializerMethodField()
-    disorders = serializers.SerializerMethodField()
-    sources = serializers.SerializerMethodField()
+class ConceptCatalogSerializer(ConceptListSerializer):
+    disorder_count = serializers.SerializerMethodField()
     flashcard_count = serializers.SerializerMethodField()
+    relationship_count = serializers.SerializerMethodField()
 
     class Meta(ConceptListSerializer.Meta):
         fields = ConceptListSerializer.Meta.fields + (
+            "disorder_count",
+            "flashcard_count",
+            "relationship_count",
+        )
+
+    def get_disorder_count(self, obj):
+        return sum(1 for link in obj.disorder_links.all() if link.disorder.is_active)
+
+    def get_flashcard_count(self, obj):
+        return sum(1 for card in obj.flashcards.all() if card.is_active)
+
+    def get_relationship_count(self, obj):
+        outgoing = sum(1 for row in obj.outgoing_concept_relationships.all() if row.target_concept.is_active)
+        incoming = sum(1 for row in obj.incoming_concept_relationships.all() if row.source_concept.is_active)
+        return outgoing + incoming
+
+
+class ConceptDetailSerializer(ConceptCatalogSerializer):
+    relationships = serializers.SerializerMethodField()
+    disorders = serializers.SerializerMethodField()
+    sources = serializers.SerializerMethodField()
+
+    class Meta(ConceptCatalogSerializer.Meta):
+        fields = ConceptCatalogSerializer.Meta.fields + (
             "academic_definition",
             "example",
             "relationships",
             "disorders",
             "sources",
-            "flashcard_count",
         )
 
     def get_relationships(self, obj):
@@ -95,9 +117,6 @@ class ConceptDetailSerializer(ConceptListSerializer):
 
     def get_sources(self, obj):
         return SourceSerializer([link.source for link in obj.source_links.all()], many=True).data
-
-    def get_flashcard_count(self, obj):
-        return sum(1 for card in obj.flashcards.all() if card.is_active)
 
 
 class FlashcardSerializer(serializers.ModelSerializer):

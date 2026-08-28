@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { SearchResults } from "@/lib/types";
-import { conceptKindLabel } from "./ConceptCard";
+import ConceptCard from "./ConceptCard";
 
 export default function GlobalSearch({ initialQuery = "" }: { initialQuery?: string }) {
   const [query, setQuery] = useState(initialQuery);
@@ -72,11 +72,7 @@ export default function GlobalSearch({ initialQuery = "" }: { initialQuery?: str
           <section className="search-section">
             <div className="search-section-head"><div><div className="meta">Concepts</div><h2>مفاهیم</h2></div><span>{data.concepts.length.toLocaleString("fa-IR")}</span></div>
             <div className="grid">
-              {data.concepts.map(item => (
-                <Link className="card" href={`/concepts/${item.slug}`} key={item.slug}>
-                  <div className="meta">{conceptKindLabel(item.kind)}</div><h3>{item.name_fa || item.name_en}</h3><p>{item.simple_definition}</p>
-                </Link>
-              ))}
+              {data.concepts.map(item => <ConceptCard concept={item} key={item.slug} />)}
               {!data.concepts.length && <div className="card muted">نتیجه‌ای در مفاهیم نیست.</div>}
             </div>
           </section>
@@ -85,7 +81,20 @@ export default function GlobalSearch({ initialQuery = "" }: { initialQuery?: str
             <div className="search-section-head"><div><div className="meta">Symptoms</div><h2>نشانه‌ها</h2></div><span>{data.symptoms.length.toLocaleString("fa-IR")}</span></div>
             <div className="grid">
               {data.symptoms.map(item => (
-                <div className="card" key={item.slug}><div className="meta">نشانه · {item.domain}</div><h3>{item.name_fa || item.name_en}</h3>{item.description && <p>{item.description}</p>}</div>
+                <div className="card symptom-search-card" key={item.slug}>
+                  <div className="meta">نشانه · {item.domain}</div>
+                  <h3>{item.name_fa || item.name_en}</h3>
+                  <div className="latin-label">{item.name_en}</div>
+                  {item.description && <p>{item.description}</p>}
+                  {item.disorders.length > 0 && (
+                    <div className="symptom-related-links">
+                      <span>در اختلال‌های:</span>
+                      {item.disorders.map(disorder => (
+                        <Link href={`/disorders/${disorder.slug}`} key={disorder.slug}>{disorder.name_fa || disorder.name_en}</Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
               ))}
               {!data.symptoms.length && <div className="card muted">نتیجه‌ای در نشانه‌ها نیست.</div>}
             </div>

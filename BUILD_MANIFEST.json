@@ -16,6 +16,8 @@
     "concepts_atlas",
     "global_search_v3",
     "knowledge_graph_v1",
+    "knowledge_graph_explorer_metadata",
+    "live_atlas_overview",
     "disorder_concept_links",
     "disorder_symptom_graph_edges",
     "concept_relationships",
@@ -59,7 +61,7 @@
   ],
   "validation": {
     "django_check": "pass",
-    "backend_tests": "42/42 passed",
+    "backend_tests": "46/46 passed",
     "python_compileall": "pass",
     "pip_check": "pass",
     "migration_drift_check": "pass",

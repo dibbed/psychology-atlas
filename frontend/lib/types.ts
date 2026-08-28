@@ -16,6 +16,9 @@ export type Concept = {
   kind: string;
   kind_label?: string;
   simple_definition: string;
+  disorder_count?: number;
+  flashcard_count?: number;
+  relationship_count?: number;
 };
 
 export type ConceptDetail = Concept & {
@@ -205,5 +208,54 @@ export type SearchResults = {
     name_fa: string;
     description: string;
     domain: string;
+    disorders: Disorder[];
   }[];
+};
+
+export type AtlasOverview = {
+  counts: {
+    categories: number;
+    disorders: number;
+    concepts: number;
+    symptoms: number;
+    flashcards: number;
+    daily_challenges: number;
+    quizzes: number;
+    clinical_cases: number;
+  };
+  graph: { nodes: number; edges: number };
+  categories: { slug: string; name_en: string; name_fa: string; count: number }[];
+  concept_kinds: { kind: string; label: string; count: number }[];
+};
+
+export type KnowledgeGraphNode = {
+  id: string;
+  type: "concept" | "disorder" | "symptom";
+  slug: string;
+  label: string;
+  name_en: string;
+  name_fa: string;
+  kind: string;
+  group: string;
+  summary: string;
+  href: string;
+  degree: number;
+};
+
+export type KnowledgeGraphEdge = {
+  source: string;
+  target: string;
+  kind: string;
+  explanation: string;
+};
+
+export type KnowledgeGraphData = {
+  meta: {
+    node_count: number;
+    edge_count: number;
+    node_types: { concept: number; disorder: number; symptom: number };
+    edge_kinds: Record<string, number>;
+  };
+  nodes: KnowledgeGraphNode[];
+  edges: KnowledgeGraphEdge[];
 };

@@ -48,9 +48,14 @@ export default function ConceptDetailClient({ concept }: { concept: ConceptDetai
         <h1>{concept.name_fa || concept.name_en}</h1>
         <div className="latin-title">{concept.name_en}</div>
         <p className="section-copy">{concept.simple_definition}</p>
+        <div className="concept-detail-metrics">
+          <div><strong>{(concept.relationship_count ?? 0).toLocaleString("fa-IR")}</strong><span>رابطه مفهومی</span></div>
+          <div><strong>{(concept.disorder_count ?? 0).toLocaleString("fa-IR")}</strong><span>اختلال مرتبط</span></div>
+          <div><strong>{(concept.flashcard_count ?? 0).toLocaleString("fa-IR")}</strong><span>فلش‌کارت</span></div>
+        </div>
         <div className="actions" style={{ marginTop: 20 }}>
           <ConceptBookmarkButton slug={concept.slug} />
-          {concept.flashcard_count > 0 && <Link className="button" href={`/flashcards?concept=${concept.slug}`}>مرور فلش‌کارت‌های این مفهوم</Link>}
+          {(concept.flashcard_count ?? 0) > 0 && <Link className="button" href={`/flashcards?concept=${concept.slug}`}>مرور فلش‌کارت‌های این مفهوم</Link>}
           <Link className="button" href={`/map?node=concept:${concept.slug}`}>دیدن در نقشه دانش</Link>
         </div>
       </header>
