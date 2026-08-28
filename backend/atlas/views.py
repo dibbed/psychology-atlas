@@ -1,0 +1,337 @@
+from django.contrib.auth.models import User
+from django.db.models import Count, Q
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from rest_framework import generics, permissions, status
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.response import Response
+from rest_framework_simplejwt.tokens import RefreshToken
+
+from .models import (
+    Bookmark,
+    Category,
+    ClinicalCase,
+    Disorder,
+    Quiz,
+    UserNote,
+    UserProgress,
+)
+from .serializers import (
+    BookmarkSerializer,
+    ClinicalCaseDetailSerializer,
+    ClinicalCaseListSerializer,
+    DisorderDetailSerializer,
+    DisorderListSerializer,
+    QuizDetailSerializer,
+    QuizListSerializer,
+    RegisterSerializer,
+    UserNoteSerializer,
+    UserSerializer,
+)
+from .services import submit_case, submit_quiz
+
+
+class RegisterView(generics.CreateAPIView):
+    serializer_class = RegisterSerializer
+    permission_classes = [permissions.AllowAny]
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            "user": UserSerializer(user).data,
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+        }, status=status.HTTP_201_CREATED)
+
+
+@api_view(["GET"])
+@permission_classes([permissions.IsAuthenticated])
+def me(request):
+    return Response(UserSerializer(request.user).data)
+
+
+@api_view(["GET"])
+def categories(request):
+    data = []
+    qs = Category.objects.filter(is_active=True).annotate(disorder_count=Count("disorders"))
+    for category in qs:
+        data.append({
+            "slug": category.slug,
+            "name_en": category.name_en,
+            "name_fa": category.name_fa,
+            "description": category.description,
+            "disorder_count": category.disorder_count,
+        })
+    return Response(data)
+
+
+class DisorderListView(generics.ListAPIView):
+    serializer_class = DisorderListSerializer
+
+    def get_queryset(self):
+        qs = Disorder.objects.filter(is_active=True).select_related("category")
+        category = self.request.query_params.get("category")
+        q = self.request.query_params.get("q", "").strip()
+        if category:
+            qs = qs.filter(category__slug=category)
+        if q:
+            qs = qs.filter(
+                Q(name_en__icontains=q)
+                | Q(name_fa__icontains=q)
+                | Q(slug__icontains=q)
+                | Q(short_description__icontains=q)
+            )
+        return qs
+
+
+class DisorderDetailView(generics.RetrieveAPIView):
+    serializer_class = DisorderDetailSerializer
+    lookup_field = "slug"
+    queryset = (
+        Disorder.objects.filter(is_active=True)
+        .select_related("category")
+        .prefetch_related(
+            "symptom_links__symptom",
+            "outgoing_relationships__related_disorder",
+            "incoming_relationships__disorder",
+            "source_links__source",
+            "quizzes",
+            "clinical_cases",
+        )
+    )
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if request.user.is_authenticated:
+            UserProgress.objects.update_or_create(
+                user=request.user,
+                disorder=instance,
+                defaults={"last_viewed_at": timezone.now(), "progress_percent": 20},
+            )
+        return super().retrieve(request, *args, **kwargs)
+
+
+@api_view(["GET"])
+def compare_disorders(request):
+    slugs = [x.strip() for x in request.query_params.get("slugs", "").split(",") if x.strip()]
+    if not 2 <= len(slugs) <= 4:
+        return Response({"detail": "Choose between 2 and 4 disorders."}, status=400)
+    qs = (
+        Disorder.objects.filter(slug__in=slugs, is_active=True)
+        .select_related("category")
+        .prefetch_related("symptom_links__symptom", "outgoing_relationships__related_disorder", "incoming_relationships__disorder", "source_links__source")
+    )
+    by_slug = {x.slug: x for x in qs}
+    ordered = [by_slug[s] for s in slugs if s in by_slug]
+    return Response(DisorderDetailSerializer(ordered, many=True).data)
+
+
+class QuizListView(generics.ListAPIView):
+    serializer_class = QuizListSerializer
+    queryset = Quiz.objects.filter(is_active=True).select_related("disorder", "disorder__category").order_by("title", "id")
+
+
+class QuizDetailView(generics.RetrieveAPIView):
+    serializer_class = QuizDetailSerializer
+    lookup_field = "slug"
+    queryset = Quiz.objects.filter(is_active=True).select_related("disorder", "disorder__category").prefetch_related("questions__choices")
+
+
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def quiz_submit(request, slug):
+    quiz = get_object_or_404(Quiz.objects.prefetch_related("questions__choices"), slug=slug, is_active=True)
+    attempt, feedback = submit_quiz(user=request.user, quiz=quiz, answers=request.data.get("answers", []))
+    return Response({
+        "attempt_id": attempt.id,
+        "score": attempt.score,
+        "correct_count": attempt.correct_count,
+        "total_questions": attempt.total_questions,
+        "feedback": feedback,
+    })
+
+
+class ClinicalCaseListView(generics.ListAPIView):
+    serializer_class = ClinicalCaseListSerializer
+    queryset = ClinicalCase.objects.filter(is_active=True).select_related("primary_disorder", "primary_disorder__category").order_by("difficulty", "title", "id")
+
+
+class ClinicalCaseDetailView(generics.RetrieveAPIView):
+    serializer_class = ClinicalCaseDetailSerializer
+    lookup_field = "slug"
+    queryset = ClinicalCase.objects.filter(is_active=True).select_related("primary_disorder", "primary_disorder__category").prefetch_related("steps__questions__choices")
+
+
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def case_submit(request, slug):
+    case = get_object_or_404(ClinicalCase.objects.prefetch_related("steps__questions__choices"), slug=slug, is_active=True)
+    attempt, feedback = submit_case(user=request.user, clinical_case=case, answers=request.data.get("answers", []))
+    return Response({
+        "attempt_id": attempt.id,
+        "score": attempt.score,
+        "max_score": attempt.max_score,
+        "feedback": feedback,
+    })
+
+
+@api_view(["GET", "POST"])
+@permission_classes([permissions.IsAuthenticated])
+def bookmarks(request):
+    if request.method == "GET":
+        qs = Bookmark.objects.filter(user=request.user).select_related("disorder", "disorder__category").order_by("-created_at")
+        return Response(BookmarkSerializer(qs, many=True).data)
+
+    slug = request.data.get("slug")
+    disorder = get_object_or_404(Disorder, slug=slug, is_active=True)
+    bookmark, created = Bookmark.objects.get_or_create(user=request.user, disorder=disorder)
+    return Response(BookmarkSerializer(bookmark).data, status=201 if created else 200)
+
+
+@api_view(["DELETE"])
+@permission_classes([permissions.IsAuthenticated])
+def bookmark_delete(request, slug):
+    Bookmark.objects.filter(user=request.user, disorder__slug=slug).delete()
+    return Response(status=204)
+
+
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def progress_view(request, slug):
+    disorder = get_object_or_404(Disorder, slug=slug, is_active=True)
+    progress, _ = UserProgress.objects.get_or_create(user=request.user, disorder=disorder)
+    progress.progress_percent = max(progress.progress_percent, 25)
+    progress.last_viewed_at = timezone.now()
+    progress.save(update_fields=("progress_percent", "last_viewed_at", "updated_at"))
+    return Response({
+        "slug": disorder.slug,
+        "progress_percent": progress.progress_percent,
+        "status": progress.status,
+    })
+
+
+@api_view(["GET"])
+@permission_classes([permissions.IsAuthenticated])
+def notes(request):
+    qs = UserNote.objects.filter(user=request.user).select_related("disorder", "disorder__category")
+    return Response(UserNoteSerializer(qs, many=True).data)
+
+
+@api_view(["GET", "PUT", "DELETE"])
+@permission_classes([permissions.IsAuthenticated])
+def note_detail(request, slug):
+    disorder = get_object_or_404(Disorder, slug=slug, is_active=True)
+    note = UserNote.objects.filter(user=request.user, disorder=disorder).first()
+
+    if request.method == "GET":
+        if not note:
+            return Response({"disorder_slug": slug, "body": "", "exists": False})
+        data = UserNoteSerializer(note).data
+        data["exists"] = True
+        return Response(data)
+
+    if request.method == "DELETE":
+        if note:
+            note.delete()
+        return Response(status=204)
+
+    body = str(request.data.get("body", "")).strip()
+    if len(body) > 12000:
+        return Response({"detail": "یادداشت بیش از حد طولانی است."}, status=400)
+    note, _ = UserNote.objects.update_or_create(
+        user=request.user,
+        disorder=disorder,
+        defaults={"body": body},
+    )
+    return Response(UserNoteSerializer(note).data)
+
+
+@api_view(["GET"])
+@permission_classes([permissions.IsAuthenticated])
+def dashboard(request):
+    bookmarks_qs = Bookmark.objects.filter(user=request.user).select_related("disorder", "disorder__category").order_by("-created_at")
+    progress_qs = UserProgress.objects.filter(user=request.user).select_related("disorder", "disorder__category").order_by("-last_viewed_at")
+    quiz_attempts = request.user.quiz_attempts.filter(status="completed").select_related("quiz", "quiz__disorder").order_by("-completed_at")
+    case_attempts = request.user.case_attempts.filter(status="completed").select_related("case", "case__primary_disorder").order_by("-completed_at")
+    notes_qs = UserNote.objects.filter(user=request.user).select_related("disorder", "disorder__category").order_by("-updated_at")
+
+    completed_quizzes = quiz_attempts.count()
+    avg_quiz_score = 0
+    if completed_quizzes:
+        avg_quiz_score = round(sum(quiz_attempts.values_list("score", flat=True)) / completed_quizzes)
+
+    completed_cases = case_attempts.count()
+    case_percentages = [
+        round(a.score * 100 / a.max_score) if a.max_score else 0
+        for a in case_attempts[:100]
+    ]
+    avg_case_score = round(sum(case_percentages) / len(case_percentages)) if case_percentages else 0
+
+    activity_dates = set()
+    for value in quiz_attempts.values_list("completed_at", flat=True)[:100]:
+        if value:
+            activity_dates.add(value.date())
+    for value in case_attempts.values_list("completed_at", flat=True)[:100]:
+        if value:
+            activity_dates.add(value.date())
+    for value in progress_qs.values_list("last_viewed_at", flat=True)[:100]:
+        if value:
+            activity_dates.add(value.date())
+
+    weak_topics = [
+        {
+            "slug": p.disorder.slug,
+            "name_fa": p.disorder.name_fa,
+            "name_en": p.disorder.name_en,
+            "progress_percent": p.progress_percent,
+        }
+        for p in progress_qs.filter(progress_percent__lt=80).order_by("progress_percent", "-last_viewed_at")[:4]
+    ]
+
+    return Response({
+        "saved_topics": bookmarks_qs.count(),
+        "topics_studied": progress_qs.count(),
+        "quizzes_completed": completed_quizzes,
+        "quiz_accuracy": avg_quiz_score,
+        "cases_completed": completed_cases,
+        "case_accuracy": avg_case_score,
+        "notes_count": notes_qs.count(),
+        "study_days": len(activity_dates),
+        "recent_saved": BookmarkSerializer(bookmarks_qs[:4], many=True).data,
+        "recent_notes": UserNoteSerializer(notes_qs[:4], many=True).data,
+        "weak_topics": weak_topics,
+        "recent_quizzes": [
+            {
+                "id": a.id,
+                "title": a.quiz.title,
+                "slug": a.quiz.slug,
+                "score": a.score,
+                "completed_at": a.completed_at,
+            }
+            for a in quiz_attempts[:4]
+        ],
+        "recent_cases": [
+            {
+                "id": a.id,
+                "title": a.case.title,
+                "slug": a.case.slug,
+                "score": a.score,
+                "max_score": a.max_score,
+                "completed_at": a.completed_at,
+            }
+            for a in case_attempts[:4]
+        ],
+        "continue_learning": [
+            {
+                "slug": p.disorder.slug,
+                "name_en": p.disorder.name_en,
+                "name_fa": p.disorder.name_fa,
+                "progress_percent": p.progress_percent,
+                "status": p.status,
+            }
+            for p in progress_qs[:6]
+        ],
+    })

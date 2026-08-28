@@ -1,0 +1,43 @@
+{
+  "project": "Psychology Atlas",
+  "version": "0.2.0",
+  "release_name": "Core Learning Upgrade",
+  "stack": {
+    "frontend": "Next.js 16.3 + React 19 + TypeScript",
+    "backend": "Django + Django REST Framework",
+    "auth": "JWT with refresh flow",
+    "database_now": "SQLite",
+    "database_future": "PostgreSQL"
+  },
+  "implemented_features": [
+    "accounts",
+    "automatic_jwt_refresh",
+    "disorders_atlas",
+    "search_and_category_filters",
+    "disorder_detail_v2_tabs",
+    "compare_v2",
+    "staged_clinical_cases",
+    "expanded_quizzes",
+    "bookmarks",
+    "private_notes",
+    "activity_progress",
+    "dashboard_v2",
+    "mini_concept_map",
+    "global_error_and_loading_states"
+  ],
+  "content": {
+    "disorders": 30,
+    "categories": 7,
+    "quizzes": 5,
+    "quiz_questions": 40,
+    "clinical_cases": 6,
+    "case_steps": 18
+  },
+  "validation": {
+    "django_check": "pass",
+    "backend_tests": "7 passed",
+    "typescript_typecheck": "pass",
+    "next_production_build": "pass"
+  },
+  "source_files_excluding_dependencies_and_build_output": 68
+}
