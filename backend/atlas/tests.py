@@ -5,8 +5,10 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import (
     Bookmark, CaseChoice, CaseQuestion, CaseStep, Category, ClinicalCase,
-    Disorder, DisorderSymptom, Quiz, QuizChoice, QuizQuestion, Symptom,
-    UserNote, UserProgress,
+    Concept, ConceptBookmark, ConceptNote, ConceptRelationship, DailyChallenge, DailyChallengeAttempt,
+    DailyChallengeChoice, Disorder, DisorderConcept, DisorderSymptom, Flashcard,
+    Quiz, QuizChoice, QuizQuestion, StudyActivity, Symptom, UserConceptProgress,
+    UserFlashcardProgress, UserNote, UserProgress,
 )
 
 
@@ -223,3 +225,238 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["count"], 30)
         self.assertEqual(len(response.json()["results"]), 30)
+
+    def test_v3_concept_detail_search_and_disorder_link(self):
+        concept = Concept.objects.create(
+            slug="test-concept",
+            name_en="Test Concept",
+            name_fa="مفهوم تست",
+            simple_definition="تعریف ویژه برای جست‌وجو",
+            academic_definition="academic",
+            is_active=True,
+        )
+        DisorderConcept.objects.create(disorder=self.disorder, concept=concept, role="core")
+        detail = self.client.get("/api/concepts/test-concept/")
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.json()["disorders"][0]["disorder"]["slug"], self.disorder.slug)
+        search = self.client.get("/api/search/?q=ویژه")
+        self.assertEqual(search.status_code, 200)
+        self.assertEqual(search.json()["concepts"][0]["slug"], concept.slug)
+        disorder_detail = self.client.get(f"/api/disorders/{self.disorder.slug}/")
+        self.assertEqual(disorder_detail.json()["concepts"][0]["slug"], concept.slug)
+
+    def test_v3_concept_bookmark_and_note_are_user_scoped(self):
+        concept = Concept.objects.create(
+            slug="private-concept",
+            name_en="Private Concept",
+            simple_definition="definition",
+            is_active=True,
+        )
+        self.auth(self.user_a)
+        bookmark = self.client.post("/api/concept-bookmarks/", {"slug": concept.slug}, format="json")
+        note = self.client.put(
+            f"/api/concept-notes/{concept.slug}/",
+            {"body": "یادداشت مفهوم"},
+            format="json",
+        )
+        self.assertEqual(bookmark.status_code, 201)
+        self.assertEqual(note.status_code, 200)
+        self.assertTrue(ConceptBookmark.objects.filter(user=self.user_a, concept=concept).exists())
+        self.assertTrue(ConceptNote.objects.filter(user=self.user_a, concept=concept).exists())
+
+        self.auth(self.user_b)
+        self.assertEqual(self.client.get("/api/concept-bookmarks/").json(), [])
+        self.assertEqual(self.client.get("/api/concept-notes/").json(), [])
+
+    def test_v3_flashcard_review_queue_and_srs_progress(self):
+        concept = Concept.objects.create(
+            slug="review-concept",
+            name_en="Review Concept",
+            simple_definition="definition",
+            is_active=True,
+        )
+        card = Flashcard.objects.create(
+            slug="review-card",
+            front="Front",
+            back="Back",
+            concept=concept,
+            is_active=True,
+        )
+        self.auth(self.user_a)
+        queue = self.client.get("/api/flashcards/review-queue/")
+        self.assertEqual(queue.status_code, 200)
+        self.assertEqual(queue.json()["new_count"], 1)
+        response = self.client.post(
+            f"/api/flashcards/{card.slug}/review/",
+            {"rating": "good"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        progress = UserFlashcardProgress.objects.get(user=self.user_a, flashcard=card)
+        self.assertEqual(progress.repetitions, 1)
+        self.assertEqual(progress.interval_days, 1)
+        self.assertEqual(progress.last_rating, "good")
+        concept_progress = UserConceptProgress.objects.get(user=self.user_a, concept=concept)
+        self.assertGreaterEqual(concept_progress.progress_percent, 70)
+        self.assertTrue(
+            StudyActivity.objects.filter(
+                user=self.user_a,
+                activity_type=StudyActivity.Kind.FLASHCARD_REVIEW,
+                flashcard=card,
+            ).exists()
+        )
+
+    def test_v3_flashcard_review_rejects_invalid_rating(self):
+        card = Flashcard.objects.create(slug="bad-rating-card", front="Front", back="Back", is_active=True)
+        self.auth(self.user_a)
+        response = self.client.post(
+            f"/api/flashcards/{card.slug}/review/",
+            {"rating": "perfect"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_v3_daily_challenge_is_single_attempt_per_day(self):
+        concept = Concept.objects.create(
+            slug="daily-concept",
+            name_en="Daily Concept",
+            simple_definition="definition",
+            is_active=True,
+        )
+        challenge = DailyChallenge.objects.create(
+            prompt="Daily prompt",
+            explanation="Daily explanation",
+            concept=concept,
+            is_active=True,
+        )
+        correct = DailyChallengeChoice.objects.create(
+            challenge=challenge,
+            text="Correct",
+            is_correct=True,
+            sort_order=0,
+        )
+        DailyChallengeChoice.objects.create(
+            challenge=challenge,
+            text="Wrong",
+            is_correct=False,
+            sort_order=1,
+        )
+        self.auth(self.user_a)
+        before = self.client.get("/api/daily-challenge/")
+        self.assertEqual(before.status_code, 200)
+        self.assertNotIn("is_correct", before.json()["choices"][0])
+        first = self.client.post("/api/daily-challenge/", {"choice_id": correct.id}, format="json")
+        self.assertEqual(first.status_code, 200)
+        self.assertTrue(first.json()["correct"])
+        second = self.client.post("/api/daily-challenge/", {"choice_id": correct.id}, format="json")
+        self.assertEqual(second.status_code, 409)
+        self.assertEqual(DailyChallengeAttempt.objects.filter(user=self.user_a).count(), 1)
+
+        challenge.is_active = False
+        challenge.save(update_fields=("is_active", "updated_at"))
+        replacement = DailyChallenge.objects.create(prompt="Replacement", explanation="Replacement explanation", is_active=True)
+        DailyChallengeChoice.objects.create(challenge=replacement, text="Replacement choice", is_correct=True, sort_order=0)
+        after_change = self.client.get("/api/daily-challenge/")
+        self.assertEqual(after_change.status_code, 200)
+        self.assertEqual(after_change.json()["id"], challenge.id)
+        self.assertEqual(after_change.json()["attempt"]["selected_choice_id"], correct.id)
+
+    def test_v3_study_overview_and_dashboard_expose_learning_metrics(self):
+        concept = Concept.objects.create(
+            slug="metric-concept",
+            name_en="Metric Concept",
+            simple_definition="definition",
+            is_active=True,
+        )
+        self.auth(self.user_a)
+        self.client.post(f"/api/concepts/{concept.slug}/view/")
+        overview = self.client.get("/api/study/overview/")
+        self.assertEqual(overview.status_code, 200)
+        for key in ("streak", "heatmap", "recommendations", "review", "concepts"):
+            self.assertIn(key, overview.json())
+        dashboard = self.client.get("/api/dashboard/")
+        self.assertEqual(dashboard.status_code, 200)
+        for key in ("streak", "heatmap", "recommendations", "review_due", "continue_concepts"):
+            self.assertIn(key, dashboard.json())
+
+    def test_v3_concept_map_returns_concept_and_disorder_edges(self):
+        concept = Concept.objects.create(
+            slug="map-concept",
+            name_en="Map Concept",
+            simple_definition="definition",
+            is_active=True,
+        )
+        symptom = Symptom.objects.create(
+            slug="map-symptom",
+            name_en="Map Symptom",
+            name_fa="نشانه نقشه",
+            domain="cognitive",
+        )
+        DisorderConcept.objects.create(disorder=self.disorder, concept=concept, role="associated")
+        DisorderSymptom.objects.create(disorder=self.disorder, symptom=symptom, prominence="core")
+        response = self.client.get("/api/concept-map/")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        node_ids = {node["id"] for node in data["nodes"]}
+        self.assertIn(f"concept:{concept.slug}", node_ids)
+        self.assertIn(f"disorder:{self.disorder.slug}", node_ids)
+        self.assertIn(f"symptom:{symptom.slug}", node_ids)
+        self.assertTrue(any(edge["target"] == f"concept:{concept.slug}" for edge in data["edges"]))
+        self.assertTrue(any(
+            edge["source"] == f"disorder:{self.disorder.slug}"
+            and edge["target"] == f"symptom:{symptom.slug}"
+            and edge["kind"] == "symptom_core"
+            for edge in data["edges"]
+        ))
+
+    def test_v3_heatmap_does_not_double_count_new_disorder_view(self):
+        self.auth(self.user_a)
+        response = self.client.post(f"/api/progress/{self.disorder.slug}/view/")
+        self.assertEqual(response.status_code, 200)
+        response = self.client.post(f"/api/progress/{self.disorder.slug}/view/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            StudyActivity.objects.filter(
+                user=self.user_a,
+                activity_type=StudyActivity.Kind.DISORDER_VIEW,
+                disorder=self.disorder,
+            ).count(),
+            1,
+        )
+        overview = self.client.get("/api/study/overview/")
+        self.assertEqual(overview.status_code, 200)
+        today = overview.json()["heatmap"][-1]
+        self.assertEqual(today["count"], 1)
+
+    def test_v3_concept_detail_hides_inactive_related_concepts(self):
+        active = Concept.objects.create(
+            slug="active-concept",
+            name_en="Active Concept",
+            simple_definition="active",
+            is_active=True,
+        )
+        inactive = Concept.objects.create(
+            slug="inactive-concept",
+            name_en="Inactive Concept",
+            simple_definition="inactive",
+            is_active=False,
+        )
+        ConceptRelationship.objects.create(
+            source_concept=active,
+            target_concept=inactive,
+            relationship_type="related",
+        )
+        response = self.client.get(f"/api/concepts/{active.slug}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["relationships"], [])
+
+    def test_v3_global_search_hides_orphan_symptoms(self):
+        Symptom.objects.create(
+            slug="orphan-search-symptom",
+            name_en="Orphan Search Symptom",
+            name_fa="نشانه یتیم جستجو",
+            domain="cognitive",
+        )
+        response = self.client.get("/api/search/?q=یتیم")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["symptoms"], [])

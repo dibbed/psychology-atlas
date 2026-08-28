@@ -2,6 +2,7 @@ from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import F, Q
+from django.utils import timezone
 
 
 class TimeStampedModel(models.Model):
@@ -321,3 +322,255 @@ class UserNote(TimeStampedModel):
 
     def __str__(self):
         return f"{self.user_id}:{self.disorder.slug}"
+
+
+class Concept(TimeStampedModel):
+    class Kind(models.TextChoices):
+        CLINICAL = "clinical", "Clinical"
+        COGNITIVE = "cognitive", "Cognitive"
+        BEHAVIORAL = "behavioral", "Behavioral"
+        EMOTIONAL = "emotional", "Emotional"
+        INTERPERSONAL = "interpersonal", "Interpersonal"
+        ASSESSMENT = "assessment", "Assessment"
+        TREATMENT = "treatment", "Treatment"
+        GENERAL = "general", "General"
+
+    slug = models.SlugField(max_length=160, unique=True)
+    name_en = models.CharField(max_length=220)
+    name_fa = models.CharField(max_length=220, blank=True)
+    simple_definition = models.TextField()
+    academic_definition = models.TextField(blank=True)
+    example = models.TextField(blank=True)
+    kind = models.CharField(max_length=32, choices=Kind.choices, default=Kind.GENERAL)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ("name_en",)
+        indexes = [
+            models.Index(fields=("kind", "is_active")),
+            models.Index(fields=("name_en",)),
+            models.Index(fields=("name_fa",)),
+        ]
+
+    def __str__(self):
+        return self.name_en
+
+
+class ConceptRelationship(TimeStampedModel):
+    class Kind(models.TextChoices):
+        RELATED = "related", "Related"
+        PART_OF = "part_of", "Part of"
+        MAINTAINS = "maintains", "Maintains"
+        INFLUENCES = "influences", "Influences"
+        CONTRASTS = "contrasts", "Contrasts with"
+        APPLIED_IN = "applied_in", "Applied in"
+
+    source_concept = models.ForeignKey(Concept, on_delete=models.CASCADE, related_name="outgoing_concept_relationships")
+    target_concept = models.ForeignKey(Concept, on_delete=models.CASCADE, related_name="incoming_concept_relationships")
+    relationship_type = models.CharField(max_length=32, choices=Kind.choices, default=Kind.RELATED)
+    explanation = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("source_concept", "target_concept", "relationship_type"),
+                name="uq_concept_relationship",
+            ),
+            models.CheckConstraint(
+                condition=~Q(source_concept=F("target_concept")),
+                name="ck_concept_relationship_not_self",
+            ),
+        ]
+
+
+class DisorderConcept(TimeStampedModel):
+    class Role(models.TextChoices):
+        CORE = "core", "Core"
+        ASSOCIATED = "associated", "Associated"
+        MAINTAINING = "maintaining", "Maintaining"
+        ASSESSMENT = "assessment", "Assessment"
+        TREATMENT = "treatment", "Treatment"
+        DIFFERENTIAL = "differential", "Differential"
+
+    disorder = models.ForeignKey(Disorder, on_delete=models.CASCADE, related_name="concept_links")
+    concept = models.ForeignKey(Concept, on_delete=models.CASCADE, related_name="disorder_links")
+    role = models.CharField(max_length=32, choices=Role.choices, default=Role.ASSOCIATED)
+    explanation = models.TextField(blank=True)
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ("sort_order", "id")
+        constraints = [
+            models.UniqueConstraint(fields=("disorder", "concept", "role"), name="uq_disorder_concept_role")
+        ]
+
+
+class ConceptSource(models.Model):
+    concept = models.ForeignKey(Concept, on_delete=models.CASCADE, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="concept_links")
+    note = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("concept", "source"), name="uq_concept_source")
+        ]
+
+
+class Flashcard(TimeStampedModel):
+    class Difficulty(models.TextChoices):
+        BASIC = "basic", "Basic"
+        INTERMEDIATE = "intermediate", "Intermediate"
+        ADVANCED = "advanced", "Advanced"
+
+    slug = models.SlugField(max_length=180, unique=True)
+    front = models.TextField()
+    back = models.TextField()
+    hint = models.TextField(blank=True)
+    concept = models.ForeignKey(Concept, on_delete=models.SET_NULL, null=True, blank=True, related_name="flashcards")
+    disorder = models.ForeignKey(Disorder, on_delete=models.SET_NULL, null=True, blank=True, related_name="flashcards")
+    difficulty = models.CharField(max_length=24, choices=Difficulty.choices, default=Difficulty.BASIC)
+    sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ("sort_order", "id")
+        indexes = [models.Index(fields=("is_active", "difficulty"))]
+
+    def __str__(self):
+        return self.slug
+
+
+class UserFlashcardProgress(TimeStampedModel):
+    class State(models.TextChoices):
+        NEW = "new", "New"
+        LEARNING = "learning", "Learning"
+        REVIEW = "review", "Review"
+
+    class Rating(models.TextChoices):
+        AGAIN = "again", "Again"
+        HARD = "hard", "Hard"
+        GOOD = "good", "Good"
+        EASY = "easy", "Easy"
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="flashcard_progress")
+    flashcard = models.ForeignKey(Flashcard, on_delete=models.CASCADE, related_name="user_progress")
+    state = models.CharField(max_length=20, choices=State.choices, default=State.NEW)
+    due_at = models.DateTimeField(default=timezone.now)
+    interval_days = models.PositiveIntegerField(default=0)
+    ease_factor = models.FloatField(default=2.5, validators=[MinValueValidator(1.3), MaxValueValidator(4.0)])
+    repetitions = models.PositiveIntegerField(default=0)
+    lapses = models.PositiveIntegerField(default=0)
+    last_rating = models.CharField(max_length=16, choices=Rating.choices, blank=True)
+    last_reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("user", "flashcard"), name="uq_user_flashcard_progress")
+        ]
+        indexes = [models.Index(fields=("user", "due_at"))]
+
+
+class StudyActivity(models.Model):
+    class Kind(models.TextChoices):
+        DISORDER_VIEW = "disorder_view", "Disorder view"
+        CONCEPT_VIEW = "concept_view", "Concept view"
+        QUIZ_COMPLETED = "quiz_completed", "Quiz completed"
+        CASE_COMPLETED = "case_completed", "Case completed"
+        FLASHCARD_REVIEW = "flashcard_review", "Flashcard review"
+        DAILY_CHALLENGE = "daily_challenge", "Daily challenge"
+        NOTE_SAVED = "note_saved", "Note saved"
+        BOOKMARK_SAVED = "bookmark_saved", "Bookmark saved"
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="study_activities")
+    activity_type = models.CharField(max_length=32, choices=Kind.choices)
+    disorder = models.ForeignKey(Disorder, on_delete=models.SET_NULL, null=True, blank=True, related_name="study_activities")
+    concept = models.ForeignKey(Concept, on_delete=models.SET_NULL, null=True, blank=True, related_name="study_activities")
+    quiz = models.ForeignKey(Quiz, on_delete=models.SET_NULL, null=True, blank=True, related_name="study_activities")
+    clinical_case = models.ForeignKey(ClinicalCase, on_delete=models.SET_NULL, null=True, blank=True, related_name="study_activities")
+    flashcard = models.ForeignKey(Flashcard, on_delete=models.SET_NULL, null=True, blank=True, related_name="study_activities")
+    metadata = models.JSONField(default=dict, blank=True)
+    occurred_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        ordering = ("-occurred_at", "-id")
+        indexes = [models.Index(fields=("user", "-occurred_at")), models.Index(fields=("user", "activity_type"))]
+
+
+class UserConceptProgress(TimeStampedModel):
+    class Status(models.TextChoices):
+        IN_PROGRESS = "in_progress", "In progress"
+        COMPLETED = "completed", "Completed"
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="concept_progress")
+    concept = models.ForeignKey(Concept, on_delete=models.CASCADE, related_name="user_progress")
+    status = models.CharField(max_length=24, choices=Status.choices, default=Status.IN_PROGRESS)
+    progress_percent = models.PositiveSmallIntegerField(default=10, validators=[MinValueValidator(0), MaxValueValidator(100)])
+    last_viewed_at = models.DateTimeField(null=True, blank=True)
+    last_reviewed_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("user", "concept"), name="uq_user_concept_progress")
+        ]
+        indexes = [models.Index(fields=("user", "progress_percent"))]
+
+
+class ConceptBookmark(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="concept_bookmarks")
+    concept = models.ForeignKey(Concept, on_delete=models.CASCADE, related_name="bookmarked_by")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("user", "concept"), name="uq_user_concept_bookmark")
+        ]
+
+
+class ConceptNote(TimeStampedModel):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="concept_notes")
+    concept = models.ForeignKey(Concept, on_delete=models.CASCADE, related_name="user_notes")
+    body = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ("-updated_at",)
+        constraints = [
+            models.UniqueConstraint(fields=("user", "concept"), name="uq_user_concept_note")
+        ]
+
+
+class DailyChallenge(TimeStampedModel):
+    prompt = models.TextField()
+    explanation = models.TextField(blank=True)
+    concept = models.ForeignKey(Concept, on_delete=models.SET_NULL, null=True, blank=True, related_name="daily_challenges")
+    disorder = models.ForeignKey(Disorder, on_delete=models.SET_NULL, null=True, blank=True, related_name="daily_challenges")
+    sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ("sort_order", "id")
+
+
+class DailyChallengeChoice(models.Model):
+    challenge = models.ForeignKey(DailyChallenge, on_delete=models.CASCADE, related_name="choices")
+    text = models.TextField()
+    is_correct = models.BooleanField(default=False)
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ("sort_order", "id")
+
+
+class DailyChallengeAttempt(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="daily_challenge_attempts")
+    challenge = models.ForeignKey(DailyChallenge, on_delete=models.PROTECT, related_name="attempts")
+    activity_date = models.DateField()
+    selected_choice = models.ForeignKey(DailyChallengeChoice, on_delete=models.PROTECT)
+    is_correct = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("user", "activity_date"), name="uq_user_daily_challenge_date")
+        ]
+        indexes = [models.Index(fields=("user", "-activity_date"))]

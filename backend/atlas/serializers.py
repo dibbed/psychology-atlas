@@ -97,6 +97,7 @@ class DisorderDetailSerializer(DisorderListSerializer):
     related = serializers.SerializerMethodField()
     sources = serializers.SerializerMethodField()
     study_resources = serializers.SerializerMethodField()
+    concepts = serializers.SerializerMethodField()
 
     class Meta(DisorderListSerializer.Meta):
         fields = DisorderListSerializer.Meta.fields + (
@@ -111,6 +112,7 @@ class DisorderDetailSerializer(DisorderListSerializer):
             "related",
             "sources",
             "study_resources",
+            "concepts",
         )
 
     def get_related(self, obj):
@@ -157,6 +159,20 @@ class DisorderDetailSerializer(DisorderListSerializer):
                 for c in cases
             ],
         }
+
+    def get_concepts(self, obj):
+        return [
+            {
+                "slug": link.concept.slug,
+                "name_en": link.concept.name_en,
+                "name_fa": link.concept.name_fa,
+                "kind": link.concept.kind,
+                "role": link.role,
+                "explanation": link.explanation,
+            }
+            for link in obj.concept_links.all()
+            if link.concept.is_active
+        ]
 
 
 class QuizChoiceSerializer(serializers.ModelSerializer):

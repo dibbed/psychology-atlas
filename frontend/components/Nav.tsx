@@ -22,12 +22,17 @@ export default function Nav() {
     <header className="nav">
       <div className="shell nav-inner">
         <Link href="/" className="brand">اطلس <span>روان‌شناسی</span></Link>
-        <nav className="nav-links">
+        <nav className="nav-links" aria-label="ناوبری اصلی">
+          <Link href="/search">جست‌وجو</Link>
           <Link href="/disorders">اختلالات</Link>
+          <Link href="/concepts">مفاهیم</Link>
+          <Link href="/map">نقشه دانش</Link>
           <Link href="/compare">مقایسه</Link>
+          <Link href="/flashcards">فلش‌کارت</Link>
           <Link href="/quizzes">آزمون‌ها</Link>
-          <Link href="/cases">کیس‌های بالینی</Link>
-          <Link href="/saved">ذخیره‌شده‌ها</Link>
+          <Link href="/cases">کیس‌ها</Link>
+          <Link href="/study">مطالعه</Link>
+          <Link href="/saved">ذخیره‌ها</Link>
           <Link href="/notes">یادداشت‌ها</Link>
           <Link href="/dashboard">داشبورد</Link>
         </nav>

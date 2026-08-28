@@ -1,41 +1,57 @@
 import Link from "next/link";
+import DailyChallengeCard from "@/components/DailyChallengeCard";
 
 export default function Home() {
   return (
     <main>
-      <section className="shell hero">
+      <section className="shell hero hero-v3">
         <div>
-          <div className="meta">نسخه آموزشی ۰.۲</div>
-          <h1>روان‌شناسی را به‌صورت یک سیستم یاد بگیر، نه مجموعه‌ای از مقاله‌های جدا.</h1>
+          <div className="meta">Psychology Atlas · نسخه ۰.۳</div>
+          <h1>یادگیری را از «خواندن محتوا» به یک شبکه و چرخه مرور تبدیل کن.</h1>
           <p>
-            ۳۰ اختلال را مرور کن، تفاوت الگوهای نزدیک را ببین، کیس‌های مرحله‌ای حل کن،
-            با آزمون‌های آموزشی تمرین کن، یادداشت شخصی بنویس و پیشرفت مطالعه را از روی فعالیت واقعی دنبال کن.
+            اختلالات و مفاهیم را به‌صورت یک Knowledge Graph ببین، با فلش‌کارت و Spaced Repetition مرور کن،
+            چالش روزانه حل کن و Streak، Heatmap و پیشنهادهای مطالعه را از روی فعالیت واقعی بساز.
           </p>
           <div className="actions" style={{ marginTop: 26 }}>
-            <Link className="button primary" href="/disorders">ورود به اطلس اختلالات</Link>
-            <Link className="button" href="/cases">حل یک کیس بالینی</Link>
+            <Link className="button primary" href="/study">ورود به مرکز مطالعه</Link>
+            <Link className="button" href="/search">جست‌وجوی سراسری</Link>
+            <Link className="button" href="/map">باز کردن نقشه دانش</Link>
           </div>
         </div>
-        <aside className="hero-aside">
-          <strong style={{ color: "var(--text)" }}>چرخه یادگیری</strong><br />
-          کاوش ← مقایسه ← آزمون ← استدلال ← یادداشت ← مرور
+        <aside className="hero-aside learning-loop-card">
+          <strong style={{ color: "var(--text)" }}>Learning Loop v0.3</strong><br />
+          یادگیری ← تمرین ← سنجش ← تشخیص ضعف ← زمان‌بندی مرور ← مرور دوباره
           <br /><br />
-          هدف اطلس این است که ارتباط میان نشانه‌ها، اختلالات و تصمیم‌های آموزشی را قابل مشاهده کند، نه اینکه فقط متن طولانی نمایش دهد.
+          Progress دیگر فقط یک عدد تزئینی نیست؛ View، Quiz، Case، Flashcard و Daily Challenge به فعالیت مطالعاتی متصل شده‌اند.
         </aside>
       </section>
 
-      <section className="shell page stack">
+      <section className="shell page stack home-v3-sections">
         <div>
-          <h2 className="section-title">سطوح اصلی یادگیری</h2>
-          <p className="section-copy">هر بخش برای یک نوع سؤال مطالعاتی طراحی شده است.</p>
+          <h2 className="section-title">سه لایه اصلی نسخه ۰.۳</h2>
+          <p className="section-copy">اطلس محتوا، شبکه دانش و موتور مطالعه حالا به هم متصل‌اند.</p>
         </div>
         <div className="grid">
-          <Link href="/disorders" className="card"><div className="meta">اطلس</div><h3>درک کن</h3><p>۳۰ اختلال در هفت دسته را با نشانه‌ها، ارزیابی، درمان، سیر و منابع مرور کن.</p></Link>
-          <Link href="/compare" className="card"><div className="meta">مقایسه</div><h3>تفاوت‌ها را پیدا کن</h3><p>۲ تا ۴ اختلال را کنار هم بگذار و ابعاد واقعی ثبت‌شده را مقایسه کن.</p></Link>
-          <Link href="/cases" className="card"><div className="meta">کیس بالینی</div><h3>استدلال کن</h3><p>شش کیس مرحله‌ای را بدون دیدن زودهنگام اطلاعات مراحل بعد پیش ببر.</p></Link>
-          <Link href="/quizzes" className="card"><div className="meta">آزمون</div><h3>یادآوری کن</h3><p>پنج آزمون هشت‌سؤالی را حل کن و برای هر پاسخ توضیح آموزشی دریافت کن.</p></Link>
-          <Link href="/notes" className="card"><div className="meta">یادداشت</div><h3>برای خودت بنویس</h3><p>برای هر اختلال یادداشت خصوصی بساز و آخرین نکته‌ها را در داشبورد ببین.</p></Link>
-          <Link href="/dashboard" className="card"><div className="meta">داشبورد</div><h3>ادامه بده</h3><p>میانگین آزمون، کیس، موضوعات ضعیف، روزهای فعالیت و پیشرفت هر موضوع را ببین.</p></Link>
+          <Link href="/disorders" className="card feature-card"><div className="meta">Disorders Atlas</div><h3>اختلالات را بفهم</h3><p>۳۰ اختلال با نشانه، افتراق، ارزیابی، درمان، Quiz، Case و Conceptهای مرتبط.</p></Link>
+          <Link href="/concepts" className="card feature-card"><div className="meta">Concepts Atlas</div><h3>مفهوم را مستقل یاد بگیر</h3><p>۳۵ مفهوم با تعریف ساده، تعریف دانشگاهی، مثال، اختلالات مرتبط و روابط مفهومی.</p></Link>
+          <Link href="/map" className="card feature-card"><div className="meta">Knowledge Graph</div><h3>رابطه‌ها را دنبال کن</h3><p>از Disorder، Concept یا Symptom وارد شبکه شو و edgeهای واقعی ثبت‌شده را مرحله‌به‌مرحله دنبال کن.</p></Link>
+          <Link href="/flashcards" className="card feature-card"><div className="meta">SRS</div><h3>در زمان درست مرور کن</h3><p>۴۱ فلش‌کارت با ارزیابی دوباره، سخت، خوب و آسان و فاصله مرور شخصی برای هر کاربر.</p></Link>
+          <Link href="/study" className="card feature-card"><div className="meta">Study Engine</div><h3>ضعف را به مرور تبدیل کن</h3><p>Streak، Heatmap، Review Queue، Daily Challenge و پیشنهادهای مبتنی بر فعالیت در یک مرکز واحد.</p></Link>
+          <Link href="/search" className="card feature-card"><div className="meta">Search V3</div><h3>کل اطلس را بگرد</h3><p>اختلال، Concept و Symptom را با یک جست‌وجوی سراسری پیدا کن.</p></Link>
+        </div>
+
+        <div className="grid-2 home-secondary-grid">
+          <DailyChallengeCard />
+          <div className="card">
+            <div className="meta">مسیر قدیمی هنوز حفظ شده</div>
+            <h2>Compare + Quiz + Clinical Cases</h2>
+            <p>v0.3 قابلیت‌های v0.2 را جایگزین نکرده؛ آن‌ها را به Study Activity و Knowledge Graph وصل کرده است.</p>
+            <div className="actions">
+              <Link className="button" href="/compare">مقایسه اختلالات</Link>
+              <Link className="button" href="/quizzes">آزمون‌ها</Link>
+              <Link className="button" href="/cases">کیس‌های بالینی</Link>
+            </div>
+          </div>
         </div>
       </section>
     </main>

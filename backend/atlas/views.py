@@ -10,12 +10,19 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from .learning import activity_heatmap, challenge_attempt_for_today, current_streak, get_recommendations, record_activity
 from .models import (
     Bookmark,
     Category,
     ClinicalCase,
+    ConceptBookmark,
+    ConceptNote,
     Disorder,
+    Flashcard,
     Quiz,
+    StudyActivity,
+    UserConceptProgress,
+    UserFlashcardProgress,
     UserNote,
     UserProgress,
 )
@@ -116,6 +123,7 @@ class DisorderDetailView(generics.RetrieveAPIView):
             "source_links__source",
             "quizzes",
             "clinical_cases",
+            "concept_links__concept",
         )
     )
 
@@ -146,6 +154,7 @@ def compare_disorders(request):
             "source_links__source",
             "quizzes",
             "clinical_cases",
+            "concept_links__concept",
         )
     )
     by_slug = {x.slug: x for x in qs}
@@ -225,7 +234,7 @@ def case_submit(request, slug):
 @permission_classes([permissions.IsAuthenticated])
 def bookmarks(request):
     if request.method == "GET":
-        qs = Bookmark.objects.filter(user=request.user).select_related("disorder", "disorder__category").order_by("-created_at")
+        qs = Bookmark.objects.filter(user=request.user, disorder__is_active=True).select_related("disorder", "disorder__category").order_by("-created_at")
         return Response(BookmarkSerializer(qs, many=True).data)
 
     payload = _object_payload(request)
@@ -235,6 +244,8 @@ def bookmarks(request):
     slug = slug.strip()
     disorder = get_object_or_404(Disorder, slug=slug, is_active=True)
     bookmark, created = Bookmark.objects.get_or_create(user=request.user, disorder=disorder)
+    if created:
+        record_activity(request.user, StudyActivity.Kind.BOOKMARK_SAVED, disorder=disorder)
     return Response(BookmarkSerializer(bookmark).data, status=201 if created else 200)
 
 
@@ -253,6 +264,7 @@ def progress_view(request, slug):
     progress.progress_percent = max(progress.progress_percent, 25)
     progress.last_viewed_at = timezone.now()
     progress.save(update_fields=("progress_percent", "last_viewed_at", "updated_at"))
+    record_activity(request.user, StudyActivity.Kind.DISORDER_VIEW, disorder=disorder)
     return Response({
         "slug": disorder.slug,
         "progress_percent": progress.progress_percent,
@@ -263,7 +275,7 @@ def progress_view(request, slug):
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
 def notes(request):
-    qs = UserNote.objects.filter(user=request.user).select_related("disorder", "disorder__category")
+    qs = UserNote.objects.filter(user=request.user, disorder__is_active=True).select_related("disorder", "disorder__category")
     return Response(UserNoteSerializer(qs, many=True).data)
 
 
@@ -304,6 +316,7 @@ def note_detail(request, slug):
         disorder=disorder,
         defaults={"body": body},
     )
+    record_activity(request.user, StudyActivity.Kind.NOTE_SAVED, disorder=disorder)
     data = UserNoteSerializer(note).data
     data["exists"] = True
     return Response(data)
@@ -312,11 +325,22 @@ def note_detail(request, slug):
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
 def dashboard(request):
-    bookmarks_qs = Bookmark.objects.filter(user=request.user).select_related("disorder", "disorder__category").order_by("-created_at")
-    progress_qs = UserProgress.objects.filter(user=request.user).select_related("disorder", "disorder__category").order_by("-last_viewed_at")
-    quiz_attempts = request.user.quiz_attempts.filter(status="completed").select_related("quiz", "quiz__disorder").order_by("-completed_at")
-    case_attempts = request.user.case_attempts.filter(status="completed").select_related("case", "case__primary_disorder").order_by("-completed_at")
-    notes_qs = UserNote.objects.filter(user=request.user).select_related("disorder", "disorder__category").order_by("-updated_at")
+    bookmarks_qs = Bookmark.objects.filter(user=request.user, disorder__is_active=True).select_related("disorder", "disorder__category").order_by("-created_at")
+    progress_qs = UserProgress.objects.filter(user=request.user, disorder__is_active=True).select_related("disorder", "disorder__category").order_by("-last_viewed_at")
+    quiz_attempts = request.user.quiz_attempts.filter(status="completed", quiz__is_active=True).select_related("quiz", "quiz__disorder").order_by("-completed_at")
+    case_attempts = request.user.case_attempts.filter(status="completed", case__is_active=True).select_related("case", "case__primary_disorder").order_by("-completed_at")
+    notes_qs = UserNote.objects.filter(user=request.user, disorder__is_active=True).select_related("disorder", "disorder__category").order_by("-updated_at")
+    concept_bookmarks_qs = ConceptBookmark.objects.filter(user=request.user, concept__is_active=True).select_related("concept").order_by("-created_at")
+    concept_notes_qs = ConceptNote.objects.filter(user=request.user, concept__is_active=True).select_related("concept").order_by("-updated_at")
+    concept_progress_qs = UserConceptProgress.objects.filter(user=request.user, concept__is_active=True).select_related("concept")
+    due_flashcards = UserFlashcardProgress.objects.filter(
+        user=request.user,
+        flashcard__is_active=True,
+        due_at__lte=timezone.now(),
+    ).count()
+    unseen_flashcards = Flashcard.objects.filter(is_active=True).exclude(
+        id__in=UserFlashcardProgress.objects.filter(user=request.user).values_list("flashcard_id", flat=True)
+    ).count()
 
     completed_quizzes = quiz_attempts.count()
     avg_quiz_score = 0
@@ -340,6 +364,12 @@ def dashboard(request):
     for value in progress_qs.values_list("last_viewed_at", flat=True):
         if value:
             activity_dates.add(value.date())
+    for value in concept_progress_qs.values_list("last_viewed_at", flat=True):
+        if value:
+            activity_dates.add(value.date())
+    for value in StudyActivity.objects.filter(user=request.user).values_list("occurred_at", flat=True):
+        if value:
+            activity_dates.add(value.date())
 
     weak_topics = [
         {
@@ -352,16 +382,45 @@ def dashboard(request):
     ]
 
     return Response({
-        "saved_topics": bookmarks_qs.count(),
-        "topics_studied": progress_qs.count(),
+        "saved_topics": bookmarks_qs.count() + concept_bookmarks_qs.count(),
+        "disorders_studied": progress_qs.count(),
+        "concepts_studied": concept_progress_qs.count(),
+        "concepts_mastered": concept_progress_qs.filter(status=UserConceptProgress.Status.COMPLETED).count(),
+        "topics_studied": progress_qs.count() + concept_progress_qs.count(),
         "quizzes_completed": completed_quizzes,
         "quiz_accuracy": avg_quiz_score,
         "cases_completed": completed_cases,
         "case_accuracy": avg_case_score,
-        "notes_count": notes_qs.count(),
+        "notes_count": notes_qs.count() + concept_notes_qs.count(),
         "study_days": len(activity_dates),
+        "streak": current_streak(request.user),
+        "heatmap": activity_heatmap(request.user, days=42),
+        "recommendations": get_recommendations(request.user),
+        "review_due": due_flashcards,
+        "review_new": unseen_flashcards,
+        "daily_challenge_completed": bool(challenge_attempt_for_today(request.user)),
         "recent_saved": BookmarkSerializer(bookmarks_qs[:4], many=True).data,
+        "recent_concept_saved": [
+            {
+                "id": row.id,
+                "slug": row.concept.slug,
+                "name_en": row.concept.name_en,
+                "name_fa": row.concept.name_fa,
+                "kind": row.concept.kind,
+            }
+            for row in concept_bookmarks_qs[:4]
+        ],
         "recent_notes": UserNoteSerializer(notes_qs[:4], many=True).data,
+        "recent_concept_notes": [
+            {
+                "id": row.id,
+                "slug": row.concept.slug,
+                "name_en": row.concept.name_en,
+                "name_fa": row.concept.name_fa,
+                "body": row.body,
+            }
+            for row in concept_notes_qs[:4]
+        ],
         "weak_topics": weak_topics,
         "recent_quizzes": [
             {
@@ -393,5 +452,15 @@ def dashboard(request):
                 "status": p.status,
             }
             for p in progress_qs[:6]
+        ],
+        "continue_concepts": [
+            {
+                "slug": p.concept.slug,
+                "name_en": p.concept.name_en,
+                "name_fa": p.concept.name_fa,
+                "progress_percent": p.progress_percent,
+                "status": p.status,
+            }
+            for p in concept_progress_qs.order_by("-last_viewed_at", "-last_reviewed_at")[:6]
         ],
     })

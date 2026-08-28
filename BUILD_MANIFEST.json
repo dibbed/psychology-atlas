@@ -1,10 +1,10 @@
 {
   "project": "Psychology Atlas",
-  "version": "0.2.0",
-  "release_name": "Core Learning Upgrade",
+  "version": "0.3.0",
+  "release_name": "Study Engine + Knowledge Graph",
   "stack": {
-    "frontend": "Next.js 16.3 + React 19 + TypeScript",
-    "backend": "Django + Django REST Framework",
+    "frontend": "Next.js 16.3.3 + React 19 + TypeScript",
+    "backend": "Django 5.2 + Django REST Framework",
     "auth": "JWT with refresh flow",
     "database_now": "SQLite",
     "database_future": "PostgreSQL"
@@ -13,37 +13,93 @@
     "accounts",
     "automatic_jwt_refresh",
     "disorders_atlas",
-    "search_and_category_filters",
-    "disorder_detail_v2_tabs",
+    "concepts_atlas",
+    "global_search_v3",
+    "knowledge_graph_v1",
+    "disorder_concept_links",
+    "disorder_symptom_graph_edges",
+    "concept_relationships",
+    "flashcards",
+    "spaced_repetition",
+    "review_queue",
+    "study_activity_engine",
+    "study_streak",
+    "study_heatmap_42_days",
+    "daily_challenge",
+    "recommendation_engine_v1",
+    "study_center",
+    "dashboard_v3",
+    "universal_saved_base",
+    "universal_notes_base",
     "compare_v2",
     "staged_clinical_cases",
     "expanded_quizzes",
-    "bookmarks",
-    "private_notes",
-    "activity_progress",
-    "dashboard_v2",
-    "mini_concept_map",
     "global_error_loading_and_not_found_states"
   ],
   "content": {
-    "disorders": 30,
     "categories": 7,
+    "disorders": 30,
+    "symptoms": 30,
+    "concepts": 35,
+    "disorder_concept_links": 65,
+    "concept_relationships": 14,
+    "flashcards": 41,
+    "daily_challenges": 12,
+    "daily_challenge_choices": 48,
     "quizzes": 5,
     "quiz_questions": 40,
     "clinical_cases": 6,
-    "case_steps": 18
+    "case_steps": 18,
+    "knowledge_graph_nodes": 95,
+    "knowledge_graph_edges": 144
   },
+  "migrations": [
+    "0003_concept_dailychallenge_dailychallengechoice_and_more.py",
+    "0004_alter_concept_kind.py"
+  ],
   "validation": {
     "django_check": "pass",
-    "backend_tests": "16 passed",
+    "backend_tests": "29/29 passed",
     "python_compileall": "pass",
     "pip_check": "pass",
     "migration_drift_check": "pass",
+    "seed_idempotency": "pass",
     "typescript_typecheck": "pass",
     "next_production_build": "pass",
-    "npm_audit": "0 vulnerabilities",
-    "api_permission_and_hidden_answer_checks": "pass",
-    "all_seeded_detail_route_smoke_test": "pass"
+    "npm_audit_high": "0 vulnerabilities",
+    "frontend_route_smoke_test": "pass",
+    "public_v3_api_smoke_test": "pass",
+    "hidden_daily_challenge_answer_check": "pass",
+    "authenticated_v3_user_flow": "pass",
+    "temporary_audit_user_cleanup": "pass"
   },
-  "source_files_excluding_dependencies_and_build_output": 68
+  "release_notes": {
+    "graph_layers": [
+      "Concept <-> Concept",
+      "Disorder <-> Concept",
+      "Disorder -> Symptom"
+    ],
+    "user_owned_v3_data": [
+      "concept bookmarks",
+      "concept notes",
+      "concept progress",
+      "flashcard SRS progress",
+      "daily challenge attempts",
+      "study activity"
+    ],
+    "deliberately_deferred": [
+      "Therapy Atlas",
+      "Psychologists Atlas",
+      "Theories Atlas",
+      "Psychology Timeline",
+      "Brain Atlas",
+      "Assessment Atlas",
+      "fully branching clinical cases",
+      "exam planning",
+      "XP and achievements",
+      "advanced recommendation engine",
+      "content admin CMS",
+      "claim-level citation graph"
+    ]
+  }
 }

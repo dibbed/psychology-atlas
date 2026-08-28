@@ -17,6 +17,7 @@ from atlas.models import (
     SourceReference,
     Symptom,
 )
+from atlas.v3_seed import seed_v3_content
 
 
 CATEGORIES = [
@@ -533,6 +534,11 @@ class Command(BaseCommand):
                             sort_order=choice_order,
                         )
 
+        v3_counts = seed_v3_content(disorder_objs, source_objs)
+
         self.stdout.write(self.style.SUCCESS(
-            f"Psychology Atlas v0.2 seed completed: {len(DISORDERS)} disorders, {len(QUIZZES)} quizzes, {len(CASES)} cases."
+            "Psychology Atlas v0.3 seed completed: "
+            f"{len(DISORDERS)} disorders, {len(QUIZZES)} quizzes, {len(CASES)} cases, "
+            f"{v3_counts['concepts']} concepts, {v3_counts['flashcards']} flashcards, "
+            f"{v3_counts['daily_challenges']} daily challenges."
         ))

@@ -2,11 +2,13 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
+from .learning import record_activity
 from .models import (
     CaseAttempt,
     CaseAttemptAnswer,
     QuizAttempt,
     QuizAttemptAnswer,
+    StudyActivity,
     UserProgress,
 )
 
@@ -97,6 +99,13 @@ def submit_quiz(*, user, quiz, answers):
         progress.last_viewed_at = timezone.now()
         progress.save(update_fields=("progress_percent", "last_viewed_at", "updated_at"))
 
+    record_activity(
+        user,
+        StudyActivity.Kind.QUIZ_COMPLETED,
+        quiz=quiz,
+        disorder=quiz.disorder,
+        metadata={"score": attempt.score, "correct_count": correct, "total_questions": len(question_ids)},
+    )
     return attempt, feedback
 
 
@@ -163,4 +172,11 @@ def submit_case(*, user, clinical_case, answers):
             progress.completed_at = timezone.now()
         progress.save(update_fields=("progress_percent", "last_viewed_at", "status", "completed_at", "updated_at"))
 
+    record_activity(
+        user,
+        StudyActivity.Kind.CASE_COMPLETED,
+        clinical_case=clinical_case,
+        disorder=clinical_case.primary_disorder,
+        metadata={"score": attempt.score, "max_score": attempt.max_score},
+    )
     return attempt, feedback

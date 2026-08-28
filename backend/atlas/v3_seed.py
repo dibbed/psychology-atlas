@@ -1,0 +1,241 @@
+from .models import (
+    Concept,
+    ConceptRelationship,
+    ConceptSource,
+    DailyChallenge,
+    DailyChallengeChoice,
+    DisorderConcept,
+    Flashcard,
+)
+
+
+CONCEPTS = [
+    ("panic-attack", "Panic Attack", "حمله پانیک", "clinical", "افزایش ناگهانی ترس یا ناراحتی شدید که در مدت کوتاهی به اوج می‌رسد.", "حمله پانیک یک الگوی زمانی از افزایش سریع ترس همراه با مجموعه‌ای از نشانه‌های جسمانی و شناختی است و به‌تنهایی نام یک اختلال نیست.", "فرد در چند دقیقه دچار تپش قلب، لرزش و ترس شدید از مرگ می‌شود."),
+    ("avoidance", "Avoidance", "اجتناب", "behavioral", "دوری‌کردن از موقعیت، فکر یا تجربه‌ای که اضطراب یا ناراحتی ایجاد می‌کند.", "اجتناب می‌تواند ناراحتی را کوتاه‌مدت کاهش دهد، اما در برخی چرخه‌های اضطرابی فرصت یادگیری اصلاحی را محدود و مشکل را حفظ کند.", "دانشجو به‌دلیل ترس از قضاوت، ارائه کلاسی را همیشه لغو می‌کند."),
+    ("safety-behaviors", "Safety Behaviors", "رفتارهای ایمنی", "behavioral", "رفتارهایی که فرد برای جلوگیری از پیامد ترسناک یا تحمل موقعیت به آن‌ها تکیه می‌کند.", "رفتارهای ایمنی ممکن است مانع آزمون واقعی باورهای تهدیدآمیز شوند و در برخی مدل‌های شناختی رفتاری به تداوم اضطراب کمک کنند.", "فرد هنگام صحبت در جمع فقط از روی متن می‌خواند تا مبادا مکث کند."),
+    ("worry", "Worry", "نگرانی", "cognitive", "زنجیره‌ای از افکار درباره تهدیدها یا پیامدهای منفی آینده.", "نگرانی معمولاً آینده‌محور است و می‌تواند به‌صورت تکراری و دشوار برای کنترل تجربه شود.", "فرد بارها درباره احتمال اشتباه در امتحان فردا فکر می‌کند."),
+    ("intrusive-thoughts", "Intrusive Thoughts", "افکار مزاحم", "cognitive", "افکار، تصاویر یا تکانه‌هایی ناخواسته که وارد ذهن می‌شوند و ممکن است ناراحت‌کننده باشند.", "وجود فکر مزاحم به‌خودی‌خود به معنای اختلال نیست؛ اهمیت بالینی به معنا، پاسخ فرد، تکرار و اثر آن بر عملکرد بستگی دارد.", "فکری ناخواسته درباره آلودگی بارها وارد ذهن می‌شود."),
+    ("compulsions", "Compulsions", "اعمال اجباری", "behavioral", "رفتار یا عمل ذهنی تکراری که فرد احساس می‌کند باید آن را انجام دهد.", "در الگوهای وسواسی، عمل اجباری اغلب برای کاهش پریشانی یا جلوگیری از پیامد ترسناک انجام می‌شود و کاهش حاصل معمولاً موقتی است.", "فرد برای کاهش اضطراب چندین بار قفل را بررسی می‌کند."),
+    ("anhedonia", "Anhedonia", "فقدان لذت", "emotional", "کاهش محسوس علاقه یا توان تجربه لذت از فعالیت‌هایی که قبلاً لذت‌بخش بوده‌اند.", "فقدان لذت یکی از مفاهیم مهم در ارزیابی الگوهای افسردگی است و باید در کنار سایر نشانه‌ها و عملکرد بررسی شود.", "فرد دیگر از موسیقی و دیدار دوستان که قبلاً دوست داشت لذت نمی‌برد."),
+    ("rumination", "Rumination", "نشخوار فکری", "cognitive", "فکرکردن تکراری و منفعلانه درباره ناراحتی، علت‌ها یا پیامدهای آن.", "نشخوار فکری معمولاً گذشته یا حالت فعلی را بارها مرور می‌کند و می‌تواند حل مسئله مؤثر را جایگزین کند.", "فرد ساعت‌ها اشتباه یک گفت‌وگوی گذشته را در ذهن مرور می‌کند."),
+    ("behavioral-activation", "Behavioral Activation", "فعال‌سازی رفتاری", "treatment", "برنامه‌ریزی تدریجی فعالیت‌های معنادار و تقویت‌کننده برای شکستن چرخه کناره‌گیری و کاهش فعالیت.", "فعال‌سازی رفتاری یک راهبرد ساختاریافته است که ارتباط میان رفتار، محیط و خلق را هدف می‌گیرد و معمولاً با پایش فعالیت همراه می‌شود.", "فرد با برنامه کوچک پیاده‌روی و تماس اجتماعی دوباره فعالیت روزانه را افزایش می‌دهد."),
+    ("mania", "Mania", "مانیا", "clinical", "دوره‌ای از افزایش غیرمعمول خلق یا تحریک‌پذیری همراه با افزایش محسوس انرژی و فعالیت که می‌تواند اختلال جدی ایجاد کند.", "در مفهوم مانیا، شدت، تغییر نسبت به خط پایه، پیامد عملکردی و مجموعه نشانه‌های همراه اهمیت دارند.", "فرد چند شب تقریباً نمی‌خوابد، بسیار پرانرژی است و تصمیم‌های پرخطر می‌گیرد."),
+    ("hypomania", "Hypomania", "هیپومانیا", "clinical", "دوره‌ای از افزایش خلق یا تحریک‌پذیری و انرژی که از خط پایه متفاوت است اما شدت آن با مانیا کامل یکسان نیست.", "افتراق هیپومانیا از مانیا به شدت، مدت، اختلال عملکرد و پیامدهای دوره وابسته است.", "فرد چند روز انرژی و فعالیت بیشتری دارد و کمتر می‌خوابد، اما اختلال شدید عملکردی ندارد."),
+    ("hyperarousal", "Hyperarousal", "برانگیختگی بالا", "clinical", "حالت افزایش برانگیختگی و آمادگی برای واکنش که می‌تواند با گوش‌به‌زنگی و واکنش‌پذیری بالا همراه باشد.", "در زمینه تروما، برانگیختگی بالا می‌تواند بخشی از الگوی تغییرات برانگیختگی و واکنش‌پذیری باشد.", "فرد پس از تروما با صدای کوچک به‌شدت از جا می‌پرد."),
+    ("dissociation", "Dissociation", "گسستگی", "clinical", "اختلال یا گسست در تجربه یکپارچه آگاهی، حافظه، هویت یا ادراک.", "گسستگی یک مفهوم طیفی است و باید از تجربه‌های عادی و نیز سایر علت‌های شناختی یا پزشکی تفکیک شود.", "فرد لحظاتی احساس می‌کند محیط غیرواقعی یا دور به نظر می‌رسد."),
+    ("rejection-sensitivity", "Rejection Sensitivity", "حساسیت به طرد", "interpersonal", "آمادگی بالا برای انتظار، تشخیص یا واکنش شدید به نشانه‌های طرد.", "حساسیت به طرد یک سازه بین‌فردی است و می‌تواند بر تفسیر موقعیت‌ها و تنظیم هیجان اثر بگذارد.", "پاسخ دیرهنگام یک دوست به‌سرعت به‌عنوان نشانه کنارگذاشته‌شدن تفسیر می‌شود."),
+    ("emotion-regulation", "Emotion Regulation", "تنظیم هیجان", "emotional", "فرایندهایی که شدت، مدت یا شیوه تجربه و بیان هیجان را تعدیل می‌کنند.", "تنظیم هیجان شامل راهبردهای متعدد پیش و پس از شکل‌گیری هیجان است و کیفیت آن به زمینه و انعطاف‌پذیری وابسته است.", "فرد پیش از پاسخ تکانشی چند دقیقه مکث می‌کند و هیجان خود را نام‌گذاری می‌کند."),
+    ("impulsivity", "Impulsivity", "تکانشگری", "behavioral", "تمایل به عمل سریع با توجه ناکافی به پیامدهای بعدی.", "تکانشگری سازه‌ای چندبعدی است و می‌تواند در زمینه‌های هیجانی، پاداش، برنامه‌ریزی یا مهار پاسخ بررسی شود.", "فرد در اوج هیجان بدون بررسی پیامد تصمیم مالی بزرگی می‌گیرد."),
+    ("perfectionism", "Perfectionism", "کمال‌گرایی", "cognitive", "استانداردهای بسیار بالا همراه با ارزیابی سخت‌گیرانه عملکرد خود یا دیگران.", "کمال‌گرایی می‌تواند سازگار یا ناسازگار باشد؛ نگرانی افراطی درباره اشتباه و پیوند ارزش شخصی با عملکرد از جنبه‌های مشکل‌ساز آن است.", "فرد پروژه را تحویل نمی‌دهد چون هیچ نسخه‌ای را به‌اندازه کافی کامل نمی‌داند."),
+    ("cognitive-distortions", "Cognitive Distortions", "تحریف‌های شناختی", "cognitive", "الگوهای جهت‌دار و غیرمنعطف در تفسیر اطلاعات که می‌توانند نتیجه‌گیری را از شواهد موجود دور کنند.", "تحریف شناختی برچسبی آموزشی برای الگوهای متداول پردازش و تفسیر است و نباید هر فکر منفی را خودکار تحریف دانست.", "از یک اشتباه کوچک نتیجه گرفته می‌شود که تمام عملکرد شکست بوده است."),
+    ("all-or-nothing-thinking", "All-or-Nothing Thinking", "تفکر همه یا هیچ", "cognitive", "دیدن موقعیت‌ها در دو قطب افراطی بدون توجه کافی به طیف میان آن‌ها.", "این الگو کیفیت‌های پیوسته را به دسته‌های مطلق تبدیل می‌کند و می‌تواند ارزیابی عملکرد را سخت‌گیرانه کند.", "اگر نمره‌ام ۲۰ نشود یعنی کاملاً شکست خورده‌ام."),
+    ("catastrophizing", "Catastrophizing", "فاجعه‌سازی", "cognitive", "برآورد پیامد یک رویداد به‌عنوان بسیار بدتر یا غیرقابل‌تحمل‌تر از شواهد موجود.", "فاجعه‌سازی معمولاً احتمال یا شدت پیامد منفی و ناتوانی در مقابله با آن را بیش‌برآورد می‌کند.", "اگر در ارائه مکث کنم حتماً آبرویم برای همیشه می‌رود."),
+    ("mind-reading", "Mind Reading", "ذهن‌خوانی", "cognitive", "فرض‌کردن اینکه می‌دانیم دیگران چه فکر می‌کنند بدون شواهد کافی.", "ذهن‌خوانی نوعی استنباط درباره حالت ذهنی دیگران است که بدون داده کافی قطعی تلقی می‌شود.", "دوستم ساکت است، پس حتماً فکر می‌کند من بی‌عرضه‌ام."),
+    ("automatic-thoughts", "Automatic Thoughts", "افکار خودکار", "cognitive", "افکاری سریع و اغلب کوتاه که در پاسخ به موقعیت ظاهر می‌شوند و ممکن است ابتدا بدیهی به نظر برسند.", "در مدل شناختی، افکار خودکار میان موقعیت، هیجان و رفتار قابل بررسی‌اند و می‌توان اعتبار و کارکرد آن‌ها را آزمود.", "پس از دیدن نمره پایین فوراً فکر می‌کند: من هیچ‌وقت موفق نمی‌شوم."),
+    ("core-beliefs", "Core Beliefs", "باورهای هسته‌ای", "cognitive", "باورهای عمیق و کلی درباره خود، دیگران یا جهان که می‌توانند تفسیر تجربه‌ها را جهت دهند.", "باورهای هسته‌ای در مدل‌های شناختی ساختارهای نسبتاً پایدار و کلی‌اند که می‌توانند بر افکار خودکار و قواعد میانی اثر بگذارند.", "باور کلی «من دوست‌داشتنی نیستم» ممکن است تفسیر روابط را جهت دهد."),
+    ("exposure", "Exposure", "مواجهه", "treatment", "رویارویی برنامه‌ریزی‌شده و تدریجی با محرک‌ها، موقعیت‌ها یا تجربه‌های ترسناک بدون تکیه کامل بر اجتناب.", "مواجهه یک خانواده از روش‌های رفتاری است که فرصت یادگیری جدید درباره تهدید، تحمل ناراحتی و پیامدهای واقعی را فراهم می‌کند.", "فرد با برنامه از موقعیت‌های اجتماعی کم‌اضطراب شروع و به موقعیت‌های دشوارتر نزدیک می‌شود."),
+    ("separation-distress", "Separation Distress", "پریشانی جدایی", "emotional", "ناراحتی و اضطراب قابل توجه هنگام جدایی واقعی یا پیش‌بینی‌شده از فرد دلبستگی.", "پریشانی جدایی یک مفهوم بین‌فردی و هیجانی است و اهمیت بالینی آن به شدت، تناسب رشدی، تداوم و اثر بر عملکرد وابسته است.", "کودک یا بزرگسال هنگام دورشدن از فرد دلبستگی دچار نگرانی شدید و دشواری در ادامه فعالیت روزانه می‌شود."),
+    ("difficulty-discarding", "Difficulty Discarding", "دشواری دور ریختن", "behavioral", "دشواری پایدار در کنارگذاشتن یا دورریختن اشیا حتی زمانی که ارزش عملی آن‌ها محدود است.", "در الگوهای احتکار، ناراحتی مرتبط با دورریختن و نیاز ادراک‌شده به نگه‌داشتن اشیا می‌تواند به انباشت و اختلال در استفاده از فضا منجر شود.", "فرد اشیای کم‌استفاده را نگه می‌دارد چون دورریختن آن‌ها اضطراب زیادی ایجاد می‌کند."),
+    ("body-focused-repetitive-behaviors", "Body-Focused Repetitive Behaviors", "رفتارهای تکراری متمرکز بر بدن", "behavioral", "رفتارهای تکراری مانند کندن مو یا پوست که روی بدن متمرکزند و کنترل آن‌ها می‌تواند دشوار باشد.", "این اصطلاح یک گروه توصیفی از رفتارهای تکراری متمرکز بر بدن است و برای درک محرک‌ها، عادت، تنش، پیامد جسمانی و تلاش‌های کنترل به کار می‌رود.", "فرد هنگام مطالعه بدون توجه کامل بارها مو یا پوست خود را دستکاری می‌کند."),
+    ("cyclical-mood-symptoms", "Cyclical Mood Symptoms", "نشانه‌های خلقی چرخه‌ای", "emotional", "تغییرات هیجانی و جسمانی که به‌صورت منظم با یک چرخه زیستی یا زمانی تکرار می‌شوند.", "در ارزیابی الگوهای چرخه‌ای، ثبت آینده‌نگر زمان شروع و پایان نشانه‌ها برای تشخیص الگوی زمانی اهمیت دارد.", "فرد در چند چرخه متوالی زمان‌بندی مشابهی از تحریک‌پذیری و افت خلق ثبت می‌کند."),
+    ("stressor-linked-distress", "Stressor-Linked Distress", "پریشانی مرتبط با عامل استرس‌زا", "clinical", "ناراحتی هیجانی یا رفتاری که ارتباط زمانی روشنی با یک عامل استرس‌زای قابل شناسایی دارد.", "رابطه زمانی با عامل استرس‌زا، شدت ناراحتی، اختلال عملکرد و وجود توضیح‌های جایگزین از ابعاد مهم ارزیابی هستند.", "پس از یک تغییر مهم زندگی، فرد دچار اضطراب و افت عملکرد قابل توجه می‌شود."),
+    ("mistrust", "Mistrust", "بی‌اعتمادی", "interpersonal", "انتظار یا تفسیر مکرر رفتار دیگران به‌عنوان غیرقابل اعتماد، آسیب‌زننده یا دارای نیت منفی.", "بی‌اعتمادی می‌تواند در شدت‌ها و زمینه‌های مختلف دیده شود و برای تفسیر آن باید شواهد، انعطاف‌پذیری باور و الگوی بین‌فردی بررسی شود.", "فرد بدون شواهد کافی بارها رفتار همکاران را نشانه قصد آسیب‌زدن تفسیر می‌کند."),
+    ("social-detachment", "Social Detachment", "فاصله‌گیری اجتماعی", "interpersonal", "الگوی کاهش درگیری یا علاقه به روابط و تعاملات اجتماعی.", "فاصله‌گیری اجتماعی می‌تواند دلایل متفاوتی داشته باشد؛ تمایل پایین به نزدیکی با اجتناب ناشی از ترس ارزیابی یکسان نیست.", "فرد بیشتر فعالیت‌های انفرادی را ترجیح می‌دهد و تمایل کمی به روابط نزدیک نشان می‌دهد."),
+    ("unusual-beliefs", "Unusual Beliefs", "باورهای نامتعارف", "cognitive", "باورها یا تفسیرهایی غیرمعمول که از چارچوب رایج فرهنگی یا بین‌فردی فاصله دارند.", "برای ارزیابی باورهای نامتعارف باید زمینه فرهنگی، میزان قطعیت، انعطاف‌پذیری، تجربه‌های ادراکی و اثر بر عملکرد در نظر گرفته شود.", "فرد برای رویدادهای روزمره معناهای شخصی و غیرمعمولی قائل می‌شود."),
+    ("attention-seeking", "Attention Seeking", "جلب توجه", "interpersonal", "رفتارهایی که با هدف یا کارکرد قرارگرفتن در مرکز توجه یا دریافت واکنش دیگران انجام می‌شوند.", "جلب توجه به‌خودی‌خود تشخیص نیست و باید در زمینه انگیزه، الگوی پایدار روابط و پیامدهای عملکردی بررسی شود.", "فرد در موقعیت‌های گروهی مرتب شیوه گفت‌وگو را تغییر می‌دهد تا دوباره مرکز توجه شود."),
+    ("grandiosity", "Grandiosity", "بزرگ‌منشی", "cognitive", "ارزیابی اغراق‌شده از اهمیت، توانایی، جایگاه یا استحقاق خود.", "بزرگ‌منشی می‌تواند در زمینه‌های مختلف دیده شود و تفسیر آن به پایداری، شدت، زمینه خلقی و اثر بین‌فردی وابسته است.", "فرد خود را به‌طور پایدار بسیار برتر از دیگران می‌داند و انتظار برخورد ویژه دارد."),
+    ("dependency", "Dependency", "وابستگی", "interpersonal", "اتکای زیاد به دیگران برای تصمیم‌گیری، حمایت یا احساس توانایی در اداره موقعیت‌ها.", "وابستگی در یک پیوستار قرار دارد؛ در الگوهای مشکل‌ساز، نیاز به اطمینان و مراقبت می‌تواند استقلال و تصمیم‌گیری را محدود کند.", "فرد برای تصمیم‌های روزمره به تأیید مکرر دیگران نیاز دارد و از تنها ماندن بسیار ناراحت می‌شود."),
+]
+
+
+CONCEPT_RELATIONS = [
+    ("all-or-nothing-thinking", "cognitive-distortions", "part_of", "تفکر همه یا هیچ یکی از الگوهای رایج آموزش‌داده‌شده در مجموعه تحریف‌های شناختی است."),
+    ("catastrophizing", "cognitive-distortions", "part_of", "فاجعه‌سازی یکی از الگوهای رایج تفسیر جهت‌دار پیامدهاست."),
+    ("mind-reading", "cognitive-distortions", "part_of", "ذهن‌خوانی نمونه‌ای از نتیجه‌گیری درباره ذهن دیگران بدون شواهد کافی است."),
+    ("core-beliefs", "automatic-thoughts", "influences", "باورهای کلی می‌توانند احتمال و محتوای افکار خودکار را جهت دهند."),
+    ("automatic-thoughts", "cognitive-distortions", "related", "افکار خودکار ممکن است شامل تحریف باشند، اما هر فکر خودکار الزاماً تحریف‌شده نیست."),
+    ("worry", "rumination", "contrasts", "نگرانی معمولاً آینده‌محورتر و نشخوار فکری بیشتر حول گذشته یا حالت فعلی است، هرچند همپوشانی دارند."),
+    ("intrusive-thoughts", "compulsions", "influences", "در برخی چرخه‌های وسواسی، معنای تهدیدآمیز فکر مزاحم می‌تواند عمل اجباری را برانگیزد."),
+    ("avoidance", "safety-behaviors", "related", "هر دو می‌توانند از مواجهه کامل با موقعیت ترسناک یا آزمون باورهای تهدیدآمیز جلوگیری کنند."),
+    ("exposure", "avoidance", "contrasts", "مواجهه به‌طور هدفمند حرکت به‌سمت تجربه ترسناک را در برابر الگوی اجتناب تمرین می‌کند."),
+    ("rejection-sensitivity", "emotion-regulation", "influences", "برداشت سریع از طرد می‌تواند شدت هیجان و نیاز به تنظیم آن را افزایش دهد."),
+    ("emotion-regulation", "impulsivity", "related", "مشکلات تنظیم هیجان می‌توانند در برخی زمینه‌ها با پاسخ‌های تکانشی همراه شوند."),
+    ("mania", "hypomania", "contrasts", "هر دو با افزایش انرژی و تغییر خلق مرتبط‌اند، اما شدت و پیامد عملکردی برای افتراق مهم است."),
+    ("rumination", "anhedonia", "related", "نشخوار فکری و کاهش درگیری با فعالیت‌های تقویت‌کننده می‌توانند در الگوهای افسردگی همزمان دیده شوند."),
+    ("behavioral-activation", "rumination", "contrasts", "فعال‌سازی رفتاری توجه را از درگیری منفعلانه با فکر به اقدام برنامه‌ریزی‌شده و معنادار منتقل می‌کند."),
+]
+
+
+DISORDER_CONCEPTS = [
+    ("panic-disorder", "panic-attack", "core"), ("panic-disorder", "avoidance", "maintaining"), ("panic-disorder", "safety-behaviors", "maintaining"), ("panic-disorder", "exposure", "treatment"),
+    ("generalized-anxiety-disorder", "worry", "core"), ("generalized-anxiety-disorder", "avoidance", "associated"),
+    ("social-anxiety-disorder", "avoidance", "core"), ("social-anxiety-disorder", "safety-behaviors", "maintaining"), ("social-anxiety-disorder", "mind-reading", "associated"), ("social-anxiety-disorder", "rejection-sensitivity", "associated"), ("social-anxiety-disorder", "exposure", "treatment"),
+    ("specific-phobia", "avoidance", "core"), ("specific-phobia", "exposure", "treatment"), ("agoraphobia", "avoidance", "core"), ("agoraphobia", "exposure", "treatment"),
+    ("obsessive-compulsive-disorder", "intrusive-thoughts", "core"), ("obsessive-compulsive-disorder", "compulsions", "core"), ("obsessive-compulsive-disorder", "avoidance", "maintaining"), ("obsessive-compulsive-disorder", "exposure", "treatment"),
+    ("major-depressive-disorder", "anhedonia", "core"), ("major-depressive-disorder", "rumination", "maintaining"), ("major-depressive-disorder", "automatic-thoughts", "associated"), ("major-depressive-disorder", "core-beliefs", "associated"), ("major-depressive-disorder", "behavioral-activation", "treatment"),
+    ("persistent-depressive-disorder", "anhedonia", "associated"), ("persistent-depressive-disorder", "rumination", "associated"),
+    ("bipolar-i-disorder", "mania", "core"), ("bipolar-ii-disorder", "hypomania", "core"), ("bipolar-ii-disorder", "anhedonia", "associated"), ("cyclothymic-disorder", "hypomania", "differential"),
+    ("post-traumatic-stress-disorder", "hyperarousal", "core"), ("post-traumatic-stress-disorder", "dissociation", "associated"), ("post-traumatic-stress-disorder", "avoidance", "core"), ("post-traumatic-stress-disorder", "exposure", "treatment"),
+    ("acute-stress-disorder", "dissociation", "associated"), ("acute-stress-disorder", "hyperarousal", "associated"),
+    ("borderline-personality-disorder", "emotion-regulation", "core"), ("borderline-personality-disorder", "rejection-sensitivity", "associated"), ("borderline-personality-disorder", "impulsivity", "associated"),
+    ("avoidant-personality-disorder", "rejection-sensitivity", "core"), ("avoidant-personality-disorder", "avoidance", "core"),
+    ("obsessive-compulsive-personality-disorder", "perfectionism", "core"),
+    ("body-dysmorphic-disorder", "safety-behaviors", "associated"), ("body-dysmorphic-disorder", "intrusive-thoughts", "associated"),
+    ("separation-anxiety-disorder", "separation-distress", "core"), ("separation-anxiety-disorder", "worry", "associated"), ("separation-anxiety-disorder", "avoidance", "associated"),
+    ("hoarding-disorder", "difficulty-discarding", "core"),
+    ("trichotillomania", "body-focused-repetitive-behaviors", "core"), ("excoriation-disorder", "body-focused-repetitive-behaviors", "core"),
+    ("premenstrual-dysphoric-disorder", "cyclical-mood-symptoms", "core"), ("premenstrual-dysphoric-disorder", "emotion-regulation", "associated"),
+    ("adjustment-disorder", "stressor-linked-distress", "core"), ("adjustment-disorder", "emotion-regulation", "associated"),
+    ("paranoid-personality-disorder", "mistrust", "core"),
+    ("schizoid-personality-disorder", "social-detachment", "core"),
+    ("schizotypal-personality-disorder", "unusual-beliefs", "core"), ("schizotypal-personality-disorder", "social-detachment", "associated"),
+    ("antisocial-personality-disorder", "impulsivity", "associated"),
+    ("histrionic-personality-disorder", "attention-seeking", "core"), ("histrionic-personality-disorder", "emotion-regulation", "associated"),
+    ("narcissistic-personality-disorder", "grandiosity", "core"), ("narcissistic-personality-disorder", "rejection-sensitivity", "associated"),
+    ("dependent-personality-disorder", "dependency", "core"), ("dependent-personality-disorder", "rejection-sensitivity", "associated"),
+]
+
+
+FLASHCARDS = [
+    ("fc-panic-attack", "حمله پانیک چیست؟", "افزایش ناگهانی ترس یا ناراحتی شدید که در مدت کوتاهی به اوج می‌رسد؛ به‌خودی‌خود نام یک اختلال نیست.", "panic-attack", "panic-disorder"),
+    ("fc-avoidance", "اجتناب چگونه می‌تواند چرخه اضطراب را حفظ کند؟", "با کاهش کوتاه‌مدت اضطراب، فرصت آزمون تهدید و یادگیری اصلاحی را محدود می‌کند.", "avoidance", None),
+    ("fc-safety", "رفتار ایمنی چیست؟", "رفتاری برای پیشگیری از پیامد ترسناک یا تحمل موقعیت که ممکن است آزمون واقعی باور تهدیدآمیز را محدود کند.", "safety-behaviors", None),
+    ("fc-worry", "تفاوت ساده نگرانی با نشخوار فکری چیست؟", "نگرانی معمولاً آینده‌محورتر است؛ نشخوار بیشتر گذشته یا ناراحتی فعلی را بارها مرور می‌کند.", "worry", "generalized-anxiety-disorder"),
+    ("fc-intrusive", "فکر مزاحم به‌تنهایی چه چیزی را ثابت نمی‌کند؟", "وجود فکر مزاحم به‌تنهایی وجود اختلال را ثابت نمی‌کند؛ پاسخ فرد و اثر عملکردی مهم‌اند.", "intrusive-thoughts", "obsessive-compulsive-disorder"),
+    ("fc-compulsion", "عمل اجباری در چرخه OCD چه نقشی دارد؟", "اغلب برای کاهش پریشانی یا جلوگیری از پیامد ترسناک انجام می‌شود و کاهش اضطراب معمولاً موقتی است.", "compulsions", "obsessive-compulsive-disorder"),
+    ("fc-anhedonia", "Anhedonia یعنی چه؟", "کاهش محسوس علاقه یا توان تجربه لذت از فعالیت‌هایی که قبلاً لذت‌بخش بوده‌اند.", "anhedonia", "major-depressive-disorder"),
+    ("fc-rumination", "نشخوار فکری چیست؟", "فکرکردن تکراری و منفعلانه درباره ناراحتی، علت‌ها یا پیامدهای آن بدون حرکت مؤثر به سمت حل مسئله.", "rumination", "major-depressive-disorder"),
+    ("fc-ba", "هدف ساده فعال‌سازی رفتاری چیست؟", "افزایش تدریجی فعالیت‌های معنادار و تقویت‌کننده برای شکستن چرخه کناره‌گیری و کاهش فعالیت.", "behavioral-activation", "major-depressive-disorder"),
+    ("fc-mania", "در افتراق مانیا و هیپومانیا چه بعدی مهم است؟", "شدت، اختلال عملکرد و پیامدهای دوره در کنار الگوی نشانه‌ها.", "mania", "bipolar-i-disorder"),
+    ("fc-hypomania", "هیپومانیا چه تفاوت کلی با مانیا دارد؟", "افزایش خلق و انرژی وجود دارد اما شدت و پیامد عملکردی آن با مانیا کامل یکسان نیست.", "hypomania", "bipolar-ii-disorder"),
+    ("fc-hyperarousal", "برانگیختگی بالا پس از تروما می‌تواند چگونه دیده شود؟", "مثلاً گوش‌به‌زنگی، واکنش از جا پریدن و واکنش‌پذیری بالا.", "hyperarousal", "post-traumatic-stress-disorder"),
+    ("fc-dissociation", "گسستگی چیست؟", "گسست در تجربه یکپارچه آگاهی، حافظه، هویت یا ادراک که شدت و شکل‌های متفاوتی دارد.", "dissociation", None),
+    ("fc-rejection", "حساسیت به طرد چیست؟", "انتظار یا تشخیص سریع طرد و واکنش شدید به نشانه‌های احتمالی کنارگذاشته‌شدن.", "rejection-sensitivity", None),
+    ("fc-regulation", "تنظیم هیجان به چه معناست؟", "فرایندهایی که شدت، مدت یا شیوه تجربه و بیان هیجان را تعدیل می‌کنند.", "emotion-regulation", None),
+    ("fc-impulsivity", "تعریف ساده تکانشگری چیست؟", "عمل سریع با توجه ناکافی به پیامدهای بعدی.", "impulsivity", None),
+    ("fc-perfectionism", "چه زمانی کمال‌گرایی می‌تواند مشکل‌ساز شود؟", "وقتی استانداردهای سخت‌گیرانه، ترس از اشتباه یا پیوند ارزش شخصی با عملکرد باعث اختلال و انعطاف‌ناپذیری شوند.", "perfectionism", "obsessive-compulsive-personality-disorder"),
+    ("fc-distortions", "تحریف شناختی چیست؟", "الگوی جهت‌دار و غیرمنعطف در تفسیر اطلاعات که نتیجه‌گیری را از شواهد موجود دور می‌کند.", "cognitive-distortions", None),
+    ("fc-all-or-nothing", "«اگر ۲۰ نگیرم کاملاً شکست خورده‌ام» نمونه چیست؟", "تفکر همه یا هیچ.", "all-or-nothing-thinking", None),
+    ("fc-catastrophizing", "«اگر مکث کنم آبرویم برای همیشه می‌رود» نمونه چیست؟", "فاجعه‌سازی.", "catastrophizing", None),
+    ("fc-mind-reading", "«او ساکت است پس حتماً من را بی‌عرضه می‌داند» نمونه چیست؟", "ذهن‌خوانی.", "mind-reading", None),
+    ("fc-automatic", "افکار خودکار چه ویژگی دارند؟", "سریع و کوتاه در پاسخ به موقعیت ظاهر می‌شوند و ممکن است ابتدا بدیهی به نظر برسند.", "automatic-thoughts", None),
+    ("fc-core-beliefs", "باور هسته‌ای چیست؟", "باور عمیق و کلی درباره خود، دیگران یا جهان که می‌تواند تفسیر تجربه‌ها را جهت دهد.", "core-beliefs", None),
+    ("fc-exposure", "مواجهه در یک جمله چیست؟", "رویارویی برنامه‌ریزی‌شده با محرک یا تجربه ترسناک برای ایجاد فرصت یادگیری جدید به جای تکیه کامل بر اجتناب.", "exposure", None),
+    ("fc-panic-vs-gad", "Panic Disorder و GAD در یک خط چه تفاوتی دارند؟", "پانیک با حملات ناگهانی برجسته است؛ GAD با نگرانی گسترده و پایدار درباره چند حوزه.", None, "panic-disorder"),
+    ("fc-ocd-vs-ocpd", "OCD و OCPD یکی هستند؟", "نه. OCD حول وسواس و اجبار است؛ OCPD الگوی شخصیتی پایدار کمال‌گرایی، نظم و کنترل است.", None, "obsessive-compulsive-disorder"),
+    ("fc-bipolar-i-ii", "تفاوت آموزشی مهم Bipolar I و II چیست؟", "وجود سابقه مانیا کامل در Bipolar I؛ Bipolar II با هیپومانیا و دوره‌های افسردگی تعریف می‌شود.", None, "bipolar-i-disorder"),
+    ("fc-ptsd-asd", "PTSD و Acute Stress Disorder در چه بعدی مهم افتراق دارند؟", "زمان‌بندی نشانه‌ها پس از تروما یکی از ابعاد مهم افتراق است.", None, "post-traumatic-stress-disorder"),
+    ("fc-social-avoidant", "Social Anxiety و Avoidant PD چرا ممکن است اشتباه شوند؟", "هر دو می‌توانند ترس از ارزیابی و اجتناب اجتماعی داشته باشند؛ در شخصیت اجتنابی الگو فراگیرتر و پایدارتر است.", None, "social-anxiety-disorder"),
+    ("fc-depression-bipolar", "در ارزیابی افسردگی چرا سابقه خلق بالا مهم است؟", "برای بررسی احتمال طیف دوقطبی و جلوگیری از تفسیر ناقص الگوی خلق.", None, "major-depressive-disorder"),
+    ("fc-separation-distress", "پریشانی جدایی به چه معناست؟", "اضطراب یا ناراحتی قابل توجه هنگام جدایی واقعی یا پیش‌بینی‌شده از فرد دلبستگی.", "separation-distress", "separation-anxiety-disorder"),
+    ("fc-discarding", "مفهوم محوری در اختلال احتکار چیست؟", "دشواری پایدار در دور ریختن یا جداشدن از اشیا همراه با ناراحتی و نیاز ادراک‌شده به نگه‌داشتن آن‌ها.", "difficulty-discarding", "hoarding-disorder"),
+    ("fc-bfrb", "رفتارهای تکراری متمرکز بر بدن به چه گروهی اشاره دارد؟", "رفتارهای تکراری مانند کندن مو یا پوست که روی بدن متمرکزند و کنترل آن‌ها می‌تواند دشوار باشد.", "body-focused-repetitive-behaviors", None),
+    ("fc-cyclical-mood", "برای بررسی نشانه‌های خلقی چرخه‌ای چه چیزی مهم است؟", "ثبت زمان شروع و پایان نشانه‌ها در چند چرخه برای دیدن الگوی زمانی تکرارشونده.", "cyclical-mood-symptoms", "premenstrual-dysphoric-disorder"),
+    ("fc-stressor-linked", "در پریشانی مرتبط با عامل استرس‌زا چه رابطه‌ای باید بررسی شود؟", "رابطه زمانی میان عامل استرس‌زای قابل شناسایی، شروع ناراحتی و تغییر عملکرد.", "stressor-linked-distress", "adjustment-disorder"),
+    ("fc-mistrust", "بی‌اعتمادی در یک تعریف آموزشی چیست؟", "انتظار یا تفسیر مکرر رفتار دیگران به‌عنوان غیرقابل اعتماد یا دارای نیت منفی، که باید با زمینه و شواهد بررسی شود.", "mistrust", "paranoid-personality-disorder"),
+    ("fc-social-detachment", "فاصله‌گیری اجتماعی با اجتناب ناشی از ترس یکسان است؟", "نه. فاصله‌گیری می‌تواند با تمایل کم به نزدیکی همراه باشد، در حالی که اجتناب اجتماعی ممکن است با میل به رابطه و ترس از ارزیابی همزمان باشد.", "social-detachment", "schizoid-personality-disorder"),
+    ("fc-unusual-beliefs", "در ارزیابی باورهای نامتعارف چه چیزی باید در نظر گرفته شود؟", "زمینه فرهنگی، میزان قطعیت و انعطاف‌پذیری باور، تجربه‌های ادراکی و اثر بر عملکرد.", "unusual-beliefs", "schizotypal-personality-disorder"),
+    ("fc-attention-seeking", "چرا جلب توجه به‌تنهایی تشخیص نیست؟", "چون باید انگیزه، پایداری الگو، زمینه روابط و اثر عملکردی آن بررسی شود.", "attention-seeking", "histrionic-personality-disorder"),
+    ("fc-grandiosity", "بزرگ‌منشی چیست؟", "ارزیابی اغراق‌شده از اهمیت، توانایی، جایگاه یا استحقاق خود که تفسیر آن به زمینه و پایداری الگو وابسته است.", "grandiosity", "narcissistic-personality-disorder"),
+    ("fc-dependency", "وابستگی در چه زمانی می‌تواند مشکل‌ساز شود؟", "وقتی اتکای زیاد به دیگران برای تصمیم‌گیری و اطمینان، استقلال و عملکرد فرد را محدود کند.", "dependency", "dependent-personality-disorder"),
+]
+
+
+CHALLENGES = [
+    ("فرد می‌گوید: «اگر نمره‌ام عالی نشود، یعنی کاملاً شکست خورده‌ام.» نزدیک‌ترین مفهوم چیست؟", ["تفکر همه یا هیچ", "ذهن‌خوانی", "گسستگی", "برانگیختگی بالا"], 0, "این جمله یک طیف را به دو قطب موفقیت کامل یا شکست کامل تبدیل می‌کند.", "all-or-nothing-thinking", None),
+    ("کدام مفهوم بیشتر آینده‌محور و درباره پیامدهای احتمالی است؟", ["نگرانی", "نشخوار فکری", "فقدان لذت", "مانیا"], 0, "نگرانی معمولاً آینده‌محورتر از نشخوار فکری است.", "worry", "generalized-anxiety-disorder"),
+    ("رفتاری که برای جلوگیری از خجالت در جمع به آن تکیه می‌کنیم و ممکن است باور ترسناک را آزمایش‌نشده نگه دارد چیست؟", ["رفتار ایمنی", "فعال‌سازی رفتاری", "گسستگی", "باور هسته‌ای"], 0, "رفتارهای ایمنی می‌توانند تجربه کامل موقعیت و آزمون پیش‌بینی را محدود کنند.", "safety-behaviors", "social-anxiety-disorder"),
+    ("«دوستم جواب نداده، پس حتماً از من بدش می‌آید» نزدیک‌ترین تحریف کدام است؟", ["ذهن‌خوانی", "فاجعه‌سازی", "همه یا هیچ", "اجتناب"], 0, "در ذهن‌خوانی درباره فکر دیگران بدون شواهد کافی نتیجه قطعی گرفته می‌شود.", "mind-reading", None),
+    ("کدام مفهوم یکی از نشانه‌های مهم در الگوهای افسردگی است؟", ["فقدان لذت", "کاهش نیاز به خواب در مانیا", "اعمال اجباری", "حمله پانیک"], 0, "کاهش علاقه یا توان لذت یکی از مفاهیم مهم در ارزیابی افسردگی است.", "anhedonia", "major-depressive-disorder"),
+    ("کدام گزینه در یک چرخه وسواسی می‌تواند پس از فکر مزاحم برای کاهش موقت اضطراب رخ دهد؟", ["عمل اجباری", "مانیا", "فعال‌سازی رفتاری", "ذهن‌خوانی"], 0, "اعمال اجباری در برخی چرخه‌های OCD برای کاهش پریشانی انجام می‌شوند.", "compulsions", "obsessive-compulsive-disorder"),
+    ("در یک برنامه مواجهه، هدف اصلی کدام است؟", ["حرکت برنامه‌ریزی‌شده به سمت موقعیت ترسناک و یادگیری جدید", "حذف کامل هر اضطراب قبل از شروع", "تکیه بیشتر بر رفتارهای ایمنی", "اجتناب از همه محرک‌ها"], 0, "مواجهه فرصت یادگیری جدید را در تماس با تجربه ترسناک فراهم می‌کند.", "exposure", None),
+    ("کدام مفهوم با کاهش محسوس علاقه یا لذت تعریف می‌شود؟", ["Anhedonia", "Impulsivity", "Dissociation", "Worry"], 0, "Anhedonia به کاهش علاقه یا توان تجربه لذت اشاره دارد.", "anhedonia", None),
+    ("فرد ساعت‌ها اشتباه مکالمه دیروز را بدون رسیدن به اقدام مؤثر مرور می‌کند. نزدیک‌ترین مفهوم چیست؟", ["نشخوار فکری", "نگرانی", "مواجهه", "هیپومانیا"], 0, "نشخوار فکری معمولاً به مرور تکراری ناراحتی، علت‌ها یا پیامدهای آن اشاره دارد.", "rumination", None),
+    ("برای افتراق Bipolar I و II کدام مفهوم کلیدی‌تر است؟", ["مانیا کامل", "فوبیای خاص", "عمل اجباری", "ذهن‌خوانی"], 0, "وجود سابقه مانیا کامل برای Bipolar I اهمیت مرکزی دارد.", "mania", "bipolar-i-disorder"),
+    ("پس از تروما، واکنش شدید از جا پریدن و گوش‌به‌زنگی بیشتر با کدام مفهوم مرتبط است؟", ["برانگیختگی بالا", "فقدان لذت", "کمال‌گرایی", "افکار خودکار"], 0, "این الگو با hyperarousal سازگارتر است.", "hyperarousal", "post-traumatic-stress-disorder"),
+    ("کدام جمله درباره فکر مزاحم دقیق‌تر است؟", ["وجود آن به‌تنهایی اختلال را ثابت نمی‌کند", "همیشه نشانه روان‌پریشی است", "همیشه باید با عمل اجباری همراه باشد", "فقط در OCD دیده می‌شود"], 0, "فکر مزاحم می‌تواند در افراد مختلف رخ دهد؛ الگوی پاسخ و اثر عملکردی برای ارزیابی مهم‌اند.", "intrusive-thoughts", None),
+]
+
+
+def seed_v3_content(disorder_objs, source_objs):
+    concept_objs = {}
+    for slug, en, fa, kind, simple, academic, example in CONCEPTS:
+        concept, _ = Concept.objects.update_or_create(
+            slug=slug,
+            defaults={
+                "name_en": en,
+                "name_fa": fa,
+                "kind": kind,
+                "simple_definition": simple,
+                "academic_definition": academic,
+                "example": example,
+                "is_active": True,
+            },
+        )
+        concept_objs[slug] = concept
+
+    for source_slug, target_slug, relation_type, explanation in CONCEPT_RELATIONS:
+        ConceptRelationship.objects.update_or_create(
+            source_concept=concept_objs[source_slug],
+            target_concept=concept_objs[target_slug],
+            relationship_type=relation_type,
+            defaults={"explanation": explanation},
+        )
+
+    for order, (disorder_slug, concept_slug, role) in enumerate(DISORDER_CONCEPTS):
+        DisorderConcept.objects.update_or_create(
+            disorder=disorder_objs[disorder_slug],
+            concept=concept_objs[concept_slug],
+            role=role,
+            defaults={"sort_order": order},
+        )
+
+    for concept in concept_objs.values():
+        for source in source_objs:
+            ConceptSource.objects.get_or_create(concept=concept, source=source)
+
+    for order, (slug, front, back, concept_slug, disorder_slug) in enumerate(FLASHCARDS):
+        Flashcard.objects.update_or_create(
+            slug=slug,
+            defaults={
+                "front": front,
+                "back": back,
+                "concept": concept_objs.get(concept_slug) if concept_slug else None,
+                "disorder": disorder_objs.get(disorder_slug) if disorder_slug else None,
+                "difficulty": "basic" if order < 18 else "intermediate",
+                "sort_order": order,
+                "is_active": True,
+            },
+        )
+
+    for order, (prompt, choices, correct_index, explanation, concept_slug, disorder_slug) in enumerate(CHALLENGES):
+        challenge = DailyChallenge.objects.filter(sort_order=order).order_by("id").first()
+        defaults = {
+            "prompt": prompt,
+            "explanation": explanation,
+            "concept": concept_objs.get(concept_slug) if concept_slug else None,
+            "disorder": disorder_objs.get(disorder_slug) if disorder_slug else None,
+            "sort_order": order,
+            "is_active": True,
+        }
+        if challenge:
+            for key, value in defaults.items():
+                setattr(challenge, key, value)
+            challenge.save()
+        else:
+            challenge = DailyChallenge.objects.create(**defaults)
+        for choice_order, text in enumerate(choices):
+            choice = DailyChallengeChoice.objects.filter(challenge=challenge, sort_order=choice_order).order_by("id").first()
+            values = {"text": text, "is_correct": choice_order == correct_index, "sort_order": choice_order}
+            if choice:
+                choice.text = values["text"]
+                choice.is_correct = values["is_correct"]
+                choice.save(update_fields=("text", "is_correct", "sort_order"))
+            else:
+                DailyChallengeChoice.objects.create(challenge=challenge, **values)
+
+    return {
+        "concepts": len(CONCEPTS),
+        "flashcards": len(FLASHCARDS),
+        "daily_challenges": len(CHALLENGES),
+    }

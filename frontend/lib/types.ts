@@ -8,6 +8,44 @@ export type Disorder = {
   category_slug: string;
 };
 
+export type Concept = {
+  id: number;
+  slug: string;
+  name_en: string;
+  name_fa: string;
+  kind: string;
+  kind_label?: string;
+  simple_definition: string;
+};
+
+export type ConceptDetail = Concept & {
+  academic_definition: string;
+  example: string;
+  relationships: {
+    slug: string;
+    name_en: string;
+    name_fa: string;
+    relationship_type: string;
+    direction: "incoming" | "outgoing";
+    explanation: string;
+  }[];
+  disorders: {
+    role: string;
+    explanation: string;
+    disorder: Disorder;
+  }[];
+  sources: {
+    id: number;
+    title: string;
+    organization: string;
+    citation?: string;
+    url: string;
+    publication_year?: number | null;
+    source_type?: string;
+  }[];
+  flashcard_count: number;
+};
+
 export type DisorderDetail = Disorder & {
   overview: string;
   clinical_features: string;
@@ -30,6 +68,14 @@ export type DisorderDetail = Disorder & {
     name_en: string;
     name_fa: string;
     relationship_type: string;
+    explanation: string;
+  }[];
+  concepts: {
+    slug: string;
+    name_en: string;
+    name_fa: string;
+    kind: string;
+    role: string;
     explanation: string;
   }[];
   sources: {
@@ -96,4 +142,68 @@ export type UserNote = {
   exists?: boolean;
   updated_at?: string;
   disorder?: Disorder;
+};
+
+export type ConceptNote = {
+  id?: number;
+  body: string;
+  exists?: boolean;
+  updated_at?: string;
+  concept?: Concept;
+};
+
+export type Flashcard = {
+  id: number;
+  slug: string;
+  front: string;
+  back: string;
+  hint: string;
+  difficulty: string;
+  concept: Concept | null;
+  disorder: Disorder | null;
+};
+
+export type FlashcardProgress = {
+  flashcard: Flashcard;
+  state: string;
+  due_at: string;
+  interval_days: number;
+  ease_factor: number;
+  repetitions: number;
+  lapses: number;
+  last_rating: string;
+  last_reviewed_at: string | null;
+};
+
+export type ReviewQueueItem = {
+  is_new: boolean;
+  flashcard: Flashcard;
+  progress: FlashcardProgress | null;
+};
+
+export type DailyChallenge = {
+  id: number;
+  prompt: string;
+  date: string;
+  choices: { id: number; text: string }[];
+  concept: Concept | null;
+  disorder: Disorder | null;
+  attempt: null | {
+    selected_choice_id: number;
+    correct: boolean;
+    explanation: string;
+  };
+};
+
+export type SearchResults = {
+  query: string;
+  disorders: Disorder[];
+  concepts: Concept[];
+  symptoms: {
+    slug: string;
+    name_en: string;
+    name_fa: string;
+    description: string;
+    domain: string;
+  }[];
 };
