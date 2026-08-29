@@ -1,6 +1,6 @@
 # Psychology Atlas Product Spec
 
-## Current implemented version: v0.3 Study Engine + Knowledge Graph
+## Current implemented version: v0.3.1 Study Engine + Knowledge Graph · Disorders Explorer
 
 Psychology Atlas is an interactive educational system for psychology students. It should behave as a connected learning system, not as a psychology blog and not as a diagnostic product.
 
@@ -22,14 +22,17 @@ Psychology Atlas is an interactive educational system for psychology students. I
 
 ### Disorders Atlas
 
-- 30 active disorders
-- 7 categories
-- structured symptoms
-- differential/related disorder relationships
+- 241 active canonical Disorder pages
+- 20 DSM disorder chapters + 1 supplemental medication/adverse-effects section
+- 30 curated pages preserved + 211 DSM-generated pages
+- Persian + English names across the full canonical catalog
+- structured symptoms and curated differential/related disorder relationships where available
+- linked DSM MASTER educational profiles for every canonical formal diagnosis
 - assessment/treatment/course educational summaries
 - source metadata
-- related quizzes/cases/concepts
+- related quizzes/cases/concepts where curated learning links exist
 - private bookmark/note/progress
+- v0.3.1 chapter-oriented Disorders Explorer with deep search, grid/compact views and browser-local recently viewed history
 
 ### Concepts Atlas
 
@@ -45,7 +48,7 @@ Psychology Atlas is an interactive educational system for psychology students. I
 - flashcards
 - private bookmark/note/progress
 
-Every active seeded Disorder currently has at least one Concept link.
+Every one of the 30 curated seeded Disorders currently has at least one Concept link. DSM-generated Disorder pages may rely primarily on their MASTER profile until later cross-domain enrichment.
 Every active seeded Concept currently has at least one active Flashcard.
 
 ### Knowledge Graph V1
@@ -58,14 +61,24 @@ Disorder ↔ Concept
 Disorder → Symptom
 ```
 
-Seeded graph baseline:
+Original curated graph baseline:
 
 ```text
 35 Concept nodes
-30 Disorder nodes
+30 curated Disorder nodes
 30 Symptom nodes
 95 total nodes
-144 total edges
+144 base Atlas edges
+```
+
+Current graph after the full DSM diagnosis catalog sync:
+
+```text
+35 Concept nodes
+241 canonical Disorder nodes
+30 Symptom nodes
+306 total nodes
+714 total edges, including 570 DSM nearby-title edges between canonical Disorder pages
 ```
 
 The graph must use explicit structured relationships. Do not invent similarity percentages.
@@ -215,7 +228,7 @@ The following data is private per authenticated user:
 
 Seed updates must not intentionally delete these records.
 
-## Still outside v0.3
+## Still outside v0.3.1
 
 These are intentionally deferred rather than partially implemented placeholders:
 
@@ -259,4 +272,18 @@ Quizzes / Flashcards / Daily Practice
 Personal study plan and mastery
 ```
 
-v0.3 establishes the reusable learning and Knowledge Graph foundation before expanding into the remaining psychology domains.
+v0.3.1 finishes the navigation and Disorders Explorer UX layer on top of the v0.3 learning/graph foundation before expansion into the remaining psychology domains.
+
+## Version roadmap
+
+```text
+v0.4  Full Concept Graph + Cognitive Distortions
+v0.5  Therapy Atlas
+v0.6  Psychologists + Theories + Timeline
+v0.7  Advanced Branching Clinical Cases + Analytics
+v0.8  Study Mode + Exam Planning + Advanced Recommendations
+v0.9  Brain Atlas + Assessments Atlas
+v1.0  Admin CMS + Scientific Review + Full cross-domain integration
+```
+
+v0.3.1 is intentionally a sub-release; it does not consume or move the scope planned for v0.4.

@@ -1,7 +1,7 @@
 {
   "project": "Psychology Atlas",
-  "version": "0.3.0",
-  "release_name": "Study Engine + Knowledge Graph",
+  "version": "0.3.1",
+  "release_name": "Study Engine + Knowledge Graph · Disorders Explorer",
   "stack": {
     "frontend": "Next.js 16.3.3 + React 19 + TypeScript",
     "backend": "Django 5.2 + Django REST Framework",
@@ -29,6 +29,11 @@
     "dsm_master_disorder_detail_tab",
     "dsm_master_full_diagnosis_catalog_sync",
     "bilingual_disorder_names",
+    "navigation_context_rail",
+    "disorders_chapter_explorer",
+    "disorders_grid_and_compact_views",
+    "recently_viewed_disorders",
+    "disorder_search_keyboard_shortcut",
     "atlas_graph_dsm_nearby_edges",
     "disorder_concept_links",
     "disorder_symptom_graph_edges",
@@ -123,7 +128,9 @@
     "atlas_graph_initial_html": "~11.5 KB after lazy graph loading",
     "hidden_daily_challenge_answer_check": "pass",
     "authenticated_v3_user_flow": "pass",
-    "temporary_audit_user_cleanup": "pass"
+    "temporary_audit_user_cleanup": "pass",
+    "v031_disorders_explorer": "chapter rail / deep search / grid+compact views / recently viewed / responsive mobile selector",
+    "v031_disorders_explorer_headless_e2e": "pass · hydrated catalog / 241 count / Neurodevelopmental chapter / persisted recently viewed Autism"
   },
   "release_notes": {
     "graph_layers": [
@@ -139,6 +146,15 @@
       "daily challenge attempts",
       "study activity"
     ],
+    "roadmap": {
+      "0.4": "Full Concept Graph + Cognitive Distortions",
+      "0.5": "Therapy Atlas",
+      "0.6": "Psychologists + Theories + Timeline",
+      "0.7": "Advanced Branching Clinical Cases + Analytics",
+      "0.8": "Study Mode + Exam Planning + Advanced Recommendations",
+      "0.9": "Brain Atlas + Assessments Atlas",
+      "1.0": "Admin CMS + Scientific Review + Full cross-domain integration"
+    },
     "deliberately_deferred": [
       "Therapy Atlas",
       "Psychologists Atlas",

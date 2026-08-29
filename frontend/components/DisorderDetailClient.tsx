@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import BookmarkButton from "./BookmarkButton";
 import ConceptMap from "./ConceptMap";
 import NoteEditor from "./NoteEditor";
 import ProgressTracker from "./ProgressTracker";
 import { StructuredValue } from "./DSMRecordView";
 import type { DSMRecordDetail, DisorderDetail } from "@/lib/types";
+import { rememberDisorder } from "@/lib/recentlyViewed";
 
 const tabs = [
   ["overview", "معرفی"],
@@ -46,6 +47,10 @@ function domainLabel(value: string) {
 
 export default function DisorderDetailClient({ disorder: d, dsmMaster = null }: { disorder: DisorderDetail; dsmMaster?: DSMRecordDetail | null }) {
   const [active, setActive] = useState<TabId>("overview");
+
+  useEffect(() => {
+    rememberDisorder(d);
+  }, [d]);
 
   return (
     <>

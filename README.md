@@ -1,6 +1,6 @@
-# Psychology Atlas — v0.3 Study Engine + Knowledge Graph
+# Psychology Atlas — v0.3.1 Study Engine + Knowledge Graph · Disorders Explorer
 
-یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. نسخه ۰.۳ هسته v0.2 را حفظ می‌کند و یک چرخه یادگیری واقعی روی آن می‌سازد: مطالعه، تمرین، سنجش، تشخیص ضعف، زمان‌بندی مرور و مرور دوباره.
+یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. نسخه ۰.۳.۱ هسته Study Engine و Knowledge Graph نسخه ۰.۳ را حفظ می‌کند و تجربه مرور کاتالوگ ۲۴۱ اختلال را با Disorders Explorer فصل‌محور تکمیل می‌کند.
 
 > این نرم‌افزار آموزشی است و ابزار تشخیص، درمان یا جایگزین ارزیابی حرفه‌ای نیست.
 
@@ -13,7 +13,7 @@
 - **Database later:** PostgreSQL-ready through Django ORM + migrations
 - **Content:** deterministic/idempotent seed command, no content-admin UI yet
 
-## v0.3 content
+## v0.3.1 content
 
 - **241 canonical disorder pages** across 20 DSM chapters + 1 supplemental medication/adverse-effects section
 - **30 structured symptoms**
@@ -29,6 +29,7 @@
 - **243 formal-diagnosis MASTER records → 241 canonical Atlas disorder pages**; 2 duplicate structural occurrences remain independently addressable in DSM MASTER but collapse to one Disorder page each
 - **30 curated disorder pages preserved + 211 DSM-generated disorder pages**
 - **22 Neurodevelopmental Disorder pages**, including Autism Spectrum Disorder and Attention-Deficit/Hyperactivity Disorder
+- **Disorders Explorer v0.3.1:** sticky chapter rail, responsive chapter selector, deep Persian/English search, grid/compact view modes, keyboard `/` focus shortcut, and browser-local recently viewed disorders
 
 ## DSM-5-TR Persian MASTER reference layer
 
@@ -76,7 +77,7 @@ python manage.py import_dsm_master --dry-run
 
 The bundle itself states that it is an educational/structural reference, not verbatim DSM diagnostic criteria, not an automated diagnostic tool, and not a substitute for current professional coding or individualized treatment guidance. Proposed/non-final changes remain distinct from approved updates.
 
-## Core v0.3 features
+## Core v0.3.1 features
 
 ### Concepts Atlas
 
@@ -465,7 +466,7 @@ POST /api/cases/<slug>/submit/
 
 ## Release validation baseline
 
-Validated on the current v0.3 working tree after the DSM MASTER integration:
+Validated on the current v0.3.1 working tree after the DSM MASTER integration and Disorders Explorer UX release:
 
 ```text
 Django system check                  PASS
@@ -485,11 +486,12 @@ TypeScript typecheck                 PASS
 Next.js production build             PASS
 npm audit --audit-level=low           0 vulnerabilities
 Frontend main-route smoke test        PASS
+Disorders Explorer hydrated E2E       PASS · 241 catalog / chapter rail / recent Autism persistence
 DSM API + route smoke test            PASS
 DSM overview HTML payload             ~115 KB after lazy metadata loading
 ```
 
-Automated browser visual inspection is not part of this validation because optional Playwright support is not installed in the current local tool environment. Production build, API smoke tests and HTTP route checks were used instead.
+Playwright visual inspection is not available in the current local tool environment. Production build and HTTP/API smoke checks were supplemented with a real Chrome headless hydrated-DOM E2E for the v0.3.1 Disorders Explorer, including browser-local recently viewed persistence.
 
 Real user-flow validation covered:
 
@@ -519,7 +521,21 @@ Unified Notes
 - Keep source metadata attached to educational content.
 - Before production/publication, content should receive dedicated scientific review and more granular claim-level citations.
 
-## Deliberately not part of v0.3
+## Roadmap after v0.3.1
+
+The v0.3.1 release is an UX/IA sub-release and does **not** move the planned feature scope of later versions:
+
+```text
+v0.4  Full Concept Graph + Cognitive Distortions
+v0.5  Therapy Atlas
+v0.6  Psychologists + Theories + Timeline
+v0.7  Advanced Branching Clinical Cases + Analytics
+v0.8  Study Mode + Exam Planning + Advanced Recommendations
+v0.9  Brain Atlas + Assessments Atlas
+v1.0  Admin CMS + Scientific Review + Full cross-domain integration
+```
+
+## Deliberately not part of v0.3.1
 
 These remain later-version work rather than partially implemented placeholders:
 
