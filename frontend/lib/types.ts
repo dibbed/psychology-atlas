@@ -9,6 +9,12 @@ export type Disorder = {
   data_origin: "curated" | "dsm_master";
 };
 
+export type ConceptAlias = {
+  text: string;
+  language: "fa" | "en" | "other";
+  alias_type: "alternative" | "abbreviation" | "historical";
+};
+
 export type Concept = {
   id: number;
   slug: string;
@@ -16,7 +22,12 @@ export type Concept = {
   name_fa: string;
   kind: string;
   kind_label?: string;
+  domain: string;
+  domain_label?: string;
+  subtype: string;
+  subtype_label?: string;
   simple_definition: string;
+  aliases: ConceptAlias[];
   disorder_count?: number;
   flashcard_count?: number;
   relationship_count?: number;
@@ -25,6 +36,9 @@ export type Concept = {
 export type ConceptDetail = Concept & {
   academic_definition: string;
   example: string;
+  counterexample: string;
+  recognition_cues: string;
+  common_confusions: string;
   relationships: {
     slug: string;
     name_en: string;
@@ -32,11 +46,28 @@ export type ConceptDetail = Concept & {
     relationship_type: string;
     direction: "incoming" | "outgoing";
     explanation: string;
+    sources: {
+      id: number;
+      title: string;
+      organization: string;
+      citation?: string;
+      url: string;
+      publication_year?: number | null;
+      source_type?: string;
+    }[];
   }[];
   disorders: {
     role: string;
     explanation: string;
     disorder: Disorder;
+  }[];
+  symptoms: {
+    slug: string;
+    name_en: string;
+    name_fa: string;
+    domain: string;
+    relationship_type: string;
+    explanation: string;
   }[];
   sources: {
     id: number;
@@ -227,6 +258,8 @@ export type AtlasOverview = {
   graph: { nodes: number; edges: number };
   categories: { slug: string; name_en: string; name_fa: string; count: number }[];
   concept_kinds: { kind: string; label: string; count: number }[];
+  concept_domains: { domain: string; label: string; count: number }[];
+  concept_subtypes: { subtype: string; label: string; count: number }[];
 };
 
 export type KnowledgeGraphNode = {
@@ -238,6 +271,9 @@ export type KnowledgeGraphNode = {
   name_fa: string;
   kind: string;
   group: string;
+  domain?: string;
+  domain_label?: string;
+  subtype?: string;
   summary: string;
   href: string;
   degree: number;

@@ -10,6 +10,7 @@ from atlas.models import (
     DifferentialRelationship,
     Disorder,
     DisorderSource,
+    DSMCorpus,
     DisorderSymptom,
     Quiz,
     QuizChoice,
@@ -391,28 +392,43 @@ class Command(BaseCommand):
 
     @transaction.atomic
     def handle(self, *args, **options):
+        dsm_catalog_active = DSMCorpus.objects.filter(is_active=True).exists()
         category_objs = {}
         for order, (slug, en, fa, description) in enumerate(CATEGORIES):
-            obj, _ = Category.objects.update_or_create(
+            obj, _ = Category.objects.get_or_create(
                 slug=slug,
                 defaults={
                     "name_en": en,
                     "name_fa": fa,
                     "description": description,
                     "sort_order": order,
-                    "is_active": True,
+                    "is_active": not dsm_catalog_active,
                 },
             )
+            obj.name_en = en
+            obj.name_fa = fa
+            obj.description = description
+            obj.sort_order = order
+            if not dsm_catalog_active:
+                obj.is_active = True
+            obj.save(update_fields=("name_en", "name_fa", "description", "sort_order", "is_active", "updated_at"))
             category_objs[slug] = obj
 
         disorder_objs = {}
         for item in DISORDERS:
             payload = dict(item)
-            category = category_objs[payload.pop("category")]
+            seeded_category = category_objs[payload.pop("category")]
             slug = payload.pop("slug")
+            existing = Disorder.objects.filter(slug=slug).select_related("category").first()
+            preserve_dsm_category = bool(
+                dsm_catalog_active
+                and existing
+                and existing.dsm_master_records.filter(corpus__is_active=True, is_active=True).exists()
+            )
+            target_category = existing.category if preserve_dsm_category else seeded_category
             obj, _ = Disorder.objects.update_or_create(
                 slug=slug,
-                defaults={"category": category, "is_active": True, **payload},
+                defaults={"category": target_category, "is_active": True, **payload},
             )
             disorder_objs[slug] = obj
 
@@ -537,8 +553,9 @@ class Command(BaseCommand):
         v3_counts = seed_v3_content(disorder_objs, source_objs)
 
         self.stdout.write(self.style.SUCCESS(
-            "Psychology Atlas v0.3 seed completed: "
+            "Psychology Atlas v0.4 Part 1 seed completed: "
             f"{len(DISORDERS)} disorders, {len(QUIZZES)} quizzes, {len(CASES)} cases, "
-            f"{v3_counts['concepts']} concepts, {v3_counts['flashcards']} flashcards, "
-            f"{v3_counts['daily_challenges']} daily challenges."
+            f"{v3_counts['concepts']} concepts, {v3_counts['cognitive_distortions']} cognitive distortions, "
+            f"{v3_counts['concept_aliases']} concept aliases, {v3_counts['concept_symptom_links']} concept-symptom links, "
+            f"{v3_counts['flashcards']} flashcards, {v3_counts['daily_challenges']} daily challenges."
         ))

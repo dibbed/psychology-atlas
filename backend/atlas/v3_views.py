@@ -28,6 +28,7 @@ from .models import (
     ConceptBookmark,
     ConceptNote,
     ConceptRelationship,
+    ConceptSymptom,
     DailyChallenge,
     DailyChallengeAttempt,
     DSMRecord,
@@ -77,20 +78,30 @@ class ConceptListView(generics.ListAPIView):
 
     def get_queryset(self):
         qs = Concept.objects.filter(is_active=True).prefetch_related(
+            "aliases",
             "disorder_links__disorder",
             "flashcards",
             "outgoing_concept_relationships__target_concept",
             "incoming_concept_relationships__source_concept",
         )
         kind = self.request.query_params.get("kind", "").strip()
+        domain = self.request.query_params.get("domain", "").strip()
+        subtype = self.request.query_params.get("subtype", "").strip()
         q = self.request.query_params.get("q", "").strip()
         if kind:
             qs = qs.filter(kind=kind)
+        if domain:
+            qs = qs.filter(domain=domain)
+        if subtype:
+            qs = qs.filter(subtype=subtype)
         if q:
             qs = qs.filter(icontains_any(
-                ("name_en", "name_fa", "slug", "simple_definition", "academic_definition", "example"),
+                (
+                    "name_en", "name_fa", "slug", "simple_definition", "academic_definition", "example",
+                    "counterexample", "recognition_cues", "common_confusions", "aliases__text",
+                ),
                 q,
-            ))
+            )).distinct()
         return qs
 
 
@@ -100,9 +111,13 @@ class ConceptDetailView(generics.RetrieveAPIView):
     queryset = (
         Concept.objects.filter(is_active=True)
         .prefetch_related(
+            "aliases",
             "outgoing_concept_relationships__target_concept",
+            "outgoing_concept_relationships__source_links__source",
             "incoming_concept_relationships__source_concept",
+            "incoming_concept_relationships__source_links__source",
             "disorder_links__disorder__category",
+            "symptom_links__symptom",
             "source_links__source",
             "flashcards",
         )
@@ -172,15 +187,19 @@ def global_search(request):
     concepts = (
         Concept.objects.filter(is_active=True)
         .filter(icontains_any(
-            ("slug", "name_en", "name_fa", "simple_definition", "academic_definition", "example"),
+            (
+                "slug", "name_en", "name_fa", "simple_definition", "academic_definition", "example",
+                "counterexample", "recognition_cues", "common_confusions", "aliases__text",
+            ),
             q,
         ))
         .prefetch_related(
+            "aliases",
             "disorder_links__disorder",
             "flashcards",
             "outgoing_concept_relationships__target_concept",
             "incoming_concept_relationships__source_concept",
-        )[:10]
+        ).distinct()[:10]
     )
     symptoms = list(
         Symptom.objects.filter(disorder_links__disorder__is_active=True)
@@ -270,8 +289,22 @@ def atlas_overview(request):
         .annotate(count=Count("id"))
         .order_by("-count", "kind")
     )
+    concept_domains = list(
+        Concept.objects.filter(is_active=True)
+        .values("domain")
+        .annotate(count=Count("id"))
+        .order_by("-count", "domain")
+    )
+    concept_subtypes = list(
+        Concept.objects.filter(is_active=True)
+        .values("subtype")
+        .annotate(count=Count("id"))
+        .order_by("-count", "subtype")
+    )
     symptom_count = (
-        Symptom.objects.filter(disorder_links__disorder__is_active=True)
+        Symptom.objects.filter(
+            Q(disorder_links__disorder__is_active=True) | Q(concept_links__concept__is_active=True)
+        )
         .distinct()
         .count()
     )
@@ -286,6 +319,7 @@ def atlas_overview(request):
             concept__is_active=True,
         ).count()
         + DisorderSymptom.objects.filter(disorder__is_active=True).count()
+        + ConceptSymptom.objects.filter(concept__is_active=True).count()
         + len(dsm_nearby_edges)
     )
 
@@ -321,6 +355,22 @@ def atlas_overview(request):
             }
             for row in concept_kinds
         ],
+        "concept_domains": [
+            {
+                "domain": row["domain"],
+                "label": Concept.Domain(row["domain"]).label,
+                "count": row["count"],
+            }
+            for row in concept_domains
+        ],
+        "concept_subtypes": [
+            {
+                "subtype": row["subtype"],
+                "label": Concept.Subtype(row["subtype"]).label,
+                "count": row["count"],
+            }
+            for row in concept_subtypes
+        ],
     })
 
 
@@ -338,13 +388,21 @@ def concept_map(request):
             "name_fa": concept.name_fa,
             "kind": concept.kind,
             "group": concept.get_kind_display(),
+            "domain": concept.domain,
+            "domain_label": concept.get_domain_display(),
+            "subtype": concept.subtype,
             "summary": concept.simple_definition,
             "href": f"/concepts/{concept.slug}",
         }
         for concept in concepts
     ]
     edges = []
-    disorder_ids = set(Disorder.objects.filter(is_active=True).values_list("id", flat=True))
+    disorders = list(
+        Disorder.objects.filter(is_active=True)
+        .select_related("category")
+        .order_by("name_en")
+    )
+    disorder_ids = {disorder.id for disorder in disorders}
 
     concept_relations = (
         ConceptRelationship.objects.filter(
@@ -379,15 +437,32 @@ def concept_map(request):
             "explanation": link.explanation,
         })
 
+    concept_symptom_links = list(
+        ConceptSymptom.objects.filter(concept__is_active=True)
+        .select_related("concept", "symptom")
+        .order_by("concept_id", "sort_order", "id")
+    )
+    symptom_ids = set()
+    symptom_by_id = {}
+    for link in concept_symptom_links:
+        symptom_ids.add(link.symptom_id)
+        symptom_by_id[link.symptom_id] = link.symptom
+        edges.append({
+            "source": f"concept:{link.concept.slug}",
+            "target": f"symptom:{link.symptom.slug}",
+            "kind": f"concept_symptom_{link.relationship_type}",
+            "explanation": link.explanation,
+        })
+
     symptom_links = list(
         DisorderSymptom.objects.filter(disorder__is_active=True)
         .select_related("disorder", "disorder__category", "symptom")
         .order_by("disorder_id", "sort_order", "id")
     )
-    symptom_ids = set()
     for link in symptom_links:
         disorder_ids.add(link.disorder_id)
         symptom_ids.add(link.symptom_id)
+        symptom_by_id[link.symptom_id] = link.symptom
         edges.append({
             "source": f"disorder:{link.disorder.slug}",
             "target": f"symptom:{link.symptom.slug}",
@@ -406,11 +481,6 @@ def concept_map(request):
             "explanation": "در DSM MASTER به‌عنوان عنوان نزدیک یا ارجاع مرتبط ثبت شده است.",
         })
 
-    disorders = list(
-        Disorder.objects.filter(id__in=disorder_ids, is_active=True)
-        .select_related("category")
-        .order_by("name_en")
-    )
     nodes.extend({
         "id": f"disorder:{disorder.slug}",
         "type": "disorder",
@@ -444,7 +514,7 @@ def concept_map(request):
             node["dsm_chapter_number"] = dsm_record.chapter_number
             node["dsm_chapter_name_fa"] = dsm_record.chapter_name_fa
 
-    symptoms = Symptom.objects.filter(id__in=symptom_ids).order_by("name_en")
+    symptoms = sorted(symptom_by_id.values(), key=lambda symptom: symptom.name_en)
     nodes.extend({
         "id": f"symptom:{symptom.slug}",
         "type": "symptom",

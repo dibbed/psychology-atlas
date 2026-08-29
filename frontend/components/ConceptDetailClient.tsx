@@ -13,6 +13,7 @@ const tabs = [
   ["example", "مثال"],
   ["relations", "روابط مفهومی"],
   ["disorders", "اختلالات مرتبط"],
+  ["symptoms", "نشانه‌ها"],
   ["notes", "یادداشت من"],
   ["sources", "منابع"],
 ] as const;
@@ -22,10 +23,22 @@ type TabId = typeof tabs[number][0];
 const relationLabels: Record<string, string> = {
   related: "مرتبط",
   part_of: "جزئی از",
+  subtype_of: "زیرنوع",
+  prerequisite: "پیش‌نیاز",
   maintains: "حفظ‌کننده",
   influences: "اثرگذار",
+  mechanism: "سازوکار",
   contrasts: "مقایسه/تفاوت",
+  commonly_confused_with: "اغلب اشتباه می‌شود با",
+  associated_with: "همراه/مرتبط با",
   applied_in: "کاربرد",
+};
+
+const symptomRelationLabels: Record<string, string> = {
+  associated: "مرتبط",
+  manifestation: "بازنمایی در لایه نشانه",
+  overlaps_with: "همپوشانی",
+  contrasts: "افتراق",
 };
 
 const roleLabels: Record<string, string> = {
@@ -44,10 +57,13 @@ export default function ConceptDetailClient({ concept }: { concept: ConceptDetai
     <>
       <ConceptProgressTracker slug={concept.slug} />
       <header className="detail-header concept-detail-header">
-        <div className="meta">{conceptKindLabel(concept.kind)} · واژه‌نامه و نقشه دانش</div>
+        <div className="meta">{conceptKindLabel(concept.kind)} · {concept.domain_label || concept.domain} · واژه‌نامه و نقشه دانش</div>
         <h1>{concept.name_fa || concept.name_en}</h1>
         <div className="latin-title">{concept.name_en}</div>
         <p className="section-copy">{concept.simple_definition}</p>
+        {!!concept.aliases?.length && (
+          <p className="muted small">نام‌های جایگزین: {concept.aliases.map(alias => alias.text).join(" · ")}</p>
+        )}
         <div className="concept-detail-metrics">
           <div><strong>{(concept.relationship_count ?? 0).toLocaleString("fa-IR")}</strong><span>رابطه مفهومی</span></div>
           <div><strong>{(concept.disorder_count ?? 0).toLocaleString("fa-IR")}</strong><span>اختلال مرتبط</span></div>
@@ -81,6 +97,20 @@ export default function ConceptDetailClient({ concept }: { concept: ConceptDetai
               <h2>در سطح مفهومی</h2>
               <p>{concept.academic_definition || "تعریف دانشگاهی تکمیلی هنوز ثبت نشده است."}</p>
             </article>
+            {concept.subtype === "cognitive_distortion" && concept.recognition_cues && (
+              <article className="prose card">
+                <div className="meta">نشانه‌های شناخت الگو</div>
+                <h2>چطور تشخیصش بدهیم؟</h2>
+                <p>{concept.recognition_cues}</p>
+              </article>
+            )}
+            {concept.subtype === "cognitive_distortion" && concept.common_confusions && (
+              <article className="prose card">
+                <div className="meta">افتراق مفهومی</div>
+                <h2>با چه چیزی اشتباه می‌شود؟</h2>
+                <p>{concept.common_confusions}</p>
+              </article>
+            )}
           </div>
         )}
 
@@ -88,6 +118,12 @@ export default function ConceptDetailClient({ concept }: { concept: ConceptDetai
           <div className="card concept-example">
             <div className="meta">مثال آموزشی</div>
             <blockquote>{concept.example || "برای این مفهوم هنوز مثال آموزشی ثبت نشده است."}</blockquote>
+            {concept.counterexample && (
+              <div className="card" style={{ marginTop: 16 }}>
+                <div className="meta">نمونه متوازن / غیرتحریف‌شده</div>
+                <p>{concept.counterexample}</p>
+              </div>
+            )}
             <p className="muted small">مثال برای فهم مفهوم است و برای نتیجه‌گیری تشخیصی درباره افراد طراحی نشده است.</p>
           </div>
         )}
@@ -101,7 +137,10 @@ export default function ConceptDetailClient({ concept }: { concept: ConceptDetai
                   <div className="meta">{relationLabels[item.relationship_type] || item.relationship_type}</div>
                   <h3>{item.name_fa || item.name_en}</h3>
                 </div>
-                <p>{item.explanation || "رابطه ساختاریافته بین این دو مفهوم ثبت شده است."}</p>
+                <div>
+                  <p>{item.explanation || "رابطه ساختاریافته بین این دو مفهوم ثبت شده است."}</p>
+                  {!!item.sources?.length && <small className="muted">منبع رابطه: {item.sources.map(source => source.organization || source.title).join(" · ")}</small>}
+                </div>
               </Link>
             )) : <div className="card">هنوز رابطه مفهومی مستقیمی ثبت نشده است.</div>}
           </div>
@@ -118,6 +157,21 @@ export default function ConceptDetailClient({ concept }: { concept: ConceptDetai
                 <p>{item.explanation || item.disorder.short_description}</p>
               </Link>
             )) : <div className="card">هنوز اختلال مستقیمی به این مفهوم متصل نشده است.</div>}
+          </div>
+        )}
+
+        {active === "symptoms" && (
+          <div className="stack">
+            {concept.symptoms.length ? concept.symptoms.map(item => (
+              <Link className="card relation-row" href={`/search?q=${encodeURIComponent(item.name_fa || item.name_en)}`} key={`${item.slug}-${item.relationship_type}`}>
+                <div>
+                  <div className="meta">{symptomRelationLabels[item.relationship_type] || item.relationship_type}</div>
+                  <h3>{item.name_fa || item.name_en}</h3>
+                  <div className="latin-title">{item.name_en}</div>
+                </div>
+                <p>{item.explanation || "رابطه ساختاریافته میان این مفهوم و نشانه ثبت شده است."}</p>
+              </Link>
+            )) : <div className="card">هنوز نشانه ساختاریافته‌ای به این مفهوم متصل نشده است.</div>}
           </div>
         )}
 

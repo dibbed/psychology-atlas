@@ -1,6 +1,6 @@
-# Psychology Atlas — v0.3.1 Study Engine + Knowledge Graph · Disorders Explorer
+# Psychology Atlas — v0.4 Part 1 · Concept Graph Foundation + Cognitive Distortions
 
-یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. نسخه ۰.۳.۱ هسته Study Engine و Knowledge Graph نسخه ۰.۳ را حفظ می‌کند و تجربه مرور کاتالوگ ۲۴۱ اختلال را با Disorders Explorer فصل‌محور تکمیل می‌کند.
+یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. checkpoint فعلی نیمه اول v0.4 است: پایه موفق v0.3.1 حفظ شده و لایه Concept با taxonomy، alias، provenance، Concept↔Symptom و یک مجموعه منبع‌دار Cognitive Distortions عمیق‌تر شده است؛ Explorer/Graph UX پیشرفته و تمرین‌های اختصاصی برای Part 2 می‌مانند.
 
 > این نرم‌افزار آموزشی است و ابزار تشخیص، درمان یا جایگزین ارزیابی حرفه‌ای نیست.
 
@@ -13,13 +13,16 @@
 - **Database later:** PostgreSQL-ready through Django ORM + migrations
 - **Content:** deterministic/idempotent seed command, no content-admin UI yet
 
-## v0.3.1 content
+## v0.4 Part 1 content
 
 - **241 canonical disorder pages** across 20 DSM chapters + 1 supplemental medication/adverse-effects section
 - **30 structured symptoms**
-- **35 psychology concepts**
+- **44 psychology concepts**
+- **12 Cognitive Distortions** grounded in the Beck Institute educational worksheet taxonomy
+- **8 searchable Concept aliases**
 - **65 Disorder ↔ Concept links**
-- **14 Concept ↔ Concept relationships**
+- **23 Concept ↔ Concept relationships**
+- **15 Concept ↔ Symptom links**
 - **41 flashcards**
 - **12 daily challenges × 4 choices**
 - **5 quizzes × 8 questions = 40 questions**
@@ -77,7 +80,7 @@ python manage.py import_dsm_master --dry-run
 
 The bundle itself states that it is an educational/structural reference, not verbatim DSM diagnostic criteria, not an automated diagnostic tool, and not a substitute for current professional coding or individualized treatment guidance. Proposed/non-final changes remain distinct from approved updates.
 
-## Core v0.3.1 features
+## Core features through v0.4 Part 1
 
 ### Concepts Atlas
 
@@ -94,16 +97,20 @@ Each concept can include:
 - simple definition
 - academic definition
 - educational example
-- concept kind
-- Concept ↔ Concept relationships
+- concept kind + domain + subtype taxonomy
+- searchable Persian/English aliases
+- recognition cues, counterexamples and common-confusion notes for Cognitive Distortions
+- Concept ↔ Concept relationships with richer semantics
+- relationship-level provenance support
 - Disorder ↔ Concept relationships and roles
-- institutional sources
+- Concept ↔ Symptom relationships
+- institutional/source metadata
 - linked flashcards
 - personal progress
 - personal bookmark
 - personal note
 
-Every curated seeded disorder has at least one Concept link, and every active seeded Concept has at least one Flashcard. DSM-generated Disorder pages may rely primarily on their linked MASTER profile until dedicated Concept/Symptom enrichment is added.
+Every curated seeded disorder has at least one Concept link. The v0.4 Part 1 concept inventory is now larger than the existing flashcard inventory by design; flashcard/practice expansion for the new Cognitive Distortions is part of v0.4 Part 2. DSM-generated Disorder pages may rely primarily on their linked MASTER profile until dedicated cross-domain enrichment is added.
 
 ### Knowledge Graph V1
 
@@ -120,7 +127,9 @@ Current graph layers:
 ```text
 Concept ↔ Concept
 Disorder ↔ Concept
+Concept ↔ Symptom
 Disorder → Symptom
+Disorder ↔ Disorder via DSM nearby-title links
 ```
 
 Original curated graph baseline:
@@ -133,17 +142,20 @@ Original curated graph baseline:
 144 base Atlas edges
 ```
 
-Current graph after synchronizing every canonical formal diagnosis:
+Current graph after v0.4 Part 1:
 
 ```text
-306 nodes
-  35 concepts
+315 nodes
+  44 concepts
  241 canonical disorders
   30 symptoms
 
-144 base Atlas edges
-+ 570 DSM MASTER nearby-title edges between canonical Disorder pages
-= 714 edges
+23 Concept ↔ Concept edges
+65 Disorder ↔ Concept edges
+15 Concept ↔ Symptom edges
+65 Disorder → Symptom edges
+570 DSM MASTER nearby-title edges
+= 738 edges
 ```
 
 The map supports two source-grounded scopes: the original Atlas graph and a DSM MASTER graph. The DSM scope contains 438 MASTER nodes and 2,400 relations (415 hierarchy, 1,826 nearby-title links, 159 differential links that resolve to another MASTER record). Generic differential phrases are not forced into graph nodes.
@@ -466,17 +478,17 @@ POST /api/cases/<slug>/submit/
 
 ## Release validation baseline
 
-Validated on the current v0.3.1 working tree after the DSM MASTER integration and Disorders Explorer UX release:
+Validated on the current v0.4 Part 1 checkpoint after the Concept Graph foundation and Cognitive Distortions data-layer upgrade:
 
 ```text
 Django system check                  PASS
-Backend tests                        53 / 53 PASS
+Backend tests                        58 / 58 PASS
 DSM import idempotency               PASS · 1 corpus / 438 records / 241 canonical Disorder pages / 6 sources
 DSM diagnosis sync                    PASS · 243 formal records → 241 canonical pages · 211 created + 30 curated preserved
 Neurodevelopmental chapter            PASS · 22 Disorder pages including Autism Spectrum Disorder and ADHD
 DSM resolved relations               PASS · 1,826 nearby / 159 differential
 DSM graph                            PASS · 438 nodes / 2,400 edges
-Atlas graph with DSM layer           PASS · 306 nodes / 714 edges
+Atlas graph with DSM layer           PASS · 315 nodes / 738 edges
 DSM study inventory                  PASS · 2,190 self-tests / 438 exam tips / 14 glossary terms
 DSM source SHA256                    PASS · matches bundle manifest
 Migration drift                      none
@@ -488,10 +500,14 @@ npm audit --audit-level=low           0 vulnerabilities
 Frontend main-route smoke test        PASS
 Disorders Explorer hydrated E2E       PASS · 241 catalog / chapter rail / recent Autism persistence
 DSM API + route smoke test            PASS
+v0.4 Part 1 concept inventory         PASS · 44 concepts / 12 distortions / 8 aliases
+v0.4 relation provenance              PASS · 12 Beck-backed distortion membership relations
+v0.4 Concept ↔ Symptom layer          PASS · 15 structured links
+Seed/DSM category compatibility       PASS · two seed runs keep 21 DSM-backed categories
 DSM overview HTML payload             ~115 KB after lazy metadata loading
 ```
 
-Playwright visual inspection is not available in the current local tool environment. Production build and HTTP/API smoke checks were supplemented with a real Chrome headless hydrated-DOM E2E for the v0.3.1 Disorders Explorer, including browser-local recently viewed persistence.
+The existing v0.3.1 Disorders Explorer browser validation remains part of the regression baseline. v0.4 Part 1 itself is primarily a data/API/schema checkpoint; the heavier Concept Explorer/Graph browser UX is intentionally reserved for Part 2.
 
 Real user-flow validation covered:
 
@@ -521,13 +537,14 @@ Unified Notes
 - Keep source metadata attached to educational content.
 - Before production/publication, content should receive dedicated scientific review and more granular claim-level citations.
 
-## Roadmap after v0.3.1
+## Roadmap after v0.4 Part 1
 
-The v0.3.1 release is an UX/IA sub-release and does **not** move the planned feature scope of later versions:
+v0.4 is intentionally split into two implementation phases so the graph/data foundation can be validated before adding the heavier explorer and learning UX:
 
 ```text
-v0.4  Full Concept Graph + Cognitive Distortions
-v0.5  Therapy Atlas
+v0.4 Part 1  Concept taxonomy + aliases + provenance + Concept↔Symptom + Cognitive Distortions foundation
+v0.4 Part 2  Full Concept Explorer/Graph UX + neighborhood/path finding + distortion practice/learning expansion
+v0.5         Therapy Atlas
 v0.6  Psychologists + Theories + Timeline
 v0.7  Advanced Branching Clinical Cases + Analytics
 v0.8  Study Mode + Exam Planning + Advanced Recommendations
@@ -535,7 +552,7 @@ v0.9  Brain Atlas + Assessments Atlas
 v1.0  Admin CMS + Scientific Review + Full cross-domain integration
 ```
 
-## Deliberately not part of v0.3.1
+## Deliberately not part of v0.4 Part 1
 
 These remain later-version work rather than partially implemented placeholders:
 

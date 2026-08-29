@@ -36,6 +36,10 @@ const edgeLabels: Record<string, string> = {
   symptom_possible: "نشانه ممکن",
   symptom_contextual: "نشانه زمینه‌ای",
   dsm_nearby: "عنوان نزدیک در DSM MASTER",
+  concept_symptom_associated: "ارتباط مفهوم با نشانه",
+  concept_symptom_manifestation: "بازنمایی مفهوم در لایه نشانه",
+  concept_symptom_overlaps_with: "همپوشانی مفهوم و نشانه",
+  concept_symptom_contrasts: "تفاوت مفهوم و نشانه",
 };
 
 function relationLabel(kind: string) {

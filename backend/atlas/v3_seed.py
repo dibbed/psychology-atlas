@@ -1,11 +1,16 @@
 from .models import (
     Concept,
+    ConceptAlias,
     ConceptRelationship,
+    ConceptRelationshipSource,
     ConceptSource,
+    ConceptSymptom,
     DailyChallenge,
     DailyChallengeChoice,
     DisorderConcept,
     Flashcard,
+    SourceReference,
+    Symptom,
 )
 
 
@@ -45,6 +50,99 @@ CONCEPTS = [
     ("attention-seeking", "Attention Seeking", "جلب توجه", "interpersonal", "رفتارهایی که با هدف یا کارکرد قرارگرفتن در مرکز توجه یا دریافت واکنش دیگران انجام می‌شوند.", "جلب توجه به‌خودی‌خود تشخیص نیست و باید در زمینه انگیزه، الگوی پایدار روابط و پیامدهای عملکردی بررسی شود.", "فرد در موقعیت‌های گروهی مرتب شیوه گفت‌وگو را تغییر می‌دهد تا دوباره مرکز توجه شود."),
     ("grandiosity", "Grandiosity", "بزرگ‌منشی", "cognitive", "ارزیابی اغراق‌شده از اهمیت، توانایی، جایگاه یا استحقاق خود.", "بزرگ‌منشی می‌تواند در زمینه‌های مختلف دیده شود و تفسیر آن به پایداری، شدت، زمینه خلقی و اثر بین‌فردی وابسته است.", "فرد خود را به‌طور پایدار بسیار برتر از دیگران می‌داند و انتظار برخورد ویژه دارد."),
     ("dependency", "Dependency", "وابستگی", "interpersonal", "اتکای زیاد به دیگران برای تصمیم‌گیری، حمایت یا احساس توانایی در اداره موقعیت‌ها.", "وابستگی در یک پیوستار قرار دارد؛ در الگوهای مشکل‌ساز، نیاز به اطمینان و مراقبت می‌تواند استقلال و تصمیم‌گیری را محدود کند.", "فرد برای تصمیم‌های روزمره به تأیید مکرر دیگران نیاز دارد و از تنها ماندن بسیار ناراحت می‌شود."),
+]
+
+
+V4_CONCEPTS = [
+    ("discounting-the-positive", "Disqualifying or Discounting the Positive", "بی‌اعتبار کردن نکات مثبت", "cognitive", "کم‌اهمیت یا بی‌اعتبار دانستن شواهد مثبت، حتی وقتی آن شواهد با ارزیابی منفی فرد ناسازگارند.", "در این الگوی شناختی، اطلاعات مثبت پذیرفته نمی‌شود یا به علتی بیرونی و کم‌ارزش نسبت داده می‌شود، در نتیجه ارزیابی منفی بدون اصلاح باقی می‌ماند.", "فرد بعد از تحسین پروژه می‌گوید: «فقط شانس آوردم؛ این موفقیت چیزی درباره توانایی من نشان نمی‌دهد.»"),
+    ("emotional-reasoning", "Emotional Reasoning", "استدلال هیجانی", "cognitive", "نتیجه گرفتن درباره واقعیت بر اساس شدت احساس، بدون اینکه احساس به‌تنهایی شواهد کافی باشد.", "در استدلال هیجانی، تجربه هیجانی به‌عنوان مدرک مستقیم برای درستی یک برداشت یا قضاوت تلقی می‌شود.", "فرد می‌گوید: «احساس می‌کنم بی‌کفایتم، پس حتماً واقعاً بی‌کفایتم.»"),
+    ("labeling", "Labeling", "برچسب‌زنی", "cognitive", "تبدیل یک رفتار یا خطا به یک برچسب کلی و ثابت درباره خود یا دیگری.", "برچسب‌زنی ارزیابی یک رویداد مشخص را به قضاوت هویتی گسترده تبدیل می‌کند و اطلاعات زمینه‌ای را کم‌رنگ می‌سازد.", "بعد از یک اشتباه می‌گوید: «من یک بازنده‌ام.»"),
+    ("magnification-minimization", "Magnification and Minimization", "بزرگ‌نمایی و کوچک‌نمایی", "cognitive", "بیش‌ازحد بزرگ دیدن جنبه‌های منفی یا کم‌اهمیت شمردن شواهد مثبت.", "این الگو وزن اطلاعات را نامتوازن می‌کند؛ شکست یا تهدید بزرگ‌تر و نقاط قوت یا موفقیت کوچک‌تر از شواهد موجود ارزیابی می‌شوند.", "یک نقد کوچک را نشانه شکست جدی می‌داند، اما چند بازخورد مثبت را بی‌اهمیت تلقی می‌کند."),
+    ("mental-filter", "Mental Filter", "فیلتر ذهنی", "cognitive", "تمرکز انتخابی بر بخش منفی تجربه و نادیده گرفتن سایر اطلاعات مرتبط.", "در فیلتر ذهنی یا انتزاع انتخابی، یک جزء منفی از زمینه بزرگ‌تر جدا می‌شود و بر ارزیابی کل تجربه غالب می‌شود.", "از میان چند بازخورد مثبت و یک نقد، فقط همان نقد را به خاطر می‌سپارد و کل عملکرد را بد ارزیابی می‌کند."),
+    ("overgeneralization", "Overgeneralization", "تعمیم افراطی", "cognitive", "ساختن نتیجه‌ای گسترده از یک یا چند تجربه محدود.", "تعمیم افراطی از داده محدود یک قاعده کلی درباره آینده، خود یا روابط می‌سازد، بدون اینکه دامنه شواهد برای چنین نتیجه‌ای کافی باشد.", "چون در یک مهمانی معذب بوده نتیجه می‌گیرد: «من هیچ‌وقت نمی‌توانم دوست پیدا کنم.»"),
+    ("personalization", "Personalization", "شخصی‌سازی", "cognitive", "نسبت دادن مسئولیت یا علت یک رویداد به خود بدون شواهد کافی درباره نقش واقعی فرد.", "در شخصی‌سازی، سهم عوامل دیگر یا ابهام موقعیت کم‌رنگ می‌شود و فرد خود را علت رویدادی می‌داند که شواهد کافی برای این نسبت وجود ندارد.", "همکارش کوتاه جواب می‌دهد و فوراً نتیجه می‌گیرد: «حتماً من کاری کرده‌ام که ناراحت شده.»"),
+    ("should-must-statements", "Should and Must Statements", "بایدها و الزام‌های خشک", "cognitive", "به‌کارگیری قواعد سخت و مطلق درباره اینکه خود یا دیگران چگونه باید رفتار کنند.", "این الگو ترجیح یا هدف را به الزام انعطاف‌ناپذیر تبدیل می‌کند و می‌تواند خطا یا تفاوت را به‌صورت غیرمتناسب ارزیابی کند.", "فرد می‌گوید: «من باید همیشه بهترین عملکردم را داشته باشم؛ اشتباه کردن غیرقابل قبول است.»"),
+    ("tunnel-vision", "Tunnel Vision", "دید تونلی", "cognitive", "دیدن عمدتاً جنبه‌های منفی یک فرد یا موقعیت و از دست دادن تصویر متوازن‌تر.", "در دید تونلی، توجه و ارزیابی روی یک مجموعه محدود از اطلاعات نامطلوب قفل می‌شود و اطلاعات ناسازگار با آن کمتر وارد قضاوت می‌شوند.", "در ارزیابی یک استاد فقط موارد آزاردهنده را می‌بیند و هیچ رفتار مفید یا خنثی را در نظر نمی‌گیرد."),
+]
+
+
+CONCEPT_ENRICHMENT = {
+    "panic-attack": {"domain": "psychopathology"},
+    "avoidance": {"domain": "behavioral_science"},
+    "safety-behaviors": {"domain": "cbt"},
+    "worry": {"domain": "cognitive_psychology"},
+    "intrusive-thoughts": {"domain": "cognitive_psychology"},
+    "compulsions": {"domain": "psychopathology"},
+    "anhedonia": {"domain": "psychopathology"},
+    "rumination": {"domain": "cognitive_psychology"},
+    "behavioral-activation": {"domain": "cbt"},
+    "mania": {"domain": "psychopathology"},
+    "hypomania": {"domain": "psychopathology"},
+    "hyperarousal": {"domain": "psychopathology"},
+    "dissociation": {"domain": "psychopathology"},
+    "rejection-sensitivity": {"domain": "interpersonal"},
+    "emotion-regulation": {"domain": "emotion"},
+    "impulsivity": {"domain": "behavioral_science"},
+    "perfectionism": {"domain": "cognitive_psychology"},
+    "cognitive-distortions": {"domain": "cbt"},
+    "automatic-thoughts": {"domain": "cbt"},
+    "core-beliefs": {"domain": "cbt"},
+    "exposure": {"domain": "cbt"},
+    "separation-distress": {"domain": "emotion"},
+    "difficulty-discarding": {"domain": "psychopathology"},
+    "body-focused-repetitive-behaviors": {"domain": "psychopathology"},
+    "cyclical-mood-symptoms": {"domain": "psychopathology"},
+    "stressor-linked-distress": {"domain": "psychopathology"},
+    "mistrust": {"domain": "interpersonal"},
+    "social-detachment": {"domain": "interpersonal"},
+    "unusual-beliefs": {"domain": "psychopathology"},
+    "attention-seeking": {"domain": "interpersonal"},
+    "grandiosity": {"domain": "psychopathology"},
+    "dependency": {"domain": "interpersonal"},
+}
+
+DISTORTION_DETAILS = {
+    "all-or-nothing-thinking": {"counterexample": "عملکرد می‌تواند ترکیبی از نقاط قوت و ضعف باشد؛ یک نتیجه کمتر از ایده‌آل مساوی شکست کامل نیست.", "recognition_cues": "واژه‌های مطلق مانند همیشه، هرگز، کامل، شکست کامل یا فقط دو گزینه افراطی.", "common_confusions": "با کمال‌گرایی همپوشانی دارد، اما یکی نیست؛ کمال‌گرایی می‌تواند استاندارد بالا باشد، در حالی که همه یا هیچ نحوه دسته‌بندی نتیجه است."},
+    "catastrophizing": {"counterexample": "ممکن است نتیجه ناخوشایند باشد، اما شدت، احتمال و توان مقابله باید جداگانه با شواهد سنجیده شوند.", "recognition_cues": "پیش‌بینی بدترین پیامد به‌عنوان نتیجه محتمل یا غیرقابل تحمل.", "common_confusions": "با نگرانی تفاوت دارد؛ نگرانی فرایند تکراری آینده‌محور است، اما فاجعه‌سازی نوع خاصی از ارزیابی پیامد است."},
+    "mind-reading": {"counterexample": "می‌توان چند توضیح ممکن برای رفتار طرف مقابل در نظر گرفت و برای نتیجه قطعی به شواهد بیشتری نیاز داشت.", "recognition_cues": "جملاتی مثل «حتماً فکر می‌کند...» یا نتیجه‌گیری قطعی درباره ذهن دیگران بدون داده مستقیم.", "common_confusions": "با حساسیت به طرد یکی نیست؛ حساسیت به طرد یک سازه بین‌فردی گسترده‌تر است و ذهن‌خوانی یک الگوی استنباط شناختی است."},
+    "discounting-the-positive": {"counterexample": "موفقیت یا بازخورد مثبت را می‌توان به‌عنوان بخشی از کل شواهد در نظر گرفت، حتی اگر کامل یا قطعی نباشد.", "recognition_cues": "عبارت‌هایی مانند «این حساب نیست»، «فقط شانس بود» یا حذف نظام‌مند شواهد مثبت.", "common_confusions": "با کوچک‌نمایی نزدیک است؛ بی‌اعتبار کردن مثبت بیشتر اعتبار شواهد مثبت را رد می‌کند."},
+    "emotional-reasoning": {"counterexample": "احساس مهم است، اما برای نتیجه‌گیری درباره واقعیت باید شواهد مستقل هم بررسی شوند.", "recognition_cues": "ساختار «چون احساس می‌کنم X، پس X واقعیت دارد».", "common_confusions": "با هیجان شدید یکی نیست؛ تحریف در استنتاج از احساس رخ می‌دهد، نه صرف داشتن احساس."},
+    "labeling": {"counterexample": "به‌جای برچسب کلی، رفتار یا رویداد مشخص توصیف می‌شود: «در این کار اشتباه کردم» نه «من بازنده‌ام».", "recognition_cues": "برچسب‌های هویتی و کلی بر اساس رفتار محدود.", "common_confusions": "با تعمیم افراطی مرتبط است، اما برچسب‌زنی معمولاً نتیجه را به هویت یا ارزش کلی تبدیل می‌کند."},
+    "magnification-minimization": {"counterexample": "وزن شواهد مثبت و منفی متناسب با اهمیت واقعی هرکدام سنجیده می‌شود.", "recognition_cues": "بزرگ کردن خطاها یا تهدیدها همراه با کوچک شمردن موفقیت‌ها یا منابع مقابله.", "common_confusions": "با فاجعه‌سازی همپوشانی دارد؛ فاجعه‌سازی بیشتر روی پیامد بسیار بد تمرکز دارد."},
+    "mental-filter": {"counterexample": "کل مجموعه اطلاعات، از جمله داده‌های مثبت، منفی و خنثی، در ارزیابی لحاظ می‌شود.", "recognition_cues": "یک جز منفی همه تصویر را تحت‌الشعاع قرار می‌دهد.", "common_confusions": "با دید تونلی نزدیک است؛ فیلتر ذهنی اغلب روی یک جزء انتخابی متمرکز می‌شود، دید تونلی می‌تواند نگاه منفی گسترده‌تری ایجاد کند."},
+    "overgeneralization": {"counterexample": "یک تجربه محدود فقط درباره همان موقعیت اطلاعات می‌دهد مگر شواهد بیشتری برای قاعده کلی وجود داشته باشد.", "recognition_cues": "نتیجه‌های کلی مثل «همیشه»، «هیچ‌وقت»، «همه» از نمونه‌های محدود.", "common_confusions": "با همه یا هیچ متفاوت است؛ تعمیم افراطی دامنه نتیجه را گسترش می‌دهد، همه یا هیچ طیف را به دو قطب تبدیل می‌کند."},
+    "personalization": {"counterexample": "نقش خود، نقش دیگران و عوامل موقعیتی جداگانه بررسی می‌شوند و مسئولیت فقط با شواهد نسبت داده می‌شود.", "recognition_cues": "فرض خودکار اینکه رفتار یا رویداد بیرونی به خاطر من رخ داده است.", "common_confusions": "با مسئولیت‌پذیری سالم یکی نیست؛ مسئله نسبت دادن علت بدون شواهد کافی است."},
+    "should-must-statements": {"counterexample": "ترجیح و ارزش می‌تواند به زبان انعطاف‌پذیر بیان شود: «دوست دارم خوب عمل کنم، اما اشتباه هم ممکن است.»", "recognition_cues": "باید، نباید، حتماً، همیشه باید، غیرقابل قبول است.", "common_confusions": "داشتن استاندارد یا ارزش به‌خودی‌خود تحریف نیست؛ سختی و مطلق‌بودن قاعده مهم است."},
+    "tunnel-vision": {"counterexample": "برای ارزیابی متوازن، شواهد ناسازگار با برداشت اولیه نیز عمداً جست‌وجو و بررسی می‌شوند.", "recognition_cues": "دیدن تقریباً فقط جنبه‌های منفی یک فرد یا موقعیت.", "common_confusions": "با فیلتر ذهنی نزدیک است و مرز آن‌ها در منابع آموزشی می‌تواند همپوشان باشد."},
+}
+
+CONCEPT_ALIASES = [
+    ("catastrophizing", "Fortune Telling", "en", "alternative"),
+    ("catastrophizing", "پیش‌گویی منفی", "fa", "alternative"),
+    ("mental-filter", "Selective Abstraction", "en", "alternative"),
+    ("mental-filter", "انتزاع انتخابی", "fa", "alternative"),
+    ("discounting-the-positive", "Disqualifying the Positive", "en", "alternative"),
+    ("discounting-the-positive", "Discounting the Positive", "en", "alternative"),
+    ("should-must-statements", "Should Statements", "en", "alternative"),
+    ("should-must-statements", "Must Statements", "en", "alternative"),
+]
+
+CONCEPT_SYMPTOMS = [
+    ("avoidance", "avoidance", "manifestation"),
+    ("intrusive-thoughts", "intrusive-thoughts", "manifestation"),
+    ("compulsions", "compulsions", "manifestation"),
+    ("anhedonia", "anhedonia", "manifestation"),
+    ("hyperarousal", "hyperarousal", "manifestation"),
+    ("dissociation", "dissociation", "manifestation"),
+    ("rejection-sensitivity", "rejection-sensitivity", "manifestation"),
+    ("impulsivity", "impulsivity", "manifestation"),
+    ("perfectionism", "perfectionism", "manifestation"),
+    ("mistrust", "mistrust", "manifestation"),
+    ("social-detachment", "social-detachment", "manifestation"),
+    ("unusual-beliefs", "unusual-beliefs", "manifestation"),
+    ("attention-seeking", "attention-seeking", "manifestation"),
+    ("grandiosity", "grandiosity", "manifestation"),
+    ("dependency", "dependency", "manifestation"),
 ]
 
 
@@ -159,20 +257,50 @@ CHALLENGES = [
 
 def seed_v3_content(disorder_objs, source_objs):
     concept_objs = {}
-    for slug, en, fa, kind, simple, academic, example in CONCEPTS:
+    distortion_slugs = set(DISTORTION_DETAILS)
+    all_concepts = CONCEPTS + V4_CONCEPTS
+
+    for slug, en, fa, kind, simple, academic, example in all_concepts:
+        enrichment = CONCEPT_ENRICHMENT.get(slug, {})
+        if slug in distortion_slugs:
+            enrichment = {**enrichment, "domain": "cbt", "subtype": "cognitive_distortion"}
+        details = DISTORTION_DETAILS.get(slug, {})
         concept, _ = Concept.objects.update_or_create(
             slug=slug,
             defaults={
                 "name_en": en,
                 "name_fa": fa,
                 "kind": kind,
+                "domain": enrichment.get("domain", "general"),
+                "subtype": enrichment.get("subtype", "general"),
                 "simple_definition": simple,
                 "academic_definition": academic,
                 "example": example,
+                "counterexample": details.get("counterexample", ""),
+                "recognition_cues": details.get("recognition_cues", ""),
+                "common_confusions": details.get("common_confusions", ""),
                 "is_active": True,
             },
         )
         concept_objs[slug] = concept
+
+    beck_source, _ = SourceReference.objects.update_or_create(
+        title="Testing Your Thoughts Worksheet",
+        organization="Beck Institute for Cognitive Behavior Therapy",
+        defaults={
+            "citation": "Beck Institute. Testing Your Thoughts worksheet; adapted from J. Beck, Cognitive Behavior Therapy: Basics and Beyond, 3rd edition.",
+            "url": "https://beckinstitute.org/wp-content/uploads/2021/08/Testing-Your-Thoughts-Worksheet.pdf",
+            "source_type": "educational_cbt",
+        },
+    )
+
+    for concept_slug, text, language, alias_type in CONCEPT_ALIASES:
+        ConceptAlias.objects.update_or_create(
+            concept=concept_objs[concept_slug],
+            text=text,
+            language=language,
+            defaults={"alias_type": alias_type},
+        )
 
     for source_slug, target_slug, relation_type, explanation in CONCEPT_RELATIONS:
         ConceptRelationship.objects.update_or_create(
@@ -182,6 +310,25 @@ def seed_v3_content(disorder_objs, source_objs):
             defaults={"explanation": explanation},
         )
 
+    distortion_root = concept_objs["cognitive-distortions"]
+    for distortion_slug in sorted(distortion_slugs):
+        if distortion_slug == "cognitive-distortions":
+            continue
+        if distortion_slug not in {"all-or-nothing-thinking", "catastrophizing", "mind-reading"}:
+            relation, _ = ConceptRelationship.objects.update_or_create(
+                source_concept=concept_objs[distortion_slug],
+                target_concept=distortion_root,
+                relationship_type="part_of",
+                defaults={"explanation": "این الگو در فهرست آموزشی تحریف‌های شناختی Beck Institute آمده است."},
+            )
+        else:
+            relation = ConceptRelationship.objects.get(
+                source_concept=concept_objs[distortion_slug],
+                target_concept=distortion_root,
+                relationship_type="part_of",
+            )
+        ConceptRelationshipSource.objects.get_or_create(relationship=relation, source=beck_source)
+
     for order, (disorder_slug, concept_slug, role) in enumerate(DISORDER_CONCEPTS):
         DisorderConcept.objects.update_or_create(
             disorder=disorder_objs[disorder_slug],
@@ -190,9 +337,31 @@ def seed_v3_content(disorder_objs, source_objs):
             defaults={"sort_order": order},
         )
 
+    symptom_objs = {
+        symptom.slug: symptom
+        for symptom in Symptom.objects.filter(slug__in=[row[1] for row in CONCEPT_SYMPTOMS])
+    }
+    for order, (concept_slug, symptom_slug, relationship_type) in enumerate(CONCEPT_SYMPTOMS):
+        symptom = symptom_objs.get(symptom_slug)
+        if not symptom:
+            continue
+        ConceptSymptom.objects.update_or_create(
+            concept=concept_objs[concept_slug],
+            symptom=symptom,
+            relationship_type=relationship_type,
+            defaults={
+                "sort_order": order,
+                "explanation": "این Concept و Symptom به یک سازه آموزشی نام‌گذاری‌شده اشاره می‌کنند؛ این لینک برای اتصال لایه‌های اطلس ثبت شده است.",
+            },
+        )
+
     for concept in concept_objs.values():
-        for source in source_objs:
-            ConceptSource.objects.get_or_create(concept=concept, source=source)
+        if concept.slug in distortion_slugs or concept.slug == "cognitive-distortions":
+            ConceptSource.objects.get_or_create(concept=concept, source=beck_source)
+            ConceptSource.objects.filter(concept=concept).exclude(source=beck_source).delete()
+        else:
+            for source in source_objs:
+                ConceptSource.objects.get_or_create(concept=concept, source=source)
 
     for order, (slug, front, back, concept_slug, disorder_slug) in enumerate(FLASHCARDS):
         Flashcard.objects.update_or_create(
@@ -235,7 +404,10 @@ def seed_v3_content(disorder_objs, source_objs):
                 DailyChallengeChoice.objects.create(challenge=challenge, **values)
 
     return {
-        "concepts": len(CONCEPTS),
+        "concepts": len(all_concepts),
+        "cognitive_distortions": len(distortion_slugs),
+        "concept_aliases": len(CONCEPT_ALIASES),
+        "concept_symptom_links": len(CONCEPT_SYMPTOMS),
         "flashcards": len(FLASHCARDS),
         "daily_challenges": len(CHALLENGES),
     }

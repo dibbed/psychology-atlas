@@ -340,19 +340,40 @@ class Concept(TimeStampedModel):
         TREATMENT = "treatment", "Treatment"
         GENERAL = "general", "General"
 
+    class Domain(models.TextChoices):
+        PSYCHOPATHOLOGY = "psychopathology", "Psychopathology"
+        COGNITIVE_PSYCHOLOGY = "cognitive_psychology", "Cognitive Psychology"
+        CBT = "cbt", "Cognitive Behavioral Therapy"
+        BEHAVIORAL_SCIENCE = "behavioral_science", "Behavioral Science"
+        EMOTION = "emotion", "Emotion"
+        INTERPERSONAL = "interpersonal", "Interpersonal"
+        ASSESSMENT = "assessment", "Assessment"
+        GENERAL = "general", "General Psychology"
+
+    class Subtype(models.TextChoices):
+        GENERAL = "general", "General concept"
+        COGNITIVE_DISTORTION = "cognitive_distortion", "Cognitive distortion"
+
     slug = models.SlugField(max_length=160, unique=True)
     name_en = models.CharField(max_length=220)
     name_fa = models.CharField(max_length=220, blank=True)
     simple_definition = models.TextField()
     academic_definition = models.TextField(blank=True)
     example = models.TextField(blank=True)
+    counterexample = models.TextField(blank=True)
+    recognition_cues = models.TextField(blank=True)
+    common_confusions = models.TextField(blank=True)
     kind = models.CharField(max_length=32, choices=Kind.choices, default=Kind.GENERAL)
+    domain = models.CharField(max_length=48, choices=Domain.choices, default=Domain.GENERAL, db_index=True)
+    subtype = models.CharField(max_length=48, choices=Subtype.choices, default=Subtype.GENERAL, db_index=True)
     is_active = models.BooleanField(default=True)
 
     class Meta:
         ordering = ("name_en",)
         indexes = [
             models.Index(fields=("kind", "is_active")),
+            models.Index(fields=("domain", "is_active")),
+            models.Index(fields=("subtype", "is_active")),
             models.Index(fields=("name_en",)),
             models.Index(fields=("name_fa",)),
         ]
@@ -365,9 +386,14 @@ class ConceptRelationship(TimeStampedModel):
     class Kind(models.TextChoices):
         RELATED = "related", "Related"
         PART_OF = "part_of", "Part of"
+        SUBTYPE_OF = "subtype_of", "Subtype of"
+        PREREQUISITE = "prerequisite", "Prerequisite"
         MAINTAINS = "maintains", "Maintains"
         INFLUENCES = "influences", "Influences"
+        MECHANISM = "mechanism", "Mechanism"
         CONTRASTS = "contrasts", "Contrasts with"
+        COMMONLY_CONFUSED_WITH = "commonly_confused_with", "Commonly confused with"
+        ASSOCIATED_WITH = "associated_with", "Associated with"
         APPLIED_IN = "applied_in", "Applied in"
 
     source_concept = models.ForeignKey(Concept, on_delete=models.CASCADE, related_name="outgoing_concept_relationships")
@@ -385,6 +411,72 @@ class ConceptRelationship(TimeStampedModel):
                 condition=~Q(source_concept=F("target_concept")),
                 name="ck_concept_relationship_not_self",
             ),
+        ]
+
+
+class ConceptAlias(models.Model):
+    class Language(models.TextChoices):
+        FA = "fa", "Persian"
+        EN = "en", "English"
+        OTHER = "other", "Other"
+
+    class AliasType(models.TextChoices):
+        ALTERNATIVE = "alternative", "Alternative"
+        ABBREVIATION = "abbreviation", "Abbreviation"
+        HISTORICAL = "historical", "Historical"
+
+    concept = models.ForeignKey(Concept, on_delete=models.CASCADE, related_name="aliases")
+    text = models.CharField(max_length=220)
+    language = models.CharField(max_length=12, choices=Language.choices, default=Language.OTHER)
+    alias_type = models.CharField(max_length=24, choices=AliasType.choices, default=AliasType.ALTERNATIVE)
+
+    class Meta:
+        ordering = ("language", "text")
+        constraints = [
+            models.UniqueConstraint(fields=("concept", "text", "language"), name="uq_concept_alias")
+        ]
+        indexes = [models.Index(fields=("text",))]
+
+
+class ConceptRelationshipSource(models.Model):
+    relationship = models.ForeignKey(ConceptRelationship, on_delete=models.CASCADE, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="concept_relationship_links")
+    note = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("relationship", "source"), name="uq_concept_relationship_source")
+        ]
+
+
+class ConceptSymptom(TimeStampedModel):
+    class Kind(models.TextChoices):
+        ASSOCIATED = "associated", "Associated"
+        MANIFESTATION = "manifestation", "Manifestation"
+        OVERLAPS_WITH = "overlaps_with", "Overlaps with"
+        CONTRASTS = "contrasts", "Contrasts with"
+
+    concept = models.ForeignKey(Concept, on_delete=models.CASCADE, related_name="symptom_links")
+    symptom = models.ForeignKey(Symptom, on_delete=models.PROTECT, related_name="concept_links")
+    relationship_type = models.CharField(max_length=32, choices=Kind.choices, default=Kind.ASSOCIATED)
+    explanation = models.TextField(blank=True)
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ("sort_order", "id")
+        constraints = [
+            models.UniqueConstraint(fields=("concept", "symptom", "relationship_type"), name="uq_concept_symptom")
+        ]
+
+
+class ConceptSymptomSource(models.Model):
+    relationship = models.ForeignKey(ConceptSymptom, on_delete=models.CASCADE, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="concept_symptom_links")
+    note = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("relationship", "source"), name="uq_concept_symptom_source")
         ]
 
 

@@ -1,7 +1,7 @@
 {
   "project": "Psychology Atlas",
-  "version": "0.3.1",
-  "release_name": "Study Engine + Knowledge Graph · Disorders Explorer",
+  "version": "0.4.0-part1",
+  "release_name": "Concept Graph Foundation + Cognitive Distortions · Part 1",
   "stack": {
     "frontend": "Next.js 16.3.3 + React 19 + TypeScript",
     "backend": "Django 5.2 + Django REST Framework",
@@ -53,7 +53,15 @@
     "compare_v2",
     "staged_clinical_cases",
     "expanded_quizzes",
-    "global_error_loading_and_not_found_states"
+    "global_error_loading_and_not_found_states",
+    "concept_taxonomy_domains_subtypes",
+    "concept_aliases",
+    "cognitive_distortions_foundation",
+    "concept_relationship_provenance",
+    "concept_symptom_links",
+    "concept_search_alias_domain_subtype",
+    "concept_detail_distortion_profiles",
+    "seed_preserves_dsm_categories"
   ],
   "content": {
     "categories": 21,
@@ -62,9 +70,9 @@
     "dsm_generated_disorders": 211,
     "neurodevelopmental_disorders": 22,
     "symptoms": 30,
-    "concepts": 35,
+    "concepts": 44,
     "disorder_concept_links": 65,
-    "concept_relationships": 14,
+    "concept_relationships": 23,
     "flashcards": 41,
     "daily_challenges": 12,
     "daily_challenge_choices": 48,
@@ -72,10 +80,10 @@
     "quiz_questions": 40,
     "clinical_cases": 6,
     "case_steps": 18,
-    "knowledge_graph_nodes": 306,
-    "knowledge_graph_base_edges": 144,
+    "knowledge_graph_nodes": 315,
+    "knowledge_graph_base_edges": 168,
     "knowledge_graph_dsm_nearby_edges": 570,
-    "knowledge_graph_edges_with_dsm": 714,
+    "knowledge_graph_edges_with_dsm": 738,
     "dsm_master_records": 438,
     "dsm_master_formal_diagnosis_records": 243,
     "dsm_master_canonical_disorder_pages": 241,
@@ -95,22 +103,26 @@
     "dsm_master_graph_edges": 2400,
     "dsm_master_self_test_questions": 2190,
     "dsm_master_exam_tips": 438,
-    "dsm_master_glossary_terms": 14
+    "dsm_master_glossary_terms": 14,
+    "cognitive_distortions": 12,
+    "concept_aliases": 8,
+    "concept_symptom_links": 15
   },
   "migrations": [
     "0003_concept_dailychallenge_dailychallengechoice_and_more.py",
     "0004_alter_concept_kind.py",
     "0005_dsmcorpus_dsmrecord.py",
     "0006_dsmrecordrelation.py",
-    "0007_disorder_data_origin.py"
+    "0007_disorder_data_origin.py",
+    "0008_conceptalias_conceptrelationshipsource_and_more.py"
   ],
   "validation": {
     "django_check": "pass",
-    "backend_tests": "53/53 passed",
+    "backend_tests": "58/58 passed",
     "python_compileall": "pass",
     "pip_check": "pass",
     "migration_drift_check": "pass",
-    "seed_idempotency": "pass",
+    "seed_idempotency": "pass · v0.4 Part 1 counts stable across two runs and DSM categories preserved",
     "typescript_typecheck": "pass",
     "next_production_build": "pass",
     "npm_audit_low": "0 vulnerabilities",
@@ -122,7 +134,7 @@
     "neurodevelopmental_catalog": "22 Disorder pages including Autism Spectrum Disorder and Attention-Deficit/Hyperactivity Disorder",
     "dsm_master_api_smoke_test": "pass",
     "dsm_master_graph": "438 nodes / 2400 edges",
-    "atlas_graph_with_dsm": "306 nodes / 714 edges",
+    "atlas_graph_with_dsm": "315 nodes / 738 edges",
     "dsm_study_inventory": "2190 self-tests / 438 exam tips / 14 glossary terms",
     "dsm_graph_initial_html": "~12 KB after lazy graph loading",
     "atlas_graph_initial_html": "~11.5 KB after lazy graph loading",
@@ -130,7 +142,11 @@
     "authenticated_v3_user_flow": "pass",
     "temporary_audit_user_cleanup": "pass",
     "v031_disorders_explorer": "chapter rail / deep search / grid+compact views / recently viewed / responsive mobile selector",
-    "v031_disorders_explorer_headless_e2e": "pass · hydrated catalog / 241 count / Neurodevelopmental chapter / persisted recently viewed Autism"
+    "v031_disorders_explorer_headless_e2e": "pass · hydrated catalog / 241 count / Neurodevelopmental chapter / persisted recently viewed Autism",
+    "v04_part1_concept_inventory": "44 concepts / 12 cognitive distortions / 8 aliases / 23 concept relations / 15 concept-symptom links",
+    "v04_part1_relation_provenance": "12 Beck Institute-backed distortion membership relations",
+    "v04_part1_dsm_seed_regression": "pass · seed keeps linked curated disorders in DSM chapter categories",
+    "v04_part1_dsm_dry_run": "438 records / 243 formal diagnoses / 241 canonical pages / 21 categories"
   },
   "release_notes": {
     "graph_layers": [

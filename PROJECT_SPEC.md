@@ -1,6 +1,6 @@
 # Psychology Atlas Product Spec
 
-## Current implemented version: v0.3.1 Study Engine + Knowledge Graph · Disorders Explorer
+## Current implementation checkpoint: v0.4 Part 1 — Concept Graph Foundation + Cognitive Distortions Data Layer
 
 Psychology Atlas is an interactive educational system for psychology students. It should behave as a connected learning system, not as a psychology blog and not as a diagnostic product.
 
@@ -36,20 +36,25 @@ Psychology Atlas is an interactive educational system for psychology students. I
 
 ### Concepts Atlas
 
-- 35 active concepts
+- 44 active concepts
 - Persian + English names
 - simple definition
 - academic definition
 - educational example
-- concept kind
-- Concept ↔ Concept relationships
+- concept kind + scientific domain + subtype
+- searchable Persian/English aliases
+- 12 source-grounded Cognitive Distortion concepts using the Beck Institute educational worksheet taxonomy
+- recognition cues, counterexamples and common-confusion notes for Cognitive Distortions
+- Concept ↔ Concept relationships with richer relation vocabulary
+- relationship-level provenance support
 - Disorder ↔ Concept roles
+- Concept ↔ Symptom structured links
 - sources
 - flashcards
 - private bookmark/note/progress
 
 Every one of the 30 curated seeded Disorders currently has at least one Concept link. DSM-generated Disorder pages may rely primarily on their MASTER profile until later cross-domain enrichment.
-Every active seeded Concept currently has at least one active Flashcard.
+The v0.4 Part 1 seed has 44 concepts, while the existing learning-card inventory remains 41 cards; new v0.4 distortion practice/flashcard expansion is intentionally deferred to Part 2.
 
 ### Knowledge Graph V1
 
@@ -58,7 +63,9 @@ Current graph layers:
 ```text
 Concept ↔ Concept
 Disorder ↔ Concept
+Concept ↔ Symptom
 Disorder → Symptom
+Disorder ↔ Disorder via DSM nearby-title links
 ```
 
 Original curated graph baseline:
@@ -71,14 +78,20 @@ Original curated graph baseline:
 144 base Atlas edges
 ```
 
-Current graph after the full DSM diagnosis catalog sync:
+Current graph after v0.4 Part 1:
 
 ```text
-35 Concept nodes
+44 Concept nodes
 241 canonical Disorder nodes
 30 Symptom nodes
-306 total nodes
-714 total edges, including 570 DSM nearby-title edges between canonical Disorder pages
+315 total nodes
+738 total edges
+
+23 Concept ↔ Concept edges
+65 Disorder ↔ Concept edges
+15 Concept ↔ Symptom edges
+65 Disorder → Symptom edges
+570 DSM nearby-title Disorder ↔ Disorder edges
 ```
 
 The graph must use explicit structured relationships. Do not invent similarity percentages.
@@ -238,7 +251,7 @@ These are intentionally deferred rather than partially implemented placeholders:
 - Psychology Timeline
 - Brain Atlas
 - dedicated Assessments Atlas
-- dedicated Cognitive Distortions exercise engine beyond current Concept content
+- advanced Cognitive Distortions recognition/practice engine beyond the v0.4 Part 1 data/profile layer
 - Study Plan / exam date planning
 - adaptive Quiz / independent Question Bank
 - fully branching Clinical Cases with conditional paths
@@ -277,8 +290,9 @@ v0.3.1 finishes the navigation and Disorders Explorer UX layer on top of the v0.
 ## Version roadmap
 
 ```text
-v0.4  Full Concept Graph + Cognitive Distortions
-v0.5  Therapy Atlas
+v0.4 Part 1  Concept taxonomy + aliases + provenance + Concept↔Symptom + Cognitive Distortions foundation
+v0.4 Part 2  Full Concept Explorer/Graph UX + neighborhood/path finding + distortion practice/learning expansion
+v0.5         Therapy Atlas
 v0.6  Psychologists + Theories + Timeline
 v0.7  Advanced Branching Clinical Cases + Analytics
 v0.8  Study Mode + Exam Planning + Advanced Recommendations

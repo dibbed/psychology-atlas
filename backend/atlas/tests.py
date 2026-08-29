@@ -1,6 +1,8 @@
+from io import StringIO
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
+from django.core.management import call_command
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
@@ -9,9 +11,9 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import (
     Bookmark, CaseChoice, CaseQuestion, CaseStep, Category, ClinicalCase,
-    Concept, ConceptBookmark, ConceptNote, ConceptRelationship, DailyChallenge, DailyChallengeAttempt,
-    DailyChallengeChoice, Disorder, DisorderConcept, DisorderSymptom, Flashcard,
-    Quiz, QuizChoice, QuizQuestion, StudyActivity, Symptom, UserConceptProgress,
+    Concept, ConceptAlias, ConceptBookmark, ConceptNote, ConceptRelationship, ConceptRelationshipSource,
+    ConceptSymptom, DailyChallenge, DailyChallengeAttempt, DailyChallengeChoice, Disorder, DisorderConcept,
+    DisorderSymptom, DSMCorpus, DSMRecord, Flashcard, Quiz, QuizChoice, QuizQuestion, SourceReference, StudyActivity, Symptom, UserConceptProgress,
     UserFlashcardProgress, UserNote, UserProgress,
 )
 
@@ -941,3 +943,155 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         row = response.json()["symptoms"][0]
         self.assertEqual(row["disorders"][0]["slug"], self.disorder.slug)
+
+    def test_v4_concept_catalog_filters_domain_subtype_and_searches_aliases(self):
+        concept = Concept.objects.create(
+            slug="v4-distortion",
+            name_en="V4 Distortion",
+            name_fa="تحریف نسخه چهار",
+            simple_definition="definition",
+            kind="cognitive",
+            domain="cbt",
+            subtype="cognitive_distortion",
+            is_active=True,
+        )
+        ConceptAlias.objects.create(concept=concept, text="نام جایگزین ویژه", language="fa")
+
+        response = self.client.get("/api/concepts/?domain=cbt&subtype=cognitive_distortion&q=نام جایگزین&page_size=100")
+        self.assertEqual(response.status_code, 200)
+        rows = response.json()["results"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["slug"], concept.slug)
+        self.assertEqual(rows[0]["domain"], "cbt")
+        self.assertEqual(rows[0]["subtype"], "cognitive_distortion")
+        self.assertEqual(rows[0]["aliases"][0]["text"], "نام جایگزین ویژه")
+
+    def test_v4_concept_detail_exposes_distortion_fields_and_relation_provenance(self):
+        root = Concept.objects.create(
+            slug="v4-root",
+            name_en="V4 Root",
+            simple_definition="root",
+            domain="cbt",
+            is_active=True,
+        )
+        distortion = Concept.objects.create(
+            slug="v4-child",
+            name_en="V4 Child",
+            simple_definition="child",
+            kind="cognitive",
+            domain="cbt",
+            subtype="cognitive_distortion",
+            recognition_cues="cue",
+            counterexample="counter",
+            common_confusions="confusion",
+            is_active=True,
+        )
+        relation = ConceptRelationship.objects.create(
+            source_concept=distortion,
+            target_concept=root,
+            relationship_type="part_of",
+            explanation="structured membership",
+        )
+        source = SourceReference.objects.create(
+            title="Evidence Source",
+            organization="Evidence Org",
+            url="https://example.com/source",
+        )
+        ConceptRelationshipSource.objects.create(relationship=relation, source=source)
+
+        response = self.client.get(f"/api/concepts/{distortion.slug}/")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["recognition_cues"], "cue")
+        self.assertEqual(data["counterexample"], "counter")
+        self.assertEqual(data["common_confusions"], "confusion")
+        self.assertEqual(data["relationships"][0]["sources"][0]["title"], "Evidence Source")
+
+    def test_v4_concept_symptom_is_exposed_in_detail_and_graph(self):
+        concept = Concept.objects.create(
+            slug="v4-symptom-concept",
+            name_en="V4 Symptom Concept",
+            simple_definition="definition",
+            domain="psychopathology",
+            is_active=True,
+        )
+        symptom = Symptom.objects.create(
+            slug="v4-linked-symptom",
+            name_en="V4 Linked Symptom",
+            name_fa="نشانه نسخه چهار",
+            domain="cognitive",
+        )
+        ConceptSymptom.objects.create(
+            concept=concept,
+            symptom=symptom,
+            relationship_type="manifestation",
+            explanation="explicit concept symptom link",
+        )
+
+        detail = self.client.get(f"/api/concepts/{concept.slug}/")
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.json()["symptoms"][0]["slug"], symptom.slug)
+
+        graph = self.client.get("/api/concept-map/")
+        self.assertEqual(graph.status_code, 200)
+        edge = next(
+            row for row in graph.json()["edges"]
+            if row["source"] == f"concept:{concept.slug}" and row["target"] == f"symptom:{symptom.slug}"
+        )
+        self.assertEqual(edge["kind"], "concept_symptom_manifestation")
+        self.assertEqual(edge["explanation"], "explicit concept symptom link")
+
+    def test_v4_atlas_overview_exposes_concept_taxonomy(self):
+        Concept.objects.create(
+            slug="v4-taxonomy",
+            name_en="V4 Taxonomy",
+            simple_definition="definition",
+            kind="cognitive",
+            domain="cbt",
+            subtype="cognitive_distortion",
+            is_active=True,
+        )
+        response = self.client.get("/api/atlas-overview/")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(any(row["domain"] == "cbt" for row in data["concept_domains"]))
+        self.assertTrue(any(row["subtype"] == "cognitive_distortion" for row in data["concept_subtypes"]))
+
+    def test_v4_seed_preserves_dsm_category_for_linked_curated_disorder(self):
+        dsm_category = Category.objects.create(
+            slug="dsm-chapter-04",
+            name_en="DSM Anxiety",
+            name_fa="فصل اضطراب DSM",
+            is_active=True,
+        )
+        disorder = Disorder.objects.create(
+            category=dsm_category,
+            slug="panic-disorder",
+            name_en="Panic Disorder",
+            name_fa="اختلال پانیک",
+            data_origin="curated",
+            is_active=True,
+        )
+        corpus = DSMCorpus.objects.create(
+            key="test-dsm-corpus",
+            title="Test DSM Corpus",
+            source_filename="test.json",
+            source_sha256="a" * 64,
+            is_active=True,
+        )
+        DSMRecord.objects.create(
+            corpus=corpus,
+            master_id="DSM-TEST-1",
+            linked_disorder=disorder,
+            display_type="diagnosis",
+            chapter_number=4,
+            chapter_name_en="Anxiety Disorders",
+            name_en="Panic Disorder",
+            is_active=True,
+        )
+
+        call_command("seed_mvp", stdout=StringIO())
+        disorder.refresh_from_db()
+        legacy_category = Category.objects.get(slug="anxiety")
+        self.assertEqual(disorder.category_id, dsm_category.id)
+        self.assertFalse(legacy_category.is_active)

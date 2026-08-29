@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from .models import (
     Concept,
+    ConceptAlias,
     ConceptBookmark,
     ConceptNote,
     DailyChallenge,
@@ -13,8 +14,17 @@ from .models import (
 from .serializers import DisorderListSerializer, SourceSerializer
 
 
+class ConceptAliasSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ConceptAlias
+        fields = ("text", "language", "alias_type")
+
+
 class ConceptListSerializer(serializers.ModelSerializer):
     kind_label = serializers.CharField(source="get_kind_display", read_only=True)
+    domain_label = serializers.CharField(source="get_domain_display", read_only=True)
+    subtype_label = serializers.CharField(source="get_subtype_display", read_only=True)
+    aliases = ConceptAliasSerializer(many=True, read_only=True)
 
     class Meta:
         model = Concept
@@ -25,7 +35,12 @@ class ConceptListSerializer(serializers.ModelSerializer):
             "name_fa",
             "kind",
             "kind_label",
+            "domain",
+            "domain_label",
+            "subtype",
+            "subtype_label",
             "simple_definition",
+            "aliases",
         )
 
 
@@ -58,12 +73,18 @@ class ConceptDetailSerializer(ConceptCatalogSerializer):
     disorders = serializers.SerializerMethodField()
     sources = serializers.SerializerMethodField()
 
+    symptoms = serializers.SerializerMethodField()
+
     class Meta(ConceptCatalogSerializer.Meta):
         fields = ConceptCatalogSerializer.Meta.fields + (
             "academic_definition",
             "example",
+            "counterexample",
+            "recognition_cues",
+            "common_confusions",
             "relationships",
             "disorders",
+            "symptoms",
             "sources",
         )
 
@@ -85,6 +106,7 @@ class ConceptDetailSerializer(ConceptCatalogSerializer):
                 "relationship_type": relation.relationship_type,
                 "direction": "outgoing",
                 "explanation": relation.explanation,
+                "sources": SourceSerializer([link.source for link in relation.source_links.all()], many=True).data,
             })
         for relation in obj.incoming_concept_relationships.all():
             other = relation.source_concept
@@ -101,6 +123,7 @@ class ConceptDetailSerializer(ConceptCatalogSerializer):
                 "relationship_type": relation.relationship_type,
                 "direction": "incoming",
                 "explanation": relation.explanation,
+                "sources": SourceSerializer([link.source for link in relation.source_links.all()], many=True).data,
             })
         return rows
 
@@ -113,6 +136,19 @@ class ConceptDetailSerializer(ConceptCatalogSerializer):
             }
             for link in obj.disorder_links.all()
             if link.disorder.is_active
+        ]
+
+    def get_symptoms(self, obj):
+        return [
+            {
+                "slug": link.symptom.slug,
+                "name_en": link.symptom.name_en,
+                "name_fa": link.symptom.name_fa,
+                "domain": link.symptom.domain,
+                "relationship_type": link.relationship_type,
+                "explanation": link.explanation,
+            }
+            for link in obj.symptom_links.all()
         ]
 
     def get_sources(self, obj):
