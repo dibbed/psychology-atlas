@@ -12,7 +12,8 @@ frontend/.next/
 frontend/.env.local
 frontend/*.tsbuildinfo
 
-# Editors
+# Editors / local agent state
 .vscode/
 .idea/
 .DS_Store
+.freebuff/

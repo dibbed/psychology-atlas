@@ -310,6 +310,36 @@ class AtlasApiTests(APITestCase):
             ).exists()
         )
 
+    def test_v3_review_queue_rejects_invalid_limit_without_500(self):
+        self.auth(self.user_a)
+        for raw_limit in ("abc", "0", "-1", "1.5"):
+            with self.subTest(limit=raw_limit):
+                response = self.client.get(f"/api/flashcards/review-queue/?limit={raw_limit}")
+                self.assertEqual(response.status_code, 400)
+
+    def test_v3_flashcard_review_rejects_inactive_linked_content(self):
+        concept = Concept.objects.create(
+            slug="inactive-review-concept",
+            name_en="Inactive Review Concept",
+            simple_definition="definition",
+            is_active=False,
+        )
+        card = Flashcard.objects.create(
+            slug="inactive-review-card",
+            front="Front",
+            back="Back",
+            concept=concept,
+            is_active=True,
+        )
+        self.auth(self.user_a)
+        response = self.client.post(
+            f"/api/flashcards/{card.slug}/review/",
+            {"rating": "good"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(UserFlashcardProgress.objects.filter(user=self.user_a, flashcard=card).exists())
+
     def test_v3_flashcard_review_rejects_invalid_rating(self):
         card = Flashcard.objects.create(slug="bad-rating-card", front="Front", back="Back", is_active=True)
         self.auth(self.user_a)

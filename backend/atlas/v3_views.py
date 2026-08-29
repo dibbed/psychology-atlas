@@ -1,7 +1,7 @@
 from collections.abc import Mapping
 
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Q
+from django.db.models import Case, Count, IntegerField, Q, Value, When
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, permissions, status
@@ -30,6 +30,8 @@ from .models import (
     ConceptRelationship,
     DailyChallenge,
     DailyChallengeAttempt,
+    DSMRecord,
+    DSMRecordRelation,
     Disorder,
     DisorderConcept,
     Quiz,
@@ -150,12 +152,21 @@ def global_search(request):
                 "name_en",
                 "name_fa",
                 "short_description",
+                "dsm_master_records__search_text",
                 "symptom_links__symptom__name_en",
                 "symptom_links__symptom__name_fa",
             ),
             q,
         ))
+        .annotate(
+            _direct_name_match=Case(
+                When(icontains_any(("name_en", "name_fa"), q), then=Value(0)),
+                default=Value(1),
+                output_field=IntegerField(),
+            )
+        )
         .select_related("category")
+        .order_by("_direct_name_match", "name_en")
         .distinct()[:10]
     )
     concepts = (
@@ -203,6 +214,38 @@ def global_search(request):
     })
 
 
+def _linked_dsm_nearby_edges():
+    rows = (
+        DSMRecordRelation.objects.filter(
+            relationship_type=DSMRecordRelation.Kind.NEARBY,
+            source__corpus__is_active=True,
+            target__corpus__is_active=True,
+            source__is_active=True,
+            target__is_active=True,
+            source__linked_disorder__is_active=True,
+            target__linked_disorder__is_active=True,
+        )
+        .select_related("source__linked_disorder", "target__linked_disorder")
+        .order_by("source__sort_index", "target__sort_index")
+    )
+    seen = set()
+    edges = []
+    for relation in rows:
+        source = relation.source.linked_disorder
+        target = relation.target.linked_disorder
+        if source_id := getattr(source, "id", None):
+            if not getattr(target, "id", None) or source_id == target.id:
+                continue
+        else:
+            continue
+        pair = tuple(sorted((source.id, target.id)))
+        if pair in seen:
+            continue
+        seen.add(pair)
+        edges.append((source, target, relation))
+    return edges
+
+
 @api_view(["GET"])
 def atlas_overview(request):
     valid_quizzes = Quiz.objects.filter(is_active=True).filter(
@@ -232,6 +275,7 @@ def atlas_overview(request):
         .distinct()
         .count()
     )
+    dsm_nearby_edges = _linked_dsm_nearby_edges()
     graph_edge_count = (
         ConceptRelationship.objects.filter(
             source_concept__is_active=True,
@@ -242,6 +286,7 @@ def atlas_overview(request):
             concept__is_active=True,
         ).count()
         + DisorderSymptom.objects.filter(disorder__is_active=True).count()
+        + len(dsm_nearby_edges)
     )
 
     return Response({
@@ -299,7 +344,7 @@ def concept_map(request):
         for concept in concepts
     ]
     edges = []
-    disorder_ids = set()
+    disorder_ids = set(Disorder.objects.filter(is_active=True).values_list("id", flat=True))
 
     concept_relations = (
         ConceptRelationship.objects.filter(
@@ -350,7 +395,22 @@ def concept_map(request):
             "explanation": link.note,
         })
 
-    disorders = Disorder.objects.filter(id__in=disorder_ids, is_active=True).select_related("category").order_by("name_en")
+    dsm_nearby_edges = _linked_dsm_nearby_edges()
+    for source, target, relation in dsm_nearby_edges:
+        disorder_ids.add(source.id)
+        disorder_ids.add(target.id)
+        edges.append({
+            "source": f"disorder:{source.slug}",
+            "target": f"disorder:{target.slug}",
+            "kind": "dsm_nearby",
+            "explanation": "در DSM MASTER به‌عنوان عنوان نزدیک یا ارجاع مرتبط ثبت شده است.",
+        })
+
+    disorders = list(
+        Disorder.objects.filter(id__in=disorder_ids, is_active=True)
+        .select_related("category")
+        .order_by("name_en")
+    )
     nodes.extend({
         "id": f"disorder:{disorder.slug}",
         "type": "disorder",
@@ -363,6 +423,26 @@ def concept_map(request):
         "summary": disorder.short_description,
         "href": f"/disorders/{disorder.slug}",
     } for disorder in disorders)
+
+    dsm_by_disorder = {
+        row.linked_disorder_id: row
+        for row in DSMRecord.objects.filter(
+            corpus__is_active=True,
+            is_active=True,
+            linked_disorder_id__in=disorder_ids,
+        ).order_by("sort_index")
+    }
+    for node in nodes:
+        if node["type"] != "disorder":
+            continue
+        disorder = next((row for row in disorders if row.slug == node["slug"]), None)
+        if not disorder:
+            continue
+        dsm_record = dsm_by_disorder.get(disorder.id)
+        if dsm_record:
+            node["dsm_master_id"] = dsm_record.master_id
+            node["dsm_chapter_number"] = dsm_record.chapter_number
+            node["dsm_chapter_name_fa"] = dsm_record.chapter_name_fa
 
     symptoms = Symptom.objects.filter(id__in=symptom_ids).order_by("name_en")
     nodes.extend({
@@ -408,10 +488,13 @@ def concept_map(request):
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
 def review_queue(request):
+    raw_limit = request.query_params.get("limit", "20")
     try:
-        limit = min(50, max(1, int(request.query_params.get("limit", "20"))))
-    except ValueError:
-        limit = 20
+        if isinstance(raw_limit, str) and (not raw_limit.isdigit() or int(raw_limit) <= 0):
+            raise ValueError
+        limit = min(50, int(raw_limit))
+    except (TypeError, ValueError):
+        return Response({"detail": "پارامتر limit باید یک عدد صحیح مثبت باشد."}, status=400)
     concept_slug = request.query_params.get("concept", "").strip() or None
     disorder_slug = request.query_params.get("disorder", "").strip() or None
     due_rows, new_cards = get_review_queue(
@@ -454,8 +537,10 @@ def flashcard_review(request, slug):
     )
     try:
         progress = review_flashcard(user=request.user, flashcard=flashcard, rating=rating)
-    except ValueError:
-        raise ValidationError({"rating": "گزینه ارزیابی باید again، hard، good یا easy باشد."})
+    except ValueError as error:
+        if str(error) == "invalid_rating":
+            raise ValidationError({"rating": "گزینه ارزیابی باید again، hard، good یا easy باشد."})
+        raise ValidationError({"detail": "این فلش‌کارت دیگر برای مرور فعال نیست."})
     return Response(FlashcardProgressSerializer(progress).data)
 
 

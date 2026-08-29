@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DSM5TR Persian MASTER educational dataset",
+  "type": "object",
+  "required": [
+    "عنوان",
+    "فصل‌های_اختلال",
+    "نسخه_MASTER",
+    "وضعیت_رسمی_بررسی_شده_تا_2026_08_29",
+    "ثبت_منابع_MASTER",
+    "ممیزی_کیفیت_MASTER",
+    "نمایه_MASTER",
+    "آمار_MASTER"
+  ],
+  "properties": {
+    "فصل‌های_اختلال": {
+      "type": "array",
+      "minItems": 20,
+      "items": {
+        "type": "object",
+        "required": [
+          "شماره",
+          "نام_فارسی",
+          "نام_انگلیسی",
+          "گروه‌ها",
+          "راهنمای_پیشرفته_MASTER"
+        ]
+      }
+    },
+    "نسخه_MASTER": {
+      "type": "object"
+    },
+    "ثبت_منابع_MASTER": {
+      "type": "object"
+    },
+    "نمایه_MASTER": {
+      "type": "object"
+    },
+    "ممیزی_کیفیت_MASTER": {
+      "type": "object"
+    },
+    "آمار_MASTER": {
+      "type": "object"
+    }
+  },
+  "$defs": {
+    "پروفایل_MASTER": {
+      "type": "object",
+      "required": [
+        "شناسه",
+        "وضعیت_طبقه‌بندی",
+        "خلاصه_مفهومی_بازبینی‌شده",
+        "ارزیابی_هدفمند",
+        "افتراق_تشخیصی_هدفمند",
+        "کیفیت_و_محدودیت"
+      ]
+    }
+  }
+}

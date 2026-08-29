@@ -25,7 +25,7 @@ export default function SearchDisorders() {
       setLoading(true);
       setError("");
       const params = new URLSearchParams();
-      params.set("page_size", "100");
+      params.set("page_size", "300");
       if (q.trim()) params.set("q", q.trim());
       if (category) params.set("category", category);
 
@@ -52,12 +52,12 @@ export default function SearchDisorders() {
           className="search"
           value={q}
           onChange={e => setQ(e.target.value)}
-          placeholder="نام اختلال، نشانه یا موضوع را جست‌وجو کن..."
+          placeholder="نام فارسی یا انگلیسی اختلال، نشانه یا موضوع را جست‌وجو کن..."
           aria-label="جست‌وجوی اختلالات"
         />
         <select className="filter-select" value={category} onChange={e => setCategory(e.target.value)} aria-label="فیلتر دسته‌بندی">
           <option value="">همه دسته‌ها</option>
-          {categories.map(c => <option value={c.slug} key={c.slug}>{c.name_fa || c.name_en} ({c.disorder_count.toLocaleString("fa-IR")})</option>)}
+          {categories.map(c => <option value={c.slug} key={c.slug}>{c.name_fa || c.name_en}{c.name_en && c.name_en !== c.name_fa ? ` · ${c.name_en}` : ""} ({c.disorder_count.toLocaleString("fa-IR")})</option>)}
         </select>
       </div>
 

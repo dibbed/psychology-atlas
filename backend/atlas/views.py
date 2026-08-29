@@ -91,8 +91,10 @@ def me(request):
 @api_view(["GET"])
 def categories(request):
     data = []
-    qs = Category.objects.filter(is_active=True).annotate(
-        disorder_count=Count("disorders", filter=Q(disorders__is_active=True))
+    qs = (
+        Category.objects.filter(is_active=True)
+        .annotate(disorder_count=Count("disorders", filter=Q(disorders__is_active=True)))
+        .filter(disorder_count__gt=0)
     )
     for category in qs:
         data.append({
@@ -123,12 +125,19 @@ class DisorderListView(generics.ListAPIView):
                     "short_description",
                     "overview",
                     "clinical_features",
+                    "dsm_master_records__search_text",
                     "symptom_links__symptom__name_en",
                     "symptom_links__symptom__name_fa",
                     "symptom_links__symptom__description",
                 ),
                 q,
-            )).distinct()
+            )).annotate(
+                _direct_name_match=Case(
+                    When(icontains_any(("name_en", "name_fa"), q), then=Value(0)),
+                    default=Value(1),
+                    output_field=IntegerField(),
+                )
+            ).order_by("_direct_name_match", "name_en").distinct()
         return qs
 
 

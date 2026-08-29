@@ -89,7 +89,7 @@ class DisorderListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Disorder
-        fields = ("id", "slug", "name_en", "name_fa", "short_description", "category", "category_slug")
+        fields = ("id", "slug", "name_en", "name_fa", "short_description", "category", "category_slug", "data_origin")
 
 
 class DisorderDetailSerializer(DisorderListSerializer):

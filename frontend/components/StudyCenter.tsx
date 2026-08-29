@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { hasToken } from "@/lib/auth";
 import { faNumber } from "@/lib/fa";
 import DailyChallengeCard from "./DailyChallengeCard";
+import DSMStudyPanel from "./DSMStudyPanel";
 import StudyHeatmap from "./StudyHeatmap";
 
 type Overview = {
@@ -41,6 +42,7 @@ export default function StudyCenter() {
     return (
       <div className="stack">
         <DailyChallengeCard />
+        <DSMStudyPanel />
         <div className="card"><h3>برای ساخت برنامه مرور شخصی وارد شو</h3><p>Streak، Heatmap، Review Queue و پیشنهادها به فعالیت حساب کاربری وابسته‌اند.</p><Link href="/login" className="button primary">ورود به حساب</Link></div>
       </div>
     );
@@ -72,6 +74,7 @@ export default function StudyCenter() {
       </div>
 
       <DailyChallengeCard />
+      <DSMStudyPanel />
 
       <section className="card">
         <div className="meta">پیشنهادهای مطالعه</div>

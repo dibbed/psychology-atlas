@@ -1,7 +1,7 @@
 import Link from "next/link";
 import DailyChallengeCard from "@/components/DailyChallengeCard";
 import { publicFetch } from "@/lib/api";
-import type { AtlasOverview } from "@/lib/types";
+import type { AtlasOverview, DSMOverview } from "@/lib/types";
 
 function fa(value: number) {
   return value.toLocaleString("fa-IR");
@@ -9,10 +9,15 @@ function fa(value: number) {
 
 export default async function Home() {
   let overview: AtlasOverview | null = null;
+  let dsmOverview: DSMOverview | null = null;
   try {
-    overview = await publicFetch<AtlasOverview>("/atlas-overview/");
+    [overview, dsmOverview] = await Promise.all([
+      publicFetch<AtlasOverview>("/atlas-overview/"),
+      publicFetch<DSMOverview>("/dsm/overview/"),
+    ]);
   } catch {
-    overview = null;
+    try { overview = await publicFetch<AtlasOverview>("/atlas-overview/"); } catch { overview = null; }
+    try { dsmOverview = await publicFetch<DSMOverview>("/dsm/overview/"); } catch { dsmOverview = null; }
   }
 
   const stats = overview ? [
@@ -34,6 +39,7 @@ export default async function Home() {
           </p>
           <div className="actions atlas-hero-actions">
             <Link className="button primary" href="/map">کاوش نقشه دانش</Link>
+            <Link className="button" href="/dsm">DSM MASTER</Link>
             <Link className="button" href="/study">مرکز مطالعه</Link>
             <Link className="button ghost" href="/search">جست‌وجوی سراسری</Link>
           </div>
@@ -75,14 +81,17 @@ export default async function Home() {
           <Link href="/disorders" className="learning-rail-item">
             <span className="rail-index">۰۱</span><div><strong>اطلس بالینی</strong><p>اختلالات، نشانه‌ها، افتراق و منابع آموزشی.</p></div>
           </Link>
+          <Link href="/dsm" className="learning-rail-item dsm-learning-rail-item">
+            <span className="rail-index">۰۲</span><div><strong>DSM MASTER</strong><p>{dsmOverview ? `${fa(dsmOverview.counts.records)} گره ممیزی‌شده با وضعیت طبقه‌بندی، ارزیابی، افتراق و منابع.` : "مرجع ساختاری DSM-5-TR فارسی با تفکیک نوع رکورد."}</p></div>
+          </Link>
           <Link href="/concepts" className="learning-rail-item">
-            <span className="rail-index">۰۲</span><div><strong>اطلس مفاهیم</strong><p>تعریف ساده و دانشگاهی، مثال و رابطه با اختلالات.</p></div>
+            <span className="rail-index">۰۳</span><div><strong>اطلس مفاهیم</strong><p>تعریف ساده و دانشگاهی، مثال و رابطه با اختلالات.</p></div>
           </Link>
           <Link href="/map" className="learning-rail-item">
-            <span className="rail-index">۰۳</span><div><strong>Knowledge Graph</strong><p>حرکت بین Concept، Disorder و Symptom بر اساس edge واقعی.</p></div>
+            <span className="rail-index">۰۴</span><div><strong>Knowledge Graph</strong><p>حرکت بین Concept، Disorder و Symptom بر اساس edge واقعی.</p></div>
           </Link>
           <Link href="/study" className="learning-rail-item">
-            <span className="rail-index">۰۴</span><div><strong>Study Engine</strong><p>SRS، streak، heatmap، challenge و پیشنهاد مرور.</p></div>
+            <span className="rail-index">۰۵</span><div><strong>Study Engine</strong><p>SRS، streak، heatmap، challenge و پیشنهاد مرور.</p></div>
           </Link>
         </div>
 

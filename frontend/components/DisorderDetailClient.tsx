@@ -6,7 +6,8 @@ import BookmarkButton from "./BookmarkButton";
 import ConceptMap from "./ConceptMap";
 import NoteEditor from "./NoteEditor";
 import ProgressTracker from "./ProgressTracker";
-import type { DisorderDetail } from "@/lib/types";
+import { StructuredValue } from "./DSMRecordView";
+import type { DSMRecordDetail, DisorderDetail } from "@/lib/types";
 
 const tabs = [
   ["overview", "معرفی"],
@@ -16,6 +17,7 @@ const tabs = [
   ["assessment", "ارزیابی"],
   ["treatment", "درمان"],
   ["study", "تمرین"],
+  ["dsm", "DSM MASTER"],
   ["map", "نقشه مفهومی"],
   ["notes", "یادداشت من"],
   ["sources", "منابع"],
@@ -42,7 +44,7 @@ function domainLabel(value: string) {
   return labels[value] || "ویژگی";
 }
 
-export default function DisorderDetailClient({ disorder: d }: { disorder: DisorderDetail }) {
+export default function DisorderDetailClient({ disorder: d, dsmMaster = null }: { disorder: DisorderDetail; dsmMaster?: DSMRecordDetail | null }) {
   const [active, setActive] = useState<TabId>("overview");
 
   return (
@@ -51,10 +53,12 @@ export default function DisorderDetailClient({ disorder: d }: { disorder: Disord
       <header className="detail-header">
         <div className="meta">{d.category}</div>
         <h1>{d.name_fa || d.name_en}</h1>
+        {d.name_en && d.name_en !== d.name_fa && <div className="latin-title disorder-detail-en">{d.name_en}</div>}
         <p className="section-copy">{d.short_description}</p>
         <div className="actions" style={{ marginTop: 20 }}>
           <BookmarkButton slug={d.slug} />
           <Link className="button" href={`/compare?add=${d.slug}`}>مقایسه با اختلال دیگر</Link>
+          {dsmMaster && <Link className="button dsm-master-button" href={`/dsm/${encodeURIComponent(dsmMaster.master_id)}`}>DSM MASTER · {dsmMaster.master_id.replace("DSM5TR-FA-", "")}</Link>}
         </div>
       </header>
 
@@ -90,6 +94,13 @@ export default function DisorderDetailClient({ disorder: d }: { disorder: Disord
               <div className="study-hint">
                 این صفحه برای یادگیری و مرور دانشگاهی طراحی شده و ابزار تشخیص فردی نیست.
               </div>
+              {dsmMaster && (
+                <Link className="dsm-master-bridge" href={`/dsm/${encodeURIComponent(dsmMaster.master_id)}`}>
+                  <span>DSM MASTER</span>
+                  <strong>{dsmMaster.classification_status}</strong>
+                  <small>پروفایل آموزشی ممیزی‌شده، ارزیابی هدفمند، افتراق، سیر، مدیریت و منابع ←</small>
+                </Link>
+              )}
             </aside>
           </div>
         )}
@@ -176,6 +187,39 @@ export default function DisorderDetailClient({ disorder: d }: { disorder: Disord
           </div>
         )}
 
+        {active === "dsm" && dsmMaster && (
+          <div className="stack dsm-disorder-tab">
+            <div className="dsm-scope-warning">
+              <strong>{dsmMaster.classification_status}</strong>
+              <p>{dsmMaster.summary}</p>
+            </div>
+            <div className="grid-2">
+              <article className="card">
+                <div className="meta">ارزیابی هدفمند MASTER</div>
+                <StructuredValue value={dsmMaster.assessment} />
+              </article>
+              <article className="card">
+                <div className="meta">افتراق تشخیصی هدفمند</div>
+                <StructuredValue value={dsmMaster.differential} />
+              </article>
+              <article className="card">
+                <div className="meta">سیر و پیش‌آگهی آموزشی</div>
+                <p>{dsmMaster.course}</p>
+              </article>
+              <article className="card">
+                <div className="meta">ملاحظات فرهنگی و زمینه‌ای</div>
+                <p>{dsmMaster.context_considerations}</p>
+              </article>
+            </div>
+            <div className="dsm-exam-tip"><div className="meta">نکته امتحانی MASTER</div><p>{dsmMaster.exam_tip}</p></div>
+            <section className="card">
+              <div className="meta">Self-Test پیشرفته</div>
+              <StructuredValue value={dsmMaster.self_test} />
+            </section>
+            <div className="actions"><Link className="button primary" href={`/dsm/${dsmMaster.master_id}`}>باز کردن پروفایل کامل MASTER</Link><Link className="button" href={`/map?scope=dsm&node=${dsmMaster.master_id}`}>دیدن در DSM Graph</Link></div>
+          </div>
+        )}
+        {active === "dsm" && !dsmMaster && <div className="card">برای این اختلال رکورد DSM MASTER متصل پیدا نشد.</div>}
         {active === "map" && <ConceptMap disorder={d} />}
         {active === "notes" && <NoteEditor slug={d.slug} />}
 

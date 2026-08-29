@@ -35,6 +35,7 @@ const edgeLabels: Record<string, string> = {
   symptom_common: "نشانه رایج",
   symptom_possible: "نشانه ممکن",
   symptom_contextual: "نشانه زمینه‌ای",
+  dsm_nearby: "عنوان نزدیک در DSM MASTER",
 };
 
 function relationLabel(kind: string) {
@@ -197,7 +198,10 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
                   <div className="latin-title">{selected.name_en}</div>
                 </div>
               </div>
-              <Link className="button" href={selected.href}>صفحه کامل</Link>
+              <div className="actions">
+                {selected.dsm_master_id && <Link className="button" href={`/dsm/${selected.dsm_master_id}`}>DSM MASTER</Link>}
+                <Link className="button" href={selected.href}>صفحه کامل</Link>
+              </div>
             </div>
 
             <div className="node-profile-grid">
@@ -208,6 +212,13 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
               </div>
               <div className="node-profile-copy">
                 <p>{selected.summary || "برای این گره هنوز توضیح کوتاه ثبت نشده است."}</p>
+                {selected.dsm_master_id && (
+                  <div className="map-dsm-context">
+                    <span>DSM MASTER · {selected.dsm_master_id}</span>
+                    <strong>{selected.dsm_chapter_name_fa || "رکورد رسمی متصل"}</strong>
+                    {selected.dsm_chapter_number && <small>فصل {selected.dsm_chapter_number.toLocaleString("fa-IR")}</small>}
+                  </div>
+                )}
                 <div className="node-facts">
                   <div><strong>{selected.degree.toLocaleString("fa-IR")}</strong><span>اتصال مستقیم</span></div>
                   <div><strong>{neighborTypeCounts.concept.toLocaleString("fa-IR")}</strong><span>Concept</span></div>

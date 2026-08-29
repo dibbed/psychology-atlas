@@ -29,6 +29,10 @@ class Category(TimeStampedModel):
 
 
 class Disorder(TimeStampedModel):
+    class Origin(models.TextChoices):
+        CURATED = "curated", "Curated Atlas"
+        DSM_MASTER = "dsm_master", "DSM MASTER"
+
     category = models.ForeignKey(Category, on_delete=models.PROTECT, related_name="disorders")
     slug = models.SlugField(max_length=160, unique=True)
     name_en = models.CharField(max_length=220)
@@ -41,6 +45,7 @@ class Disorder(TimeStampedModel):
     assessment_overview = models.TextField(blank=True)
     typical_onset = models.CharField(max_length=220, blank=True)
     course_note = models.TextField(blank=True)
+    data_origin = models.CharField(max_length=24, choices=Origin.choices, default=Origin.CURATED, db_index=True)
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -574,3 +579,155 @@ class DailyChallengeAttempt(models.Model):
             models.UniqueConstraint(fields=("user", "activity_date"), name="uq_user_daily_challenge_date")
         ]
         indexes = [models.Index(fields=("user", "-activity_date"))]
+
+
+class DSMCorpus(TimeStampedModel):
+    """One imported DSM MASTER educational corpus.
+
+    The original JSON is retained verbatim as parsed JSON so the normalized
+    record index never becomes the only copy of source-provided information.
+    """
+
+    key = models.SlugField(max_length=160, unique=True)
+    title = models.CharField(max_length=500)
+    version_name = models.CharField(max_length=300, blank=True)
+    version_date = models.DateField(null=True, blank=True)
+    language = models.CharField(max_length=80, blank=True)
+    purpose = models.TextField(blank=True)
+    copyright_note = models.TextField(blank=True)
+    clinical_note = models.TextField(blank=True)
+    source_filename = models.CharField(max_length=500)
+    source_sha256 = models.CharField(max_length=64, db_index=True)
+    official_status = models.JSONField(default=dict, blank=True)
+    source_registry = models.JSONField(default=dict, blank=True)
+    quality_audit = models.JSONField(default=dict, blank=True)
+    stats = models.JSONField(default=dict, blank=True)
+    study_guide = models.JSONField(default=list, blank=True)
+    urgent_warnings = models.JSONField(default=dict, blank=True)
+    cultural_note = models.TextField(blank=True)
+    periodic_review = models.JSONField(default=list, blank=True)
+    release_updates = models.JSONField(default=dict, blank=True)
+    health_check = models.JSONField(default=dict, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    raw_document = models.JSONField(default=dict, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ("-version_date", "-id")
+
+    def __str__(self):
+        return self.version_name or self.title
+
+
+class DSMRecord(TimeStampedModel):
+    class DisplayType(models.TextChoices):
+        DIAGNOSIS = "diagnosis", "Diagnosis"
+        STRUCTURAL = "structural", "Structural"
+        CLINICAL_ATTENTION = "clinical_attention", "Clinical attention"
+        RESEARCH = "research", "Research condition"
+        ALTERNATIVE_MODEL = "alternative_model", "Alternative model"
+        SPECIFIER = "specifier", "Specifier"
+        REFERENCE = "reference", "Structural reference"
+        CODE = "code", "Additional code"
+        OTHER = "other", "Other"
+
+    corpus = models.ForeignKey(DSMCorpus, on_delete=models.CASCADE, related_name="records")
+    master_id = models.CharField(max_length=40, db_index=True)
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="children",
+    )
+    linked_disorder = models.ForeignKey(
+        Disorder,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="dsm_master_records",
+    )
+    sort_index = models.PositiveIntegerField(default=0)
+    root_section = models.CharField(max_length=180, blank=True, db_index=True)
+    chapter_number = models.PositiveSmallIntegerField(null=True, blank=True, db_index=True)
+    chapter_name_fa = models.CharField(max_length=300, blank=True)
+    chapter_name_en = models.CharField(max_length=300, blank=True)
+    group_name = models.CharField(max_length=300, blank=True)
+    name_fa = models.CharField(max_length=500, blank=True, db_index=True)
+    name_en = models.CharField(max_length=500, blank=True, db_index=True)
+    source_type = models.CharField(max_length=200, blank=True)
+    classification_status = models.CharField(max_length=300, blank=True, db_index=True)
+    display_type = models.CharField(
+        max_length=32,
+        choices=DisplayType.choices,
+        default=DisplayType.OTHER,
+        db_index=True,
+    )
+    specialization_level = models.CharField(max_length=220, blank=True)
+    summary = models.TextField(blank=True)
+    key_features = models.JSONField(default=list, blank=True)
+    assessment = models.JSONField(default=list, blank=True)
+    differential = models.JSONField(default=list, blank=True)
+    comorbidity = models.TextField(blank=True)
+    course = models.TextField(blank=True)
+    management = models.JSONField(default=list, blank=True)
+    assessment_tools = models.JSONField(default=list, blank=True)
+    context_considerations = models.TextField(blank=True)
+    red_flags = models.TextField(blank=True)
+    pitfalls = models.JSONField(default=list, blank=True)
+    nearby_titles = models.JSONField(default=list, blank=True)
+    official_updates = models.JSONField(default=list, blank=True)
+    homonym_info = models.JSONField(default=dict, blank=True)
+    prevalence_numeric = models.JSONField(null=True, blank=True)
+    prevalence_policy = models.TextField(blank=True)
+    coding = models.TextField(blank=True)
+    source_keys = models.JSONField(default=list, blank=True)
+    quality = models.JSONField(default=dict, blank=True)
+    exam_tip = models.TextField(blank=True)
+    self_test = models.JSONField(default=list, blank=True)
+    structural_path = models.JSONField(default=dict, blank=True)
+    search_text = models.TextField(blank=True)
+    source_payload = models.JSONField(default=dict, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ("sort_index", "master_id")
+        constraints = [
+            models.UniqueConstraint(fields=("corpus", "master_id"), name="uq_dsm_corpus_master_id")
+        ]
+        indexes = [
+            models.Index(fields=("corpus", "display_type", "sort_index")),
+            models.Index(fields=("corpus", "chapter_number", "sort_index")),
+            models.Index(fields=("linked_disorder", "is_active")),
+        ]
+
+    def __str__(self):
+        return f"{self.master_id}: {self.name_en or self.name_fa}"
+
+
+class DSMRecordRelation(TimeStampedModel):
+    class Kind(models.TextChoices):
+        NEARBY = "nearby", "Nearby title"
+        DIFFERENTIAL = "differential", "Differential title"
+
+    source = models.ForeignKey(DSMRecord, on_delete=models.CASCADE, related_name="outgoing_dsm_relations")
+    target = models.ForeignKey(DSMRecord, on_delete=models.CASCADE, related_name="incoming_dsm_relations")
+    relationship_type = models.CharField(max_length=24, choices=Kind.choices)
+    explanation = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ("source__sort_index", "target__sort_index", "relationship_type")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("source", "target", "relationship_type"),
+                name="uq_dsm_record_relation",
+            ),
+            models.CheckConstraint(
+                condition=~Q(source=F("target")),
+                name="ck_dsm_record_relation_not_self",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=("source", "relationship_type")),
+            models.Index(fields=("target", "relationship_type")),
+        ]

@@ -25,6 +25,7 @@ export default function Nav() {
         <nav className="nav-links" aria-label="ناوبری اصلی">
           <Link href="/search">جست‌وجو</Link>
           <Link href="/disorders">اختلالات</Link>
+          <Link href="/dsm">DSM MASTER</Link>
           <Link href="/concepts">مفاهیم</Link>
           <Link href="/map">نقشه دانش</Link>
           <Link href="/compare">مقایسه</Link>

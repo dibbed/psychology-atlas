@@ -15,7 +15,7 @@
 
 ## v0.3 content
 
-- **30 disorders** across 7 categories
+- **241 canonical disorder pages** across 20 DSM chapters + 1 supplemental medication/adverse-effects section
 - **30 structured symptoms**
 - **35 psychology concepts**
 - **65 Disorder ↔ Concept links**
@@ -25,6 +25,56 @@
 - **5 quizzes × 8 questions = 40 questions**
 - **6 staged clinical cases × 3 stages = 18 case stages**
 - Institutional source metadata attached to every seeded concept and disorder
+- **DSM-5-TR Persian MASTER reference layer:** 438 addressable educational/structural records imported from the audited 2026-08-29 bundle without flattening non-diagnosis records into disorders
+- **243 formal-diagnosis MASTER records → 241 canonical Atlas disorder pages**; 2 duplicate structural occurrences remain independently addressable in DSM MASTER but collapse to one Disorder page each
+- **30 curated disorder pages preserved + 211 DSM-generated disorder pages**
+- **22 Neurodevelopmental Disorder pages**, including Autism Spectrum Disorder and Attention-Deficit/Hyperactivity Disorder
+
+## DSM-5-TR Persian MASTER reference layer
+
+Source bundle:
+
+```text
+DSM5TR_MASTER_2026-08-29_bundle/
+```
+
+The importer verifies the source JSON, preserves the complete parsed document in `DSMCorpus.raw_document`, and builds a normalized searchable `DSMRecord` index. The source manifest SHA256 is preserved and verified during the audited import:
+
+```text
+9680d7b1e85ae4ef58efa58f7c76bfcc04c7b317f1fbd40cbb2e27be02542694
+```
+
+Imported record types are deliberately kept separate:
+
+```text
+243 formal diagnoses
+ 92 structural/title records
+ 65 clinical-attention conditions/codes
+ 20 structural references
+  8 research conditions
+  7 Section III alternative-model records
+  2 specifiers
+  1 additional code
+438 total addressable MASTER records
+```
+
+Routes:
+
+```text
+/dsm
+/dsm/<MASTER-ID>
+```
+
+The DSM explorer supports Persian/English full-text search, chapter and classification filters, hierarchy navigation, source registry links, audited quality metadata, official-update notes, targeted assessment, differential review, course, educational management, safety flags, self-test questions, and a lazy-loaded view of remaining file-level metadata/indexes. Every canonical formal diagnosis is synchronized into the main Disorder Atlas with Persian and English names, and each Disorder page links back to its matching MASTER profile.
+
+Import or refresh the bundle idempotently from the backend directory:
+
+```powershell
+python manage.py import_dsm_master
+python manage.py import_dsm_master --dry-run
+```
+
+The bundle itself states that it is an educational/structural reference, not verbatim DSM diagnostic criteria, not an automated diagnostic tool, and not a substitute for current professional coding or individualized treatment guidance. Proposed/non-final changes remain distinct from approved updates.
 
 ## Core v0.3 features
 
@@ -52,7 +102,7 @@ Each concept can include:
 - personal bookmark
 - personal note
 
-Every active seeded disorder has at least one Concept link, and every active seeded Concept has at least one Flashcard.
+Every curated seeded disorder has at least one Concept link, and every active seeded Concept has at least one Flashcard. DSM-generated Disorder pages may rely primarily on their linked MASTER profile until dedicated Concept/Symptom enrichment is added.
 
 ### Knowledge Graph V1
 
@@ -72,16 +122,30 @@ Disorder ↔ Concept
 Disorder → Symptom
 ```
 
-Seeded graph baseline:
+Original curated graph baseline:
 
 ```text
 95 nodes
   35 concepts
-  30 disorders
+  30 curated disorders
+  30 symptoms
+144 base Atlas edges
+```
+
+Current graph after synchronizing every canonical formal diagnosis:
+
+```text
+306 nodes
+  35 concepts
+ 241 canonical disorders
   30 symptoms
 
-144 edges
+144 base Atlas edges
++ 570 DSM MASTER nearby-title edges between canonical Disorder pages
+= 714 edges
 ```
+
+The map supports two source-grounded scopes: the original Atlas graph and a DSM MASTER graph. The DSM scope contains 438 MASTER nodes and 2,400 relations (415 hierarchy, 1,826 nearby-title links, 159 differential links that resolve to another MASTER record). Generic differential phrases are not forced into graph nodes.
 
 The map supports node browsing, node-type filters, direct-neighbor exploration and deep links such as:
 
@@ -362,6 +426,14 @@ GET  /api/concept-map/
 GET  /api/atlas-overview/
 GET  /api/search/?q=<query>
 
+GET  /api/dsm/overview/
+GET  /api/dsm/metadata/
+GET  /api/dsm/study-kit/
+GET  /api/dsm/graph/
+GET  /api/dsm/records/?q=<query>&type=<type>&chapter=<number>
+GET  /api/dsm/records/<MASTER-ID>/
+GET  /api/dsm/records/by-disorder/<slug>/
+
 GET  /api/flashcards/
 GET  /api/flashcards/review-queue/
 POST /api/flashcards/<slug>/review/
@@ -393,23 +465,31 @@ POST /api/cases/<slug>/submit/
 
 ## Release validation baseline
 
-Validated on the v0.3 working tree after the deep bug audit:
+Validated on the current v0.3 working tree after the DSM MASTER integration:
 
 ```text
-Django system check                 PASS
-Backend tests                       46 / 46 PASS
-Migration drift                     none
-Python compileall                   PASS
-pip check                           PASS
-Seed idempotency                    PASS
-TypeScript typecheck                PASS
-Next.js production build            PASS
-npm audit --audit-level=high         0 vulnerabilities
-Frontend main-route smoke test       PASS
-Public v0.3 API smoke test           PASS
-Real authenticated v0.3 user flow    PASS
-Temporary audit user cleanup         PASS
+Django system check                  PASS
+Backend tests                        53 / 53 PASS
+DSM import idempotency               PASS · 1 corpus / 438 records / 241 canonical Disorder pages / 6 sources
+DSM diagnosis sync                    PASS · 243 formal records → 241 canonical pages · 211 created + 30 curated preserved
+Neurodevelopmental chapter            PASS · 22 Disorder pages including Autism Spectrum Disorder and ADHD
+DSM resolved relations               PASS · 1,826 nearby / 159 differential
+DSM graph                            PASS · 438 nodes / 2,400 edges
+Atlas graph with DSM layer           PASS · 306 nodes / 714 edges
+DSM study inventory                  PASS · 2,190 self-tests / 438 exam tips / 14 glossary terms
+DSM source SHA256                    PASS · matches bundle manifest
+Migration drift                      none
+Python compileall                    PASS
+pip check                            PASS
+TypeScript typecheck                 PASS
+Next.js production build             PASS
+npm audit --audit-level=low           0 vulnerabilities
+Frontend main-route smoke test        PASS
+DSM API + route smoke test            PASS
+DSM overview HTML payload             ~115 KB after lazy metadata loading
 ```
+
+Automated browser visual inspection is not part of this validation because optional Playwright support is not installed in the current local tool environment. Production build, API smoke tests and HTTP route checks were used instead.
 
 Real user-flow validation covered:
 

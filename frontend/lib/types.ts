@@ -6,6 +6,7 @@ export type Disorder = {
   short_description: string;
   category: string;
   category_slug: string;
+  data_origin: "curated" | "dsm_master";
 };
 
 export type Concept = {
@@ -240,6 +241,9 @@ export type KnowledgeGraphNode = {
   summary: string;
   href: string;
   degree: number;
+  dsm_master_id?: string;
+  dsm_chapter_number?: number | null;
+  dsm_chapter_name_fa?: string;
 };
 
 export type KnowledgeGraphEdge = {
@@ -258,4 +262,157 @@ export type KnowledgeGraphData = {
   };
   nodes: KnowledgeGraphNode[];
   edges: KnowledgeGraphEdge[];
+};
+
+export type DSMDisplayType =
+  | "diagnosis"
+  | "structural"
+  | "clinical_attention"
+  | "research"
+  | "alternative_model"
+  | "specifier"
+  | "reference"
+  | "code"
+  | "other";
+
+export type DSMRecordBrief = {
+  master_id: string;
+  name_fa: string;
+  name_en: string;
+  display_type: DSMDisplayType;
+  classification_status: string;
+  specialization_level: string;
+  root_section: string;
+  chapter_number: number | null;
+  chapter_name_fa: string;
+  chapter_name_en: string;
+  group_name: string;
+  summary: string;
+  linked_disorder: Disorder | null;
+};
+
+export type DSMSource = {
+  key: string;
+  عنوان?: string;
+  نشانی?: string;
+  کاربرد?: string;
+};
+
+export type DSMRecordDetail = DSMRecordBrief & {
+  source_type: string;
+  key_features: unknown[];
+  assessment: unknown[];
+  differential: unknown[];
+  comorbidity: string;
+  course: string;
+  management: unknown[];
+  assessment_tools: unknown[];
+  context_considerations: string;
+  red_flags: string;
+  pitfalls: unknown[];
+  nearby_titles: unknown[];
+  official_updates: unknown[];
+  homonym_info: Record<string, unknown>;
+  prevalence_numeric: unknown;
+  prevalence_policy: string;
+  coding: string;
+  source_keys: string[];
+  sources: DSMSource[];
+  quality: Record<string, unknown>;
+  exam_tip: string;
+  self_test: unknown[];
+  structural_path: Record<string, unknown>;
+  parent: DSMRecordBrief | null;
+  children: DSMRecordBrief[];
+  relations: {
+    direction: "in" | "out";
+    relationship_type: "nearby" | "differential";
+    explanation: string;
+    record: DSMRecordBrief;
+  }[];
+  source_payload: Record<string, unknown>;
+};
+
+export type DSMStudyKit = {
+  glossary: Record<string, string>;
+  study_guide: string[];
+  cultural_note: string;
+  urgent_warnings: Record<string, unknown>;
+  stats: {
+    records: number;
+    diagnoses: number;
+    self_test_questions: number;
+    exam_tips: number;
+    glossary_terms: number;
+  };
+};
+
+export type DSMGraphNode = {
+  id: string;
+  label: string;
+  name_en: string;
+  display_type: DSMDisplayType;
+  classification_status: string;
+  chapter_number: number | null;
+  chapter_name_fa: string;
+  group_name: string;
+  summary: string;
+  degree: number;
+  href: string;
+  linked_disorder_slug: string | null;
+};
+
+export type DSMGraphData = {
+  meta: {
+    node_count: number;
+    edge_count: number;
+    relation_counts: { hierarchy: number; nearby: number; differential: number };
+  };
+  nodes: DSMGraphNode[];
+  edges: { source: string; target: string; kind: "hierarchy" | "nearby" | "differential"; explanation: string }[];
+};
+
+export type DSMPaginatedRecords = {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: DSMRecordBrief[];
+};
+
+export type DSMOverview = {
+  corpus: {
+    key: string;
+    title: string;
+    version_name: string;
+    version_date: string;
+    language: string;
+    purpose: string;
+    copyright_note: string;
+    clinical_note: string;
+    source_filename: string;
+    source_sha256: string;
+  };
+  counts: {
+    records: number;
+    linked_atlas_disorders: number;
+    types: Partial<Record<DSMDisplayType, number>>;
+    roots: Record<string, number>;
+  };
+  chapters: {
+    chapter_number: number;
+    chapter_name_fa: string;
+    chapter_name_en: string;
+    record_count: number;
+    diagnosis_count: number;
+  }[];
+  stats: Record<string, unknown>;
+  official_status: Record<string, unknown>;
+  source_registry: Record<string, Omit<DSMSource, "key">>;
+  quality_audit: Record<string, unknown>;
+  study_guide: string[];
+  urgent_warnings: Record<string, unknown>;
+  cultural_note: string;
+  periodic_review: Record<string, unknown>[];
+  release_updates: Record<string, unknown>;
+  health_check: Record<string, unknown>;
 };

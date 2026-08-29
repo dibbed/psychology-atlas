@@ -1,7 +1,7 @@
 from django.urls import path
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from . import views, v3_views
+from . import dsm_views, views, v3_views
 
 urlpatterns = [
     path("auth/register/", views.RegisterView.as_view()),
@@ -44,4 +44,12 @@ urlpatterns = [
     path("search/", v3_views.global_search),
     path("atlas-overview/", v3_views.atlas_overview),
     path("concept-map/", v3_views.concept_map),
+
+    path("dsm/overview/", dsm_views.dsm_overview),
+    path("dsm/metadata/", dsm_views.dsm_metadata),
+    path("dsm/study-kit/", dsm_views.dsm_study_kit),
+    path("dsm/graph/", dsm_views.dsm_graph),
+    path("dsm/records/", dsm_views.DSMRecordListView.as_view()),
+    path("dsm/records/by-disorder/<slug:slug>/", dsm_views.dsm_record_by_disorder),
+    path("dsm/records/<str:master_id>/", dsm_views.DSMRecordDetailView.as_view()),
 ]

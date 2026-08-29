@@ -87,6 +87,12 @@ def review_flashcard(*, user, flashcard: Flashcard, rating: str):
     valid = {choice for choice, _ in UserFlashcardProgress.Rating.choices}
     if rating not in valid:
         raise ValueError("invalid_rating")
+    if not flashcard.is_active:
+        raise ValueError("inactive_flashcard")
+    if flashcard.concept_id and not flashcard.concept.is_active:
+        raise ValueError("inactive_concept")
+    if flashcard.disorder_id and not flashcard.disorder.is_active:
+        raise ValueError("inactive_disorder")
 
     now = timezone.now()
     progress, _ = UserFlashcardProgress.objects.select_for_update().get_or_create(

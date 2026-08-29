@@ -4,19 +4,20 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { faNumber } from "@/lib/fa";
 import { normalizePersianSearch } from "@/lib/text";
-import type { Disorder, DisorderDetail } from "@/lib/types";
+import type { DSMRecordDetail, Disorder, DisorderDetail } from "@/lib/types";
 
 export default function CompareClient({ initialSlug }: { initialSlug?: string }) {
   const [all, setAll] = useState<Disorder[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [items, setItems] = useState<DisorderDetail[]>([]);
+  const [dsmItems, setDsmItems] = useState<Record<string, DSMRecordDetail | null>>({});
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [comparing, setComparing] = useState(false);
 
   useEffect(() => {
-    api<{ results: Disorder[] }>("/disorders/?page_size=100")
+    api<{ results: Disorder[] }>("/disorders/?page_size=300")
       .then(x => setAll(x.results))
       .catch((e: any) => setError(e.message || "دریافت اختلالات انجام نشد."))
       .finally(() => setLoading(false));
@@ -43,9 +44,22 @@ export default function CompareClient({ initialSlug }: { initialSlug?: string })
     try {
       setComparing(true);
       setError("");
-      setItems(await api<DisorderDetail[]>(`/disorders/compare/?slugs=${selected.join(",")}`));
+      const [comparison, dsmRows] = await Promise.all([
+        api<DisorderDetail[]>(`/disorders/compare/?slugs=${selected.join(",")}`),
+        Promise.all(selected.map(async slug => {
+          try {
+            const record = await api<DSMRecordDetail>(`/dsm/records/by-disorder/${slug}/?detail=true`);
+            return [slug, record] as const;
+          } catch {
+            return [slug, null] as const;
+          }
+        })),
+      ]);
+      setItems(comparison);
+      setDsmItems(Object.fromEntries(dsmRows));
     } catch (e: any) {
       setItems([]);
+      setDsmItems({});
       setError(e.message || "مقایسه انجام نشد.");
     } finally {
       setComparing(false);
@@ -69,6 +83,7 @@ export default function CompareClient({ initialSlug }: { initialSlug?: string })
                 onClick={() => toggle(d.slug)}
               >
                 <span>{d.name_fa || d.name_en}</span>
+                {d.name_en && d.name_en !== d.name_fa && <small className="latin-label">{d.name_en}</small>}
                 <small>{d.category}</small>
               </button>
             ))}
@@ -76,7 +91,7 @@ export default function CompareClient({ initialSlug }: { initialSlug?: string })
         )}
         <div className="actions">
           <button className="button primary" disabled={selected.length < 2 || comparing} onClick={compare}>{comparing ? "در حال مقایسه..." : "ساخت جدول مقایسه"}</button>
-          {selected.length > 0 && <button className="button" onClick={() => { setSelected([]); setItems([]); }}>پاک‌کردن انتخاب‌ها</button>}
+          {selected.length > 0 && <button className="button" onClick={() => { setSelected([]); setItems([]); setDsmItems({}); }}>پاک‌کردن انتخاب‌ها</button>}
         </div>
         {error && <p className="error">{error}</p>}
       </div>
@@ -87,7 +102,7 @@ export default function CompareClient({ initialSlug }: { initialSlug?: string })
             <thead>
               <tr>
                 <th>بعد مقایسه</th>
-                {items.map(x => <th key={x.slug}>{x.name_fa || x.name_en}</th>)}
+                {items.map(x => <th key={x.slug}><span>{x.name_fa || x.name_en}</span>{x.name_en && x.name_en !== x.name_fa && <small className="latin-label compare-head-en">{x.name_en}</small>}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -98,6 +113,12 @@ export default function CompareClient({ initialSlug }: { initialSlug?: string })
               <tr><td>تمرکز ارزیابی</td>{items.map(x => <td key={x.slug}>{x.assessment_overview}</td>)}</tr>
               <tr><td>نشانه‌های ثبت‌شده</td>{items.map(x => <td key={x.slug}>{x.symptoms.map(s => s.name_fa || s.name_en).join("، ") || "ثبت نشده"}</td>)}</tr>
               <tr><td>سیر</td>{items.map(x => <td key={x.slug}>{x.course_note}</td>)}</tr>
+              <tr className="compare-dsm-row"><td>وضعیت DSM MASTER</td>{items.map(x => <td key={x.slug}>{dsmItems[x.slug]?.classification_status || "رکورد متصل ندارد"}</td>)}</tr>
+              <tr className="compare-dsm-row"><td>خلاصه MASTER</td>{items.map(x => <td key={x.slug}>{dsmItems[x.slug]?.summary || "ثبت نشده"}</td>)}</tr>
+              <tr className="compare-dsm-row"><td>ارزیابی هدفمند MASTER</td>{items.map(x => <td key={x.slug}>{dsmItems[x.slug]?.assessment.filter(item => typeof item === "string").slice(0, 6).join("، ") || "ثبت نشده"}</td>)}</tr>
+              <tr className="compare-dsm-row"><td>افتراق‌های MASTER</td>{items.map(x => <td key={x.slug}>{dsmItems[x.slug]?.differential.slice(0, 6).map(item => typeof item === "string" ? item : typeof item === "object" && item && "عنوان" in item ? String((item as Record<string, unknown>)["عنوان"]) : "").filter(Boolean).join("، ") || "ثبت نشده"}</td>)}</tr>
+              <tr className="compare-dsm-row"><td>زمینه فرهنگی/رشدی</td>{items.map(x => <td key={x.slug}>{dsmItems[x.slug]?.context_considerations || "ثبت نشده"}</td>)}</tr>
+              <tr className="compare-dsm-row"><td>نکته امتحانی MASTER</td>{items.map(x => <td key={x.slug}>{dsmItems[x.slug]?.exam_tip || "ثبت نشده"}</td>)}</tr>
             </tbody>
           </table>
         </div>
