@@ -12,7 +12,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="fa" dir="rtl">
       <body>
         <Nav />
-        {children}
+        <div id="main-content" tabIndex={-1}>{children}</div>
         <footer className="footer">
           <div className="shell">
             اطلس روان‌شناسی یک پلتفرم آموزشی است و برای تشخیص پزشکی یا درمان طراحی نشده است.
