@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { ConceptDetail } from "@/lib/types";
 import ConceptBookmarkButton from "./ConceptBookmarkButton";
 import ConceptNoteEditor from "./ConceptNoteEditor";
+import ConceptNeighborhood from "./ConceptNeighborhood";
 import ConceptProgressTracker from "./ConceptProgressTracker";
 import { conceptKindLabel } from "./ConceptCard";
 
@@ -14,6 +15,7 @@ const tabs = [
   ["relations", "روابط مفهومی"],
   ["disorders", "اختلالات مرتبط"],
   ["symptoms", "نشانه‌ها"],
+  ["neighborhood", "همسایگی"],
   ["notes", "یادداشت من"],
   ["sources", "منابع"],
 ] as const;
@@ -174,6 +176,8 @@ export default function ConceptDetailClient({ concept }: { concept: ConceptDetai
             )) : <div className="card">هنوز نشانه ساختاریافته‌ای به این مفهوم متصل نشده است.</div>}
           </div>
         )}
+
+        {active === "neighborhood" && <ConceptNeighborhood slug={concept.slug} />}
 
         {active === "notes" && <ConceptNoteEditor slug={concept.slug} />}
 

@@ -280,6 +280,9 @@ export type KnowledgeGraphNode = {
   dsm_master_id?: string;
   dsm_chapter_number?: number | null;
   dsm_chapter_name_fa?: string;
+  category?: string;
+  distance?: number;
+  filtered_degree?: number;
 };
 
 export type KnowledgeGraphEdge = {
@@ -289,12 +292,63 @@ export type KnowledgeGraphEdge = {
   explanation: string;
 };
 
+export type ConceptNeighborhood = {
+  center: string;
+  depth: 1 | 2;
+  nodes: KnowledgeGraphNode[];
+  edges: KnowledgeGraphEdge[];
+};
+
+export type GraphPathResult = {
+  from: string;
+  to: string;
+  found: boolean;
+  hops: number | null;
+  nodes: KnowledgeGraphNode[];
+  edges: KnowledgeGraphEdge[];
+};
+
+export type CognitiveDistortionsOverview = {
+  count: number;
+  practice_count: number;
+  items: Concept[];
+};
+
+export type DistortionPracticeChoice = {
+  id: number;
+  text: string;
+  concept: { slug: string; name_en: string; name_fa: string };
+};
+
+export type DistortionPracticeItem = {
+  slug: string;
+  prompt: string;
+  difficulty: "basic" | "intermediate" | "advanced";
+  choices: DistortionPracticeChoice[];
+};
+
+export type DistortionPracticeQueue = {
+  count: number;
+  items: DistortionPracticeItem[];
+};
+
+export type DistortionPracticeResult = {
+  attempt_id: number;
+  correct: boolean;
+  selected_choice_id: number;
+  correct_choice_id: number;
+  correct_concept: Concept;
+  explanation: string;
+  progress_percent: number;
+};
+
 export type KnowledgeGraphData = {
   meta: {
     node_count: number;
     edge_count: number;
     node_types: { concept: number; disorder: number; symptom: number };
     edge_kinds: Record<string, number>;
+    available_edge_kinds?: Record<string, number>;
   };
   nodes: KnowledgeGraphNode[];
   edges: KnowledgeGraphEdge[];

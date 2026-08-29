@@ -29,6 +29,7 @@ from .models import (
     ConceptNote,
     ConceptRelationship,
     ConceptSymptom,
+    CognitiveDistortionPracticeAttempt,
     DailyChallenge,
     DailyChallengeAttempt,
     DSMRecord,
@@ -779,6 +780,9 @@ def study_overview(request):
     ).count()
     concept_rows = UserConceptProgress.objects.filter(user=request.user, concept__is_active=True)
     attempt = challenge_attempt_for_today(request.user)
+    distortion_attempts = CognitiveDistortionPracticeAttempt.objects.filter(user=request.user)
+    distortion_total = distortion_attempts.count()
+    distortion_correct = distortion_attempts.filter(is_correct=True).count()
     return Response({
         "streak": current_streak(request.user),
         "heatmap": activity_heatmap(request.user, days=42),
@@ -793,4 +797,9 @@ def study_overview(request):
             "mastered": concept_rows.filter(status=UserConceptProgress.Status.COMPLETED).count(),
         },
         "daily_challenge_completed": bool(attempt),
+        "distortion_practice": {
+            "attempts": distortion_total,
+            "correct": distortion_correct,
+            "accuracy": round((distortion_correct / distortion_total) * 100) if distortion_total else 0,
+        },
     })

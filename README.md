@@ -1,6 +1,6 @@
-# Psychology Atlas — v0.4 Part 1 · Concept Graph Foundation + Cognitive Distortions
+# Psychology Atlas — v0.4 · Full Concept Graph + Cognitive Distortions
 
-یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. checkpoint فعلی نیمه اول v0.4 است: پایه موفق v0.3.1 حفظ شده و لایه Concept با taxonomy، alias، provenance، Concept↔Symptom و یک مجموعه منبع‌دار Cognitive Distortions عمیق‌تر شده است؛ Explorer/Graph UX پیشرفته و تمرین‌های اختصاصی برای Part 2 می‌مانند.
+یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.4 لایه Concept را از یک واژه‌نامه ساده به یک سیستم graph-aware ارتقا می‌دهد: taxonomy و alias و provenance، Concept↔Symptom، Concept Explorer V2، Neighborhood Explorer، shortest-path روی edgeهای واقعی، فیلترهای پیشرفته Graph و Cognitive Distortions Explorer با تمرین server-scored و اتصال به Study Engine.
 
 > این نرم‌افزار آموزشی است و ابزار تشخیص، درمان یا جایگزین ارزیابی حرفه‌ای نیست.
 
@@ -13,7 +13,7 @@
 - **Database later:** PostgreSQL-ready through Django ORM + migrations
 - **Content:** deterministic/idempotent seed command, no content-admin UI yet
 
-## v0.4 Part 1 content
+## v0.4 content
 
 - **241 canonical disorder pages** across 20 DSM chapters + 1 supplemental medication/adverse-effects section
 - **30 structured symptoms**
@@ -23,7 +23,8 @@
 - **65 Disorder ↔ Concept links**
 - **23 Concept ↔ Concept relationships**
 - **15 Concept ↔ Symptom links**
-- **41 flashcards**
+- **50 flashcards**
+- **18 Cognitive Distortion recognition practice items × 4 choices = 72 choices**
 - **12 daily challenges × 4 choices**
 - **5 quizzes × 8 questions = 40 questions**
 - **6 staged clinical cases × 3 stages = 18 case stages**
@@ -80,7 +81,7 @@ python manage.py import_dsm_master --dry-run
 
 The bundle itself states that it is an educational/structural reference, not verbatim DSM diagnostic criteria, not an automated diagnostic tool, and not a substitute for current professional coding or individualized treatment guidance. Proposed/non-final changes remain distinct from approved updates.
 
-## Core features through v0.4 Part 1
+## Core features through v0.4
 
 ### Concepts Atlas
 
@@ -110,9 +111,9 @@ Each concept can include:
 - personal bookmark
 - personal note
 
-Every curated seeded disorder has at least one Concept link. The v0.4 Part 1 concept inventory is now larger than the existing flashcard inventory by design; flashcard/practice expansion for the new Cognitive Distortions is part of v0.4 Part 2. DSM-generated Disorder pages may rely primarily on their linked MASTER profile until dedicated cross-domain enrichment is added.
+Every curated seeded disorder has at least one Concept link. Every Cognitive Distortion subtype now has an active flashcard, and the dedicated practice bank covers definition recognition plus harder confusion/contrast cases. DSM-generated Disorder pages may rely primarily on their linked MASTER profile until dedicated cross-domain enrichment is added.
 
-### Knowledge Graph V1
+### Knowledge Graph V2
 
 Route:
 
@@ -142,7 +143,7 @@ Original curated graph baseline:
 144 base Atlas edges
 ```
 
-Current graph after v0.4 Part 1:
+Current graph in v0.4:
 
 ```text
 315 nodes
@@ -169,6 +170,9 @@ The map supports node browsing, node-type filters, direct-neighbor exploration a
 - exploration history/path
 - high-connectivity node shortcuts
 - richer node metadata (English/Persian name, group and summary)
+- Concept domain/subtype/minimum-degree filters
+- Concept Neighborhood Explorer with depth 1 or 2
+- server-side shortest-path finder between any two Atlas nodes
 
 ```text
 /map?node=concept:avoidance
@@ -434,8 +438,14 @@ GET  /api/disorders/compare/?slugs=a,b
 GET  /api/concepts/
 GET  /api/concepts/<slug>/
 POST /api/concepts/<slug>/view/
+GET  /api/concepts/<slug>/neighborhood/?depth=1|2
 
 GET  /api/concept-map/
+GET  /api/concept-map/path/?from=<node-id>&to=<node-id>
+GET  /api/concept-map/?node_type=&domain=&kind=&subtype=&category=&relation=&min_degree=
+GET  /api/cognitive-distortions/overview/
+GET  /api/cognitive-distortions/practice/
+POST /api/cognitive-distortions/practice/<slug>/submit/
 GET  /api/atlas-overview/
 GET  /api/search/?q=<query>
 
@@ -478,11 +488,11 @@ POST /api/cases/<slug>/submit/
 
 ## Release validation baseline
 
-Validated on the current v0.4 Part 1 checkpoint after the Concept Graph foundation and Cognitive Distortions data-layer upgrade:
+Validated on the completed v0.4 release after both the Concept Graph foundation and Part 2 Explorer/Practice upgrade:
 
 ```text
 Django system check                  PASS
-Backend tests                        58 / 58 PASS
+Backend tests                        64 / 64 PASS
 DSM import idempotency               PASS · 1 corpus / 438 records / 241 canonical Disorder pages / 6 sources
 DSM diagnosis sync                    PASS · 243 formal records → 241 canonical pages · 211 created + 30 curated preserved
 Neurodevelopmental chapter            PASS · 22 Disorder pages including Autism Spectrum Disorder and ADHD
@@ -500,14 +510,19 @@ npm audit --audit-level=low           0 vulnerabilities
 Frontend main-route smoke test        PASS
 Disorders Explorer hydrated E2E       PASS · 241 catalog / chapter rail / recent Autism persistence
 DSM API + route smoke test            PASS
-v0.4 Part 1 concept inventory         PASS · 44 concepts / 12 distortions / 8 aliases
+v0.4 concept inventory                PASS · 44 concepts / 12 distortions / 8 aliases
 v0.4 relation provenance              PASS · 12 Beck-backed distortion membership relations
 v0.4 Concept ↔ Symptom layer          PASS · 15 structured links
+v0.4 flashcard inventory              PASS · 50 active cards
+v0.4 distortion practice              PASS · 18 items / 72 choices / exactly 1 correct per item
+v0.4 Graph V2                         PASS · filters / depth-2 neighborhood / shortest-path
 Seed/DSM category compatibility       PASS · two seed runs keep 21 DSM-backed categories
+Live v0.4 route smoke                 PASS · API + /cognitive-distortions + /concepts + /map + /study
+Authenticated Practice E2E            PASS · submit → StudyActivity → ConceptProgress → StudyOverview
 DSM overview HTML payload             ~115 KB after lazy metadata loading
 ```
 
-The existing v0.3.1 Disorders Explorer browser validation remains part of the regression baseline. v0.4 Part 1 itself is primarily a data/API/schema checkpoint; the heavier Concept Explorer/Graph browser UX is intentionally reserved for Part 2.
+The existing v0.3.1 Disorders Explorer browser validation remains part of the regression baseline. v0.4 additionally passed production-build and live HTTP smoke tests for the new Concept/Graph/Distortion routes plus an authenticated Practice-to-Study-Engine runtime flow.
 
 Real user-flow validation covered:
 
@@ -522,6 +537,7 @@ Disorder View
 Disorder Bookmark
 Flashcard Review
 Daily Challenge
+Cognitive Distortion Practice
 Study Overview
 Dashboard V3
 Unified Saved
@@ -537,14 +553,12 @@ Unified Notes
 - Keep source metadata attached to educational content.
 - Before production/publication, content should receive dedicated scientific review and more granular claim-level citations.
 
-## Roadmap after v0.4 Part 1
+## Roadmap after v0.4
 
-v0.4 is intentionally split into two implementation phases so the graph/data foundation can be validated before adding the heavier explorer and learning UX:
+v0.4 was implemented in two internal phases and is now complete. The next product-domain expansion is Therapy Atlas:
 
 ```text
-v0.4 Part 1  Concept taxonomy + aliases + provenance + Concept↔Symptom + Cognitive Distortions foundation
-v0.4 Part 2  Full Concept Explorer/Graph UX + neighborhood/path finding + distortion practice/learning expansion
-v0.5         Therapy Atlas
+v0.5  Therapy Atlas
 v0.6  Psychologists + Theories + Timeline
 v0.7  Advanced Branching Clinical Cases + Analytics
 v0.8  Study Mode + Exam Planning + Advanced Recommendations
@@ -552,7 +566,7 @@ v0.9  Brain Atlas + Assessments Atlas
 v1.0  Admin CMS + Scientific Review + Full cross-domain integration
 ```
 
-## Deliberately not part of v0.4 Part 1
+## Deliberately not part of v0.4
 
 These remain later-version work rather than partially implemented placeholders:
 

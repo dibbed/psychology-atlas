@@ -16,6 +16,7 @@ type Overview = {
   review: { due: number; new: number; reviewed: number };
   concepts: { studied: number; mastered: number };
   daily_challenge_completed: boolean;
+  distortion_practice: { attempts: number; correct: number; accuracy: number };
 };
 
 export default function StudyCenter() {
@@ -74,6 +75,19 @@ export default function StudyCenter() {
       </div>
 
       <DailyChallengeCard />
+
+      <section className="card distortion-study-card">
+        <div>
+          <div className="meta">Cognitive Distortion Practice</div>
+          <h2>تمرین تشخیص الگوهای شناختی</h2>
+          <p className="muted">تا الان {faNumber(data.distortion_practice.attempts)} پاسخ ثبت کرده‌ای و دقت این بخش {faNumber(data.distortion_practice.accuracy)}٪ است. نتیجه تمرین‌ها در StudyActivity و Concept Progress ثبت می‌شود.</p>
+        </div>
+        <div className="actions">
+          <Link className="button primary" href="/cognitive-distortions#practice">ادامه تمرین</Link>
+          <Link className="button" href="/cognitive-distortions">مرور تحریف‌ها</Link>
+        </div>
+      </section>
+
       <DSMStudyPanel />
 
       <section className="card">

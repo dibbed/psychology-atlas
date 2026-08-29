@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { normalizePersianSearch } from "@/lib/text";
 import type { KnowledgeGraphData, KnowledgeGraphEdge, KnowledgeGraphNode } from "@/lib/types";
+import GraphPathFinder from "./GraphPathFinder";
 
 type MapNeighbor = {
   node: KnowledgeGraphNode;
@@ -55,6 +56,9 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
   const [selectedId, setSelectedId] = useState(preferred?.id || "");
   const [query, setQuery] = useState("");
   const [type, setType] = useState<"all" | "concept" | "disorder" | "symptom">("all");
+  const [domain, setDomain] = useState("");
+  const [subtype, setSubtype] = useState("");
+  const [minDegree, setMinDegree] = useState(0);
   const [edgeKind, setEdgeKind] = useState("all");
   const [history, setHistory] = useState<string[]>(preferred ? [preferred.id] : []);
 
@@ -90,11 +94,21 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
   const filteredNodes = useMemo(() => {
     const q = normalizePersianSearch(query.trim());
     return data.nodes
-      .filter(node => (type === "all" || node.type === type) && (
-        !q || normalizePersianSearch(`${node.label} ${node.name_en} ${node.slug} ${node.group} ${node.summary}`).includes(q)
-      ))
+      .filter(node => {
+        if (type !== "all" && node.type !== type) return false;
+        if (domain && (node.type !== "concept" || node.domain !== domain)) return false;
+        if (subtype && (node.type !== "concept" || node.subtype !== subtype)) return false;
+        if (node.degree < minDegree) return false;
+        return !q || normalizePersianSearch(`${node.label} ${node.name_en} ${node.slug} ${node.group} ${node.summary}`).includes(q);
+      })
       .sort((a, b) => b.degree - a.degree || a.label.localeCompare(b.label, "fa"));
-  }, [data.nodes, query, type]);
+  }, [data.nodes, query, type, domain, subtype, minDegree]);
+
+  const conceptDomains = useMemo(() => {
+    const rows = new Map<string, string>();
+    data.nodes.filter(node => node.type === "concept" && node.domain).forEach(node => rows.set(node.domain!, node.domain_label || node.domain!));
+    return [...rows.entries()].sort((a, b) => a[1].localeCompare(b[1], "fa"));
+  }, [data.nodes]);
 
   const topConnected = useMemo(
     () => [...data.nodes].sort((a, b) => b.degree - a.degree).slice(0, 6),
@@ -134,6 +148,8 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
         <div><strong>{data.meta.node_types.symptom.toLocaleString("fa-IR")}</strong><span>نشانه</span></div>
       </section>
 
+      <GraphPathFinder nodes={data.nodes} initialFrom={selected?.id} />
+
       <div className="knowledge-map-layout knowledge-map-layout-v2">
         <aside className="card map-browser map-browser-v2">
           <div>
@@ -153,6 +169,21 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
                 {value === "all" ? "همه" : nodeTypeLabel(value)}
               </button>
             ))}
+          </div>
+          <div className="map-advanced-filters">
+            <select className="filter-select" value={domain} onChange={event => { setDomain(event.target.value); if (event.target.value) setType("concept"); }} aria-label="حوزه مفهومی">
+              <option value="">همه حوزه‌های Concept</option>
+              {conceptDomains.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
+            </select>
+            <select className="filter-select" value={subtype} onChange={event => { setSubtype(event.target.value); if (event.target.value) setType("concept"); }} aria-label="زیرنوع Concept">
+              <option value="">همه زیرنوع‌ها</option>
+              <option value="cognitive_distortion">تحریف شناختی</option>
+              <option value="general">مفهوم عمومی</option>
+            </select>
+            <label className="degree-filter">
+              <span>حداقل اتصال: {minDegree.toLocaleString("fa-IR")}</span>
+              <input type="range" min="0" max="10" value={minDegree} onChange={event => setMinDegree(Number(event.target.value))} />
+            </label>
           </div>
           <div className="map-list-summary">
             <span>{filteredNodes.length.toLocaleString("fa-IR")} نتیجه</span>

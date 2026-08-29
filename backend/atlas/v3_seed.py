@@ -5,6 +5,8 @@ from .models import (
     ConceptRelationshipSource,
     ConceptSource,
     ConceptSymptom,
+    CognitiveDistortionPracticeChoice,
+    CognitiveDistortionPracticeItem,
     DailyChallenge,
     DailyChallengeChoice,
     DisorderConcept,
@@ -239,6 +241,41 @@ FLASHCARDS = [
 ]
 
 
+V4_FLASHCARDS = [
+    ("fc-discount-positive", "بی‌اعتبار کردن نکات مثبت چه الگویی دارد؟", "شواهد مثبت پذیرفته نمی‌شود یا طوری کم‌ارزش می‌شود که ارزیابی منفی بدون اصلاح باقی بماند.", "discounting-the-positive", None),
+    ("fc-emotional-reasoning", "«چون احساس می‌کنم بی‌کفایتم، پس واقعاً بی‌کفایتم» نمونه چیست؟", "استدلال هیجانی؛ احساس به‌عنوان مدرک مستقیم واقعیت استفاده شده است.", "emotional-reasoning", None),
+    ("fc-labeling", "تفاوت برچسب‌زنی با توصیف رفتار چیست؟", "برچسب‌زنی یک خطا یا رفتار را به قضاوت هویتی کلی تبدیل می‌کند؛ توصیف رفتار روی همان رویداد مشخص می‌ماند.", "labeling", None),
+    ("fc-magnification-minimization", "بزرگ‌نمایی و کوچک‌نمایی چه می‌کند؟", "وزن اطلاعات را نامتوازن می‌کند؛ جنبه منفی بزرگ‌تر و شواهد مثبت یا منابع مقابله کوچک‌تر دیده می‌شوند.", "magnification-minimization", None),
+    ("fc-mental-filter", "فیلتر ذهنی چیست؟", "تمرکز انتخابی روی یک جزء منفی و نادیده گرفتن سایر اطلاعات مرتبط تجربه.", "mental-filter", None),
+    ("fc-overgeneralization", "«یک بار بد پیش رفت، پس همیشه همین‌طور می‌شود» نمونه چیست؟", "تعمیم افراطی؛ از داده محدود یک قاعده کلی ساخته شده است.", "overgeneralization", None),
+    ("fc-personalization", "شخصی‌سازی چیست؟", "نسبت دادن علت یا مسئولیت یک رویداد به خود بدون شواهد کافی درباره نقش واقعی فرد.", "personalization", None),
+    ("fc-should-statements", "چه زمانی «باید» می‌تواند نشانه یک الگوی شناختی سخت باشد؟", "وقتی ترجیح یا ارزش به الزام مطلق و انعطاف‌ناپذیر تبدیل شود و خطا یا تفاوت غیرقابل قبول تلقی شود.", "should-must-statements", None),
+    ("fc-tunnel-vision", "دید تونلی چیست؟", "دیدن عمدتاً جنبه‌های منفی فرد یا موقعیت و از دست دادن تصویر متوازن‌تر.", "tunnel-vision", None),
+]
+
+
+DISTORTION_PRACTICE_ITEMS = [
+    ("dp-all-or-nothing-1", "«اگر این ارائه عالی نباشد یعنی کاملاً شکست خورده‌ام.» نزدیک‌ترین الگو کدام است؟", "all-or-nothing-thinking", ["catastrophizing", "labeling", "mental-filter"], "basic", "جمله نتیجه را فقط در دو قطب عالی یا شکست کامل می‌بیند و فضای میانی را حذف می‌کند."),
+    ("dp-catastrophizing-1", "«اگر وسط ارائه مکث کنم، آبرویم برای همیشه از بین می‌رود.» نزدیک‌ترین الگو چیست؟", "catastrophizing", ["mind-reading", "personalization", "should-must-statements"], "basic", "پیامد یک مکث کوچک به نتیجه‌ای بسیار شدید و غیرقابل‌تحمل گسترش داده شده است."),
+    ("dp-mind-reading-1", "«او جواب پیامم را دیر داد؛ حتماً فکر می‌کند آدم بی‌ارزشی هستم.» کدام الگو پررنگ‌تر است؟", "mind-reading", ["overgeneralization", "mental-filter", "labeling"], "basic", "درباره فکر طرف مقابل بدون شواهد کافی نتیجه قطعی گرفته شده است."),
+    ("dp-discount-positive-1", "بعد از تحسین استاد می‌گوید: «این حساب نیست، فقط سؤال آسان بود.» کدام الگوست؟", "discounting-the-positive", ["mental-filter", "personalization", "emotional-reasoning"], "basic", "شاهد مثبت به‌جای وارد شدن در ارزیابی، بی‌اعتبار و کم‌ارزش شده است."),
+    ("dp-emotional-reasoning-1", "«احساس می‌کنم مزاحم دیگرانم، پس واقعاً حضورم برایشان آزاردهنده است.» نزدیک‌ترین الگو چیست؟", "emotional-reasoning", ["mind-reading", "labeling", "catastrophizing"], "basic", "احساس شخصی به‌عنوان مدرک مستقیم برای واقعیت بیرونی استفاده شده است."),
+    ("dp-labeling-1", "بعد از یک اشتباه می‌گوید: «من یک بازنده‌ام.» این جمله بیشتر به کدام الگو نزدیک است؟", "labeling", ["overgeneralization", "all-or-nothing-thinking", "personalization"], "basic", "یک رفتار یا خطا به یک برچسب کلی درباره هویت تبدیل شده است."),
+    ("dp-magnification-1", "یک نقد کوچک را بسیار جدی می‌گیرد ولی چند بازخورد مثبت را تقریباً بی‌ارزش می‌داند. نزدیک‌ترین الگو چیست؟", "magnification-minimization", ["mental-filter", "discounting-the-positive", "catastrophizing"], "intermediate", "وزن شواهد نامتوازن شده است: بخش منفی بزرگ و بخش مثبت کوچک دیده می‌شود."),
+    ("dp-mental-filter-1", "از ده بازخورد، نه مورد مثبت و یک مورد منفی است؛ فقط همان یک نقد را در ذهن نگه می‌دارد. کدام الگوست؟", "mental-filter", ["discounting-the-positive", "tunnel-vision", "overgeneralization"], "intermediate", "توجه به یک جزء منفی محدود شده و بقیه زمینه از ارزیابی کنار رفته است."),
+    ("dp-overgeneralization-1", "«یک مصاحبه بد داشتم؛ من هیچ‌وقت در هیچ مصاحبه‌ای موفق نمی‌شوم.» کدام الگوست؟", "overgeneralization", ["all-or-nothing-thinking", "catastrophizing", "labeling"], "basic", "از یک تجربه محدود، نتیجه‌ای کلی و پایدار درباره همه موقعیت‌های آینده ساخته شده است."),
+    ("dp-personalization-1", "دوستش امروز کم‌حرف است و بدون شواهد نتیجه می‌گیرد: «حتماً من کاری کرده‌ام که ناراحت شده.» کدام الگوست؟", "personalization", ["mind-reading", "emotional-reasoning", "mental-filter"], "intermediate", "علت وضعیت دیگری بدون شواهد کافی به خود فرد نسبت داده شده است."),
+    ("dp-should-1", "«من باید همیشه بدون اشتباه باشم؛ خطا کردن غیرقابل قبول است.» نزدیک‌ترین الگو چیست؟", "should-must-statements", ["all-or-nothing-thinking", "labeling", "catastrophizing"], "basic", "یک ترجیح یا استاندارد به الزام مطلق و انعطاف‌ناپذیر تبدیل شده است."),
+    ("dp-tunnel-vision-1", "در ارزیابی یک همکار فقط ضعف‌های او را می‌بیند و تقریباً هیچ رفتار مفید یا خنثی را وارد قضاوت نمی‌کند. کدام الگوست؟", "tunnel-vision", ["mental-filter", "labeling", "personalization"], "intermediate", "کل تصویر از زاویه‌ای عمدتاً منفی و محدود دیده می‌شود."),
+    ("dp-filter-vs-discount", "فرد تعریف همکار را شنیده اما می‌گوید: «تعریفش ارزشی ندارد چون فقط مودب بود.» کدام گزینه دقیق‌تر است؟", "discounting-the-positive", ["mental-filter", "tunnel-vision", "overgeneralization"], "advanced", "اینجا داده مثبت دیده شده اما اعتبار آن فعالانه رد شده است؛ این با صرفاً ندیدن یا تمرکز نکردن بر داده مثبت فرق دارد."),
+    ("dp-label-vs-overgeneralize", "«در این آزمون خراب کردم، پس من آدم احمقی هستم.» کدام الگو مستقیم‌تر است؟", "labeling", ["overgeneralization", "all-or-nothing-thinking", "emotional-reasoning"], "advanced", "نتیجه از عملکرد مشخص به یک برچسب هویتی کلی تبدیل شده است؛ تعمیم افراطی بیشتر قاعده را به موقعیت‌های متعدد گسترش می‌دهد."),
+    ("dp-mind-vs-personalize", "«او ساکت است؛ حتماً از من بدش می‌آید.» کدام الگو مستقیم‌تر است؟", "mind-reading", ["personalization", "emotional-reasoning", "catastrophizing"], "advanced", "هسته جمله ادعای قطعی درباره حالت ذهنی دیگری است؛ شخصی‌سازی بیشتر روی نسبت دادن علت رویداد به خود متمرکز است."),
+    ("dp-catastrophe-vs-magnify", "«اگر این درس را بیفتم، آینده‌ام کاملاً نابود می‌شود و دیگر هیچ راهی ندارم.» کدام الگو مستقیم‌تر است؟", "catastrophizing", ["magnification-minimization", "all-or-nothing-thinking", "should-must-statements"], "advanced", "پیامد منفی به بدترین نتیجه بسیار شدید و بدون راه مقابله تبدیل شده است."),
+    ("dp-emotion-vs-mind", "«وقتی کنار آن‌ها هستم احساس می‌کنم طرد شده‌ام، پس حتماً واقعاً من را طرد کرده‌اند.» کدام الگو مستقیم‌تر است؟", "emotional-reasoning", ["mind-reading", "personalization", "overgeneralization"], "advanced", "استدلال اصلی از احساس به واقعیت حرکت می‌کند؛ ممکن است مؤلفه بین‌فردی هم باشد اما شکل استنتاج هیجانی برجسته‌تر است."),
+    ("dp-all-vs-should", "«اگر بهترین نباشم، یعنی هیچ ارزشی ندارم.» کدام الگو مستقیم‌تر است؟", "all-or-nothing-thinking", ["should-must-statements", "labeling", "discounting-the-positive"], "advanced", "ارزش فرد به دو حالت بهترین بودن یا بی‌ارزش بودن تقسیم شده است؛ ساختار دو قطبی جمله عنصر اصلی است."),
+]
+
+
 CHALLENGES = [
     ("فرد می‌گوید: «اگر نمره‌ام عالی نشود، یعنی کاملاً شکست خورده‌ام.» نزدیک‌ترین مفهوم چیست؟", ["تفکر همه یا هیچ", "ذهن‌خوانی", "گسستگی", "برانگیختگی بالا"], 0, "این جمله یک طیف را به دو قطب موفقیت کامل یا شکست کامل تبدیل می‌کند.", "all-or-nothing-thinking", None),
     ("کدام مفهوم بیشتر آینده‌محور و درباره پیامدهای احتمالی است؟", ["نگرانی", "نشخوار فکری", "فقدان لذت", "مانیا"], 0, "نگرانی معمولاً آینده‌محورتر از نشخوار فکری است.", "worry", "generalized-anxiety-disorder"),
@@ -363,7 +400,8 @@ def seed_v3_content(disorder_objs, source_objs):
             for source in source_objs:
                 ConceptSource.objects.get_or_create(concept=concept, source=source)
 
-    for order, (slug, front, back, concept_slug, disorder_slug) in enumerate(FLASHCARDS):
+    all_flashcards = FLASHCARDS + V4_FLASHCARDS
+    for order, (slug, front, back, concept_slug, disorder_slug) in enumerate(all_flashcards):
         Flashcard.objects.update_or_create(
             slug=slug,
             defaults={
@@ -376,6 +414,36 @@ def seed_v3_content(disorder_objs, source_objs):
                 "is_active": True,
             },
         )
+
+    for order, (slug, prompt, target_slug, distractor_slugs, difficulty, explanation) in enumerate(DISTORTION_PRACTICE_ITEMS):
+        item, _ = CognitiveDistortionPracticeItem.objects.update_or_create(
+            slug=slug,
+            defaults={
+                "prompt": prompt,
+                "explanation": explanation,
+                "difficulty": difficulty,
+                "target_concept": concept_objs[target_slug],
+                "sort_order": order,
+                "is_active": True,
+            },
+        )
+        choice_slugs = [target_slug, *distractor_slugs]
+        shift = order % len(choice_slugs)
+        choice_slugs = choice_slugs[shift:] + choice_slugs[:shift]
+        keep_concept_ids = []
+        for choice_order, choice_slug in enumerate(choice_slugs):
+            choice_concept = concept_objs[choice_slug]
+            keep_concept_ids.append(choice_concept.id)
+            CognitiveDistortionPracticeChoice.objects.update_or_create(
+                item=item,
+                concept=choice_concept,
+                defaults={
+                    "text": choice_concept.name_fa or choice_concept.name_en,
+                    "is_correct": choice_slug == target_slug,
+                    "sort_order": choice_order,
+                },
+            )
+        item.choices.exclude(concept_id__in=keep_concept_ids).delete()
 
     for order, (prompt, choices, correct_index, explanation, concept_slug, disorder_slug) in enumerate(CHALLENGES):
         challenge = DailyChallenge.objects.filter(sort_order=order).order_by("id").first()
@@ -408,6 +476,7 @@ def seed_v3_content(disorder_objs, source_objs):
         "cognitive_distortions": len(distortion_slugs),
         "concept_aliases": len(CONCEPT_ALIASES),
         "concept_symptom_links": len(CONCEPT_SYMPTOMS),
-        "flashcards": len(FLASHCARDS),
+        "flashcards": len(all_flashcards),
+        "distortion_practice_items": len(DISTORTION_PRACTICE_ITEMS),
         "daily_challenges": len(CHALLENGES),
     }

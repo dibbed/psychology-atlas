@@ -1,6 +1,6 @@
 # Psychology Atlas Product Spec
 
-## Current implementation checkpoint: v0.4 Part 1 — Concept Graph Foundation + Cognitive Distortions Data Layer
+## Current implemented version: v0.4 — Full Concept Graph + Cognitive Distortions
 
 Psychology Atlas is an interactive educational system for psychology students. It should behave as a connected learning system, not as a psychology blog and not as a diagnostic product.
 
@@ -54,9 +54,9 @@ Psychology Atlas is an interactive educational system for psychology students. I
 - private bookmark/note/progress
 
 Every one of the 30 curated seeded Disorders currently has at least one Concept link. DSM-generated Disorder pages may rely primarily on their MASTER profile until later cross-domain enrichment.
-The v0.4 Part 1 seed has 44 concepts, while the existing learning-card inventory remains 41 cards; new v0.4 distortion practice/flashcard expansion is intentionally deferred to Part 2.
+The completed v0.4 seed has 44 concepts, 50 active flashcards and an 18-item Cognitive Distortion recognition bank. Practice scoring is server-side and feeds StudyActivity plus Concept Progress.
 
-### Knowledge Graph V1
+### Knowledge Graph V2
 
 Current graph layers:
 
@@ -78,7 +78,7 @@ Original curated graph baseline:
 144 base Atlas edges
 ```
 
-Current graph after v0.4 Part 1:
+Current graph in v0.4:
 
 ```text
 44 Concept nodes
@@ -96,14 +96,18 @@ Current graph after v0.4 Part 1:
 
 The graph must use explicit structured relationships. Do not invent similarity percentages.
 
+v0.4 Graph UX adds domain/subtype/minimum-degree filtering, depth-1/depth-2 Concept neighborhoods and server-side shortest-path finding between Atlas nodes. Path results are computed only from stored edges.
+
 ### Active-learning tools
 
 - Compare Disorders V2
 - 5 quizzes / 40 questions
 - 6 staged clinical cases / 18 stages
-- 41 flashcards
+- 50 flashcards
 - spaced-repetition review queue
 - 12 Daily Challenges
+- 18 Cognitive Distortion recognition items / 72 choices
+- Cognitive Distortions Explorer with basic/intermediate/advanced practice
 - Search V3 across Disorder / Concept / Symptom
 
 ## Study Engine v0.3
@@ -117,6 +121,7 @@ Quiz Completed
 Case Completed
 Flashcard Review
 Daily Challenge
+Cognitive Distortion Practice
 Note Saved
 Bookmark Saved
 ```
@@ -237,11 +242,12 @@ The following data is private per authenticated user:
 - Quiz attempts
 - Case attempts
 - Daily Challenge attempts
+- Cognitive Distortion Practice attempts
 - Study activity
 
 Seed updates must not intentionally delete these records.
 
-## Still outside v0.3.1
+## Still outside v0.4
 
 These are intentionally deferred rather than partially implemented placeholders:
 
@@ -251,7 +257,7 @@ These are intentionally deferred rather than partially implemented placeholders:
 - Psychology Timeline
 - Brain Atlas
 - dedicated Assessments Atlas
-- advanced Cognitive Distortions recognition/practice engine beyond the v0.4 Part 1 data/profile layer
+- full CBT thought-record/reframing workflow beyond the educational recognition engine
 - Study Plan / exam date planning
 - adaptive Quiz / independent Question Bank
 - fully branching Clinical Cases with conditional paths
@@ -285,14 +291,13 @@ Quizzes / Flashcards / Daily Practice
 Personal study plan and mastery
 ```
 
-v0.3.1 finishes the navigation and Disorders Explorer UX layer on top of the v0.3 learning/graph foundation before expansion into the remaining psychology domains.
+v0.4 completes the Concept Graph and Cognitive Distortions learning layer. The next cross-domain expansion is Therapy Atlas, which can reuse the graph taxonomy/provenance foundation instead of creating a parallel content system.
 
 ## Version roadmap
 
 ```text
-v0.4 Part 1  Concept taxonomy + aliases + provenance + Concept↔Symptom + Cognitive Distortions foundation
-v0.4 Part 2  Full Concept Explorer/Graph UX + neighborhood/path finding + distortion practice/learning expansion
-v0.5         Therapy Atlas
+v0.4  Full Concept Graph + Cognitive Distortions ✅
+v0.5  Therapy Atlas
 v0.6  Psychologists + Theories + Timeline
 v0.7  Advanced Branching Clinical Cases + Analytics
 v0.8  Study Mode + Exam Planning + Advanced Recommendations
@@ -300,4 +305,4 @@ v0.9  Brain Atlas + Assessments Atlas
 v1.0  Admin CMS + Scientific Review + Full cross-domain integration
 ```
 
-v0.3.1 is intentionally a sub-release; it does not consume or move the scope planned for v0.4.
+v0.4 was implemented internally as Part 1 + Part 2, but the current product/version is the completed v0.4 release.

@@ -12,7 +12,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from .models import (
     Bookmark, CaseChoice, CaseQuestion, CaseStep, Category, ClinicalCase,
     Concept, ConceptAlias, ConceptBookmark, ConceptNote, ConceptRelationship, ConceptRelationshipSource,
-    ConceptSymptom, DailyChallenge, DailyChallengeAttempt, DailyChallengeChoice, Disorder, DisorderConcept,
+    ConceptSymptom, CognitiveDistortionPracticeAttempt, CognitiveDistortionPracticeChoice,
+    CognitiveDistortionPracticeItem, DailyChallenge, DailyChallengeAttempt, DailyChallengeChoice, Disorder, DisorderConcept,
     DisorderSymptom, DSMCorpus, DSMRecord, Flashcard, Quiz, QuizChoice, QuizQuestion, SourceReference, StudyActivity, Symptom, UserConceptProgress,
     UserFlashcardProgress, UserNote, UserProgress,
 )
@@ -1094,4 +1095,162 @@ class AtlasApiTests(APITestCase):
         disorder.refresh_from_db()
         legacy_category = Category.objects.get(slug="anxiety")
         self.assertEqual(disorder.category_id, dsm_category.id)
-        self.assertFalse(legacy_category.is_active)
+        self.assertEqual(
+            legacy_category.is_active,
+            legacy_category.disorders.filter(is_active=True).exists(),
+        )
+        for slug in ("anxiety", "ocd-related", "mood", "trauma", "personality-a", "personality-b", "personality-c"):
+            category = Category.objects.get(slug=slug)
+            self.assertEqual(
+                category.is_active,
+                category.disorders.filter(is_active=True).exists(),
+            )
+
+    def test_v4_part2_graph_filters_by_domain_and_relation(self):
+        root = Concept.objects.create(
+            slug="graph-root-v4",
+            name_en="Graph Root V4",
+            simple_definition="root",
+            kind="cognitive",
+            domain="cbt",
+            subtype="cognitive_distortion",
+            is_active=True,
+        )
+        child = Concept.objects.create(
+            slug="graph-child-v4",
+            name_en="Graph Child V4",
+            simple_definition="child",
+            kind="cognitive",
+            domain="cbt",
+            subtype="cognitive_distortion",
+            is_active=True,
+        )
+        ConceptRelationship.objects.create(
+            source_concept=child,
+            target_concept=root,
+            relationship_type="part_of",
+            explanation="membership",
+        )
+        response = self.client.get("/api/concept-map/?domain=cbt&relation=part_of")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual({node["id"] for node in data["nodes"]}, {f"concept:{root.slug}", f"concept:{child.slug}"})
+        self.assertEqual(data["meta"]["edge_count"], 1)
+
+    def test_v4_part2_neighborhood_supports_depth_two(self):
+        a = Concept.objects.create(slug="neighbor-a", name_en="A", simple_definition="a", is_active=True)
+        b = Concept.objects.create(slug="neighbor-b", name_en="B", simple_definition="b", is_active=True)
+        c = Concept.objects.create(slug="neighbor-c", name_en="C", simple_definition="c", is_active=True)
+        ConceptRelationship.objects.create(source_concept=a, target_concept=b, relationship_type="related")
+        ConceptRelationship.objects.create(source_concept=b, target_concept=c, relationship_type="related")
+        response = self.client.get(f"/api/concepts/{a.slug}/neighborhood/?depth=2")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual({node["id"] for node in data["nodes"]}, {"concept:neighbor-a", "concept:neighbor-b", "concept:neighbor-c"})
+        self.assertEqual(data["depth"], 2)
+
+    def test_v4_part2_graph_path_finds_shortest_structured_route(self):
+        a = Concept.objects.create(slug="path-a", name_en="Path A", simple_definition="a", is_active=True)
+        b = Concept.objects.create(slug="path-b", name_en="Path B", simple_definition="b", is_active=True)
+        c = Concept.objects.create(slug="path-c", name_en="Path C", simple_definition="c", is_active=True)
+        ConceptRelationship.objects.create(source_concept=a, target_concept=b, relationship_type="related")
+        ConceptRelationship.objects.create(source_concept=b, target_concept=c, relationship_type="influences")
+        response = self.client.get("/api/concept-map/path/?from=concept:path-a&to=concept:path-c")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["found"])
+        self.assertEqual(data["hops"], 2)
+        self.assertEqual([node["id"] for node in data["nodes"]], ["concept:path-a", "concept:path-b", "concept:path-c"])
+
+    def test_v4_part2_practice_queue_hides_correct_answer(self):
+        correct = Concept.objects.create(
+            slug="practice-correct",
+            name_en="Practice Correct",
+            simple_definition="correct",
+            subtype="cognitive_distortion",
+            is_active=True,
+        )
+        wrong = Concept.objects.create(
+            slug="practice-wrong",
+            name_en="Practice Wrong",
+            simple_definition="wrong",
+            subtype="cognitive_distortion",
+            is_active=True,
+        )
+        item = CognitiveDistortionPracticeItem.objects.create(
+            slug="practice-item",
+            prompt="Which one?",
+            explanation="Because structured evidence.",
+            target_concept=correct,
+            is_active=True,
+        )
+        CognitiveDistortionPracticeChoice.objects.create(item=item, concept=correct, text="Correct", is_correct=True)
+        CognitiveDistortionPracticeChoice.objects.create(item=item, concept=wrong, text="Wrong", is_correct=False)
+        response = self.client.get("/api/cognitive-distortions/practice/")
+        self.assertEqual(response.status_code, 200)
+        choice = response.json()["items"][0]["choices"][0]
+        self.assertNotIn("is_correct", choice)
+        self.assertNotIn("explanation", response.json()["items"][0])
+
+    def test_v4_part2_practice_submit_records_activity_and_progress(self):
+        correct = Concept.objects.create(
+            slug="practice-submit-correct",
+            name_en="Practice Submit Correct",
+            simple_definition="correct",
+            subtype="cognitive_distortion",
+            is_active=True,
+        )
+        wrong = Concept.objects.create(
+            slug="practice-submit-wrong",
+            name_en="Practice Submit Wrong",
+            simple_definition="wrong",
+            subtype="cognitive_distortion",
+            is_active=True,
+        )
+        item = CognitiveDistortionPracticeItem.objects.create(
+            slug="practice-submit-item",
+            prompt="Which one?",
+            explanation="Correct explanation",
+            target_concept=correct,
+            is_active=True,
+        )
+        correct_choice = CognitiveDistortionPracticeChoice.objects.create(item=item, concept=correct, text="Correct", is_correct=True)
+        CognitiveDistortionPracticeChoice.objects.create(item=item, concept=wrong, text="Wrong", is_correct=False)
+        self.auth(self.user_a)
+        response = self.client.post(
+            f"/api/cognitive-distortions/practice/{item.slug}/submit/",
+            {"choice_id": correct_choice.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.json()["correct"])
+        self.assertEqual(response.json()["progress_percent"], 75)
+        self.assertTrue(CognitiveDistortionPracticeAttempt.objects.filter(user=self.user_a, item=item, is_correct=True).exists())
+        self.assertTrue(StudyActivity.objects.filter(user=self.user_a, activity_type="distortion_practice", concept=correct).exists())
+
+    def test_v4_part2_practice_submit_rejects_choice_from_other_item(self):
+        correct = Concept.objects.create(
+            slug="practice-cross-correct",
+            name_en="Practice Cross Correct",
+            simple_definition="correct",
+            subtype="cognitive_distortion",
+            is_active=True,
+        )
+        wrong = Concept.objects.create(
+            slug="practice-cross-wrong",
+            name_en="Practice Cross Wrong",
+            simple_definition="wrong",
+            subtype="cognitive_distortion",
+            is_active=True,
+        )
+        item_a = CognitiveDistortionPracticeItem.objects.create(slug="practice-a", prompt="A", explanation="A", target_concept=correct)
+        item_b = CognitiveDistortionPracticeItem.objects.create(slug="practice-b", prompt="B", explanation="B", target_concept=wrong)
+        CognitiveDistortionPracticeChoice.objects.create(item=item_a, concept=correct, text="Correct", is_correct=True)
+        foreign_choice = CognitiveDistortionPracticeChoice.objects.create(item=item_b, concept=wrong, text="Wrong", is_correct=True)
+        self.auth(self.user_a)
+        response = self.client.post(
+            f"/api/cognitive-distortions/practice/{item_a.slug}/submit/",
+            {"choice_id": foreign_choice.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 404)

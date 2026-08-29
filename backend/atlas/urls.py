@@ -1,7 +1,7 @@
 from django.urls import path
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from . import dsm_views, views, v3_views
+from . import dsm_views, views, v3_views, v4_views
 
 urlpatterns = [
     path("auth/register/", views.RegisterView.as_view()),
@@ -32,6 +32,7 @@ urlpatterns = [
     path("concepts/", v3_views.ConceptListView.as_view()),
     path("concepts/<slug:slug>/", v3_views.ConceptDetailView.as_view()),
     path("concepts/<slug:slug>/view/", v3_views.concept_view),
+    path("concepts/<slug:slug>/neighborhood/", v4_views.concept_neighborhood),
     path("concept-bookmarks/", v3_views.concept_bookmarks),
     path("concept-bookmarks/<slug:slug>/", v3_views.concept_bookmark_delete),
     path("concept-notes/", v3_views.concept_notes),
@@ -43,7 +44,11 @@ urlpatterns = [
     path("study/overview/", v3_views.study_overview),
     path("search/", v3_views.global_search),
     path("atlas-overview/", v3_views.atlas_overview),
-    path("concept-map/", v3_views.concept_map),
+    path("concept-map/", v4_views.concept_map_v2),
+    path("concept-map/path/", v4_views.graph_path),
+    path("cognitive-distortions/overview/", v4_views.cognitive_distortions_overview),
+    path("cognitive-distortions/practice/", v4_views.distortion_practice_queue),
+    path("cognitive-distortions/practice/<slug:slug>/submit/", v4_views.distortion_practice_submit),
 
     path("dsm/overview/", dsm_views.dsm_overview),
     path("dsm/metadata/", dsm_views.dsm_metadata),

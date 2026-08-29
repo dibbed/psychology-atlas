@@ -432,6 +432,13 @@ class Command(BaseCommand):
             )
             disorder_objs[slug] = obj
 
+        if dsm_catalog_active:
+            for category in category_objs.values():
+                should_be_active = category.disorders.filter(is_active=True).exists()
+                if category.is_active != should_be_active:
+                    category.is_active = should_be_active
+                    category.save(update_fields=("is_active", "updated_at"))
+
         symptom_objs = {}
         for slug, en, fa, domain in SYMPTOMS:
             symptom, _ = Symptom.objects.update_or_create(
@@ -553,9 +560,10 @@ class Command(BaseCommand):
         v3_counts = seed_v3_content(disorder_objs, source_objs)
 
         self.stdout.write(self.style.SUCCESS(
-            "Psychology Atlas v0.4 Part 1 seed completed: "
+            "Psychology Atlas v0.4 seed completed: "
             f"{len(DISORDERS)} disorders, {len(QUIZZES)} quizzes, {len(CASES)} cases, "
             f"{v3_counts['concepts']} concepts, {v3_counts['cognitive_distortions']} cognitive distortions, "
             f"{v3_counts['concept_aliases']} concept aliases, {v3_counts['concept_symptom_links']} concept-symptom links, "
-            f"{v3_counts['flashcards']} flashcards, {v3_counts['daily_challenges']} daily challenges."
+            f"{v3_counts['flashcards']} flashcards, {v3_counts['distortion_practice_items']} distortion practice items, "
+            f"{v3_counts['daily_challenges']} daily challenges."
         ))

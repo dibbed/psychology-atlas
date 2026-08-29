@@ -567,6 +567,58 @@ class UserFlashcardProgress(TimeStampedModel):
         indexes = [models.Index(fields=("user", "due_at"))]
 
 
+class CognitiveDistortionPracticeItem(TimeStampedModel):
+    class Difficulty(models.TextChoices):
+        BASIC = "basic", "Basic"
+        INTERMEDIATE = "intermediate", "Intermediate"
+        ADVANCED = "advanced", "Advanced"
+
+    slug = models.SlugField(max_length=180, unique=True)
+    prompt = models.TextField()
+    explanation = models.TextField()
+    difficulty = models.CharField(max_length=24, choices=Difficulty.choices, default=Difficulty.BASIC)
+    target_concept = models.ForeignKey(
+        Concept,
+        on_delete=models.PROTECT,
+        related_name="distortion_practice_items",
+        limit_choices_to={"subtype": Concept.Subtype.COGNITIVE_DISTORTION},
+    )
+    sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ("sort_order", "id")
+        indexes = [models.Index(fields=("is_active", "difficulty"))]
+
+
+class CognitiveDistortionPracticeChoice(models.Model):
+    item = models.ForeignKey(CognitiveDistortionPracticeItem, on_delete=models.CASCADE, related_name="choices")
+    concept = models.ForeignKey(Concept, on_delete=models.PROTECT, related_name="distortion_practice_choices")
+    text = models.CharField(max_length=300)
+    is_correct = models.BooleanField(default=False)
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ("sort_order", "id")
+        constraints = [
+            models.UniqueConstraint(fields=("item", "concept"), name="uq_distortion_practice_item_concept")
+        ]
+
+
+class CognitiveDistortionPracticeAttempt(TimeStampedModel):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="distortion_practice_attempts")
+    item = models.ForeignKey(CognitiveDistortionPracticeItem, on_delete=models.PROTECT, related_name="attempts")
+    selected_choice = models.ForeignKey(CognitiveDistortionPracticeChoice, on_delete=models.PROTECT, related_name="attempts")
+    is_correct = models.BooleanField()
+
+    class Meta:
+        ordering = ("-created_at", "-id")
+        indexes = [
+            models.Index(fields=("user", "-created_at")),
+            models.Index(fields=("user", "is_correct")),
+        ]
+
+
 class StudyActivity(models.Model):
     class Kind(models.TextChoices):
         DISORDER_VIEW = "disorder_view", "Disorder view"
@@ -575,6 +627,7 @@ class StudyActivity(models.Model):
         CASE_COMPLETED = "case_completed", "Case completed"
         FLASHCARD_REVIEW = "flashcard_review", "Flashcard review"
         DAILY_CHALLENGE = "daily_challenge", "Daily challenge"
+        DISTORTION_PRACTICE = "distortion_practice", "Cognitive distortion practice"
         NOTE_SAVED = "note_saved", "Note saved"
         BOOKMARK_SAVED = "bookmark_saved", "Bookmark saved"
 

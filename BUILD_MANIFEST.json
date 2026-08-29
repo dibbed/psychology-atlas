@@ -1,7 +1,7 @@
 {
   "project": "Psychology Atlas",
-  "version": "0.4.0-part1",
-  "release_name": "Concept Graph Foundation + Cognitive Distortions · Part 1",
+  "version": "0.4.0",
+  "release_name": "Full Concept Graph + Cognitive Distortions",
   "stack": {
     "frontend": "Next.js 16.3.3 + React 19 + TypeScript",
     "backend": "Django 5.2 + Django REST Framework",
@@ -61,7 +61,16 @@
     "concept_symptom_links",
     "concept_search_alias_domain_subtype",
     "concept_detail_distortion_profiles",
-    "seed_preserves_dsm_categories"
+    "seed_preserves_dsm_categories",
+    "concept_explorer_v2",
+    "concept_neighborhood_depth_1_2",
+    "knowledge_graph_v2_filters",
+    "knowledge_graph_shortest_path",
+    "cognitive_distortions_explorer",
+    "cognitive_distortion_practice_engine",
+    "distortion_practice_server_scoring",
+    "distortion_practice_study_engine_integration",
+    "distortion_flashcard_expansion"
   ],
   "content": {
     "categories": 21,
@@ -73,7 +82,7 @@
     "concepts": 44,
     "disorder_concept_links": 65,
     "concept_relationships": 23,
-    "flashcards": 41,
+    "flashcards": 50,
     "daily_challenges": 12,
     "daily_challenge_choices": 48,
     "quizzes": 5,
@@ -106,7 +115,10 @@
     "dsm_master_glossary_terms": 14,
     "cognitive_distortions": 12,
     "concept_aliases": 8,
-    "concept_symptom_links": 15
+    "concept_symptom_links": 15,
+    "cognitive_distortion_practice_items": 18,
+    "cognitive_distortion_practice_choices": 72,
+    "concept_relationship_sources": 12
   },
   "migrations": [
     "0003_concept_dailychallenge_dailychallengechoice_and_more.py",
@@ -114,15 +126,16 @@
     "0005_dsmcorpus_dsmrecord.py",
     "0006_dsmrecordrelation.py",
     "0007_disorder_data_origin.py",
-    "0008_conceptalias_conceptrelationshipsource_and_more.py"
+    "0008_conceptalias_conceptrelationshipsource_and_more.py",
+    "0009_alter_studyactivity_activity_type_and_more.py"
   ],
   "validation": {
     "django_check": "pass",
-    "backend_tests": "58/58 passed",
+    "backend_tests": "64/64 passed",
     "python_compileall": "pass",
     "pip_check": "pass",
     "migration_drift_check": "pass",
-    "seed_idempotency": "pass · v0.4 Part 1 counts stable across two runs and DSM categories preserved",
+    "seed_idempotency": "pass · v0.4 counts stable across two runs / 21 DSM-backed categories",
     "typescript_typecheck": "pass",
     "next_production_build": "pass",
     "npm_audit_low": "0 vulnerabilities",
@@ -146,13 +159,20 @@
     "v04_part1_concept_inventory": "44 concepts / 12 cognitive distortions / 8 aliases / 23 concept relations / 15 concept-symptom links",
     "v04_part1_relation_provenance": "12 Beck Institute-backed distortion membership relations",
     "v04_part1_dsm_seed_regression": "pass · seed keeps linked curated disorders in DSM chapter categories",
-    "v04_part1_dsm_dry_run": "438 records / 243 formal diagnoses / 241 canonical pages / 21 categories"
+    "v04_part1_dsm_dry_run": "438 records / 243 formal diagnoses / 241 canonical pages / 21 categories",
+    "v04_graph_v2": "pass · filters / depth-2 neighborhood / shortest-path",
+    "v04_distortion_practice": "pass · 18 items / 72 choices / exactly one correct choice per item",
+    "v04_flashcards": "50 active flashcards",
+    "v04_live_route_smoke": "pass · API + /cognitive-distortions + /concepts + /map + /study",
+    "v04_authenticated_practice_e2e": "pass · submit -> StudyActivity -> ConceptProgress -> StudyOverview / temp user cleaned"
   },
   "release_notes": {
     "graph_layers": [
       "Concept <-> Concept",
       "Disorder <-> Concept",
-      "Disorder -> Symptom"
+      "Concept <-> Symptom",
+      "Disorder -> Symptom",
+      "Disorder <-> Disorder via DSM nearby-title"
     ],
     "user_owned_v3_data": [
       "concept bookmarks",
@@ -160,10 +180,11 @@
       "concept progress",
       "flashcard SRS progress",
       "daily challenge attempts",
-      "study activity"
+      "study activity",
+      "cognitive distortion practice attempts"
     ],
     "roadmap": {
-      "0.4": "Full Concept Graph + Cognitive Distortions",
+      "0.4": "Full Concept Graph + Cognitive Distortions ✅",
       "0.5": "Therapy Atlas",
       "0.6": "Psychologists + Theories + Timeline",
       "0.7": "Advanced Branching Clinical Cases + Analytics",

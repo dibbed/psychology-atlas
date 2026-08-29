@@ -19,6 +19,7 @@ const navItems: NavItem[] = [
   { href: "/disorders", label: "اختلالات", en: "Disorders", group: "explore" },
   { href: "/dsm", label: "DSM MASTER", en: "DSM Reference", group: "explore" },
   { href: "/concepts", label: "مفاهیم", en: "Concepts", group: "explore" },
+  { href: "/cognitive-distortions", label: "تحریف‌های شناختی", en: "Cognitive Distortions", group: "explore" },
   { href: "/map", label: "نقشه دانش", en: "Knowledge Graph", group: "explore" },
   { href: "/compare", label: "مقایسه", en: "Compare", group: "explore" },
   { href: "/study", label: "مطالعه", en: "Study Center", group: "learn" },
@@ -143,7 +144,7 @@ export default function Nav() {
                 ))}
               </div>
               <div className="nav-more-group">
-                <span>ابزار و فضای شخصی</span>
+                <span>کاوش تکمیلی و فضای شخصی</span>
                 {moreItems.filter(item => item.group !== "learn").map(item => (
                   <Link
                     href={item.href}
