@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { GraphPathResult, KnowledgeGraphNode } from "@/lib/types";
 
@@ -41,30 +41,40 @@ export default function GraphPathFinder({ nodes, initialFrom }: { nodes: Knowled
   const [result, setResult] = useState<GraphPathResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const requestRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (initialFrom && nodes.some(node => node.id === initialFrom)) {
       setFrom(initialFrom);
+      setTo(current => current === initialFrom ? nodes.find(node => node.id !== initialFrom)?.id || "" : current);
       setResult(null);
       setError("");
     }
   }, [initialFrom, nodes]);
+
+  useEffect(() => () => requestRef.current?.abort(), []);
 
   async function findPath() {
     if (!from || !to || from === to) {
       setError("دو گره متفاوت برای شروع و پایان انتخاب کن.");
       return;
     }
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
     setLoading(true);
     setError("");
     setResult(null);
     try {
-      const data = await api<GraphPathResult>(`/concept-map/path/?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
-      setResult(data);
+      const data = await api<GraphPathResult>(
+        `/concept-map/path/?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+        { signal: controller.signal },
+      );
+      if (!controller.signal.aborted) setResult(data);
     } catch (reason: any) {
-      setError(reason?.message || "محاسبه مسیر انجام نشد.");
+      if (reason?.name !== "AbortError") setError(reason?.message || "محاسبه مسیر انجام نشد.");
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }
 
@@ -73,18 +83,18 @@ export default function GraphPathFinder({ nodes, initialFrom }: { nodes: Knowled
       <div>
         <div className="meta">Structured Path Finder</div>
         <h3>دو گره را انتخاب کن و کوتاه‌ترین مسیر واقعی را پیدا کن.</h3>
-        <p className="muted">مسیر فقط از edgeهای ثبت‌شده در Atlas ساخته می‌شود. اگر اتصال وجود نداشته باشد، مسیر ساخته نمی‌شود.</p>
+        <p className="muted">مسیر فقط از edgeهای ثبت‌شده در Atlas ساخته می‌شود. اتصال‌های ساختاری «عنوان نزدیک DSM» به‌طور پیش‌فرض وارد کوتاه‌ترین مسیر نمی‌شوند.</p>
       </div>
       <div className="graph-path-controls">
         <label>
           <span>شروع</span>
-          <select className="filter-select" value={from} onChange={event => setFrom(event.target.value)}>
+          <select className="filter-select" value={from} disabled={loading} onChange={event => { setFrom(event.target.value); setResult(null); setError(""); }}>
             {options.map(node => <option value={node.id} key={node.id}>{node.label} · {node.type}</option>)}
           </select>
         </label>
         <label>
           <span>پایان</span>
-          <select className="filter-select" value={to} onChange={event => setTo(event.target.value)}>
+          <select className="filter-select" value={to} disabled={loading} onChange={event => { setTo(event.target.value); setResult(null); setError(""); }}>
             {options.map(node => <option value={node.id} key={node.id}>{node.label} · {node.type}</option>)}
           </select>
         </label>
@@ -99,7 +109,13 @@ export default function GraphPathFinder({ nodes, initialFrom }: { nodes: Knowled
             {result.nodes.map((node, index) => (
               <div className="graph-path-step" key={node.id}>
                 <Link href={node.href}><span>{node.label}</span><small>{node.type}</small></Link>
-                {index < result.edges.length && <div className="graph-path-edge">{edgeLabels[result.edges[index].kind] || result.edges[index].kind}</div>}
+                {index < result.edges.length && (
+                  <div className="graph-path-edge">
+                    {result.edges[index].traversal_direction === "reverse"
+                      ? `حرکت معکوس روی رابطه: ${edgeLabels[result.edges[index].kind] || result.edges[index].kind}`
+                      : edgeLabels[result.edges[index].kind] || result.edges[index].kind}
+                  </div>
+                )}
               </div>
             ))}
           </div>

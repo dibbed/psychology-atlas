@@ -8,6 +8,7 @@ from rest_framework import generics, permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
+from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .learning import (
@@ -88,6 +89,20 @@ def me(request):
     return Response(UserSerializer(request.user).data)
 
 
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def logout(request):
+    payload = _object_payload(request)
+    refresh = payload.get("refresh")
+    if not isinstance(refresh, str) or not refresh.strip():
+        raise ValidationError({"refresh": "توکن refresh معتبر نیست."})
+    try:
+        RefreshToken(refresh.strip()).blacklist()
+    except TokenError:
+        raise ValidationError({"refresh": "توکن refresh معتبر نیست یا قبلاً باطل شده است."})
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 @api_view(["GET"])
 def categories(request):
     data = []
@@ -158,14 +173,6 @@ class DisorderDetailView(generics.RetrieveAPIView):
         )
     )
 
-    def retrieve(self, request, *args, **kwargs):
-        instance = self.get_object()
-        if request.user.is_authenticated:
-            progress, _ = UserProgress.objects.get_or_create(user=request.user, disorder=instance)
-            progress.progress_percent = max(progress.progress_percent, 20)
-            progress.last_viewed_at = timezone.now()
-            progress.save(update_fields=("progress_percent", "last_viewed_at", "updated_at"))
-        return Response(self.get_serializer(instance).data)
 
 
 @api_view(["GET"])

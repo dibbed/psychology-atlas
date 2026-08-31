@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { clearTokens, hasToken } from "@/lib/auth";
+import { api } from "@/lib/api";
+import { clearTokens, getRefreshToken, hasToken } from "@/lib/auth";
 
 type NavGroup = "explore" | "learn" | "personal" | "account" | "home";
 
@@ -95,6 +96,24 @@ export default function Nav() {
   const moreActive = moreItems.some(item => isActive(pathname, item.href));
   const pageKind = detailKind(pathname);
 
+  async function signOut() {
+    const refresh = getRefreshToken();
+    try {
+      if (refresh) {
+        await api<void>(
+          "/auth/logout/",
+          { method: "POST", body: JSON.stringify({ refresh }) },
+          true,
+        );
+      }
+    } catch {
+      // Local credentials are always cleared even if the server token already expired.
+    } finally {
+      clearTokens();
+      location.href = "/";
+    }
+  }
+
   return (
     <header className="nav">
       <a className="skip-link" href="#main-content">رفتن به محتوای اصلی</a>
@@ -162,7 +181,7 @@ export default function Nav() {
 
         <div className="nav-spacer" />
         {loggedIn ? (
-          <button className="button ghost nav-auth" onClick={() => { clearTokens(); location.href = "/"; }}>
+          <button className="button ghost nav-auth" onClick={signOut}>
             خروج
           </button>
         ) : (

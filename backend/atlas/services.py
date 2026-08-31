@@ -3,6 +3,7 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from .learning import record_activity
+from .validation import positive_int
 from .models import (
     CaseAttempt,
     CaseAttemptAnswer,
@@ -26,17 +27,10 @@ def _normalize_answers(answers, expected_question_ids, *, label):
             raise ValidationError(f"ساختار یکی از پاسخ‌های {label} معتبر نیست.")
         question_raw = item.get("question_id")
         choice_raw = item.get("choice_id")
-        if isinstance(question_raw, bool) or isinstance(choice_raw, bool):
-            raise ValidationError(f"شناسه سؤال یا گزینه در {label} معتبر نیست.")
-        if not isinstance(question_raw, (int, str)) or not isinstance(choice_raw, (int, str)):
-            raise ValidationError(f"شناسه سؤال یا گزینه در {label} معتبر نیست.")
-        if isinstance(question_raw, str) and not question_raw.isdigit():
-            raise ValidationError(f"شناسه سؤال یا گزینه در {label} معتبر نیست.")
-        if isinstance(choice_raw, str) and not choice_raw.isdigit():
-            raise ValidationError(f"شناسه سؤال یا گزینه در {label} معتبر نیست.")
-        question_id = int(question_raw)
-        choice_id = int(choice_raw)
-        if question_id <= 0 or choice_id <= 0:
+        try:
+            question_id = positive_int(question_raw, field="question_id")
+            choice_id = positive_int(choice_raw, field="choice_id")
+        except ValidationError:
             raise ValidationError(f"شناسه سؤال یا گزینه در {label} معتبر نیست.")
 
         if question_id in submitted_ids:
@@ -51,7 +45,7 @@ def _normalize_answers(answers, expected_question_ids, *, label):
 
 @transaction.atomic
 def submit_quiz(*, user, quiz, answers):
-    question_ids = set(quiz.questions.values_list("id", flat=True))
+    question_ids = set(quiz.questions.filter(is_active=True).values_list("id", flat=True))
     if not question_ids:
         raise ValidationError("این آزمون هنوز سؤال قابل پاسخ ندارد.")
     normalized_answers = _normalize_answers(answers, question_ids, label="آزمون")
@@ -64,12 +58,12 @@ def submit_quiz(*, user, quiz, answers):
 
     correct = 0
     feedback = []
-    questions = {q.id: q for q in quiz.questions.prefetch_related("choices").all()}
+    questions = {q.id: q for q in quiz.questions.filter(is_active=True).prefetch_related("choices").all()}
 
     for qid, cid in normalized_answers:
         question = questions[qid]
         try:
-            choice = next(c for c in question.choices.all() if c.id == cid)
+            choice = next(c for c in question.choices.all() if c.id == cid and c.is_active)
         except StopIteration:
             raise ValidationError(f"گزینه {cid} متعلق به سؤال {qid} نیست.")
 
@@ -95,9 +89,13 @@ def submit_quiz(*, user, quiz, answers):
 
     if quiz.disorder_id:
         progress, _ = UserProgress.objects.get_or_create(user=user, disorder=quiz.disorder)
-        progress.progress_percent = max(progress.progress_percent, 65)
+        earned_progress = 25 + round(attempt.score * 0.60)
+        progress.progress_percent = max(progress.progress_percent, earned_progress)
         progress.last_viewed_at = timezone.now()
-        progress.save(update_fields=("progress_percent", "last_viewed_at", "updated_at"))
+        if progress.progress_percent >= 85:
+            progress.status = UserProgress.Status.COMPLETED
+            progress.completed_at = progress.completed_at or timezone.now()
+        progress.save(update_fields=("progress_percent", "last_viewed_at", "status", "completed_at", "updated_at"))
 
     record_activity(
         user,
@@ -112,16 +110,17 @@ def submit_quiz(*, user, quiz, answers):
 @transaction.atomic
 def submit_case(*, user, clinical_case, answers):
     questions = {}
-    for step in clinical_case.steps.prefetch_related("questions__choices").all():
+    for step in clinical_case.steps.filter(is_active=True).prefetch_related("questions__choices").all():
         for q in step.questions.all():
-            questions[q.id] = q
+            if q.is_active:
+                questions[q.id] = q
 
     if not questions:
         raise ValidationError("این کیس بالینی هنوز سؤال قابل پاسخ ندارد.")
     normalized_answers = _normalize_answers(answers, set(questions), label="کیس بالینی")
 
     max_score = sum(
-        max([c.score_value for c in q.choices.all()] or [0])
+        max([c.score_value for c in q.choices.all() if c.is_active] or [0])
         for q in questions.values()
     )
     attempt = CaseAttempt.objects.create(
@@ -135,7 +134,7 @@ def submit_case(*, user, clinical_case, answers):
     for qid, cid in normalized_answers:
         question = questions[qid]
         try:
-            choice = next(c for c in question.choices.all() if c.id == cid)
+            choice = next(c for c in question.choices.all() if c.id == cid and c.is_active)
         except StopIteration:
             raise ValidationError(f"گزینه {cid} متعلق به سؤال {qid} نیست.")
 
@@ -147,7 +146,7 @@ def submit_case(*, user, clinical_case, answers):
             selected_choice=choice,
             awarded_score=awarded,
         )
-        max_for_question = max([c.score_value for c in question.choices.all()] or [0])
+        max_for_question = max([c.score_value for c in question.choices.all() if c.is_active] or [0])
         feedback.append({
             "question_id": qid,
             "awarded_score": awarded,
@@ -164,12 +163,13 @@ def submit_case(*, user, clinical_case, answers):
 
     if clinical_case.primary_disorder_id:
         progress, _ = UserProgress.objects.get_or_create(user=user, disorder=clinical_case.primary_disorder)
-        next_percent = max(progress.progress_percent, 85 if score == max_score else 75)
-        progress.progress_percent = next_percent
+        performance = round(score * 100 / max_score) if max_score else 0
+        earned_progress = 25 + round(performance * 0.60)
+        progress.progress_percent = max(progress.progress_percent, earned_progress)
         progress.last_viewed_at = timezone.now()
-        if next_percent >= 85:
+        if progress.progress_percent >= 85:
             progress.status = UserProgress.Status.COMPLETED
-            progress.completed_at = timezone.now()
+            progress.completed_at = progress.completed_at or timezone.now()
         progress.save(update_fields=("progress_percent", "last_viewed_at", "status", "completed_at", "updated_at"))
 
     record_activity(

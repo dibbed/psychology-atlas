@@ -36,7 +36,17 @@ export default function CompareClient({ initialSlug }: { initialSlug?: string })
   }, [all, query]);
 
   function toggle(slug: string) {
-    setSelected(s => s.includes(slug) ? s.filter(x => x !== slug) : s.length < 4 ? [...s, slug] : s);
+    setSelected(current => {
+      const next = current.includes(slug)
+        ? current.filter(value => value !== slug)
+        : current.length < 4 ? [...current, slug] : current;
+      if (next !== current) {
+        setItems([]);
+        setDsmItems({});
+        setError("");
+      }
+      return next;
+    });
   }
 
   async function compare() {

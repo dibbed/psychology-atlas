@@ -1,8 +1,10 @@
 # Psychology Atlas Product Spec
 
-## Current implemented version: v0.4 — Full Concept Graph + Cognitive Distortions
+## Current implemented version: v0.4.1 — Graph & Study Hardening
 
 Psychology Atlas is an interactive educational system for psychology students. It should behave as a connected learning system, not as a psychology blog and not as a diagnostic product.
+
+v0.4.1 is a hardening release over v0.4. It preserves the scientific content scope while tightening data integrity, content lifecycle, Graph semantics/performance, learning-progress behavior, production security and frontend async-state consistency.
 
 ## Architecture decisions
 
@@ -96,7 +98,7 @@ Current graph in v0.4:
 
 The graph must use explicit structured relationships. Do not invent similarity percentages.
 
-v0.4 Graph UX adds domain/subtype/minimum-degree filtering, depth-1/depth-2 Concept neighborhoods and server-side shortest-path finding between Atlas nodes. Path results are computed only from stored edges.
+v0.4 Graph UX adds domain/subtype/minimum-degree filtering, depth-1/depth-2 Concept neighborhoods and server-side shortest-path finding between Atlas nodes. v0.4.1 applies node-type filters before neighborhood traversal, evaluates minimum degree on the final filtered graph, preserves traversal direction in path results and excludes `dsm_nearby` structural shortcuts from the default conceptual shortest path. Path results are still computed only from stored edges.
 
 ### Active-learning tools
 
@@ -150,10 +152,10 @@ Progress values are **educational activity indicators**, not diagnosis, clinical
 
 Current milestones include:
 
-- authenticated Disorder view: at least 25%
-- completing a related Quiz: progress increases according to the existing learning service
-- completing a related Case: progress increases according to the existing learning service
-- high/full-credit Case performance can mark the Disorder completed
+- explicit authenticated Disorder-view activity: at least 25%; the Disorder detail GET itself is read-only
+- completing a related Quiz: 25% baseline + up to 60 percentage points according to Quiz score
+- completing a related Case: 25% baseline + up to 60 percentage points according to Case performance
+- only sufficiently high earned progress can mark the Disorder completed
 
 Progress must never regress because a page is revisited.
 

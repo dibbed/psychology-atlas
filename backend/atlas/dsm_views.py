@@ -1,3 +1,4 @@
+from django.core.cache import cache
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from rest_framework import generics
@@ -207,62 +208,92 @@ def dsm_graph(request):
     corpus = _active_corpus()
     if not corpus:
         return Response({"detail": "DSM MASTER هنوز وارد نشده است."}, status=404)
-    records = list(
-        corpus.records.filter(is_active=True)
-        .select_related("linked_disorder")
-        .order_by("sort_index", "master_id")
-    )
-    record_ids = {row.id for row in records}
-    record_by_id = {row.id: row for row in records}
-    relations = list(
-        DSMRecordRelation.objects.filter(source_id__in=record_ids, target_id__in=record_ids)
-        .select_related("source", "target")
-        .order_by("source__sort_index", "target__sort_index", "relationship_type")
-    )
-    degree = {row.master_id: 0 for row in records}
-    edges = []
-    for row in records:
-        if row.parent_id and row.parent_id in record_ids:
-            parent = record_by_id.get(row.parent_id)
-            if parent:
-                edges.append({"source": parent.master_id, "target": row.master_id, "kind": "hierarchy", "explanation": "رابطه ساختاری parent/child در MASTER."})
-                degree[parent.master_id] += 1
-                degree[row.master_id] += 1
-    for relation in relations:
-        edges.append({
-            "source": relation.source.master_id,
-            "target": relation.target.master_id,
-            "kind": relation.relationship_type,
-            "explanation": relation.explanation,
-        })
-        degree[relation.source.master_id] += 1
-        degree[relation.target.master_id] += 1
-    return Response({
-        "meta": {
-            "node_count": len(records),
-            "edge_count": len(edges),
-            "relation_counts": {
-                "hierarchy": sum(1 for edge in edges if edge["kind"] == "hierarchy"),
-                "nearby": sum(1 for edge in edges if edge["kind"] == DSMRecordRelation.Kind.NEARBY),
-                "differential": sum(1 for edge in edges if edge["kind"] == DSMRecordRelation.Kind.DIFFERENTIAL),
+
+    cache_key = f"dsm_graph_v2:{corpus.id}:{int(corpus.updated_at.timestamp())}"
+    payload = cache.get(cache_key)
+    if payload is None:
+        records = list(
+            corpus.records.filter(is_active=True)
+            .values(
+                "id",
+                "master_id",
+                "parent_id",
+                "name_fa",
+                "name_en",
+                "display_type",
+                "classification_status",
+                "chapter_number",
+                "chapter_name_fa",
+                "group_name",
+                "summary",
+                "linked_disorder__slug",
+            )
+            .order_by("sort_index", "master_id")
+        )
+        record_ids = {row["id"] for row in records}
+        master_by_id = {row["id"]: row["master_id"] for row in records}
+        relations = list(
+            DSMRecordRelation.objects.filter(source_id__in=record_ids, target_id__in=record_ids)
+            .values_list("source_id", "target_id", "relationship_type", "explanation")
+            .order_by("source_id", "target_id", "relationship_type")
+        )
+        degree = {row["master_id"]: 0 for row in records}
+        edges = []
+        for row in records:
+            parent_master_id = master_by_id.get(row["parent_id"])
+            if parent_master_id:
+                edges.append({
+                    "source": parent_master_id,
+                    "target": row["master_id"],
+                    "kind": "hierarchy",
+                    "explanation": "رابطه ساختاری parent/child در MASTER.",
+                })
+                degree[parent_master_id] += 1
+                degree[row["master_id"]] += 1
+        for source_id, target_id, relationship_type, explanation in relations:
+            source_master_id = master_by_id.get(source_id)
+            target_master_id = master_by_id.get(target_id)
+            if not source_master_id or not target_master_id:
+                continue
+            edges.append({
+                "source": source_master_id,
+                "target": target_master_id,
+                "kind": relationship_type,
+                "explanation": explanation,
+            })
+            degree[source_master_id] += 1
+            degree[target_master_id] += 1
+
+        relation_counts = {"hierarchy": 0, "nearby": 0, "differential": 0}
+        for edge in edges:
+            if edge["kind"] in relation_counts:
+                relation_counts[edge["kind"]] += 1
+
+        payload = {
+            "meta": {
+                "node_count": len(records),
+                "edge_count": len(edges),
+                "relation_counts": relation_counts,
             },
-        },
-        "nodes": [
-            {
-                "id": row.master_id,
-                "label": row.name_fa or row.name_en or row.master_id,
-                "name_en": row.name_en,
-                "display_type": row.display_type,
-                "classification_status": row.classification_status,
-                "chapter_number": row.chapter_number,
-                "chapter_name_fa": row.chapter_name_fa,
-                "group_name": row.group_name,
-                "summary": row.summary,
-                "degree": degree[row.master_id],
-                "href": f"/dsm/{row.master_id}",
-                "linked_disorder_slug": row.linked_disorder.slug if row.linked_disorder_id else None,
-            }
-            for row in records
-        ],
-        "edges": edges,
-    })
+            "nodes": [
+                {
+                    "id": row["master_id"],
+                    "label": row["name_fa"] or row["name_en"] or row["master_id"],
+                    "name_en": row["name_en"],
+                    "display_type": row["display_type"],
+                    "classification_status": row["classification_status"],
+                    "chapter_number": row["chapter_number"],
+                    "chapter_name_fa": row["chapter_name_fa"],
+                    "group_name": row["group_name"],
+                    "summary": row["summary"],
+                    "degree": degree[row["master_id"]],
+                    "href": f"/dsm/{row['master_id']}",
+                    "linked_disorder_slug": row["linked_disorder__slug"],
+                }
+                for row in records
+            ],
+            "edges": edges,
+        }
+        cache.set(cache_key, payload, timeout=300)
+
+    return Response(payload)

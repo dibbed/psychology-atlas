@@ -1,3 +1,4 @@
+from django.core.cache import cache
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
@@ -487,6 +488,7 @@ class Command(BaseCommand):
                     "description": quiz_data["description"],
                     "disorder": disorder_objs[quiz_data["disorder"]],
                     "is_active": True,
+                    "seed_managed": True,
                 },
             )
             for q_order, (prompt, correct_text, choices, explanation) in enumerate(quiz_data["questions"], start=1):
@@ -494,23 +496,37 @@ class Command(BaseCommand):
                 if question:
                     question.prompt = prompt
                     question.explanation = explanation
-                    question.save(update_fields=("prompt", "explanation", "updated_at"))
+                    question.is_active = True
+                    question.save(update_fields=("prompt", "explanation", "is_active", "updated_at"))
                 else:
                     question = QuizQuestion.objects.create(
                         quiz=quiz,
                         prompt=prompt,
                         explanation=explanation,
                         sort_order=q_order,
+                        is_active=True,
                     )
+                active_choice_orders = []
                 for choice_order, text in enumerate(choices, start=1):
+                    active_choice_orders.append(choice_order)
                     choice = QuizChoice.objects.filter(question=question, sort_order=choice_order).order_by("id").first()
-                    values = {"text": text, "is_correct": text == correct_text, "sort_order": choice_order}
+                    values = {
+                        "text": text,
+                        "is_correct": text == correct_text,
+                        "sort_order": choice_order,
+                        "is_active": True,
+                    }
                     if choice:
                         choice.text = values["text"]
                         choice.is_correct = values["is_correct"]
-                        choice.save(update_fields=("text", "is_correct", "sort_order"))
+                        choice.is_active = True
+                        choice.save(update_fields=("text", "is_correct", "sort_order", "is_active"))
                     else:
                         QuizChoice.objects.create(question=question, **values)
+                question.choices.exclude(sort_order__in=active_choice_orders).update(is_active=False, is_correct=False)
+            quiz.questions.exclude(sort_order__in=range(1, len(quiz_data["questions"]) + 1)).update(is_active=False)
+
+        Quiz.objects.filter(seed_managed=True).exclude(slug__in=[row["slug"] for row in QUIZZES]).update(is_active=False)
 
         for case_data in CASES:
             case, _ = ClinicalCase.objects.update_or_create(
@@ -522,6 +538,7 @@ class Command(BaseCommand):
                     "primary_disorder": disorder_objs[case_data["disorder"]],
                     "difficulty": case_data["difficulty"],
                     "is_active": True,
+                    "seed_managed": True,
                 },
             )
             for step_order, (title, narrative, prompt, choices, explanation) in enumerate(case_data["steps"], start=1):
@@ -529,25 +546,42 @@ class Command(BaseCommand):
                 if step:
                     step.title = title
                     step.narrative = narrative
-                    step.save(update_fields=("title", "narrative"))
+                    step.is_active = True
+                    step.save(update_fields=("title", "narrative", "is_active"))
                 else:
-                    step = CaseStep.objects.create(case=case, title=title, narrative=narrative, sort_order=step_order)
+                    step = CaseStep.objects.create(
+                        case=case,
+                        title=title,
+                        narrative=narrative,
+                        sort_order=step_order,
+                        is_active=True,
+                    )
 
                 question = CaseQuestion.objects.filter(step=step, sort_order=1).order_by("id").first()
                 if question:
                     question.prompt = prompt
                     question.explanation = explanation
-                    question.save(update_fields=("prompt", "explanation", "updated_at"))
+                    question.is_active = True
+                    question.save(update_fields=("prompt", "explanation", "is_active", "updated_at"))
                 else:
-                    question = CaseQuestion.objects.create(step=step, prompt=prompt, explanation=explanation, sort_order=1)
+                    question = CaseQuestion.objects.create(
+                        step=step,
+                        prompt=prompt,
+                        explanation=explanation,
+                        sort_order=1,
+                        is_active=True,
+                    )
 
+                active_choice_orders = []
                 for choice_order, (text, score, feedback) in enumerate(choices, start=1):
+                    active_choice_orders.append(choice_order)
                     choice = CaseChoice.objects.filter(question=question, sort_order=choice_order).order_by("id").first()
                     if choice:
                         choice.text = text
                         choice.score_value = score
                         choice.feedback = feedback
-                        choice.save(update_fields=("text", "score_value", "feedback", "sort_order"))
+                        choice.is_active = True
+                        choice.save(update_fields=("text", "score_value", "feedback", "sort_order", "is_active"))
                     else:
                         CaseChoice.objects.create(
                             question=question,
@@ -555,12 +589,19 @@ class Command(BaseCommand):
                             score_value=score,
                             feedback=feedback,
                             sort_order=choice_order,
+                            is_active=True,
                         )
+                question.choices.exclude(sort_order__in=active_choice_orders).update(is_active=False)
+                step.questions.exclude(sort_order=1).update(is_active=False)
+            case.steps.exclude(sort_order__in=range(1, len(case_data["steps"]) + 1)).update(is_active=False)
+
+        ClinicalCase.objects.filter(seed_managed=True).exclude(slug__in=[row["slug"] for row in CASES]).update(is_active=False)
 
         v3_counts = seed_v3_content(disorder_objs, source_objs)
+        cache.delete("atlas_graph_v4")
 
         self.stdout.write(self.style.SUCCESS(
-            "Psychology Atlas v0.4 seed completed: "
+            "Psychology Atlas v0.4.1 seed completed: "
             f"{len(DISORDERS)} disorders, {len(QUIZZES)} quizzes, {len(CASES)} cases, "
             f"{v3_counts['concepts']} concepts, {v3_counts['cognitive_distortions']} cognitive distortions, "
             f"{v3_counts['concept_aliases']} concept aliases, {v3_counts['concept_symptom_links']} concept-symptom links, "

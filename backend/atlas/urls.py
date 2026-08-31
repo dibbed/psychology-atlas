@@ -7,6 +7,7 @@ urlpatterns = [
     path("auth/register/", views.RegisterView.as_view()),
     path("auth/login/", TokenObtainPairView.as_view()),
     path("auth/refresh/", TokenRefreshView.as_view()),
+    path("auth/logout/", views.logout),
     path("auth/me/", views.me),
 
     path("categories/", views.categories),

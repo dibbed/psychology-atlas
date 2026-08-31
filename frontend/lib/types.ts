@@ -290,6 +290,9 @@ export type KnowledgeGraphEdge = {
   target: string;
   kind: string;
   explanation: string;
+  traversal_direction?: "forward" | "reverse";
+  traversed_from?: string;
+  traversed_to?: string;
 };
 
 export type ConceptNeighborhood = {
@@ -304,6 +307,7 @@ export type GraphPathResult = {
   to: string;
   found: boolean;
   hops: number | null;
+  structural_edges_included?: boolean;
   nodes: KnowledgeGraphNode[];
   edges: KnowledgeGraphEdge[];
 };

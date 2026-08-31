@@ -2,6 +2,7 @@ from io import StringIO
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from django.core.management import call_command
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
@@ -14,13 +15,14 @@ from .models import (
     Concept, ConceptAlias, ConceptBookmark, ConceptNote, ConceptRelationship, ConceptRelationshipSource,
     ConceptSymptom, CognitiveDistortionPracticeAttempt, CognitiveDistortionPracticeChoice,
     CognitiveDistortionPracticeItem, DailyChallenge, DailyChallengeAttempt, DailyChallengeChoice, Disorder, DisorderConcept,
-    DisorderSymptom, DSMCorpus, DSMRecord, Flashcard, Quiz, QuizChoice, QuizQuestion, SourceReference, StudyActivity, Symptom, UserConceptProgress,
+    DisorderSymptom, DSMCorpus, DSMRecord, DSMRecordRelation, Flashcard, Quiz, QuizChoice, QuizQuestion, SourceReference, StudyActivity, Symptom, UserConceptProgress,
     UserFlashcardProgress, UserNote, UserProgress,
 )
 
 
 class AtlasApiTests(APITestCase):
     def setUp(self):
+        cache.clear()
         self.category = Category.objects.create(slug="test", name_en="Test")
         self.disorder = Disorder.objects.create(
             category=self.category,
@@ -688,7 +690,7 @@ class AtlasApiTests(APITestCase):
             {"choice_id": "999999999999999999999999999999999999999999999999"},
             format="json",
         )
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 400)
         self.assertFalse(DailyChallengeAttempt.objects.filter(user=self.user_a).exists())
 
     def test_v3_search_normalizes_common_arabic_and_persian_letter_variants(self):
@@ -1254,3 +1256,156 @@ class AtlasApiTests(APITestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 404)
+
+    def test_v041_practice_invalid_content_has_no_side_effects(self):
+        target = Concept.objects.create(slug="v041-practice-target", name_en="V041 Practice Target", simple_definition="target", subtype="cognitive_distortion", is_active=True)
+        other = Concept.objects.create(slug="v041-practice-other", name_en="V041 Practice Other", simple_definition="other", subtype="cognitive_distortion", is_active=True)
+        item = CognitiveDistortionPracticeItem.objects.create(slug="v041-invalid-practice", prompt="Invalid content", explanation="Invalid", target_concept=target, is_active=True)
+        selected = CognitiveDistortionPracticeChoice.objects.create(item=item, concept=target, text="Target", is_correct=True, sort_order=0)
+        CognitiveDistortionPracticeChoice.objects.create(item=item, concept=other, text="Other", is_correct=True, sort_order=1)
+        self.auth(self.user_a)
+        response = self.client.post(f"/api/cognitive-distortions/practice/{item.slug}/submit/", {"choice_id": selected.id}, format="json")
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(CognitiveDistortionPracticeAttempt.objects.filter(user=self.user_a, item=item).exists())
+        self.assertFalse(UserConceptProgress.objects.filter(user=self.user_a, concept=target).exists())
+        self.assertFalse(StudyActivity.objects.filter(user=self.user_a, activity_type=StudyActivity.Kind.DISTORTION_PRACTICE, concept=target).exists())
+
+    def test_v041_practice_queue_hides_inactive_choice_concepts(self):
+        target = Concept.objects.create(slug="v041-queue-target", name_en="V041 Queue Target", simple_definition="target", subtype="cognitive_distortion", is_active=True)
+        active_wrong = Concept.objects.create(slug="v041-queue-active-wrong", name_en="V041 Queue Active Wrong", simple_definition="wrong", subtype="cognitive_distortion", is_active=True)
+        inactive_wrong = Concept.objects.create(slug="v041-queue-inactive-wrong", name_en="V041 Queue Inactive Wrong", simple_definition="inactive", subtype="cognitive_distortion", is_active=False)
+        item = CognitiveDistortionPracticeItem.objects.create(slug="v041-queue-item", prompt="Queue lifecycle", explanation="Queue lifecycle", target_concept=target, is_active=True)
+        CognitiveDistortionPracticeChoice.objects.create(item=item, concept=target, text="Target", is_correct=True, sort_order=0)
+        CognitiveDistortionPracticeChoice.objects.create(item=item, concept=active_wrong, text="Active", is_correct=False, sort_order=1)
+        CognitiveDistortionPracticeChoice.objects.create(item=item, concept=inactive_wrong, text="Inactive", is_correct=False, sort_order=2)
+        response = self.client.get("/api/cognitive-distortions/practice/?limit=20")
+        self.assertEqual(response.status_code, 200)
+        row = next(row for row in response.json()["items"] if row["slug"] == "v041-queue-item")
+        self.assertEqual({choice["concept"]["slug"] for choice in row["choices"]}, {target.slug, active_wrong.slug})
+
+    def test_v041_neighborhood_node_type_never_returns_disconnected_second_level_node(self):
+        center = Concept.objects.create(slug="v041-neighbor-center", name_en="Center", simple_definition="center", is_active=True)
+        second = Concept.objects.create(slug="v041-neighbor-second", name_en="Second", simple_definition="second", is_active=True)
+        bridge_disorder = Disorder.objects.create(category=self.category, slug="v041-neighbor-bridge", name_en="Bridge Disorder", is_active=True)
+        DisorderConcept.objects.create(disorder=bridge_disorder, concept=center, role="associated")
+        DisorderConcept.objects.create(disorder=bridge_disorder, concept=second, role="associated")
+        response = self.client.get(f"/api/concepts/{center.slug}/neighborhood/?depth=2&node_type=concept")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual({node["id"] for node in data["nodes"]}, {f"concept:{center.slug}"})
+        self.assertEqual(data["edges"], [])
+
+    def test_v041_graph_min_degree_is_applied_after_relation_filter(self):
+        a = Concept.objects.create(slug="v041-degree-a", name_en="Degree A", simple_definition="a", is_active=True)
+        b = Concept.objects.create(slug="v041-degree-b", name_en="Degree B", simple_definition="b", is_active=True)
+        c = Concept.objects.create(slug="v041-degree-c", name_en="Degree C", simple_definition="c", is_active=True)
+        d = Concept.objects.create(slug="v041-degree-d", name_en="Degree D", simple_definition="d", is_active=True)
+        ConceptRelationship.objects.create(source_concept=a, target_concept=b, relationship_type="part_of")
+        ConceptRelationship.objects.create(source_concept=a, target_concept=c, relationship_type="related")
+        ConceptRelationship.objects.create(source_concept=b, target_concept=d, relationship_type="related")
+        response = self.client.get("/api/concept-map/?relation=part_of&min_degree=2")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["nodes"], [])
+        self.assertEqual(response.json()["edges"], [])
+
+    def test_v041_graph_path_marks_reverse_traversal(self):
+        child = Concept.objects.create(slug="v041-path-child", name_en="Child", simple_definition="child", is_active=True)
+        parent = Concept.objects.create(slug="v041-path-parent", name_en="Parent", simple_definition="parent", is_active=True)
+        ConceptRelationship.objects.create(source_concept=child, target_concept=parent, relationship_type="part_of")
+        response = self.client.get(f"/api/concept-map/path/?from=concept:{parent.slug}&to=concept:{child.slug}&relation=part_of")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["found"])
+        self.assertEqual(response.json()["edges"][0]["traversal_direction"], "reverse")
+
+    def test_v041_graph_path_excludes_dsm_nearby_shortcuts_by_default(self):
+        second_disorder = Disorder.objects.create(category=self.category, slug="v041-path-disorder-two", name_en="Path Disorder Two", is_active=True)
+        left = Concept.objects.create(slug="v041-path-left", name_en="Left", simple_definition="left", is_active=True)
+        right = Concept.objects.create(slug="v041-path-right", name_en="Right", simple_definition="right", is_active=True)
+        DisorderConcept.objects.create(disorder=self.disorder, concept=left, role="associated")
+        DisorderConcept.objects.create(disorder=second_disorder, concept=right, role="associated")
+        corpus = DSMCorpus.objects.create(key="v041-path-corpus", title="V041 Path Corpus", source_filename="v041.json", source_sha256="b" * 64, is_active=True)
+        first_record = DSMRecord.objects.create(corpus=corpus, master_id="V041-PATH-1", linked_disorder=self.disorder, display_type="diagnosis", name_en="First", is_active=True, sort_index=1)
+        second_record = DSMRecord.objects.create(corpus=corpus, master_id="V041-PATH-2", linked_disorder=second_disorder, display_type="diagnosis", name_en="Second", is_active=True, sort_index=2)
+        DSMRecordRelation.objects.create(source=first_record, target=second_record, relationship_type=DSMRecordRelation.Kind.NEARBY, explanation="structural nearby only")
+        default = self.client.get(f"/api/concept-map/path/?from=concept:{left.slug}&to=concept:{right.slug}")
+        structural = self.client.get(f"/api/concept-map/path/?from=concept:{left.slug}&to=concept:{right.slug}&include_structural=1")
+        self.assertEqual(default.status_code, 200)
+        self.assertFalse(default.json()["found"])
+        self.assertEqual(structural.status_code, 200)
+        self.assertTrue(structural.json()["found"])
+        self.assertTrue(any(edge["kind"] == "dsm_nearby" for edge in structural.json()["edges"]))
+
+    def test_v041_disorder_get_is_read_only_for_progress(self):
+        self.auth(self.user_a)
+        response = self.client.get(f"/api/disorders/{self.disorder.slug}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(UserProgress.objects.filter(user=self.user_a, disorder=self.disorder).exists())
+        self.assertFalse(StudyActivity.objects.filter(user=self.user_a, activity_type=StudyActivity.Kind.DISORDER_VIEW, disorder=self.disorder).exists())
+
+    def test_v041_failed_quiz_and_case_do_not_grant_mastery_progress(self):
+        quiz = Quiz.objects.create(slug="v041-zero-quiz", title="Zero Quiz", disorder=self.disorder, is_active=True)
+        question = QuizQuestion.objects.create(quiz=quiz, prompt="Q", sort_order=1)
+        QuizChoice.objects.create(question=question, text="Correct", is_correct=True, sort_order=1)
+        wrong = QuizChoice.objects.create(question=question, text="Wrong", is_correct=False, sort_order=2)
+        case = ClinicalCase.objects.create(slug="v041-zero-case", title="Zero Case", patient_summary="summary", primary_disorder=self.disorder, is_active=True)
+        step = CaseStep.objects.create(case=case, title="Step", narrative="N", sort_order=1)
+        case_question = CaseQuestion.objects.create(step=step, prompt="CQ", sort_order=1)
+        CaseChoice.objects.create(question=case_question, text="Best", score_value=3, sort_order=1)
+        case_wrong = CaseChoice.objects.create(question=case_question, text="Wrong", score_value=0, sort_order=2)
+        self.auth(self.user_a)
+        quiz_response = self.client.post(f"/api/quizzes/{quiz.slug}/submit/", {"answers": [{"question_id": question.id, "choice_id": wrong.id}]}, format="json")
+        self.assertEqual(quiz_response.status_code, 200)
+        progress = UserProgress.objects.get(user=self.user_a, disorder=self.disorder)
+        self.assertEqual(progress.progress_percent, 25)
+        case_response = self.client.post(f"/api/cases/{case.slug}/submit/", {"answers": [{"question_id": case_question.id, "choice_id": case_wrong.id}]}, format="json")
+        self.assertEqual(case_response.status_code, 200)
+        progress.refresh_from_db()
+        self.assertEqual(progress.progress_percent, 25)
+        self.assertNotEqual(progress.status, UserProgress.Status.COMPLETED)
+
+    def test_v041_graph_cache_invalidates_after_model_change(self):
+        first = Concept.objects.create(slug="v041-cache-first", name_en="First", simple_definition="first", is_active=True)
+        initial = self.client.get("/api/concept-map/")
+        self.assertIn(f"concept:{first.slug}", {node["id"] for node in initial.json()["nodes"]})
+        second = Concept.objects.create(slug="v041-cache-second", name_en="Second", simple_definition="second", is_active=True)
+        refreshed = self.client.get("/api/concept-map/")
+        self.assertIn(f"concept:{second.slug}", {node["id"] for node in refreshed.json()["nodes"]})
+
+    def test_v041_seed_soft_deactivates_stale_protected_practice_choice_and_quiz_choice(self):
+        call_command("seed_mvp", stdout=StringIO())
+        item = CognitiveDistortionPracticeItem.objects.get(slug="dp-all-or-nothing-1")
+        stale_concept = Concept.objects.get(slug="mind-reading")
+        stale_choice, _ = CognitiveDistortionPracticeChoice.objects.update_or_create(item=item, concept=stale_concept, defaults={"text": "Historical stale choice", "is_correct": False, "sort_order": 99, "is_active": True})
+        CognitiveDistortionPracticeAttempt.objects.create(user=self.user_a, item=item, selected_choice=stale_choice, is_correct=False)
+        quiz = Quiz.objects.filter(seed_managed=True, is_active=True).order_by("id").first()
+        quiz_question = quiz.questions.filter(is_active=True).order_by("sort_order", "id").first()
+        stale_quiz_choice = QuizChoice.objects.create(question=quiz_question, text="Historical stale quiz choice", is_correct=True, sort_order=99, is_active=True)
+        call_command("seed_mvp", stdout=StringIO())
+        stale_choice.refresh_from_db()
+        stale_quiz_choice.refresh_from_db()
+        self.assertFalse(stale_choice.is_active)
+        self.assertFalse(stale_choice.is_correct)
+        self.assertTrue(CognitiveDistortionPracticeAttempt.objects.filter(selected_choice=stale_choice).exists())
+        self.assertFalse(stale_quiz_choice.is_active)
+        self.assertFalse(stale_quiz_choice.is_correct)
+        self.assertEqual(quiz_question.choices.filter(is_active=True, is_correct=True).count(), 1)
+
+    def test_v041_oversized_numeric_inputs_return_400_instead_of_500(self):
+        concept = Concept.objects.create(slug="v041-large-input", name_en="Large", simple_definition="large", is_active=True)
+        huge = "9" * 5000
+        responses = [
+            self.client.get(f"/api/concept-map/?min_degree={huge}"),
+            self.client.get(f"/api/concepts/{concept.slug}/neighborhood/?depth={huge}"),
+            self.client.get(f"/api/cognitive-distortions/practice/?limit={huge}"),
+        ]
+        for response in responses:
+            self.assertEqual(response.status_code, 400)
+
+    def test_v041_logout_blacklists_refresh_token(self):
+        refresh = RefreshToken.for_user(self.user_a)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
+        response = self.client.post("/api/auth/logout/", {"refresh": str(refresh)}, format="json")
+        self.assertEqual(response.status_code, 204)
+        self.client.credentials()
+        replay = self.client.post("/api/auth/refresh/", {"refresh": str(refresh)}, format="json")
+        self.assertEqual(replay.status_code, 401)

@@ -215,13 +215,19 @@ class DailyChallengeChoiceSerializer(serializers.ModelSerializer):
 
 
 class DailyChallengeSerializer(serializers.ModelSerializer):
-    choices = DailyChallengeChoiceSerializer(many=True)
+    choices = serializers.SerializerMethodField()
     concept = serializers.SerializerMethodField()
     disorder = serializers.SerializerMethodField()
 
     class Meta:
         model = DailyChallenge
         fields = ("id", "prompt", "choices", "concept", "disorder")
+
+    def get_choices(self, obj):
+        return DailyChallengeChoiceSerializer(
+            obj.choices.filter(is_active=True).order_by("sort_order", "id"),
+            many=True,
+        ).data
 
     def get_concept(self, obj):
         if not obj.concept_id or not obj.concept.is_active:

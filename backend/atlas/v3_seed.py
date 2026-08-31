@@ -412,8 +412,12 @@ def seed_v3_content(disorder_objs, source_objs):
                 "difficulty": "basic" if order < 18 else "intermediate",
                 "sort_order": order,
                 "is_active": True,
+                "seed_managed": True,
             },
         )
+    Flashcard.objects.filter(seed_managed=True).exclude(
+        slug__in=[row[0] for row in all_flashcards]
+    ).update(is_active=False)
 
     for order, (slug, prompt, target_slug, distractor_slugs, difficulty, explanation) in enumerate(DISTORTION_PRACTICE_ITEMS):
         item, _ = CognitiveDistortionPracticeItem.objects.update_or_create(
@@ -425,6 +429,7 @@ def seed_v3_content(disorder_objs, source_objs):
                 "target_concept": concept_objs[target_slug],
                 "sort_order": order,
                 "is_active": True,
+                "seed_managed": True,
             },
         )
         choice_slugs = [target_slug, *distractor_slugs]
@@ -441,9 +446,13 @@ def seed_v3_content(disorder_objs, source_objs):
                     "text": choice_concept.name_fa or choice_concept.name_en,
                     "is_correct": choice_slug == target_slug,
                     "sort_order": choice_order,
+                    "is_active": True,
                 },
             )
-        item.choices.exclude(concept_id__in=keep_concept_ids).delete()
+        item.choices.exclude(concept_id__in=keep_concept_ids).update(is_active=False, is_correct=False)
+    CognitiveDistortionPracticeItem.objects.filter(seed_managed=True).exclude(
+        slug__in=[row[0] for row in DISTORTION_PRACTICE_ITEMS]
+    ).update(is_active=False)
 
     for order, (prompt, choices, correct_index, explanation, concept_slug, disorder_slug) in enumerate(CHALLENGES):
         challenge = DailyChallenge.objects.filter(sort_order=order).order_by("id").first()
@@ -454,6 +463,7 @@ def seed_v3_content(disorder_objs, source_objs):
             "disorder": disorder_objs.get(disorder_slug) if disorder_slug else None,
             "sort_order": order,
             "is_active": True,
+            "seed_managed": True,
         }
         if challenge:
             for key, value in defaults.items():
@@ -461,15 +471,25 @@ def seed_v3_content(disorder_objs, source_objs):
             challenge.save()
         else:
             challenge = DailyChallenge.objects.create(**defaults)
+        active_choice_orders = []
         for choice_order, text in enumerate(choices):
+            active_choice_orders.append(choice_order)
             choice = DailyChallengeChoice.objects.filter(challenge=challenge, sort_order=choice_order).order_by("id").first()
-            values = {"text": text, "is_correct": choice_order == correct_index, "sort_order": choice_order}
+            values = {
+                "text": text,
+                "is_correct": choice_order == correct_index,
+                "sort_order": choice_order,
+                "is_active": True,
+            }
             if choice:
                 choice.text = values["text"]
                 choice.is_correct = values["is_correct"]
-                choice.save(update_fields=("text", "is_correct", "sort_order"))
+                choice.is_active = True
+                choice.save(update_fields=("text", "is_correct", "sort_order", "is_active"))
             else:
                 DailyChallengeChoice.objects.create(challenge=challenge, **values)
+        challenge.choices.exclude(sort_order__in=active_choice_orders).update(is_active=False, is_correct=False)
+    DailyChallenge.objects.filter(seed_managed=True, sort_order__gte=len(CHALLENGES)).update(is_active=False)
 
     return {
         "concepts": len(all_concepts),

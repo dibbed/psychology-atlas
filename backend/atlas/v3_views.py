@@ -45,6 +45,7 @@ from .models import (
 )
 from .search_utils import icontains_any
 from .serializers import DisorderListSerializer
+from .validation import positive_int
 from .v3_serializers import (
     ConceptBookmarkSerializer,
     ConceptCatalogSerializer,
@@ -64,14 +65,7 @@ def _object_payload(request):
 
 
 def _positive_int(value, *, field):
-    if isinstance(value, bool) or not isinstance(value, (int, str)):
-        raise ValidationError({field: "شناسه معتبر نیست."})
-    if isinstance(value, str) and not value.isdigit():
-        raise ValidationError({field: "شناسه معتبر نیست."})
-    result = int(value)
-    if result <= 0:
-        raise ValidationError({field: "شناسه معتبر نیست."})
-    return result
+    return positive_int(value, field=field)
 
 
 class ConceptListView(generics.ListAPIView):
@@ -245,24 +239,24 @@ def _linked_dsm_nearby_edges():
             source__linked_disorder__is_active=True,
             target__linked_disorder__is_active=True,
         )
-        .select_related("source__linked_disorder", "target__linked_disorder")
-        .order_by("source__sort_index", "target__sort_index")
+        .values_list(
+            "source__linked_disorder_id",
+            "source__linked_disorder__slug",
+            "target__linked_disorder_id",
+            "target__linked_disorder__slug",
+        )
+        .order_by("source__linked_disorder_id", "target__linked_disorder_id")
     )
     seen = set()
     edges = []
-    for relation in rows:
-        source = relation.source.linked_disorder
-        target = relation.target.linked_disorder
-        if source_id := getattr(source, "id", None):
-            if not getattr(target, "id", None) or source_id == target.id:
-                continue
-        else:
+    for source_id, source_slug, target_id, target_slug in rows:
+        if not source_id or not target_id or source_id == target_id:
             continue
-        pair = tuple(sorted((source.id, target.id)))
+        pair = tuple(sorted((source_id, target_id)))
         if pair in seen:
             continue
         seen.add(pair)
-        edges.append((source, target, relation))
+        edges.append((source_id, source_slug, target_id, target_slug))
     return edges
 
 
@@ -559,12 +553,9 @@ def concept_map(request):
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
 def review_queue(request):
-    raw_limit = request.query_params.get("limit", "20")
     try:
-        if isinstance(raw_limit, str) and (not raw_limit.isdigit() or int(raw_limit) <= 0):
-            raise ValueError
-        limit = min(50, int(raw_limit))
-    except (TypeError, ValueError):
+        limit = positive_int(request.query_params.get("limit", "20"), field="limit", maximum=50)
+    except ValidationError:
         return Response({"detail": "پارامتر limit باید یک عدد صحیح مثبت باشد."}, status=400)
     concept_slug = request.query_params.get("concept", "").strip() or None
     disorder_slug = request.query_params.get("disorder", "").strip() or None
@@ -719,7 +710,7 @@ def daily_challenge(request):
 
     payload = _object_payload(request)
     choice_id = _positive_int(payload.get("choice_id"), field="choice_id")
-    choice = get_object_or_404(challenge.choices.all(), id=choice_id)
+    choice = get_object_or_404(challenge.choices.filter(is_active=True), id=choice_id)
     try:
         with transaction.atomic():
             attempt = DailyChallengeAttempt.objects.create(

@@ -1,8 +1,9 @@
 from collections import deque
 from collections.abc import Mapping
 
+from django.core.cache import cache
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Prefetch, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import permissions, status
@@ -13,6 +14,7 @@ from rest_framework.response import Response
 from .learning import record_activity
 from .models import (
     CognitiveDistortionPracticeAttempt,
+    CognitiveDistortionPracticeChoice,
     CognitiveDistortionPracticeItem,
     Concept,
     ConceptRelationship,
@@ -26,6 +28,7 @@ from .models import (
 )
 from .serializers import DisorderListSerializer
 from .v3_serializers import ConceptCatalogSerializer, ConceptListSerializer
+from .validation import positive_int
 from .v3_views import _linked_dsm_nearby_edges
 
 
@@ -36,14 +39,7 @@ def _object_payload(request):
 
 
 def _positive_int(value, *, field):
-    if isinstance(value, bool) or not isinstance(value, (int, str)):
-        raise ValidationError({field: "شناسه معتبر نیست."})
-    if isinstance(value, str) and not value.isdigit():
-        raise ValidationError({field: "شناسه معتبر نیست."})
-    result = int(value)
-    if result <= 0:
-        raise ValidationError({field: "شناسه معتبر نیست."})
-    return result
+    return positive_int(value, field=field)
 
 
 def _build_atlas_graph():
@@ -127,12 +123,12 @@ def _build_atlas_graph():
             "explanation": link.note,
         })
 
-    for source, target, _relation in _linked_dsm_nearby_edges():
-        if source.id not in disorder_ids or target.id not in disorder_ids:
+    for source_id, source_slug, target_id, target_slug in _linked_dsm_nearby_edges():
+        if source_id not in disorder_ids or target_id not in disorder_ids:
             continue
         edges.append({
-            "source": f"disorder:{source.slug}",
-            "target": f"disorder:{target.slug}",
+            "source": f"disorder:{source_slug}",
+            "target": f"disorder:{target_slug}",
             "kind": "dsm_nearby",
             "explanation": "در DSM MASTER به‌عنوان عنوان نزدیک یا ارجاع مرتبط ثبت شده است.",
         })
@@ -193,6 +189,19 @@ def _build_atlas_graph():
     return nodes, edges, edge_kinds
 
 
+def invalidate_atlas_graph_cache():
+    cache.delete("atlas_graph_v4")
+
+
+def _get_atlas_graph():
+    payload = cache.get("atlas_graph_v4")
+    if payload is None:
+        payload = _build_atlas_graph()
+        cache.set("atlas_graph_v4", payload, timeout=300)
+    nodes, edges, edge_kinds = payload
+    return [dict(node) for node in nodes], [dict(edge) for edge in edges], dict(edge_kinds)
+
+
 def _filter_graph(nodes, edges, request):
     node_type = request.query_params.get("node_type", "").strip()
     domain = request.query_params.get("domain", "").strip()
@@ -202,9 +211,12 @@ def _filter_graph(nodes, edges, request):
     relation = request.query_params.get("relation", "").strip()
     raw_degree = request.query_params.get("min_degree", "").strip()
 
+    if node_type and node_type not in {"all", "concept", "disorder", "symptom"}:
+        raise ValidationError({"node_type": "نوع گره معتبر نیست."})
+
     min_degree = 0
     if raw_degree:
-        if not raw_degree.isdigit():
+        if not raw_degree.isascii() or not raw_degree.isdigit() or len(raw_degree) > 4:
             raise ValidationError({"min_degree": "min_degree باید عدد صحیح نامنفی باشد."})
         min_degree = min(1000, int(raw_degree))
 
@@ -212,23 +224,13 @@ def _filter_graph(nodes, edges, request):
     for node in nodes:
         if node_type and node_type != "all" and node["type"] != node_type:
             continue
-        if domain and node["type"] == "concept" and node.get("domain") != domain:
+        if domain and (node["type"] != "concept" or node.get("domain") != domain):
             continue
-        if domain and node["type"] != "concept":
+        if kind and (node["type"] != "concept" or node.get("kind") != kind):
             continue
-        if kind and node["type"] == "concept" and node.get("kind") != kind:
+        if subtype and (node["type"] != "concept" or node.get("subtype") != subtype):
             continue
-        if kind and node["type"] != "concept":
-            continue
-        if subtype and node["type"] == "concept" and node.get("subtype") != subtype:
-            continue
-        if subtype and node["type"] != "concept":
-            continue
-        if category and node["type"] == "disorder" and node.get("category") != category:
-            continue
-        if category and node["type"] != "disorder":
-            continue
-        if node.get("degree", 0) < min_degree:
+        if category and (node["type"] != "disorder" or node.get("category") != category):
             continue
         filtered.append(node)
 
@@ -239,14 +241,28 @@ def _filter_graph(nodes, edges, request):
     ]
 
     if relation:
-        connected = {edge["source"] for edge in filtered_edges} | {edge["target"] for edge in filtered_edges}
-        filtered = [node for node in filtered if node["id"] in connected]
-        ids = connected
+        ids = {edge["source"] for edge in filtered_edges} | {edge["target"] for edge in filtered_edges}
 
+    if min_degree:
+        active_ids = set(ids)
+        while active_ids:
+            degree = {node_id: 0 for node_id in active_ids}
+            for edge in filtered_edges:
+                if edge["source"] in active_ids and edge["target"] in active_ids:
+                    degree[edge["source"]] += 1
+                    degree[edge["target"]] += 1
+            remove = {node_id for node_id, value in degree.items() if value < min_degree}
+            if not remove:
+                break
+            active_ids.difference_update(remove)
+        ids = active_ids
+
+    filtered = [node for node in filtered if node["id"] in ids]
+    filtered_edges = [edge for edge in filtered_edges if edge["source"] in ids and edge["target"] in ids]
     degree = {node_id: 0 for node_id in ids}
     for edge in filtered_edges:
-        degree[edge["source"]] = degree.get(edge["source"], 0) + 1
-        degree[edge["target"]] = degree.get(edge["target"], 0) + 1
+        degree[edge["source"]] += 1
+        degree[edge["target"]] += 1
     for node in filtered:
         node["filtered_degree"] = degree.get(node["id"], 0)
 
@@ -255,7 +271,7 @@ def _filter_graph(nodes, edges, request):
 
 @api_view(["GET"])
 def concept_map_v2(request):
-    nodes, edges, all_edge_kinds = _build_atlas_graph()
+    nodes, edges, all_edge_kinds = _get_atlas_graph()
     filtered_nodes, filtered_edges = _filter_graph(nodes, edges, request)
     node_types = {
         "concept": sum(1 for node in filtered_nodes if node["type"] == "concept"),
@@ -281,47 +297,60 @@ def concept_map_v2(request):
 @api_view(["GET"])
 def concept_neighborhood(request, slug):
     concept = get_object_or_404(Concept, slug=slug, is_active=True)
-    raw_depth = request.query_params.get("depth", "1")
-    if not raw_depth.isdigit() or int(raw_depth) not in {1, 2}:
+    raw_depth = request.query_params.get("depth", "1").strip()
+    if raw_depth not in {"1", "2"}:
         raise ValidationError({"depth": "عمق همسایگی باید ۱ یا ۲ باشد."})
     depth = int(raw_depth)
     relation = request.query_params.get("relation", "").strip()
     node_type = request.query_params.get("node_type", "").strip()
+    if node_type and node_type not in {"all", "concept", "disorder", "symptom"}:
+        raise ValidationError({"node_type": "نوع گره معتبر نیست."})
 
-    nodes, edges, _ = _build_atlas_graph()
+    nodes, edges, all_edge_kinds = _get_atlas_graph()
+    if relation and relation not in all_edge_kinds:
+        raise ValidationError({"relation": "نوع رابطه معتبر نیست."})
+
     start = f"concept:{concept.slug}"
+    node_by_id = {node["id"]: node for node in nodes}
+    allowed_ids = set(node_by_id)
+    if node_type and node_type != "all":
+        allowed_ids = {start} | {
+            node_id for node_id, node in node_by_id.items()
+            if node["type"] == node_type
+        }
+
+    eligible_edges = [
+        edge for edge in edges
+        if edge["source"] in allowed_ids
+        and edge["target"] in allowed_ids
+        and (not relation or edge["kind"] == relation)
+    ]
     adjacency = {}
-    for edge in edges:
-        if relation and edge["kind"] != relation:
-            continue
-        adjacency.setdefault(edge["source"], []).append((edge["target"], edge))
-        adjacency.setdefault(edge["target"], []).append((edge["source"], edge))
+    for edge in eligible_edges:
+        adjacency.setdefault(edge["source"], []).append(edge["target"])
+        adjacency.setdefault(edge["target"], []).append(edge["source"])
 
     distance = {start: 0}
     queue = deque([start])
-    selected_edges = []
-    seen_edge_keys = set()
     while queue:
         current = queue.popleft()
         if distance[current] >= depth:
             continue
-        for neighbor, edge in adjacency.get(current, []):
-            key = (edge["source"], edge["target"], edge["kind"])
-            if key not in seen_edge_keys:
-                seen_edge_keys.add(key)
-                selected_edges.append(edge)
-            if neighbor not in distance:
-                distance[neighbor] = distance[current] + 1
-                queue.append(neighbor)
+        for neighbor in adjacency.get(current, []):
+            if neighbor in distance:
+                continue
+            distance[neighbor] = distance[current] + 1
+            queue.append(neighbor)
 
     selected_ids = set(distance)
-    selected_nodes = [node for node in nodes if node["id"] in selected_ids]
-    if node_type and node_type != "all":
-        allowed = {start} | {node["id"] for node in selected_nodes if node["type"] == node_type}
-        selected_nodes = [node for node in selected_nodes if node["id"] in allowed]
-        selected_edges = [edge for edge in selected_edges if edge["source"] in allowed and edge["target"] in allowed]
+    selected_nodes = [dict(node_by_id[node_id]) for node_id in selected_ids]
+    selected_edges = [
+        edge for edge in eligible_edges
+        if edge["source"] in selected_ids and edge["target"] in selected_ids
+    ]
     for node in selected_nodes:
-        node["distance"] = distance.get(node["id"], 0)
+        node["distance"] = distance[node["id"]]
+    selected_nodes.sort(key=lambda node: (node["distance"], node["label"]))
 
     return Response({
         "center": start,
@@ -340,29 +369,35 @@ def graph_path(request):
     if source_id == target_id:
         raise ValidationError({"detail": "گره شروع و پایان باید متفاوت باشند."})
 
-    nodes, edges, _ = _build_atlas_graph()
+    nodes, edges, all_edge_kinds = _get_atlas_graph()
     node_by_id = {node["id"]: node for node in nodes}
     if source_id not in node_by_id or target_id not in node_by_id:
         return Response({"detail": "یکی از گره‌های مسیر وجود ندارد."}, status=404)
 
     relation = request.query_params.get("relation", "").strip()
+    if relation and relation not in all_edge_kinds:
+        raise ValidationError({"relation": "نوع رابطه معتبر نیست."})
+    include_structural = request.query_params.get("include_structural", "0").strip() in {"1", "true", "yes"}
+
     adjacency = {}
     for index, edge in enumerate(edges):
         if relation and edge["kind"] != relation:
             continue
-        adjacency.setdefault(edge["source"], []).append((edge["target"], index))
-        adjacency.setdefault(edge["target"], []).append((edge["source"], index))
+        if not relation and not include_structural and edge["kind"] == "dsm_nearby":
+            continue
+        adjacency.setdefault(edge["source"], []).append((edge["target"], index, "forward"))
+        adjacency.setdefault(edge["target"], []).append((edge["source"], index, "reverse"))
 
     parent = {source_id: None}
     parent_edge = {}
     queue = deque([source_id])
     while queue and target_id not in parent:
         current = queue.popleft()
-        for neighbor, edge_index in adjacency.get(current, []):
+        for neighbor, edge_index, traversal_direction in adjacency.get(current, []):
             if neighbor in parent:
                 continue
             parent[neighbor] = current
-            parent_edge[neighbor] = edge_index
+            parent_edge[neighbor] = (edge_index, traversal_direction)
             queue.append(neighbor)
 
     if target_id not in parent:
@@ -383,17 +418,57 @@ def graph_path(request):
     path_ids.reverse()
 
     path_edges = []
-    for node_id in path_ids[1:]:
-        path_edges.append(edges[parent_edge[node_id]])
+    for index, node_id in enumerate(path_ids[1:], start=1):
+        edge_index, traversal_direction = parent_edge[node_id]
+        edge = dict(edges[edge_index])
+        edge["traversal_direction"] = traversal_direction
+        edge["traversed_from"] = path_ids[index - 1]
+        edge["traversed_to"] = node_id
+        path_edges.append(edge)
 
     return Response({
         "from": source_id,
         "to": target_id,
         "found": True,
         "hops": len(path_edges),
+        "structural_edges_included": include_structural or relation == "dsm_nearby",
         "nodes": [node_by_id[node_id] for node_id in path_ids],
         "edges": path_edges,
     })
+
+
+def _practice_item_queryset(*, difficulty=""):
+    qs = (
+        CognitiveDistortionPracticeItem.objects.filter(
+            is_active=True,
+            target_concept__is_active=True,
+            target_concept__subtype=Concept.Subtype.COGNITIVE_DISTORTION,
+        )
+        .select_related("target_concept")
+        .prefetch_related(Prefetch(
+            "choices",
+            queryset=(
+                CognitiveDistortionPracticeChoice.objects.filter(
+                    is_active=True,
+                    concept__is_active=True,
+                    concept__subtype=Concept.Subtype.COGNITIVE_DISTORTION,
+                )
+                .select_related("concept")
+                .order_by("sort_order", "id")
+            ),
+            to_attr="active_choices",
+        ))
+        .order_by("sort_order", "id")
+    )
+    if difficulty:
+        qs = qs.filter(difficulty=difficulty)
+    return qs
+
+
+def _practice_item_is_valid(item):
+    choices = list(item.active_choices)
+    correct = [choice for choice in choices if choice.is_correct]
+    return len(choices) >= 2 and len(correct) == 1 and correct[0].concept_id == item.target_concept_id
 
 
 @api_view(["GET"])
@@ -409,11 +484,7 @@ def cognitive_distortions_overview(request):
         )
         .order_by("name_en")
     )
-    practice_count = CognitiveDistortionPracticeItem.objects.filter(
-        is_active=True,
-        target_concept__is_active=True,
-        target_concept__subtype=Concept.Subtype.COGNITIVE_DISTORTION,
-    ).count()
+    practice_count = sum(1 for item in _practice_item_queryset() if _practice_item_is_valid(item))
     return Response({
         "count": distortions.count(),
         "practice_count": practice_count,
@@ -423,25 +494,17 @@ def cognitive_distortions_overview(request):
 
 @api_view(["GET"])
 def distortion_practice_queue(request):
-    raw_limit = request.query_params.get("limit", "12")
-    if not raw_limit.isdigit() or int(raw_limit) <= 0:
-        raise ValidationError({"limit": "limit باید عدد صحیح مثبت باشد."})
-    limit = min(20, int(raw_limit))
+    limit = positive_int(request.query_params.get("limit", "12"), field="limit", maximum=20)
     difficulty = request.query_params.get("difficulty", "").strip()
-    qs = (
-        CognitiveDistortionPracticeItem.objects.filter(
-            is_active=True,
-            target_concept__is_active=True,
-            target_concept__subtype=Concept.Subtype.COGNITIVE_DISTORTION,
-        )
-        .select_related("target_concept")
-        .prefetch_related("choices__concept")
-        .order_by("sort_order", "id")
-    )
-    if difficulty:
-        qs = qs.filter(difficulty=difficulty)
+    valid_difficulties = {choice for choice, _label in CognitiveDistortionPracticeItem.Difficulty.choices}
+    if difficulty and difficulty not in valid_difficulties:
+        raise ValidationError({"difficulty": "سطح دشواری معتبر نیست."})
+
     items = []
-    for item in qs[:limit]:
+    for item in _practice_item_queryset(difficulty=difficulty):
+        if not _practice_item_is_valid(item):
+            continue
+        choices = list(item.active_choices)
         items.append({
             "slug": item.slug,
             "prompt": item.prompt,
@@ -456,9 +519,11 @@ def distortion_practice_queue(request):
                         "name_fa": choice.concept.name_fa,
                     },
                 }
-                for choice in item.choices.all()
+                for choice in choices
             ],
         })
+        if len(items) >= limit:
+            break
     return Response({"count": len(items), "items": items})
 
 
@@ -467,29 +532,35 @@ def distortion_practice_queue(request):
 def distortion_practice_submit(request, slug):
     payload = _object_payload(request)
     choice_id = _positive_int(payload.get("choice_id"), field="choice_id")
-    item = get_object_or_404(
-        CognitiveDistortionPracticeItem.objects.filter(
-            is_active=True,
-            target_concept__is_active=True,
-            target_concept__subtype=Concept.Subtype.COGNITIVE_DISTORTION,
-        ).select_related("target_concept"),
-        slug=slug,
-    )
-    choice = get_object_or_404(item.choices.select_related("concept"), id=choice_id)
+    try:
+        item = next(item for item in _practice_item_queryset() if item.slug == slug)
+    except StopIteration:
+        return Response({"detail": "تمرین پیدا نشد."}, status=status.HTTP_404_NOT_FOUND)
+
+    choices_by_id = {choice.id: choice for choice in item.active_choices}
+    choice = choices_by_id.get(choice_id)
+    if choice is None:
+        return Response({"detail": "گزینه انتخاب‌شده معتبر نیست."}, status=status.HTTP_404_NOT_FOUND)
+    if not _practice_item_is_valid(item):
+        return Response(
+            {"detail": "محتوای این تمرین از نظر پاسخ صحیح ناسازگار است."},
+            status=status.HTTP_409_CONFLICT,
+        )
+    correct_choice = next(choice for choice in item.active_choices if choice.is_correct)
 
     with transaction.atomic():
         attempt = CognitiveDistortionPracticeAttempt.objects.create(
             user=request.user,
             item=item,
             selected_choice=choice,
-            is_correct=choice.is_correct,
+            is_correct=choice.id == correct_choice.id,
         )
         now = timezone.now()
         progress, _ = UserConceptProgress.objects.select_for_update().get_or_create(
             user=request.user,
             concept=item.target_concept,
         )
-        progress.progress_percent = max(progress.progress_percent, 75 if choice.is_correct else 35)
+        progress.progress_percent = max(progress.progress_percent, 75 if attempt.is_correct else 35)
         progress.last_reviewed_at = now
         progress.last_viewed_at = progress.last_viewed_at or now
         if progress.progress_percent >= 85:
@@ -504,15 +575,11 @@ def distortion_practice_submit(request, slug):
             concept=item.target_concept,
             metadata={
                 "item": item.slug,
-                "correct": choice.is_correct,
+                "correct": attempt.is_correct,
                 "selected_concept": choice.concept.slug,
             },
         )
 
-    correct_choices = list(item.choices.filter(is_correct=True).select_related("concept")[:2])
-    if len(correct_choices) != 1:
-        return Response({"detail": "محتوای این تمرین از نظر پاسخ صحیح ناسازگار است."}, status=status.HTTP_409_CONFLICT)
-    correct_choice = correct_choices[0]
     return Response({
         "attempt_id": attempt.id,
         "correct": attempt.is_correct,

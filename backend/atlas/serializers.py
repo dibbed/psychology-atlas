@@ -186,11 +186,14 @@ class QuizChoiceSerializer(serializers.ModelSerializer):
 
 
 class QuizQuestionSerializer(serializers.ModelSerializer):
-    choices = QuizChoiceSerializer(many=True)
+    choices = serializers.SerializerMethodField()
 
     class Meta:
         model = QuizQuestion
         fields = ("id", "prompt", "sort_order", "choices")
+
+    def get_choices(self, obj):
+        return QuizChoiceSerializer(obj.choices.filter(is_active=True).order_by("sort_order", "id"), many=True).data
 
 
 class QuizListSerializer(serializers.ModelSerializer):
@@ -202,14 +205,17 @@ class QuizListSerializer(serializers.ModelSerializer):
         fields = ("id", "slug", "title", "description", "disorder", "question_count")
 
     def get_question_count(self, obj):
-        return obj.questions.count()
+        return obj.questions.filter(is_active=True).count()
 
 
 class QuizDetailSerializer(QuizListSerializer):
-    questions = QuizQuestionSerializer(many=True)
+    questions = serializers.SerializerMethodField()
 
     class Meta(QuizListSerializer.Meta):
         fields = QuizListSerializer.Meta.fields + ("questions",)
+
+    def get_questions(self, obj):
+        return QuizQuestionSerializer(obj.questions.filter(is_active=True).order_by("sort_order", "id"), many=True).data
 
 
 class CaseChoiceSerializer(serializers.ModelSerializer):
@@ -219,19 +225,25 @@ class CaseChoiceSerializer(serializers.ModelSerializer):
 
 
 class CaseQuestionSerializer(serializers.ModelSerializer):
-    choices = CaseChoiceSerializer(many=True)
+    choices = serializers.SerializerMethodField()
 
     class Meta:
         model = CaseQuestion
         fields = ("id", "prompt", "sort_order", "choices")
 
+    def get_choices(self, obj):
+        return CaseChoiceSerializer(obj.choices.filter(is_active=True).order_by("sort_order", "id"), many=True).data
+
 
 class CaseStepSerializer(serializers.ModelSerializer):
-    questions = CaseQuestionSerializer(many=True)
+    questions = serializers.SerializerMethodField()
 
     class Meta:
         model = CaseStep
         fields = ("id", "title", "narrative", "sort_order", "questions")
+
+    def get_questions(self, obj):
+        return CaseQuestionSerializer(obj.questions.filter(is_active=True).order_by("sort_order", "id"), many=True).data
 
 
 class ClinicalCaseListSerializer(serializers.ModelSerializer):
@@ -243,14 +255,17 @@ class ClinicalCaseListSerializer(serializers.ModelSerializer):
         fields = ("id", "slug", "title", "patient_summary", "difficulty", "primary_disorder", "step_count")
 
     def get_step_count(self, obj):
-        return obj.steps.count()
+        return obj.steps.filter(is_active=True).count()
 
 
 class ClinicalCaseDetailSerializer(ClinicalCaseListSerializer):
-    steps = CaseStepSerializer(many=True)
+    steps = serializers.SerializerMethodField()
 
     class Meta(ClinicalCaseListSerializer.Meta):
         fields = ClinicalCaseListSerializer.Meta.fields + ("educational_objective", "steps")
+
+    def get_steps(self, obj):
+        return CaseStepSerializer(obj.steps.filter(is_active=True).order_by("sort_order", "id"), many=True).data
 
 
 class BookmarkSerializer(serializers.ModelSerializer):

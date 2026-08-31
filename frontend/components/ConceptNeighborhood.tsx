@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { ConceptNeighborhood, KnowledgeGraphEdge, KnowledgeGraphNode } from "@/lib/types";
 
@@ -40,17 +40,25 @@ export default function ConceptNeighborhood({ slug }: { slug: string }) {
   const [data, setData] = useState<ConceptNeighborhood | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     const controller = new AbortController();
+    const requestId = ++requestIdRef.current;
     setLoading(true);
+    setData(null);
     setError("");
     api<ConceptNeighborhood>(`/concepts/${slug}/neighborhood/?depth=${depth}`, { signal: controller.signal })
-      .then(setData)
-      .catch((reason: any) => {
-        if (reason?.name !== "AbortError") setError(reason?.message || "همسایگی مفهوم دریافت نشد.");
+      .then(value => {
+        if (requestId === requestIdRef.current) setData(value);
       })
-      .finally(() => setLoading(false));
+      .catch((reason: any) => {
+        if (requestId !== requestIdRef.current || reason?.name === "AbortError") return;
+        setError(reason?.message || "همسایگی مفهوم دریافت نشد.");
+      })
+      .finally(() => {
+        if (requestId === requestIdRef.current) setLoading(false);
+      });
     return () => controller.abort();
   }, [slug, depth]);
 

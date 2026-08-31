@@ -321,10 +321,16 @@ def today_challenge():
         .prefetch_related("choices")
         .order_by("sort_order", "id")
     )
-    if not challenges:
+    valid = []
+    for challenge in challenges:
+        choices = [choice for choice in challenge.choices.all() if choice.is_active]
+        if not choices or sum(1 for choice in choices if choice.is_correct) != 1:
+            continue
+        valid.append(challenge)
+    if not valid:
         return None
-    index = timezone.localdate().toordinal() % len(challenges)
-    return challenges[index]
+    index = timezone.localdate().toordinal() % len(valid)
+    return valid[index]
 
 
 def challenge_attempt_for_today(user):

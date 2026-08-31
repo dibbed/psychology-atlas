@@ -40,9 +40,9 @@ export default function DSMGraphExplorer({ data, initialNodeId }: { data: DSMGra
       .sort((a, b) => b.degree - a.degree || a.label.localeCompare(b.label, "fa"));
   }, [data.nodes, query, type]);
 
-  const neighbors = useMemo<DSMGraphNeighbor[]>(() => {
+  const allNeighbors = useMemo<DSMGraphNeighbor[]>(() => {
     if (!selected) return [];
-    const rows = data.edges.reduce<DSMGraphNeighbor[]>((items, edge, index) => {
+    return data.edges.reduce<DSMGraphNeighbor[]>((items, edge, index) => {
       if (edge.source === selected.id) {
         const node = nodeById.get(edge.target);
         if (node) items.push({ node, edge, direction: "out", key: `${index}-out` });
@@ -51,11 +51,24 @@ export default function DSMGraphExplorer({ data, initialNodeId }: { data: DSMGra
         if (node) items.push({ node, edge, direction: "in", key: `${index}-in` });
       }
       return items;
-    }, []);
-    return rows
-      .filter(row => kind === "all" || row.edge.kind === kind)
-      .sort((a, b) => b.node.degree - a.node.degree || a.node.label.localeCompare(b.node.label, "fa"));
-  }, [data.edges, kind, nodeById, selected]);
+    }, []).sort((a, b) => b.node.degree - a.node.degree || a.node.label.localeCompare(b.node.label, "fa"));
+  }, [data.edges, nodeById, selected]);
+
+  const neighbors = useMemo(
+    () => kind === "all" ? allNeighbors : allNeighbors.filter(row => row.edge.kind === kind),
+    [allNeighbors, kind],
+  );
+
+  function selectNode(id: string) {
+    setSelectedId(id);
+    setKind("all");
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("scope", "dsm");
+      url.searchParams.set("node", id);
+      window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+    }
+  }
 
   if (!selected) return <div className="card">DSM Graph هنوز داده‌ای ندارد.</div>;
 
@@ -72,8 +85,8 @@ export default function DSMGraphExplorer({ data, initialNodeId }: { data: DSMGra
       <div className="knowledge-map-layout knowledge-map-layout-v2">
         <aside className="card map-browser map-browser-v2">
           <div><div className="meta">DSM MASTER</div><h3>۴۳۸ گره ساختاری و آموزشی</h3></div>
-          <input className="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="نام، فصل، گروه یا MASTER ID..." />
-          <select className="search" value={type} onChange={event => setType(event.target.value as typeof type)}>
+          <input className="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="نام، فصل، گروه یا MASTER ID..." aria-label="جست‌وجوی گره‌های DSM MASTER" />
+          <select className="search" value={type} onChange={event => setType(event.target.value as typeof type)} aria-label="نوع رکورد DSM MASTER">
             <option value="all">همه نوع رکوردها</option>
             <option value="diagnosis">تشخیص رسمی</option>
             <option value="structural">ساختاری</option>
@@ -86,7 +99,7 @@ export default function DSMGraphExplorer({ data, initialNodeId }: { data: DSMGra
           <div className="map-list-summary"><span>{filtered.length.toLocaleString("fa-IR")} نتیجه</span><span>Degree واقعی</span></div>
           <div className="map-node-list map-node-list-v2 dsm-graph-node-list">
             {filtered.map(node => (
-              <button key={node.id} className={`map-list-node ${selected.id === node.id ? "active" : ""}`} onClick={() => setSelectedId(node.id)}>
+              <button key={node.id} className={`map-list-node ${selected.id === node.id ? "active" : ""}`} onClick={() => selectNode(node.id)}>
                 <div><span>{node.label}</span><small>{node.id} · {dsmTypeLabel(node.display_type)}</small></div>
                 <b>{node.degree.toLocaleString("fa-IR")}</b>
               </button>
@@ -117,9 +130,9 @@ export default function DSMGraphExplorer({ data, initialNodeId }: { data: DSMGra
               <p>{selected.summary}</p>
               <div className="node-facts">
                 <div><strong>{selected.degree.toLocaleString("fa-IR")}</strong><span>اتصال مستقیم</span></div>
-                <div><strong>{neighbors.filter(row => row.edge.kind === "hierarchy").length.toLocaleString("fa-IR")}</strong><span>ساختاری</span></div>
-                <div><strong>{neighbors.filter(row => row.edge.kind === "nearby").length.toLocaleString("fa-IR")}</strong><span>عنوان نزدیک</span></div>
-                <div><strong>{neighbors.filter(row => row.edge.kind === "differential").length.toLocaleString("fa-IR")}</strong><span>افتراق لینک‌شده</span></div>
+                <div><strong>{allNeighbors.filter(row => row.edge.kind === "hierarchy").length.toLocaleString("fa-IR")}</strong><span>ساختاری</span></div>
+                <div><strong>{allNeighbors.filter(row => row.edge.kind === "nearby").length.toLocaleString("fa-IR")}</strong><span>عنوان نزدیک</span></div>
+                <div><strong>{allNeighbors.filter(row => row.edge.kind === "differential").length.toLocaleString("fa-IR")}</strong><span>افتراق لینک‌شده</span></div>
               </div>
             </div>
           </div>
@@ -137,7 +150,7 @@ export default function DSMGraphExplorer({ data, initialNodeId }: { data: DSMGra
 
           <div className="map-neighbors map-neighbors-v2">
             {neighbors.map(({ node, edge, direction, key }) => (
-              <button key={key} className="map-neighbor map-neighbor-v2 concept" onClick={() => setSelectedId(node.id)}>
+              <button key={key} className="map-neighbor map-neighbor-v2 concept" onClick={() => selectNode(node.id)}>
                 <div className="neighbor-topline"><span className="edge-label">{direction === "in" ? "ورودی" : "خروجی"} · {edgeLabels[edge.kind]}</span><b>{node.degree.toLocaleString("fa-IR")}</b></div>
                 <strong>{node.label}</strong>
                 <small>{node.id} · {dsmTypeLabel(node.display_type)}</small>

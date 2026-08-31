@@ -1,6 +1,6 @@
-# Psychology Atlas — v0.4 · Full Concept Graph + Cognitive Distortions
+# Psychology Atlas — v0.4.1 · Graph & Study Hardening
 
-یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.4 لایه Concept را از یک واژه‌نامه ساده به یک سیستم graph-aware ارتقا می‌دهد: taxonomy و alias و provenance، Concept↔Symptom، Concept Explorer V2، Neighborhood Explorer، shortest-path روی edgeهای واقعی، فیلترهای پیشرفته Graph و Cognitive Distortions Explorer با تمرین server-scored و اتصال به Study Engine.
+یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.4.1 یک bug-hardening release روی v0.4 است: integrity و lifecycle محتوای تمرین/Quiz/Case، semantics و performance Graph، progress logic، input validation، timezone، JWT logout/blacklist و production security defaults را سخت‌گیری می‌کند، بدون تغییر taxonomy علمی اصلی v0.4.
 
 > این نرم‌افزار آموزشی است و ابزار تشخیص، درمان یا جایگزین ارزیابی حرفه‌ای نیست.
 
@@ -12,6 +12,21 @@
 - **Database now:** SQLite
 - **Database later:** PostgreSQL-ready through Django ORM + migrations
 - **Content:** deterministic/idempotent seed command, no content-admin UI yet
+
+## v0.4.1 hardening
+
+- Practice submit قبل از هر تغییر state، integrity پاسخ صحیح و active بودن choice/concept را validate می‌کند.
+- Seed محتوای تاریخی user-owned را حذف نمی‌کند؛ stale child content به‌صورت soft-inactive نگه داشته می‌شود.
+- Quiz/Case progress بر اساس عملکرد واقعی افزایش می‌یابد و score ضعیف دیگر mastery مصنوعی ایجاد نمی‌کند.
+- GET جزئیات Disorder read-only است؛ ثبت view فقط از endpoint رسمی progress انجام می‌شود.
+- Neighborhood filter قبل از BFS اعمال می‌شود و خروجی disconnected تولید نمی‌کند.
+- `min_degree` روی graph نهایی فیلترشده اعمال می‌شود.
+- Path Finder جهت traversal را حفظ می‌کند و `dsm_nearby` به‌صورت پیش‌فرض shortest-path مفهومی را shortcut نمی‌کند.
+- Atlas/DSM graph queryها سبک‌تر شده‌اند و Atlas graph cache با model signals invalidation می‌شود.
+- ورودی‌های عددی oversized به 400 تبدیل می‌شوند، نه 500.
+- timezone اپ از env قابل تنظیم است و پیش‌فرض `Asia/Tehran` است.
+- production بدون `SECRET_KEY` بالا نمی‌آید؛ secure cookie/HSTS/HTTPS defaults، GZip، DRF throttling، CSP/security headers و JWT refresh blacklist/logout اضافه شده‌اند.
+- Frontend raceهای Practice/Neighborhood/Path، stale Compare و DSM Graph URL/count state اصلاح شده‌اند.
 
 ## v0.4 content
 

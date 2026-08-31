@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from django.core.cache import cache
 from django.core.management.base import BaseCommand, CommandError
 
 from atlas.dsm_import import import_master_json
@@ -36,6 +37,9 @@ class Command(BaseCommand):
             result = import_master_json(json_path, dry_run=options["dry_run"])
         except (ValueError, OSError) as exc:
             raise CommandError(str(exc)) from exc
+
+        if not options["dry_run"]:
+            cache.delete("atlas_graph_v4")
 
         prefix = "DRY RUN · " if options["dry_run"] else ""
         self.stdout.write(

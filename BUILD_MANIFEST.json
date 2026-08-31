@@ -1,7 +1,7 @@
 {
   "project": "Psychology Atlas",
-  "version": "0.4.0",
-  "release_name": "Full Concept Graph + Cognitive Distortions",
+  "version": "0.4.1",
+  "release_name": "Graph & Study Hardening",
   "stack": {
     "frontend": "Next.js 16.3.3 + React 19 + TypeScript",
     "backend": "Django 5.2 + Django REST Framework",
@@ -70,7 +70,19 @@
     "cognitive_distortion_practice_engine",
     "distortion_practice_server_scoring",
     "distortion_practice_study_engine_integration",
-    "distortion_flashcard_expansion"
+    "distortion_flashcard_expansion",
+    "practice_content_integrity_preflight",
+    "seed_soft_deactivation_and_history_preservation",
+    "graph_cache_with_model_invalidation",
+    "graph_path_direction_metadata",
+    "graph_path_structural_edge_exclusion_by_default",
+    "performance_weighted_quiz_case_progress",
+    "oversized_numeric_input_validation",
+    "configurable_app_timezone",
+    "jwt_refresh_blacklist_logout",
+    "production_security_defaults",
+    "frontend_csp_security_headers",
+    "frontend_async_race_hardening"
   ],
   "content": {
     "categories": 21,
@@ -127,15 +139,18 @@
     "0006_dsmrecordrelation.py",
     "0007_disorder_data_origin.py",
     "0008_conceptalias_conceptrelationshipsource_and_more.py",
-    "0009_alter_studyactivity_activity_type_and_more.py"
+    "0009_alter_studyactivity_activity_type_and_more.py",
+    "0010_cognitivedistortionpracticechoice_is_active.py",
+    "0011_content_children_is_active.py",
+    "0012_seed_managed_content.py"
   ],
   "validation": {
     "django_check": "pass",
-    "backend_tests": "64/64 passed",
+    "backend_tests": "76/76 passed",
     "python_compileall": "pass",
     "pip_check": "pass",
     "migration_drift_check": "pass",
-    "seed_idempotency": "pass · v0.4 counts stable across two runs / 21 DSM-backed categories",
+    "seed_idempotency": "pass · v0.4.1 counts stable across two runs / protected history preserved via soft-deactivation / 21 DSM-backed categories",
     "typescript_typecheck": "pass",
     "next_production_build": "pass",
     "npm_audit_low": "0 vulnerabilities",
@@ -164,7 +179,15 @@
     "v04_distortion_practice": "pass · 18 items / 72 choices / exactly one correct choice per item",
     "v04_flashcards": "50 active flashcards",
     "v04_live_route_smoke": "pass · API + /cognitive-distortions + /concepts + /map + /study",
-    "v04_authenticated_practice_e2e": "pass · submit -> StudyActivity -> ConceptProgress -> StudyOverview / temp user cleaned"
+    "v04_authenticated_practice_e2e": "pass · submit -> StudyActivity -> ConceptProgress -> StudyOverview / temp user cleaned",
+    "v041_regression_tests": "12 targeted bug regressions passed; included in 76-test full backend suite",
+    "v041_production_deploy_check": "pass · DEBUG=0 + explicit production env / 0 warnings",
+    "v041_graph_performance": "Atlas overview ~45 ms HTTP; filtered Atlas graph ~3 ms warm cache; DSM graph ~222 ms first HTTP request",
+    "v041_dsm_graph_concurrency": "5 concurrent warm DSM graph requests ~0.47 s wall time on local audit environment",
+    "v041_gzip": "pass · large API payloads compressed; DSM graph ~776 KB raw to ~40 KB gzip in smoke test",
+    "v041_security_headers": "pass · CSP + X-Frame-Options DENY present; headless hydration has no CSP refusal",
+    "v041_auth_flow": "pass · register -> practice -> StudyOverview -> logout blacklist -> refresh replay 401 / temp user cleaned",
+    "v041_oversized_input_http": "pass · oversized numeric query returns 400 instead of debug 500"
   },
   "release_notes": {
     "graph_layers": [
@@ -185,6 +208,7 @@
     ],
     "roadmap": {
       "0.4": "Full Concept Graph + Cognitive Distortions ✅",
+      "0.4.1": "Graph & Study Hardening ✅",
       "0.5": "Therapy Atlas",
       "0.6": "Psychologists + Theories + Timeline",
       "0.7": "Advanced Branching Clinical Cases + Analytics",

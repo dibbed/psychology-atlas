@@ -149,6 +149,7 @@ class Quiz(TimeStampedModel):
     description = models.TextField(blank=True)
     disorder = models.ForeignKey(Disorder, on_delete=models.SET_NULL, null=True, blank=True, related_name="quizzes")
     is_active = models.BooleanField(default=True)
+    seed_managed = models.BooleanField(default=False)
 
 
 class QuizQuestion(TimeStampedModel):
@@ -156,6 +157,7 @@ class QuizQuestion(TimeStampedModel):
     prompt = models.TextField()
     explanation = models.TextField(blank=True)
     sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
 
     class Meta:
         ordering = ("sort_order", "id")
@@ -166,6 +168,7 @@ class QuizChoice(models.Model):
     text = models.TextField()
     is_correct = models.BooleanField(default=False)
     sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
 
     class Meta:
         ordering = ("sort_order", "id")
@@ -217,6 +220,7 @@ class ClinicalCase(TimeStampedModel):
     primary_disorder = models.ForeignKey(Disorder, on_delete=models.SET_NULL, null=True, blank=True, related_name="clinical_cases")
     difficulty = models.CharField(max_length=24, choices=Difficulty.choices, default=Difficulty.INTRODUCTORY)
     is_active = models.BooleanField(default=True)
+    seed_managed = models.BooleanField(default=False)
 
 
 class CaseStep(models.Model):
@@ -224,6 +228,7 @@ class CaseStep(models.Model):
     title = models.CharField(max_length=255, blank=True)
     narrative = models.TextField()
     sort_order = models.PositiveIntegerField()
+    is_active = models.BooleanField(default=True)
 
     class Meta:
         ordering = ("sort_order", "id")
@@ -237,6 +242,7 @@ class CaseQuestion(TimeStampedModel):
     prompt = models.TextField()
     explanation = models.TextField(blank=True)
     sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
 
     class Meta:
         ordering = ("sort_order", "id")
@@ -248,6 +254,7 @@ class CaseChoice(models.Model):
     score_value = models.IntegerField(default=0)
     feedback = models.TextField(blank=True)
     sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
 
     class Meta:
         ordering = ("sort_order", "id")
@@ -528,6 +535,7 @@ class Flashcard(TimeStampedModel):
     difficulty = models.CharField(max_length=24, choices=Difficulty.choices, default=Difficulty.BASIC)
     sort_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
+    seed_managed = models.BooleanField(default=False)
 
     class Meta:
         ordering = ("sort_order", "id")
@@ -585,6 +593,7 @@ class CognitiveDistortionPracticeItem(TimeStampedModel):
     )
     sort_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
+    seed_managed = models.BooleanField(default=False)
 
     class Meta:
         ordering = ("sort_order", "id")
@@ -597,6 +606,7 @@ class CognitiveDistortionPracticeChoice(models.Model):
     text = models.CharField(max_length=300)
     is_correct = models.BooleanField(default=False)
     sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
 
     class Meta:
         ordering = ("sort_order", "id")
@@ -696,6 +706,7 @@ class DailyChallenge(TimeStampedModel):
     disorder = models.ForeignKey(Disorder, on_delete=models.SET_NULL, null=True, blank=True, related_name="daily_challenges")
     sort_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
+    seed_managed = models.BooleanField(default=False)
 
     class Meta:
         ordering = ("sort_order", "id")
@@ -706,6 +717,7 @@ class DailyChallengeChoice(models.Model):
     text = models.TextField()
     is_correct = models.BooleanField(default=False)
     sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
 
     class Meta:
         ordering = ("sort_order", "id")

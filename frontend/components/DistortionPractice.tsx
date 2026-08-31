@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import type { DistortionPracticeQueue, DistortionPracticeResult } from "@/lib/types";
 
@@ -22,14 +22,18 @@ export default function DistortionPractice({ totalAvailable }: { totalAvailable:
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     const controller = new AbortController();
+    const requestId = ++requestIdRef.current;
     setLoading(true);
+    setQueue(null);
     setError("");
     const qs = difficulty ? `?limit=20&difficulty=${difficulty}` : "?limit=20";
     api<DistortionPracticeQueue>(`/cognitive-distortions/practice/${qs}`, { signal: controller.signal })
       .then(data => {
+        if (requestId !== requestIdRef.current) return;
         setQueue(data);
         setIndex(0);
         setSelected(null);
@@ -38,9 +42,12 @@ export default function DistortionPractice({ totalAvailable }: { totalAvailable:
         setAnswered(0);
       })
       .catch((reason: any) => {
-        if (reason?.name !== "AbortError") setError(reason?.message || "تمرین‌ها دریافت نشدند.");
+        if (requestId !== requestIdRef.current || reason?.name === "AbortError") return;
+        setError(reason?.message || "تمرین‌ها دریافت نشدند.");
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (requestId === requestIdRef.current) setLoading(false);
+      });
     return () => controller.abort();
   }, [difficulty]);
 
@@ -119,6 +126,9 @@ export default function DistortionPractice({ totalAvailable }: { totalAvailable:
 
       {loading && <div className="card"><p className="muted">در حال دریافت تمرین‌ها...</p></div>}
       {!loading && error && !item && <div className="card error-state"><p>{error}</p></div>}
+      {!loading && !error && queue && queue.items.length === 0 && (
+        <div className="card empty-relation">برای این سطح تمرینی فعال و معتبر پیدا نشد.</div>
+      )}
       {!loading && !completed && item && (
         <article className="card practice-card">
           <div className="practice-card-topline">
@@ -126,7 +136,7 @@ export default function DistortionPractice({ totalAvailable }: { totalAvailable:
             <span className={`difficulty-badge ${item.difficulty}`}>{difficultyLabels[item.difficulty]}</span>
           </div>
           <h3>{item.prompt}</h3>
-          <div className="practice-choices">
+          <div className="practice-choices" role="radiogroup" aria-label="گزینه‌های پاسخ">
             {item.choices.map(choice => {
               const chosen = selected === choice.id;
               const correct = result?.correct_choice_id === choice.id;
@@ -137,6 +147,8 @@ export default function DistortionPractice({ totalAvailable }: { totalAvailable:
                   key={choice.id}
                   onClick={() => !result && setSelected(choice.id)}
                   disabled={Boolean(result)}
+                  role="radio"
+                  aria-checked={chosen}
                 >
                   <strong>{choice.text}</strong>
                   <small>{choice.concept.name_en}</small>
