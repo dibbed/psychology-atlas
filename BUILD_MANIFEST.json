@@ -1,7 +1,7 @@
 {
   "project": "Psychology Atlas",
-  "version": "0.5.1",
-  "release_name": "Therapy Architecture Foundation",
+  "version": "0.5.2",
+  "release_name": "Scientific Therapy Seed + API",
   "stack": {
     "frontend": "Next.js 16.3.3 + React 19 + TypeScript",
     "backend": "Django 5.2 + Django REST Framework",
@@ -89,7 +89,15 @@
     "therapy_relationship_provenance_models",
     "therapy_clinical_role_evidence_basis_separation",
     "therapy_review_status_metadata",
-    "canonical_unversioned_backend_modules"
+    "canonical_unversioned_backend_modules",
+    "therapy_scientific_seed",
+    "therapy_source_backed_content",
+    "therapy_public_read_api",
+    "therapy_taxonomy_api",
+    "therapy_structured_filtering",
+    "technique_public_read_api",
+    "therapy_relation_level_provenance_api",
+    "therapy_seed_idempotency"
   ],
   "content": {
     "categories": 21,
@@ -138,14 +146,16 @@
     "cognitive_distortion_practice_items": 18,
     "cognitive_distortion_practice_choices": 72,
     "concept_relationship_sources": 12,
-    "therapy_families": 0,
-    "therapy_classifications": 0,
-    "therapies": 0,
-    "techniques": 0,
-    "therapy_disorder_links": 0,
-    "therapy_concept_links": 0,
-    "therapy_technique_links": 0,
-    "technique_concept_links": 0
+    "therapy_families": 3,
+    "therapy_classifications": 5,
+    "therapies": 6,
+    "techniques": 9,
+    "therapy_disorder_links": 9,
+    "therapy_concept_links": 7,
+    "therapy_technique_links": 10,
+    "technique_concept_links": 8,
+    "therapy_dedicated_sources": 10,
+    "technique_aliases": 1
   },
   "migrations": [
     "0003_concept_dailychallenge_dailychallengechoice_and_more.py",
@@ -162,11 +172,11 @@
   ],
   "validation": {
     "django_check": "pass",
-    "backend_tests": "79/79 passed",
+    "backend_tests": "85/85 passed",
     "python_compileall": "pass",
     "pip_check": "pass",
     "migration_drift_check": "pass",
-    "seed_idempotency": "pass · current counts stable across two runs / protected history preserved via soft-deactivation / 21 DSM-backed categories",
+    "seed_idempotency": "pass · v0.5.2 counts stable across repeated runs / therapy links soft-deactivate rather than destructive cleanup",
     "typescript_typecheck": "pass",
     "next_production_build": "pass · 19 static page generation steps completed",
     "npm_audit_low": "0 vulnerabilities",
@@ -185,9 +195,15 @@
     "temporary_audit_user_cleanup": "pass",
     "therapy_foundation_tests": "3 targeted schema/provenance tests included in full suite",
     "canonical_module_cleanup": "pass · versioned backend runtime modules consolidated into views.py / serializers.py / seed_mvp.py",
-    "current_release": "v0.5.1 Therapy Architecture Foundation",
+    "current_release": "v0.5.2 Scientific Therapy Seed + API",
     "ruff": "not run · ruff is not installed in backend venv",
-    "git_diff_check": "pass"
+    "git_diff_check": "pass",
+    "therapy_seed_api_tests": "6 targeted seed/API/provenance/filter/idempotency tests included in full suite",
+    "therapy_inventory": "6 therapies / 9 techniques / 9 therapy-disorder / 10 therapy-technique / 7 therapy-concept / 8 technique-concept links",
+    "therapy_provenance": "pass · seeded Therapy/Technique content and all seeded cross-domain relations carry SourceReference provenance",
+    "therapy_api_smoke": "pass · therapies=6 / PTSD filter=2 / ERP exact alias=1 / invalid evidence filter=400",
+    "therapy_source_integrity": "pass · 0 active Therapy/Technique or seeded cross-domain relations without SourceReference provenance",
+    "therapy_review_status_integrity": "pass · all 6 active seeded therapies and 9 active seeded techniques are source_checked"
   },
   "release_notes": {
     "graph_layers": [
@@ -199,7 +215,7 @@
     ],
     "roadmap": {
       "0.5.1": "Therapy Architecture + Backend Foundation ✅",
-      "0.5.2": "Scientific Therapy Seed + API",
+      "0.5.2": "Scientific Therapy Seed + API ✅",
       "0.5.3": "Therapy Atlas Frontend",
       "0.5.4": "Cross-domain Integration + Knowledge Graph",
       "0.5.5": "Compare + Personal Features + Final Hardening",
@@ -221,7 +237,6 @@
       "advanced recommendation engine",
       "content admin CMS",
       "claim-level citation graph",
-      "Therapy scientific seed and public API (v0.5.2)",
       "Therapy Atlas frontend (v0.5.3)",
       "Therapy/Technique Knowledge Graph integration (v0.5.4)",
       "Therapy Compare, bookmarks, notes and final hardening (v0.5.5)",
@@ -243,7 +258,16 @@
       "clinical_evidence_semantics": "TherapyDisorder clinical_role is separate from evidence_basis",
       "provenance": "Therapy, Technique and cross-domain relationship source links reuse SourceReference",
       "review_metadata": "unreviewed / source_checked / reviewed; full review workflow remains deferred",
-      "lifecycle": "Therapy/Technique/Family/Classification support is_active and seed_managed where content-owned"
+      "lifecycle": "Therapy/Technique/Family/Classification support is_active and seed_managed where content-owned",
+      "seed": "6 source-backed therapies and 9 techniques; compact by design",
+      "api": "public read-only Therapy/Technique list/detail/taxonomy endpoints with structured filters",
+      "seed_review_status": "source_checked, not reviewed",
+      "source_organizations": [
+        "NICE",
+        "NIMH",
+        "Beck Institute for Cognitive Behavior Therapy",
+        "VA National Center for PTSD"
+      ]
     }
   }
 }

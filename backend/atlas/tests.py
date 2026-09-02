@@ -1508,3 +1508,112 @@ class TherapyFoundationTests(APITestCase):
         self.assertEqual(therapy_technique.source_links.get().source_id, self.source.id)
         self.assertEqual(therapy_concept.source_links.get().source_id, self.source.id)
         self.assertEqual(technique_concept.source_links.get().source_id, self.source.id)
+
+
+class TherapySeedApiTests(APITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        call_command("seed_mvp", stdout=StringIO())
+
+    def test_therapy_seed_inventory_is_source_backed_and_source_checked(self):
+        self.assertEqual(Therapy.objects.filter(is_active=True, seed_managed=True).count(), 6)
+        self.assertEqual(Technique.objects.filter(is_active=True, seed_managed=True).count(), 9)
+        self.assertEqual(TherapyDisorder.objects.filter(is_active=True).count(), 9)
+        self.assertEqual(TherapyTechnique.objects.filter(is_active=True).count(), 10)
+        self.assertEqual(TherapyConcept.objects.filter(is_active=True).count(), 7)
+        self.assertEqual(TechniqueConcept.objects.filter(is_active=True).count(), 8)
+        self.assertFalse(
+            Therapy.objects.filter(is_active=True, seed_managed=True).exclude(
+                review_status=ScientificReviewStatus.SOURCE_CHECKED
+            ).exists()
+        )
+        self.assertFalse(
+            Therapy.objects.filter(is_active=True, seed_managed=True, source_links__isnull=True).exists()
+        )
+
+    def test_therapy_list_search_and_filters_use_structured_relations(self):
+        alias_response = self.client.get("/api/therapies/?q=CBT")
+        self.assertEqual(alias_response.status_code, 200)
+        alias_slugs = {row["slug"] for row in alias_response.json()["results"]}
+        self.assertIn("cognitive-behavioral-therapy", alias_slugs)
+
+        disorder_response = self.client.get("/api/therapies/?disorder=post-traumatic-stress-disorder")
+        self.assertEqual(disorder_response.status_code, 200)
+        disorder_slugs = {row["slug"] for row in disorder_response.json()["results"]}
+        self.assertEqual(disorder_slugs, {"cognitive-processing-therapy", "prolonged-exposure-therapy"})
+
+        classification_response = self.client.get("/api/therapies/?classification=trauma-focused")
+        self.assertEqual(classification_response.status_code, 200)
+        classification_slugs = {row["slug"] for row in classification_response.json()["results"]}
+        self.assertEqual(classification_slugs, {"cognitive-processing-therapy", "prolonged-exposure-therapy"})
+
+    def test_therapy_detail_exposes_provenance_and_separates_evidence_from_role(self):
+        response = self.client.get("/api/therapies/dialectical-behavior-therapy/")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertGreaterEqual(len(data["sources"]), 2)
+        self.assertTrue(data["techniques"])
+        bpd = next(row for row in data["disorders"] if row["disorder"]["slug"] == "borderline-personality-disorder")
+        self.assertEqual(bpd["clinical_role"], TherapyDisorder.ClinicalRole.CONTEXT_DEPENDENT)
+        self.assertEqual(bpd["evidence_basis"], TherapyDisorder.EvidenceBasis.GUIDELINE)
+        self.assertTrue(bpd["sources"])
+        self.assertIn("خودآسیبی", bpd["explanation"])
+
+    def test_therapy_taxonomy_rejects_invalid_evidence_filter(self):
+        taxonomy = self.client.get("/api/therapies/taxonomy/")
+        self.assertEqual(taxonomy.status_code, 200)
+        self.assertTrue(taxonomy.json()["families"])
+        self.assertTrue(taxonomy.json()["classifications"])
+        self.assertIn("guideline", {row["value"] for row in taxonomy.json()["evidence_bases"]})
+
+        invalid = self.client.get("/api/therapies/?evidence_basis=best-treatment")
+        self.assertEqual(invalid.status_code, 400)
+
+    def test_technique_api_filters_by_therapy_and_concept_and_hides_inactive(self):
+        therapy_response = self.client.get("/api/techniques/?therapy=prolonged-exposure-therapy")
+        self.assertEqual(therapy_response.status_code, 200)
+        self.assertEqual(
+            {row["slug"] for row in therapy_response.json()["results"]},
+            {"in-vivo-exposure", "imaginal-exposure"},
+        )
+
+        concept_response = self.client.get("/api/techniques/?concept=avoidance")
+        self.assertEqual(concept_response.status_code, 200)
+        concept_slugs = {row["slug"] for row in concept_response.json()["results"]}
+        self.assertTrue({"exposure", "activity-planning", "in-vivo-exposure"}.issubset(concept_slugs))
+
+        alias_response = self.client.get("/api/techniques/?q=ERP")
+        self.assertEqual(alias_response.status_code, 200)
+        self.assertEqual(alias_response.json()["count"], 1)
+        self.assertEqual(
+            {row["slug"] for row in alias_response.json()["results"]},
+            {"exposure-response-prevention"},
+        )
+
+        Technique.objects.filter(slug="in-vivo-exposure").update(is_active=False)
+        detail = self.client.get("/api/techniques/in-vivo-exposure/")
+        self.assertEqual(detail.status_code, 404)
+
+    def test_therapy_seed_is_idempotent(self):
+        before = {
+            "families": TherapyFamily.objects.count(),
+            "classifications": TherapyClassification.objects.count(),
+            "therapies": Therapy.objects.count(),
+            "techniques": Technique.objects.count(),
+            "therapy_disorders": TherapyDisorder.objects.count(),
+            "therapy_techniques": TherapyTechnique.objects.count(),
+            "therapy_concepts": TherapyConcept.objects.count(),
+            "technique_concepts": TechniqueConcept.objects.count(),
+        }
+        call_command("seed_mvp", stdout=StringIO())
+        after = {
+            "families": TherapyFamily.objects.count(),
+            "classifications": TherapyClassification.objects.count(),
+            "therapies": Therapy.objects.count(),
+            "techniques": Technique.objects.count(),
+            "therapy_disorders": TherapyDisorder.objects.count(),
+            "therapy_techniques": TherapyTechnique.objects.count(),
+            "therapy_concepts": TherapyConcept.objects.count(),
+            "technique_concepts": TechniqueConcept.objects.count(),
+        }
+        self.assertEqual(after, before)

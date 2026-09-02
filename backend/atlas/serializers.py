@@ -306,6 +306,12 @@ from .models import (
     Flashcard,
     SourceReference,
     UserFlashcardProgress,
+    Technique,
+    TechniqueAlias,
+    Therapy,
+    TherapyAlias,
+    TherapyClassification,
+    TherapyFamily,
 )
 
 
@@ -533,3 +539,187 @@ class DailyChallengeSerializer(serializers.ModelSerializer):
         if not obj.disorder_id or not obj.disorder.is_active:
             return None
         return DisorderListSerializer(obj.disorder).data
+
+class TherapyFamilySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TherapyFamily
+        fields = ("slug", "name_en", "name_fa", "description")
+
+
+class TherapyClassificationSerializer(serializers.ModelSerializer):
+    kind_label = serializers.CharField(source="get_kind_display", read_only=True)
+
+    class Meta:
+        model = TherapyClassification
+        fields = ("slug", "name_en", "name_fa", "kind", "kind_label", "description")
+
+
+class TherapyAliasSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TherapyAlias
+        fields = ("text", "language", "alias_type")
+
+
+class TechniqueAliasSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TechniqueAlias
+        fields = ("text", "language", "alias_type")
+
+
+class TechniqueListSerializer(serializers.ModelSerializer):
+    aliases = TechniqueAliasSerializer(many=True, read_only=True)
+    therapy_count = serializers.SerializerMethodField()
+    concept_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Technique
+        fields = (
+            "id", "slug", "name_en", "name_fa", "summary", "review_status",
+            "aliases", "therapy_count", "concept_count",
+        )
+
+    def get_therapy_count(self, obj):
+        return sum(
+            1 for link in obj.therapy_links.all()
+            if link.is_active and link.therapy.is_active and link.therapy.family.is_active
+        )
+
+    def get_concept_count(self, obj):
+        return sum(1 for link in obj.concept_links.all() if link.is_active and link.concept.is_active)
+
+
+class TherapyListSerializer(serializers.ModelSerializer):
+    family = TherapyFamilySerializer(read_only=True)
+    aliases = TherapyAliasSerializer(many=True, read_only=True)
+    classifications = serializers.SerializerMethodField()
+    technique_count = serializers.SerializerMethodField()
+    disorder_count = serializers.SerializerMethodField()
+    concept_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Therapy
+        fields = (
+            "id", "slug", "name_en", "name_fa", "summary", "family", "aliases",
+            "classifications", "review_status", "technique_count", "disorder_count", "concept_count",
+        )
+
+    def get_classifications(self, obj):
+        return TherapyClassificationSerializer(
+            [link.classification for link in obj.classification_links.all() if link.is_active and link.classification.is_active],
+            many=True,
+        ).data
+
+    def get_technique_count(self, obj):
+        return sum(1 for link in obj.technique_links.all() if link.is_active and link.technique.is_active)
+
+    def get_disorder_count(self, obj):
+        return sum(1 for link in obj.disorder_links.all() if link.is_active and link.disorder.is_active)
+
+    def get_concept_count(self, obj):
+        return sum(1 for link in obj.concept_links.all() if link.is_active and link.concept.is_active)
+
+
+class TherapyDetailSerializer(TherapyListSerializer):
+    sources = serializers.SerializerMethodField()
+    techniques = serializers.SerializerMethodField()
+    disorders = serializers.SerializerMethodField()
+    concepts = serializers.SerializerMethodField()
+
+    class Meta(TherapyListSerializer.Meta):
+        fields = TherapyListSerializer.Meta.fields + (
+            "academic_definition", "historical_context", "core_principles", "typical_structure",
+            "appropriate_contexts", "limitations", "safety_notes", "evidence_note",
+            "sources", "techniques", "disorders", "concepts",
+        )
+
+    def get_sources(self, obj):
+        return SourceSerializer([link.source for link in obj.source_links.all()], many=True).data
+
+    def get_techniques(self, obj):
+        rows = []
+        for link in obj.technique_links.all():
+            if not link.is_active or not link.technique.is_active:
+                continue
+            rows.append({
+                "role": link.role,
+                "explanation": link.explanation,
+                "technique": TechniqueListSerializer(link.technique).data,
+                "sources": SourceSerializer([row.source for row in link.source_links.all()], many=True).data,
+            })
+        return rows
+
+    def get_disorders(self, obj):
+        rows = []
+        for link in obj.disorder_links.all():
+            if not link.is_active or not link.disorder.is_active:
+                continue
+            rows.append({
+                "clinical_role": link.clinical_role,
+                "clinical_role_label": link.get_clinical_role_display(),
+                "evidence_basis": link.evidence_basis,
+                "evidence_basis_label": link.get_evidence_basis_display(),
+                "explanation": link.explanation,
+                "evidence_note": link.evidence_note,
+                "disorder": DisorderListSerializer(link.disorder).data,
+                "sources": SourceSerializer([row.source for row in link.source_links.all()], many=True).data,
+            })
+        return rows
+
+    def get_concepts(self, obj):
+        rows = []
+        for link in obj.concept_links.all():
+            if not link.is_active or not link.concept.is_active:
+                continue
+            rows.append({
+                "relationship_type": link.relationship_type,
+                "explanation": link.explanation,
+                "concept": ConceptListSerializer(link.concept).data,
+                "sources": SourceSerializer([row.source for row in link.source_links.all()], many=True).data,
+            })
+        return rows
+
+
+class TechniqueDetailSerializer(TechniqueListSerializer):
+    sources = serializers.SerializerMethodField()
+    therapies = serializers.SerializerMethodField()
+    concepts = serializers.SerializerMethodField()
+
+    class Meta(TechniqueListSerializer.Meta):
+        fields = TechniqueListSerializer.Meta.fields + (
+            "academic_definition", "application_notes", "limitations", "safety_notes",
+            "sources", "therapies", "concepts",
+        )
+
+    def get_sources(self, obj):
+        return SourceSerializer([link.source for link in obj.source_links.all()], many=True).data
+
+    def get_therapies(self, obj):
+        rows = []
+        for link in obj.therapy_links.all():
+            if not link.is_active or not link.therapy.is_active or not link.therapy.family.is_active:
+                continue
+            rows.append({
+                "role": link.role,
+                "explanation": link.explanation,
+                "therapy": {
+                    "slug": link.therapy.slug,
+                    "name_en": link.therapy.name_en,
+                    "name_fa": link.therapy.name_fa,
+                    "family": TherapyFamilySerializer(link.therapy.family).data,
+                },
+                "sources": SourceSerializer([row.source for row in link.source_links.all()], many=True).data,
+            })
+        return rows
+
+    def get_concepts(self, obj):
+        rows = []
+        for link in obj.concept_links.all():
+            if not link.is_active or not link.concept.is_active:
+                continue
+            rows.append({
+                "relationship_type": link.relationship_type,
+                "explanation": link.explanation,
+                "concept": ConceptListSerializer(link.concept).data,
+                "sources": SourceSerializer([row.source for row in link.source_links.all()], many=True).data,
+            })
+        return rows

@@ -1,10 +1,10 @@
 # Psychology Atlas Product Spec
 
-## Current implemented version: v0.5.1 — Therapy Architecture Foundation
+## Current implemented version: v0.5.2 — Scientific Therapy Seed + API
 
 Psychology Atlas is an interactive educational system for psychology students. It should behave as a connected learning system, not as a psychology blog and not as a diagnostic product.
 
-v0.5.1 is Part 1 of Therapy Atlas. It adds the scientific/backend schema foundation for therapies and techniques while preserving the existing Graph, Study, lifecycle, security and provenance guarantees. Therapy seed data, public Therapy API and Therapy frontend are intentionally deferred to later v0.5.x parts.
+v0.5.2 is Part 2 of Therapy Atlas. It preserves the v0.5.1 schema foundation and adds a compact source-backed Therapy/Technique dataset plus public read APIs. Dedicated Therapy frontend, Graph V3 integration, compare and personal features remain deferred to later v0.5.x parts.
 
 ## Architecture decisions
 
@@ -22,7 +22,7 @@ v0.5.1 is Part 1 of Therapy Atlas. It adds the scientific/backend schema foundat
 
 ### Therapy architecture foundation
 
-Current v0.5.1 backend entities:
+Current Therapy backend entities:
 
 ```text
 TherapyFamily
@@ -45,10 +45,40 @@ Scientific/schema rules:
 - `TherapyDisorder` stores `clinical_role` separately from `evidence_basis`; neither field is a personalized recommendation.
 - `Therapy`, `Technique` and cross-domain relationship provenance reuses the shared `SourceReference` registry through explicit source-link models.
 - `review_status` is lightweight metadata only. Full moderation/scientific-review workflow remains deferred.
-- No Therapy facts, treatment rankings or effectiveness percentages are seeded in v0.5.1.
+- v0.5.2 seeds only source-backed educational summaries. It does not seed treatment rankings, personalized recommendations or fabricated effectiveness percentages.
+- Seeded content is marked `source_checked`, not scientifically `reviewed`; full review workflow remains deferred.
 - Runtime code uses canonical unversioned modules (`views.py`, `serializers.py`, `seed_mvp.py`). Historical migration files remain because they are required for safe database upgrades.
 
 ## Implemented learning domains
+
+
+### Therapy Atlas backend
+
+Current seeded inventory:
+
+```text
+3 TherapyFamily
+5 TherapyClassification
+6 Therapy
+9 Technique
+9 TherapyDisorder
+7 TherapyConcept
+10 TherapyTechnique
+8 TechniqueConcept
+10 dedicated Therapy/Technique source records
+```
+
+Public APIs:
+
+```text
+GET /api/therapies/
+GET /api/therapies/taxonomy/
+GET /api/therapies/<slug>/
+GET /api/techniques/
+GET /api/techniques/<slug>/
+```
+
+The seed uses NICE clinical guidelines, NIMH, Beck Institute and the VA National Center for PTSD. `TherapyDisorder.clinical_role` and `evidence_basis` remain separate fields, and relation-level source links are returned in detail API responses.
 
 ### Disorders Atlas
 
@@ -327,7 +357,7 @@ The Concept Graph and Cognitive Distortions learning layer remain the current co
 
 ```text
 v0.5.1  Therapy Architecture + Backend Foundation ✅
-v0.5.2  Scientific Therapy Seed + API
+v0.5.2  Scientific Therapy Seed + API ✅
 v0.5.3  Therapy Atlas Frontend
 v0.5.4  Cross-domain Integration + Knowledge Graph
 v0.5.5  Compare + Personal Features + Final Hardening
@@ -338,4 +368,4 @@ v0.9  Brain Atlas + Assessments Atlas
 v1.0  Admin CMS + Scientific Review + Full cross-domain integration
 ```
 
-The current product version is v0.5.1 Therapy Architecture Foundation.
+The current product version is v0.5.2 Scientific Therapy Seed + API.

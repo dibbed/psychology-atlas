@@ -51,6 +51,12 @@ urlpatterns = [
     path("cognitive-distortions/practice/", views.distortion_practice_queue),
     path("cognitive-distortions/practice/<slug:slug>/submit/", views.distortion_practice_submit),
 
+    path("therapies/", views.TherapyListView.as_view()),
+    path("therapies/taxonomy/", views.therapy_taxonomy),
+    path("therapies/<slug:slug>/", views.TherapyDetailView.as_view()),
+    path("techniques/", views.TechniqueListView.as_view()),
+    path("techniques/<slug:slug>/", views.TechniqueDetailView.as_view()),
+
     path("dsm/overview/", dsm_views.dsm_overview),
     path("dsm/metadata/", dsm_views.dsm_metadata),
     path("dsm/study-kit/", dsm_views.dsm_study_kit),

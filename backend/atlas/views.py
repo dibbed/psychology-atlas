@@ -28,6 +28,11 @@ from .models import (
     Disorder,
     Quiz,
     StudyActivity,
+    Technique,
+    Therapy,
+    TherapyClassification,
+    TherapyDisorder,
+    TherapyFamily,
     UserConceptProgress,
     UserFlashcardProgress,
     UserNote,
@@ -43,6 +48,12 @@ from .serializers import (
     QuizDetailSerializer,
     QuizListSerializer,
     RegisterSerializer,
+    TechniqueDetailSerializer,
+    TechniqueListSerializer,
+    TherapyClassificationSerializer,
+    TherapyDetailSerializer,
+    TherapyFamilySerializer,
+    TherapyListSerializer,
     UserNoteSerializer,
     UserSerializer,
 )
@@ -1709,3 +1720,177 @@ def distortion_practice_submit(request, slug):
         "explanation": item.explanation,
         "progress_percent": progress.progress_percent,
     }, status=status.HTTP_201_CREATED)
+
+class TherapyListView(generics.ListAPIView):
+    serializer_class = TherapyListSerializer
+
+    def get_queryset(self):
+        qs = (
+            Therapy.objects.filter(is_active=True, family__is_active=True)
+            .select_related("family")
+            .prefetch_related(
+                "aliases",
+                "classification_links__classification",
+                "technique_links__technique",
+                "disorder_links__disorder",
+                "concept_links__concept",
+            )
+        )
+        q = self.request.query_params.get("q", "").strip()
+        family = self.request.query_params.get("family", "").strip()
+        classification = self.request.query_params.get("classification", "").strip()
+        disorder = self.request.query_params.get("disorder", "").strip()
+        concept = self.request.query_params.get("concept", "").strip()
+        evidence_basis = self.request.query_params.get("evidence_basis", "").strip()
+        clinical_role = self.request.query_params.get("clinical_role", "").strip()
+
+        if q:
+            exact_match = (
+                Q(name_en__iexact=q)
+                | Q(name_fa__iexact=q)
+                | Q(slug__iexact=q)
+                | Q(aliases__text__iexact=q)
+            )
+            if qs.filter(exact_match).exists():
+                qs = qs.filter(exact_match)
+            else:
+                qs = qs.filter(icontains_any(
+                    (
+                        "name_en", "name_fa", "slug", "summary", "academic_definition",
+                        "core_principles", "aliases__text", "family__name_en", "family__name_fa",
+                    ),
+                    q,
+                ))
+        if family:
+            qs = qs.filter(family__slug=family)
+        if classification:
+            qs = qs.filter(
+                classification_links__classification__slug=classification,
+                classification_links__is_active=True,
+                classification_links__classification__is_active=True,
+            )
+        if disorder:
+            qs = qs.filter(
+                disorder_links__disorder__slug=disorder,
+                disorder_links__is_active=True,
+                disorder_links__disorder__is_active=True,
+            )
+        if concept:
+            qs = qs.filter(
+                concept_links__concept__slug=concept,
+                concept_links__is_active=True,
+                concept_links__concept__is_active=True,
+            )
+        if evidence_basis:
+            if evidence_basis not in TherapyDisorder.EvidenceBasis.values:
+                raise ValidationError({"evidence_basis": "مبنای شواهد معتبر نیست."})
+            qs = qs.filter(
+                disorder_links__evidence_basis=evidence_basis,
+                disorder_links__is_active=True,
+                disorder_links__disorder__is_active=True,
+            )
+        if clinical_role:
+            if clinical_role not in TherapyDisorder.ClinicalRole.values:
+                raise ValidationError({"clinical_role": "نقش بالینی معتبر نیست."})
+            qs = qs.filter(
+                disorder_links__clinical_role=clinical_role,
+                disorder_links__is_active=True,
+                disorder_links__disorder__is_active=True,
+            )
+        return qs.distinct().order_by("name_en")
+
+
+class TherapyDetailView(generics.RetrieveAPIView):
+    serializer_class = TherapyDetailSerializer
+    lookup_field = "slug"
+    queryset = (
+        Therapy.objects.filter(is_active=True, family__is_active=True)
+        .select_related("family")
+        .prefetch_related(
+            "aliases",
+            "classification_links__classification",
+            "source_links__source",
+            "technique_links__technique__aliases",
+            "technique_links__technique__therapy_links__therapy__family",
+            "technique_links__technique__concept_links__concept",
+            "technique_links__source_links__source",
+            "disorder_links__disorder__category",
+            "disorder_links__source_links__source",
+            "concept_links__concept__aliases",
+            "concept_links__source_links__source",
+        )
+    )
+
+
+@api_view(["GET"])
+def therapy_taxonomy(request):
+    families = TherapyFamily.objects.filter(is_active=True).order_by("sort_order", "name_en")
+    classifications = TherapyClassification.objects.filter(is_active=True).order_by("kind", "sort_order", "name_en")
+    return Response({
+        "families": TherapyFamilySerializer(families, many=True).data,
+        "classifications": TherapyClassificationSerializer(classifications, many=True).data,
+        "clinical_roles": [
+            {"value": value, "label": label}
+            for value, label in TherapyDisorder.ClinicalRole.choices
+        ],
+        "evidence_bases": [
+            {"value": value, "label": label}
+            for value, label in TherapyDisorder.EvidenceBasis.choices
+        ],
+        "note": "این taxonomy آموزشی است؛ evidence_basis نوع منبع شواهد را نشان می‌دهد و رتبه‌بندی شخصی درمان نیست.",
+    })
+
+
+class TechniqueListView(generics.ListAPIView):
+    serializer_class = TechniqueListSerializer
+
+    def get_queryset(self):
+        qs = Technique.objects.filter(is_active=True).prefetch_related(
+            "aliases",
+            "therapy_links__therapy__family",
+            "concept_links__concept",
+        )
+        q = self.request.query_params.get("q", "").strip()
+        therapy = self.request.query_params.get("therapy", "").strip()
+        concept = self.request.query_params.get("concept", "").strip()
+        if q:
+            exact_match = (
+                Q(name_en__iexact=q)
+                | Q(name_fa__iexact=q)
+                | Q(slug__iexact=q)
+                | Q(aliases__text__iexact=q)
+            )
+            if qs.filter(exact_match).exists():
+                qs = qs.filter(exact_match)
+            else:
+                qs = qs.filter(icontains_any(
+                    ("name_en", "name_fa", "slug", "summary", "academic_definition", "aliases__text"),
+                    q,
+                ))
+        if therapy:
+            qs = qs.filter(
+                therapy_links__therapy__slug=therapy,
+                therapy_links__is_active=True,
+                therapy_links__therapy__is_active=True,
+                therapy_links__therapy__family__is_active=True,
+            )
+        if concept:
+            qs = qs.filter(
+                concept_links__concept__slug=concept,
+                concept_links__is_active=True,
+                concept_links__concept__is_active=True,
+            )
+        return qs.distinct().order_by("name_en")
+
+
+class TechniqueDetailView(generics.RetrieveAPIView):
+    serializer_class = TechniqueDetailSerializer
+    lookup_field = "slug"
+    queryset = Technique.objects.filter(is_active=True).prefetch_related(
+        "aliases",
+        "source_links__source",
+        "therapy_links__therapy__family",
+        "therapy_links__source_links__source",
+        "concept_links__concept__aliases",
+        "concept_links__source_links__source",
+    )

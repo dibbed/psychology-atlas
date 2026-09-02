@@ -597,15 +597,17 @@ class Command(BaseCommand):
         ClinicalCase.objects.filter(seed_managed=True).exclude(slug__in=[row["slug"] for row in CASES]).update(is_active=False)
 
         learning_counts = seed_learning_content(disorder_objs, source_objs)
+        therapy_counts = seed_therapy_content(disorder_objs)
         cache.delete("atlas_graph")
 
         self.stdout.write(self.style.SUCCESS(
-            "Psychology Atlas v0.5.1 foundation seed completed: "
+            "Psychology Atlas v0.5.2 scientific therapy seed completed: "
             f"{len(DISORDERS)} disorders, {len(QUIZZES)} quizzes, {len(CASES)} cases, "
             f"{learning_counts['concepts']} concepts, {learning_counts['cognitive_distortions']} cognitive distortions, "
             f"{learning_counts['concept_aliases']} concept aliases, {learning_counts['concept_symptom_links']} concept-symptom links, "
             f"{learning_counts['flashcards']} flashcards, {learning_counts['distortion_practice_items']} distortion practice items, "
-            f"{learning_counts['daily_challenges']} daily challenges."
+            f"{learning_counts['daily_challenges']} daily challenges, {therapy_counts['therapies']} therapies, "
+            f"{therapy_counts['techniques']} techniques, {therapy_counts['therapy_disorder_links']} therapy-disorder links."
         ))
 
 
@@ -625,6 +627,24 @@ from atlas.models import (
     Flashcard,
     SourceReference,
     Symptom,
+    ScientificReviewStatus,
+    Technique,
+    TechniqueAlias,
+    TechniqueConcept,
+    TechniqueConceptSource,
+    TechniqueSource,
+    Therapy,
+    TherapyAlias,
+    TherapyClassification,
+    TherapyClassificationLink,
+    TherapyConcept,
+    TherapyConceptSource,
+    TherapyDisorder,
+    TherapyDisorderSource,
+    TherapyFamily,
+    TherapySource,
+    TherapyTechnique,
+    TherapyTechniqueSource,
 )
 
 
@@ -1111,4 +1131,502 @@ def seed_learning_content(disorder_objs, source_objs):
         "flashcards": len(all_flashcards),
         "distortion_practice_items": len(DISTORTION_PRACTICE_ITEMS),
         "daily_challenges": len(CHALLENGES),
+    }
+
+# Therapy Atlas scientific seed: intentionally compact, source-backed, and non-prescriptive.
+THERAPY_FAMILIES = [
+    ("cognitive-behavioral", "Cognitive and Behavioral Therapies", "درمان‌های شناختی و رفتاری", "رویکردهایی ساختاریافته که بر ارتباط میان شناخت، هیجان و رفتار یا تغییر الگوهای رفتاری تمرکز می‌کنند."),
+    ("behavioral", "Behavioral Therapies", "درمان‌های رفتاری", "رویکردهایی که تغییر الگوهای رفتار، فعالیت و یادگیری را محور اصلی مداخله قرار می‌دهند."),
+    ("interpersonal", "Interpersonal Therapies", "درمان‌های بین‌فردی", "رویکردهایی که روابط، نقش‌ها و الگوهای بین‌فردی را در مرکز فرمول‌بندی و مداخله قرار می‌دهند."),
+]
+
+THERAPY_CLASSIFICATIONS = [
+    ("trauma-focused", "Trauma-focused", "متمرکز بر تروما", "focus", "مداخله‌ای که پردازش تجربه و معانی مرتبط با تروما در آن محور اصلی است."),
+    ("exposure-based", "Exposure-based", "مبتنی بر مواجهه", "method", "مداخله‌ای که مواجهه برنامه‌ریزی‌شده با محرک‌ها یا خاطرات اجتناب‌شده جزء مرکزی آن است."),
+    ("skills-based", "Skills-based", "مهارت‌محور", "method", "مداخله‌ای که آموزش و تمرین مهارت‌های مشخص بخش مهم ساختار آن است."),
+    ("mindfulness-informed", "Mindfulness-informed", "مبتنی بر مؤلفه‌های ذهن‌آگاهی", "method", "مداخله‌ای که از تمرین‌های توجه و آگاهی نسبت به تجربه جاری استفاده می‌کند."),
+    ("cognitive-focused", "Cognitive-focused", "متمرکز بر پردازش شناختی", "method", "مداخله‌ای که ارزیابی و اصلاح معناها یا تفسیرهای شناختی بخش مرکزی آن است."),
+]
+
+THERAPY_SOURCES = {
+    "beck-understanding-cbt": {
+        "title": "Understanding CBT",
+        "organization": "Beck Institute for Cognitive Behavior Therapy",
+        "citation": "Beck Institute. Understanding CBT: overview of the Cognitive Model and evaluation of distressing thoughts.",
+        "url": "https://beckinstitute.org/about/understanding-cbt/",
+        "publication_year": None,
+        "source_type": "institutional_education",
+    },
+    "beck-cognitive-restructuring": {
+        "title": "Cognitive Restructuring in CBT",
+        "organization": "Beck Institute for Cognitive Behavior Therapy",
+        "citation": "Beck Institute. Cognitive Restructuring in CBT. 2021.",
+        "url": "https://beckinstitute.org/blog/cognitive-restructuring-in-cbt/",
+        "publication_year": 2021,
+        "source_type": "institutional_education",
+    },
+    "nice-depression-2022": {
+        "title": "Depression in adults: treatment and management (NG222)",
+        "organization": "National Institute for Health and Care Excellence (NICE)",
+        "citation": "NICE guideline NG222. Depression in adults: treatment and management. Published 2022; reviewed 2026.",
+        "url": "https://www.nice.org.uk/guidance/ng222/chapter/Recommendations",
+        "publication_year": 2022,
+        "source_type": "clinical_guideline",
+    },
+    "nice-gad-panic": {
+        "title": "Generalised anxiety disorder and panic disorder in adults: management (CG113)",
+        "organization": "National Institute for Health and Care Excellence (NICE)",
+        "citation": "NICE clinical guideline CG113. Generalised anxiety disorder and panic disorder in adults: management.",
+        "url": "https://www.nice.org.uk/guidance/cg113/chapter/Recommendations",
+        "publication_year": 2011,
+        "source_type": "clinical_guideline",
+    },
+    "nice-ocd-bdd": {
+        "title": "Obsessive-compulsive disorder and body dysmorphic disorder: treatment (CG31)",
+        "organization": "National Institute for Health and Care Excellence (NICE)",
+        "citation": "NICE clinical guideline CG31. Obsessive-compulsive disorder and body dysmorphic disorder: treatment.",
+        "url": "https://www.nice.org.uk/guidance/cg31/chapter/Recommendations",
+        "publication_year": 2005,
+        "source_type": "clinical_guideline",
+    },
+    "nice-ptsd": {
+        "title": "Post-traumatic stress disorder (NG116)",
+        "organization": "National Institute for Health and Care Excellence (NICE)",
+        "citation": "NICE guideline NG116. Post-traumatic stress disorder. Published 2018.",
+        "url": "https://www.nice.org.uk/guidance/ng116/chapter/recommendations",
+        "publication_year": 2018,
+        "source_type": "clinical_guideline",
+    },
+    "nice-bpd": {
+        "title": "Borderline personality disorder: recognition and management (CG78)",
+        "organization": "National Institute for Health and Care Excellence (NICE)",
+        "citation": "NICE clinical guideline CG78. Borderline personality disorder: recognition and management.",
+        "url": "https://www.nice.org.uk/guidance/cg78/chapter/Recommendations",
+        "publication_year": 2009,
+        "source_type": "clinical_guideline",
+    },
+    "nimh-bpd": {
+        "title": "Borderline Personality Disorder",
+        "organization": "National Institute of Mental Health (NIMH)",
+        "citation": "NIMH. Borderline Personality Disorder: psychotherapy overview including dialectical behavior therapy.",
+        "url": "https://www.nimh.nih.gov/health/publications/borderline-personality-disorder",
+        "publication_year": None,
+        "source_type": "institutional_education",
+    },
+    "va-cpt": {
+        "title": "Cognitive Processing Therapy for PTSD",
+        "organization": "U.S. Department of Veterans Affairs, National Center for PTSD",
+        "citation": "VA National Center for PTSD. Cognitive Processing Therapy for PTSD: treatment essentials.",
+        "url": "https://www.ptsd.va.gov/professional/treat/txessentials/cpt_for_ptsd_pro.asp",
+        "publication_year": 2026,
+        "source_type": "institutional_clinical_education",
+    },
+    "va-pe": {
+        "title": "Prolonged Exposure for PTSD",
+        "organization": "U.S. Department of Veterans Affairs, National Center for PTSD",
+        "citation": "VA National Center for PTSD. Prolonged Exposure for PTSD: treatment essentials.",
+        "url": "https://www.ptsd.va.gov/professional/treat/txessentials/prolonged_exposure_pro.asp",
+        "publication_year": 2026,
+        "source_type": "institutional_clinical_education",
+    },
+}
+
+THERAPIES = [
+    {
+        "slug": "cognitive-behavioral-therapy",
+        "name_en": "Cognitive Behavioral Therapy",
+        "name_fa": "درمان شناختی رفتاری",
+        "family": "cognitive-behavioral",
+        "summary": "روان‌درمانی ساختاریافته و هدف‌محوری که ارتباط میان افکار، باورها، هیجان‌ها و رفتار را بررسی می‌کند و از راهبردهای شناختی و رفتاری برای تغییر الگوهای مشکل‌ساز استفاده می‌کند.",
+        "academic_definition": "در راهنماهای NICE، CBT به‌عنوان مداخله‌ای ساختاریافته و مبتنی بر مدل‌های آزموده‌شده توصیف می‌شود که تعامل شناخت، هیجان و رفتار و مسائل جاری را هدف می‌گیرد.",
+        "core_principles": "فرمول‌بندی مشترک، تمرکز بر مسائل جاری، آزمون و بازبینی الگوهای شناختی و رفتاری، و تمرین فعال مهارت‌ها.",
+        "typical_structure": "ساختار دقیق بر اساس مشکل و پروتکل متفاوت است؛ راهنماهای بالینی بر درمان مبتنی بر manual و درمانگر آموزش‌دیده تأکید می‌کنند.",
+        "appropriate_contexts": "در این اطلس فقط برای زمینه‌هایی نمایش داده می‌شود که رابطه آن با یک اختلال از راهنمای منبع ثبت شده باشد.",
+        "limitations": "CBT یک برچسب کلی برای مجموعه‌ای از پروتکل‌هاست؛ وجود نام CBT به‌تنهایی به معنی یکسان بودن روش یا اثربخشی در همه مسائل نیست.",
+        "safety_notes": "انتخاب پروتکل، شدت و نحوه اجرا باید با ارزیابی حرفه‌ای و شرایط فرد هماهنگ شود.",
+        "evidence_note": "روابط اختلالی seed فقط از راهنماهای NICE ثبت شده‌اند و به معنی توصیه شخصی نیستند.",
+        "sources": ["beck-understanding-cbt", "nice-depression-2022", "nice-gad-panic", "nice-ocd-bdd"],
+        "aliases": [("CBT", "en", "abbreviation"), ("درمان شناختی-رفتاری", "fa", "alternative")],
+        "classifications": [],
+    },
+    {
+        "slug": "behavioral-activation",
+        "name_en": "Behavioral Activation",
+        "name_fa": "فعال‌سازی رفتاری",
+        "family": "behavioral",
+        "summary": "مداخله‌ای ساختاریافته که ارتباط فعالیت‌ها و خلق را بررسی می‌کند و با برنامه‌ریزی تغییرات عملی، کاهش اجتناب و افزایش رفتارهای معنادار را هدف می‌گیرد.",
+        "academic_definition": "NICE در درمان افسردگی BA را رویکردی هدف‌محور می‌داند که الگوهای فعالیت و خلق را شناسایی کرده و تغییرات رفتاری عملی را برنامه‌ریزی می‌کند.",
+        "core_principles": "پایش الگوی فعالیت و خلق، شناسایی اجتناب یا کاهش فعالیت، و برنامه‌ریزی تدریجی رفتارهای مرتبط با بهبود عملکرد و خلق.",
+        "typical_structure": "در راهنمای NICE، BA فردی به‌صورت جلسات منظم و مبتنی بر manual توصیف شده است؛ تعداد جلسات بسته به شرایط می‌تواند تغییر کند.",
+        "appropriate_contexts": "در seed فعلی به افسردگی اساسی متصل است، بر اساس راهنمای NICE بزرگسالان.",
+        "limitations": "تمرکز اصلی BA تغییر الگوی رفتار و فعالیت است و لزوماً مستقیماً افکار و احساسات را هدف نمی‌گیرد.",
+        "safety_notes": "برنامه فعالیت باید با توان، سلامت جسمی، خطرها و زمینه واقعی فرد هماهنگ شود.",
+        "evidence_note": "ارتباط با افسردگی از NICE NG222 ثبت شده است.",
+        "sources": ["nice-depression-2022"],
+        "aliases": [("BA", "en", "abbreviation")],
+        "classifications": [],
+    },
+    {
+        "slug": "interpersonal-psychotherapy",
+        "name_en": "Interpersonal Psychotherapy",
+        "name_fa": "روان‌درمانی بین‌فردی",
+        "family": "interpersonal",
+        "summary": "روان‌درمانی ساختاریافته‌ای که ارتباط میان روابط یا شرایط بین‌فردی و تجربه افسردگی را بررسی می‌کند و بر هیجان‌ها و پاسخ‌های بین‌فردی کار می‌کند.",
+        "academic_definition": "NICE، IPT را مداخله‌ای ساختاریافته و manual-based توصیف می‌کند که نقش روابط، تغییرات نقش، فقدان و الگوهای بین‌فردی را در مشکلات افسردگی بررسی می‌کند.",
+        "core_principles": "تمرکز بر مسائل بین‌فردی جاری، بررسی هیجان‌ها در زمینه روابط و تغییر پاسخ‌ها یا الگوهای رابطه‌ای مشکل‌ساز.",
+        "typical_structure": "در NG222 به‌صورت درمان فردی با جلسات منظم و درمانگر دارای competence اختصاصی توصیف شده است.",
+        "appropriate_contexts": "در seed فعلی به افسردگی اساسی متصل است؛ خود NICE تناسب آن را به زمینه و ترجیح فرد وابسته می‌داند.",
+        "limitations": "این رویکرد مستقیماً برای اصلاح افکار افسردگی طراحی نشده و نیازمند تمایل به بررسی روابط بین‌فردی است.",
+        "safety_notes": "بررسی روابط و فقدان می‌تواند هیجان‌برانگیز باشد و باید در چارچوب حرفه‌ای انجام شود.",
+        "evidence_note": "ارتباط با افسردگی از NICE NG222 ثبت شده است.",
+        "sources": ["nice-depression-2022"],
+        "aliases": [("IPT", "en", "abbreviation")],
+        "classifications": [],
+    },
+    {
+        "slug": "dialectical-behavior-therapy",
+        "name_en": "Dialectical Behavior Therapy",
+        "name_fa": "درمان رفتاری دیالکتیکی",
+        "family": "cognitive-behavioral",
+        "summary": "روان‌درمانی ساختاریافته‌ای که مؤلفه‌های پذیرش و تغییر را ترکیب می‌کند و از آموزش مهارت‌هایی مانند ذهن‌آگاهی، تنظیم هیجان و بهبود تعاملات استفاده می‌کند.",
+        "academic_definition": "NIMH، DBT را درمانی توسعه‌یافته برای اختلال شخصیت مرزی توصیف می‌کند که از mindfulness استفاده می‌کند و مهارت‌هایی برای مدیریت هیجان شدید، کاهش رفتارهای خودتخریبگر و بهبود روابط آموزش می‌دهد.",
+        "core_principles": "توازن پذیرش و تغییر، یادگیری مهارت، پایش رفتارهای پرخطر و کار ساختاریافته بر تنظیم هیجان و روابط.",
+        "typical_structure": "این اطلس DBT را به‌عنوان یک برنامه جامع نمایش می‌دهد، نه یک تکنیک منفرد؛ جزئیات ارائه بسته به برنامه و محیط درمانی متفاوت است.",
+        "appropriate_contexts": "NICE فقط یک رابطه محدود و زمینه‌مند برای BPD ثبت می‌کند: در زنان مبتلا به BPD زمانی که کاهش خودآسیبی عودکننده یک اولویت است، برنامه جامع DBT قابل بررسی است.",
+        "limitations": "توصیه NICE محدود به زمینه مشخص است و نباید به توصیه عمومی DBT برای تمام افراد یا تمام مشکلات تعمیم داده شود.",
+        "safety_notes": "وجود خودآسیبی یا خطر حاد نیازمند ارزیابی و برنامه ایمنی حرفه‌ای است؛ این صفحه ابزار تصمیم‌گیری شخصی درمان نیست.",
+        "evidence_note": "تعریف آموزشی از NIMH و رابطه محدود BPD از NICE CG78 گرفته شده است.",
+        "sources": ["nimh-bpd", "nice-bpd"],
+        "aliases": [("DBT", "en", "abbreviation")],
+        "classifications": ["skills-based", "mindfulness-informed"],
+    },
+    {
+        "slug": "cognitive-processing-therapy",
+        "name_en": "Cognitive Processing Therapy",
+        "name_fa": "درمان پردازش شناختی",
+        "family": "cognitive-behavioral",
+        "summary": "روان‌درمانی متمرکز بر تروما برای PTSD که بر شناسایی و بازبینی معناها و باورهای مشکل‌ساز مرتبط با تروما تمرکز دارد.",
+        "academic_definition": "VA National Center for PTSD، CPT را درمانی trauma-focused مبتنی بر نظریه شناختی می‌داند که stuck pointها را شناسایی و با بازسازی شناختی به تفسیرهای متعادل‌تر می‌پردازد.",
+        "core_principles": "آموزش درباره PTSD، شناسایی stuck pointها، پرسش‌گری سقراطی و ارزیابی شناختی معناهای مرتبط با تروما.",
+        "typical_structure": "CPT یک پروتکل manualized است؛ VA نسخه‌های فردی و گروهی و ساختار انعطاف‌پذیر مبتنی بر پیشرفت را توضیح می‌دهد.",
+        "appropriate_contexts": "در seed فعلی فقط به PTSD متصل است. NICE آن را در میان مداخلات trauma-focused CBT برای بزرگسالان نام می‌برد.",
+        "limitations": "CPT با CBT عمومی یکسان نیست و آموزش تخصصی و اجرای پروتکل معتبر اهمیت دارد.",
+        "safety_notes": "کار با محتوای تروما می‌تواند پریشانی ایجاد کند و باید با ارزیابی، ایمنی و حمایت مناسب انجام شود.",
+        "evidence_note": "رابطه PTSD از NICE NG116 و جزئیات درمان از VA National Center for PTSD ثبت شده است.",
+        "sources": ["nice-ptsd", "va-cpt"],
+        "aliases": [("CPT", "en", "abbreviation")],
+        "classifications": ["trauma-focused", "cognitive-focused"],
+    },
+    {
+        "slug": "prolonged-exposure-therapy",
+        "name_en": "Prolonged Exposure Therapy",
+        "name_fa": "درمان مواجهه طولانی‌مدت",
+        "family": "cognitive-behavioral",
+        "summary": "روان‌درمانی manualized و متمرکز بر تروما برای PTSD که مواجهه نظام‌مند با موقعیت‌های ایمن اجتناب‌شده و خاطرات تروما را به کار می‌گیرد.",
+        "academic_definition": "VA National Center for PTSD، PE را مداخله‌ای exposure-based برای PTSD توصیف می‌کند که مؤلفه‌های اصلی آن psychoeducation، مواجهه در دنیای واقعی و مواجهه خیالی با خاطره تروماست.",
+        "core_principles": "کاهش اجتناب از محرک‌های ایمن مرتبط با تروما، مواجهه برنامه‌ریزی‌شده با خاطرات و موقعیت‌ها، و پردازش تجربه پس از مواجهه.",
+        "typical_structure": "VA آن را درمان فردی manualized با جلسات هفتگی توصیف می‌کند؛ NICE نیز آن را در مجموعه trauma-focused CBT برای PTSD نام می‌برد.",
+        "appropriate_contexts": "در seed فعلی فقط به PTSD متصل است.",
+        "limitations": "مواجهه درمانی با روبه‌روشدن بی‌ساختار با خطر واقعی یا تروما یکسان نیست و باید بر محرک‌های ایمن و برنامه درمانی معتبر متکی باشد.",
+        "safety_notes": "مواجهه با خاطرات تروما ممکن است ناراحتی موقت ایجاد کند و باید توسط درمانگر آموزش‌دیده و در چارچوب ارزیابی ایمنی انجام شود.",
+        "evidence_note": "رابطه PTSD از NICE NG116 و ساختار PE از VA National Center for PTSD ثبت شده است.",
+        "sources": ["nice-ptsd", "va-pe"],
+        "aliases": [("PE", "en", "abbreviation")],
+        "classifications": ["trauma-focused", "exposure-based"],
+    },
+]
+
+TECHNIQUES = [
+    ("cognitive-restructuring", "Cognitive Restructuring", "بازسازی شناختی", "بررسی نظام‌مند تفسیرها یا باورها و ساختن برداشت‌های دقیق‌تر و متعادل‌تر.", "شامل شناسایی یک برداشت، بررسی شواهد و معنا، و آزمون دیدگاه‌های جایگزین است.", "beck-cognitive-restructuring"),
+    ("exposure", "Exposure", "مواجهه", "رویارویی برنامه‌ریزی‌شده با محرک یا موقعیت اجتناب‌شده برای فراهم‌کردن فرصت یادگیری جدید.", "نوع مواجهه و شدت آن باید در پروتکل معتبر و بر اساس ارزیابی تعیین شود.", "nice-ocd-bdd"),
+    ("exposure-response-prevention", "Exposure and Response Prevention", "مواجهه و جلوگیری از پاسخ", "مواجهه با محرک وسواسی همراه با کاهش یا جلوگیری از ritual یا پاسخ خنثی‌ساز.", "در NICE CG31، ERP در چارچوب CBT برای OCD به‌طور صریح ذکر شده است.", "nice-ocd-bdd"),
+    ("activity-planning", "Activity Planning", "برنامه‌ریزی فعالیت", "برنامه‌ریزی تغییرات رفتاری عملی برای کاهش اجتناب و افزایش فعالیت‌های مرتبط با عملکرد یا خلق.", "این تکنیک در این اطلس به ساختار Behavioral Activation متصل است.", "nice-depression-2022"),
+    ("interpersonal-pattern-work", "Interpersonal Pattern Work", "کار بر الگوهای بین‌فردی", "بررسی رابطه میان موقعیت‌های بین‌فردی، هیجان‌ها و پاسخ‌های رابطه‌ای و تمرین تغییر الگوهای مشکل‌ساز.", "این عنوان آموزشی برای خلاصه‌سازی کار بین‌فردی توصیف‌شده در IPT استفاده شده است، نه نام یک پروتکل مستقل.", "nice-depression-2022"),
+    ("mindfulness-skills", "Mindfulness Skills", "مهارت‌های ذهن‌آگاهی", "تمرین توجه و آگاهی نسبت به وضعیت و تجربه جاری به‌عنوان بخشی از مهارت‌آموزی DBT.", "NIMH استفاده DBT از mindfulness را به‌طور صریح ذکر می‌کند.", "nimh-bpd"),
+    ("emotion-regulation-skills", "Emotion Regulation Skills", "مهارت‌های تنظیم هیجان", "مهارت‌هایی برای شناخت و مدیریت بهتر هیجان‌های شدید در چارچوب برنامه DBT.", "NIMH آموزش مهارت برای کنترل هیجان‌های شدید را از ویژگی‌های DBT می‌داند.", "nimh-bpd"),
+    ("in-vivo-exposure", "In-vivo Exposure", "مواجهه در موقعیت واقعی", "مواجهه نظام‌مند با موقعیت‌ها، افراد یا اشیای ایمن مرتبط با تروما که به دلیل ناراحتی از آن‌ها اجتناب شده است.", "یکی از مؤلفه‌های اصلی Prolonged Exposure در منبع VA.", "va-pe"),
+    ("imaginal-exposure", "Imaginal Exposure", "مواجهه خیالی", "بازگویی و مرور هدایت‌شده خاطره تروما در تصویرسازی ذهنی و سپس پردازش تجربه.", "یکی از مؤلفه‌های اصلی Prolonged Exposure در منبع VA.", "va-pe"),
+]
+
+TECHNIQUE_ALIASES = [
+    ("exposure-response-prevention", "ERP", "en", "abbreviation"),
+]
+
+
+THERAPY_TECHNIQUES = [
+    ("cognitive-behavioral-therapy", "cognitive-restructuring", "core", "بازبینی شناخت‌ها یکی از خانواده روش‌های شناختی در CBT است.", "beck-cognitive-restructuring"),
+    ("cognitive-behavioral-therapy", "exposure", "common", "پروتکل‌های CBT برای برخی مشکلات اضطرابی و وسواسی می‌توانند از مواجهه استفاده کنند.", "nice-ocd-bdd"),
+    ("cognitive-behavioral-therapy", "exposure-response-prevention", "adapted", "ERP به‌طور مشخص در CBT برای OCD در NICE CG31 آمده است.", "nice-ocd-bdd"),
+    ("behavioral-activation", "activity-planning", "core", "برنامه‌ریزی تغییرات عملی برای کاهش اجتناب بخش مرکزی BA در NICE NG222 است.", "nice-depression-2022"),
+    ("interpersonal-psychotherapy", "interpersonal-pattern-work", "core", "IPT بر ارتباط روابط و شرایط بین‌فردی با افسردگی و تغییر پاسخ‌های بین‌فردی تمرکز می‌کند.", "nice-depression-2022"),
+    ("dialectical-behavior-therapy", "mindfulness-skills", "core", "NIMH استفاده DBT از mindfulness را ذکر می‌کند.", "nimh-bpd"),
+    ("dialectical-behavior-therapy", "emotion-regulation-skills", "core", "NIMH آموزش مهارت برای مدیریت هیجان شدید را در DBT ذکر می‌کند.", "nimh-bpd"),
+    ("cognitive-processing-therapy", "cognitive-restructuring", "core", "VA بازسازی شناختی را در کار با stuck pointهای CPT توضیح می‌دهد.", "va-cpt"),
+    ("prolonged-exposure-therapy", "in-vivo-exposure", "core", "مواجهه in-vivo یکی از مؤلفه‌های اصلی PE است.", "va-pe"),
+    ("prolonged-exposure-therapy", "imaginal-exposure", "core", "مواجهه imaginal با خاطرات تروما یکی از مؤلفه‌های اصلی PE است.", "va-pe"),
+]
+
+THERAPY_DISORDERS = [
+    ("cognitive-behavioral-therapy", "major-depressive-disorder", "guideline_recommended", "guideline", "NICE CBT را در گزینه‌های روان‌درمانی افسردگی بزرگسالان قرار می‌دهد.", "nice-depression-2022"),
+    ("cognitive-behavioral-therapy", "generalized-anxiety-disorder", "guideline_recommended", "guideline", "NICE برای GAD در سطح مداخله با شدت بالا CBT را در کنار applied relaxation پیشنهاد می‌کند.", "nice-gad-panic"),
+    ("cognitive-behavioral-therapy", "panic-disorder", "guideline_recommended", "guideline", "NICE برای panic disorder استفاده از CBT را در درمان روان‌شناختی توصیه می‌کند.", "nice-gad-panic"),
+    ("cognitive-behavioral-therapy", "obsessive-compulsive-disorder", "guideline_recommended", "guideline", "NICE برای OCD از CBT شامل ERP در سطوح مختلف شدت استفاده می‌کند.", "nice-ocd-bdd"),
+    ("behavioral-activation", "major-depressive-disorder", "guideline_recommended", "guideline", "NICE BA فردی را در گزینه‌های روان‌درمانی افسردگی بزرگسالان توصیف می‌کند.", "nice-depression-2022"),
+    ("interpersonal-psychotherapy", "major-depressive-disorder", "guideline_recommended", "guideline", "NICE IPT را در گزینه‌های روان‌درمانی افسردگی بزرگسالان قرار می‌دهد.", "nice-depression-2022"),
+    ("dialectical-behavior-therapy", "borderline-personality-disorder", "context_dependent", "guideline", "NICE یک توصیه محدود دارد: برای زنان مبتلا به BPD که کاهش خودآسیبی عودکننده یک اولویت است، برنامه جامع DBT قابل بررسی است.", "nice-bpd"),
+    ("cognitive-processing-therapy", "post-traumatic-stress-disorder", "guideline_recommended", "guideline", "NICE CPT را در میان مداخلات trauma-focused CBT برای PTSD بزرگسالان نام می‌برد.", "nice-ptsd"),
+    ("prolonged-exposure-therapy", "post-traumatic-stress-disorder", "guideline_recommended", "guideline", "NICE Prolonged Exposure را در میان مداخلات trauma-focused CBT برای PTSD بزرگسالان نام می‌برد.", "nice-ptsd"),
+]
+
+THERAPY_CONCEPTS = [
+    ("cognitive-behavioral-therapy", "automatic-thoughts", "addresses", "CBT افکار و تفسیرهای جاری را در کنار هیجان و رفتار بررسی می‌کند.", "beck-understanding-cbt"),
+    ("cognitive-behavioral-therapy", "cognitive-distortions", "addresses", "این لینک آموزشی به لایه شناختی CBT اشاره دارد و به معنی این نیست که هر فکر منفی یک تحریف است.", "beck-cognitive-restructuring"),
+    ("behavioral-activation", "avoidance", "addresses", "NICE BA را با کاهش avoidance و تغییر الگوی فعالیت توضیح می‌دهد.", "nice-depression-2022"),
+    ("behavioral-activation", "behavioral-activation", "applied_to", "Therapy مستقل BA به Concept آموزشی Behavioral Activation متصل است.", "nice-depression-2022"),
+    ("dialectical-behavior-therapy", "emotion-regulation", "teaches", "NIMH آموزش مهارت برای مدیریت هیجان شدید را در DBT ذکر می‌کند.", "nimh-bpd"),
+    ("cognitive-processing-therapy", "core-beliefs", "addresses", "CPT معناها و باورهای مرتبط با تروما درباره خود و جهان را بررسی می‌کند.", "va-cpt"),
+    ("prolonged-exposure-therapy", "avoidance", "addresses", "PE به شکل مستقیم با اجتناب از موقعیت‌های ایمن و خاطرات مرتبط با تروما کار می‌کند.", "va-pe"),
+]
+
+TECHNIQUE_CONCEPTS = [
+    ("cognitive-restructuring", "automatic-thoughts", "addresses", "بازسازی شناختی ارزیابی و بازبینی افکار و تفسیرها را هدف می‌گیرد.", "beck-cognitive-restructuring"),
+    ("exposure", "avoidance", "addresses", "مواجهه فرصت نزدیک‌شدن برنامه‌ریزی‌شده به محرک‌های اجتناب‌شده را فراهم می‌کند.", "nice-ocd-bdd"),
+    ("exposure-response-prevention", "compulsions", "addresses", "ERP با جلوگیری از ritual یا پاسخ خنثی‌ساز در کنار مواجهه کار می‌کند.", "nice-ocd-bdd"),
+    ("exposure-response-prevention", "intrusive-thoughts", "addresses", "NICE برای وسواس‌های بدون اجبار آشکار، مواجهه با افکار وسواسی و جلوگیری از ritual ذهنی را ذکر می‌کند.", "nice-ocd-bdd"),
+    ("activity-planning", "avoidance", "addresses", "برنامه‌ریزی تغییرات عملی در BA برای کاهش اجتناب به کار می‌رود.", "nice-depression-2022"),
+    ("activity-planning", "behavioral-activation", "applied_to", "این تکنیک به Concept آموزشی فعال‌سازی رفتاری متصل است.", "nice-depression-2022"),
+    ("emotion-regulation-skills", "emotion-regulation", "teaches", "این لینک بازتاب آموزش مهارت مدیریت هیجان در DBT است.", "nimh-bpd"),
+    ("in-vivo-exposure", "avoidance", "addresses", "در PE مواجهه in-vivo با موقعیت‌های ایمن اجتناب‌شده به کار می‌رود.", "va-pe"),
+]
+
+
+def seed_therapy_content(disorder_objs):
+    source_objs = {}
+    for key, row in THERAPY_SOURCES.items():
+        source, _ = SourceReference.objects.update_or_create(
+            title=row["title"],
+            organization=row["organization"],
+            defaults={
+                "citation": row["citation"],
+                "url": row["url"],
+                "publication_year": row["publication_year"],
+                "source_type": row["source_type"],
+            },
+        )
+        source_objs[key] = source
+
+    family_objs = {}
+    for order, (slug, name_en, name_fa, description) in enumerate(THERAPY_FAMILIES):
+        family, _ = TherapyFamily.objects.update_or_create(
+            slug=slug,
+            defaults={
+                "name_en": name_en,
+                "name_fa": name_fa,
+                "description": description,
+                "sort_order": order,
+                "is_active": True,
+                "seed_managed": True,
+            },
+        )
+        family_objs[slug] = family
+    TherapyFamily.objects.filter(seed_managed=True).exclude(slug__in=family_objs).update(is_active=False)
+
+    classification_objs = {}
+    for order, (slug, name_en, name_fa, kind, description) in enumerate(THERAPY_CLASSIFICATIONS):
+        classification, _ = TherapyClassification.objects.update_or_create(
+            slug=slug,
+            defaults={
+                "name_en": name_en,
+                "name_fa": name_fa,
+                "kind": kind,
+                "description": description,
+                "sort_order": order,
+                "is_active": True,
+                "seed_managed": True,
+            },
+        )
+        classification_objs[slug] = classification
+    TherapyClassification.objects.filter(seed_managed=True).exclude(slug__in=classification_objs).update(is_active=False)
+
+    therapy_objs = {}
+    for item in THERAPIES:
+        therapy, _ = Therapy.objects.update_or_create(
+            slug=item["slug"],
+            defaults={
+                "family": family_objs[item["family"]],
+                "name_en": item["name_en"],
+                "name_fa": item["name_fa"],
+                "summary": item["summary"],
+                "academic_definition": item["academic_definition"],
+                "historical_context": "",
+                "core_principles": item["core_principles"],
+                "typical_structure": item["typical_structure"],
+                "appropriate_contexts": item["appropriate_contexts"],
+                "limitations": item["limitations"],
+                "safety_notes": item["safety_notes"],
+                "evidence_note": item["evidence_note"],
+                "review_status": ScientificReviewStatus.SOURCE_CHECKED,
+                "is_active": True,
+                "seed_managed": True,
+            },
+        )
+        therapy_objs[item["slug"]] = therapy
+        for text, language, alias_type in item["aliases"]:
+            TherapyAlias.objects.update_or_create(
+                therapy=therapy,
+                text=text,
+                language=language,
+                defaults={"alias_type": alias_type},
+            )
+        for source_key in item["sources"]:
+            TherapySource.objects.get_or_create(therapy=therapy, source=source_objs[source_key])
+        active_classification_ids = []
+        for order, classification_slug in enumerate(item["classifications"]):
+            classification = classification_objs[classification_slug]
+            active_classification_ids.append(classification.id)
+            TherapyClassificationLink.objects.update_or_create(
+                therapy=therapy,
+                classification=classification,
+                defaults={"sort_order": order, "is_active": True},
+            )
+        therapy.classification_links.exclude(classification_id__in=active_classification_ids).update(is_active=False)
+    Therapy.objects.filter(seed_managed=True).exclude(slug__in=therapy_objs).update(is_active=False)
+
+    technique_objs = {}
+    for slug, name_en, name_fa, summary, application_notes, source_key in TECHNIQUES:
+        technique, _ = Technique.objects.update_or_create(
+            slug=slug,
+            defaults={
+                "name_en": name_en,
+                "name_fa": name_fa,
+                "summary": summary,
+                "academic_definition": summary,
+                "application_notes": application_notes,
+                "limitations": "این Technique یک جزء آموزشی از پروتکل‌های درمانی است و به‌تنهایی جایگزین ارزیابی یا برنامه درمانی نیست.",
+                "safety_notes": "نحوه اجرا، شدت و تناسب تکنیک به زمینه بالینی و آموزش درمانگر وابسته است.",
+                "review_status": ScientificReviewStatus.SOURCE_CHECKED,
+                "is_active": True,
+                "seed_managed": True,
+            },
+        )
+        technique_objs[slug] = technique
+        TechniqueSource.objects.get_or_create(technique=technique, source=source_objs[source_key])
+    Technique.objects.filter(seed_managed=True).exclude(slug__in=technique_objs).update(is_active=False)
+
+    for technique_slug, text, language, alias_type in TECHNIQUE_ALIASES:
+        TechniqueAlias.objects.update_or_create(
+            technique=technique_objs[technique_slug],
+            text=text,
+            language=language,
+            defaults={"alias_type": alias_type},
+        )
+
+    therapy_technique_keys = set()
+    for order, (therapy_slug, technique_slug, role, explanation, source_key) in enumerate(THERAPY_TECHNIQUES):
+        relation, _ = TherapyTechnique.objects.update_or_create(
+            therapy=therapy_objs[therapy_slug],
+            technique=technique_objs[technique_slug],
+            defaults={
+                "role": role,
+                "explanation": explanation,
+                "sort_order": order,
+                "review_status": ScientificReviewStatus.SOURCE_CHECKED,
+                "is_active": True,
+            },
+        )
+        therapy_technique_keys.add((relation.therapy_id, relation.technique_id))
+        TherapyTechniqueSource.objects.get_or_create(relationship=relation, source=source_objs[source_key])
+    for therapy in therapy_objs.values():
+        for relation in therapy.technique_links.filter(is_active=True):
+            if (relation.therapy_id, relation.technique_id) not in therapy_technique_keys:
+                relation.is_active = False
+                relation.save(update_fields=("is_active", "updated_at"))
+
+    therapy_disorder_keys = set()
+    for order, (therapy_slug, disorder_slug, clinical_role, evidence_basis, explanation, source_key) in enumerate(THERAPY_DISORDERS):
+        disorder = disorder_objs.get(disorder_slug) or Disorder.objects.filter(slug=disorder_slug, is_active=True).first()
+        if not disorder:
+            continue
+        relation, _ = TherapyDisorder.objects.update_or_create(
+            therapy=therapy_objs[therapy_slug],
+            disorder=disorder,
+            defaults={
+                "clinical_role": clinical_role,
+                "evidence_basis": evidence_basis,
+                "explanation": explanation,
+                "evidence_note": "این رابطه خلاصه آموزشی یک منبع بالینی است و توصیه درمانی شخصی محسوب نمی‌شود.",
+                "sort_order": order,
+                "review_status": ScientificReviewStatus.SOURCE_CHECKED,
+                "is_active": True,
+            },
+        )
+        therapy_disorder_keys.add((relation.therapy_id, relation.disorder_id))
+        TherapyDisorderSource.objects.get_or_create(relationship=relation, source=source_objs[source_key])
+    for therapy in therapy_objs.values():
+        for relation in therapy.disorder_links.filter(is_active=True):
+            if (relation.therapy_id, relation.disorder_id) not in therapy_disorder_keys:
+                relation.is_active = False
+                relation.save(update_fields=("is_active", "updated_at"))
+
+    required_concepts = {row[1] for row in THERAPY_CONCEPTS} | {row[1] for row in TECHNIQUE_CONCEPTS}
+    concept_objs = {row.slug: row for row in Concept.objects.filter(slug__in=required_concepts, is_active=True)}
+
+    therapy_concept_keys = set()
+    for order, (therapy_slug, concept_slug, relationship_type, explanation, source_key) in enumerate(THERAPY_CONCEPTS):
+        concept = concept_objs.get(concept_slug)
+        if not concept:
+            continue
+        relation, _ = TherapyConcept.objects.update_or_create(
+            therapy=therapy_objs[therapy_slug],
+            concept=concept,
+            relationship_type=relationship_type,
+            defaults={
+                "explanation": explanation,
+                "sort_order": order,
+                "review_status": ScientificReviewStatus.SOURCE_CHECKED,
+                "is_active": True,
+            },
+        )
+        therapy_concept_keys.add((relation.therapy_id, relation.concept_id, relation.relationship_type))
+        TherapyConceptSource.objects.get_or_create(relationship=relation, source=source_objs[source_key])
+    for therapy in therapy_objs.values():
+        for relation in therapy.concept_links.filter(is_active=True):
+            key = (relation.therapy_id, relation.concept_id, relation.relationship_type)
+            if key not in therapy_concept_keys:
+                relation.is_active = False
+                relation.save(update_fields=("is_active", "updated_at"))
+
+    technique_concept_keys = set()
+    for order, (technique_slug, concept_slug, relationship_type, explanation, source_key) in enumerate(TECHNIQUE_CONCEPTS):
+        concept = concept_objs.get(concept_slug)
+        if not concept:
+            continue
+        relation, _ = TechniqueConcept.objects.update_or_create(
+            technique=technique_objs[technique_slug],
+            concept=concept,
+            relationship_type=relationship_type,
+            defaults={
+                "explanation": explanation,
+                "sort_order": order,
+                "review_status": ScientificReviewStatus.SOURCE_CHECKED,
+                "is_active": True,
+            },
+        )
+        technique_concept_keys.add((relation.technique_id, relation.concept_id, relation.relationship_type))
+        TechniqueConceptSource.objects.get_or_create(relationship=relation, source=source_objs[source_key])
+    for technique in technique_objs.values():
+        for relation in technique.concept_links.filter(is_active=True):
+            key = (relation.technique_id, relation.concept_id, relation.relationship_type)
+            if key not in technique_concept_keys:
+                relation.is_active = False
+                relation.save(update_fields=("is_active", "updated_at"))
+
+    return {
+        "therapies": len(THERAPIES),
+        "techniques": len(TECHNIQUES),
+        "therapy_disorder_links": len(THERAPY_DISORDERS),
+        "therapy_concept_links": len(THERAPY_CONCEPTS),
+        "therapy_technique_links": len(THERAPY_TECHNIQUES),
+        "technique_concept_links": len(TECHNIQUE_CONCEPTS),
+        "sources": len(THERAPY_SOURCES),
     }

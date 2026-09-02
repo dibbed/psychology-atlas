@@ -1,12 +1,12 @@
-# Psychology Atlas — v0.5.1 · Therapy Architecture Foundation
+# Psychology Atlas — v0.5.2 · Scientific Therapy Seed + API
 
-یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. نسخه فعلی v0.5.1 بخش اول Therapy Atlas است: مرز علمی Therapy و Technique، taxonomy قابل‌گسترش، مدل‌های relation/provenance و migration پایه را اضافه می‌کند و در عین حال hardening و رفتارهای پایدار قبلی را حفظ می‌کند. در این مرحله هنوز Therapy seed، API عمومی یا UI درمان‌ها منتشر نشده است.
+یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. نسخه فعلی v0.5.2 بخش دوم Therapy Atlas است: foundation علمی v0.5.1 را با seed محدود و source-backed، taxonomy واقعی و API عمومی Therapy/Technique کامل می‌کند. UI اختصاصی Therapy Atlas و Graph integration هنوز برای v0.5.3 و v0.5.4 باقی مانده‌اند.
 
 > این نرم‌افزار آموزشی است و ابزار تشخیص، درمان یا جایگزین ارزیابی حرفه‌ای نیست.
 
-## Therapy Architecture Foundation
+## Therapy Atlas Backend
 
-v0.5.1 فقط foundation درمان را می‌سازد و عمداً محتوای درمانی ساختگی اضافه نمی‌کند. مدل‌های اصلی فعلی:
+v0.5.2 روی foundation درمان، یک dataset محدود و قابل‌ردیابی اضافه می‌کند. هیچ effectiveness percentage، رتبه‌بندی «بهترین درمان» یا recommendation شخصی seed نشده است. مدل‌های اصلی:
 
 ```text
 TherapyFamily
@@ -39,6 +39,47 @@ Migration جدید:
 ```text
 0013_therapy_technique_techniqueconcept_and_more.py
 ```
+
+### Scientific Therapy Seed
+
+موجودی اولیه v0.5.2 عمداً کوچک است:
+
+```text
+3 Therapy families
+5 overlapping classifications
+6 Therapies
+9 Techniques
+9 Therapy ↔ Disorder links
+7 Therapy ↔ Concept links
+10 Therapy ↔ Technique links
+8 Technique ↔ Concept links
+10 dedicated Therapy sources
+```
+
+Therapyهای seeded:
+
+```text
+Cognitive Behavioral Therapy (CBT)
+Behavioral Activation (BA)
+Interpersonal Psychotherapy (IPT)
+Dialectical Behavior Therapy (DBT)
+Cognitive Processing Therapy (CPT)
+Prolonged Exposure Therapy (PE)
+```
+
+منابع seed از NICE، NIMH، Beck Institute و VA National Center for PTSD هستند. تمام Therapy/Techniqueهای seeded با `review_status=source_checked` ثبت می‌شوند، نه `reviewed`.
+
+### Therapy API
+
+```text
+GET /api/therapies/
+GET /api/therapies/taxonomy/
+GET /api/therapies/<slug>/
+GET /api/techniques/
+GET /api/techniques/<slug>/
+```
+
+فیلترهای Therapy شامل `q`, `family`, `classification`, `disorder`, `concept`, `evidence_basis`, `clinical_role` هستند. Techniqueها با `q`, `therapy`, `concept` فیلتر می‌شوند. Detail responseها provenance هر relation را نیز برمی‌گردانند.
 
 ## Stack
 
@@ -75,6 +116,9 @@ Migration جدید:
 - **23 Concept ↔ Concept relationships**
 - **15 Concept ↔ Symptom links**
 - **50 flashcards**
+- **6 source-backed therapies**
+- **9 source-backed techniques**
+- **9 Therapy ↔ Disorder evidence links**
 - **18 Cognitive Distortion recognition practice items × 4 choices = 72 choices**
 - **12 daily challenges × 4 choices**
 - **5 quizzes × 8 questions = 40 questions**
@@ -610,7 +654,7 @@ Therapy Atlas is being implemented as five bounded v0.5.x parts:
 
 ```text
 v0.5.1  Therapy Architecture + Backend Foundation ✅
-v0.5.2  Scientific Therapy Seed + API
+v0.5.2  Scientific Therapy Seed + API ✅
 v0.5.3  Therapy Atlas Frontend
 v0.5.4  Cross-domain Integration + Knowledge Graph
 v0.5.5  Compare + Personal Features + Final Hardening
@@ -625,7 +669,6 @@ v1.0    Admin CMS + Scientific Review + Full cross-domain integration
 
 These remain later-version work rather than partially implemented placeholders:
 
-- Therapy scientific seed and public API
 - Therapy Atlas frontend
 - Therapy/Technique Graph integration
 - Therapy Compare, bookmarks, notes and final hardening
