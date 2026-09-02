@@ -358,6 +358,139 @@ export type KnowledgeGraphData = {
   edges: KnowledgeGraphEdge[];
 };
 
+export type SourceReference = {
+  id: number;
+  title: string;
+  organization: string;
+  citation?: string;
+  url: string;
+  publication_year?: number | null;
+  source_type?: string;
+};
+
+export type TherapyFamily = {
+  slug: string;
+  name_en: string;
+  name_fa: string;
+  description: string;
+};
+
+export type TherapyClassification = {
+  slug: string;
+  name_en: string;
+  name_fa: string;
+  kind: "focus" | "method" | "delivery" | "population" | "other" | string;
+  kind_label: string;
+  description: string;
+};
+
+export type TherapyAlias = {
+  text: string;
+  language: "fa" | "en" | "other";
+  alias_type: "alternative" | "abbreviation" | "historical";
+};
+
+export type Technique = {
+  id: number;
+  slug: string;
+  name_en: string;
+  name_fa: string;
+  summary: string;
+  review_status: "unreviewed" | "source_checked" | "reviewed" | string;
+  aliases: TherapyAlias[];
+  therapy_count: number;
+  concept_count: number;
+};
+
+export type Therapy = {
+  id: number;
+  slug: string;
+  name_en: string;
+  name_fa: string;
+  summary: string;
+  family: TherapyFamily;
+  aliases: TherapyAlias[];
+  classifications: TherapyClassification[];
+  review_status: "unreviewed" | "source_checked" | "reviewed" | string;
+  technique_count: number;
+  disorder_count: number;
+  concept_count: number;
+};
+
+export type TherapyDetail = Therapy & {
+  academic_definition: string;
+  historical_context: string;
+  core_principles: string;
+  typical_structure: string;
+  appropriate_contexts: string;
+  limitations: string;
+  safety_notes: string;
+  evidence_note: string;
+  sources: SourceReference[];
+  techniques: {
+    role: string;
+    explanation: string;
+    technique: Technique;
+    sources: SourceReference[];
+  }[];
+  disorders: {
+    clinical_role: string;
+    clinical_role_label: string;
+    evidence_basis: string;
+    evidence_basis_label: string;
+    explanation: string;
+    evidence_note: string;
+    disorder: Disorder;
+    sources: SourceReference[];
+  }[];
+  concepts: {
+    relationship_type: string;
+    explanation: string;
+    concept: Concept;
+    sources: SourceReference[];
+  }[];
+};
+
+export type TechniqueDetail = Technique & {
+  academic_definition: string;
+  application_notes: string;
+  limitations: string;
+  safety_notes: string;
+  sources: SourceReference[];
+  therapies: {
+    role: string;
+    explanation: string;
+    therapy: {
+      slug: string;
+      name_en: string;
+      name_fa: string;
+      family: TherapyFamily;
+    };
+    sources: SourceReference[];
+  }[];
+  concepts: {
+    relationship_type: string;
+    explanation: string;
+    concept: Concept;
+    sources: SourceReference[];
+  }[];
+};
+
+export type TherapyTaxonomy = {
+  families: TherapyFamily[];
+  classifications: TherapyClassification[];
+  clinical_roles: { value: string; label: string }[];
+  evidence_bases: { value: string; label: string }[];
+  note: string;
+};
+
+export type Paginated<T> = {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
+};
+
 export type DSMDisplayType =
   | "diagnosis"
   | "structural"

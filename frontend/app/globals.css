@@ -360,7 +360,7 @@ a.card:hover { transform: translateY(-2px); }
 
 .footer { color: var(--muted); font-size: 13px; padding: 40px 0; border-top: 1px solid var(--border); line-height: 1.8; }
 
-/* Psychology Atlas v0.3 */
+/* Psychology Atlas core UI */
 .latin-label, .latin-title { direction: ltr; text-align: right; color: var(--muted); letter-spacing: .02em; }
 .latin-label { font-size: 12px; margin: -4px 0 10px; }
 .latin-title { font-size: 15px; margin-top: -4px; }
@@ -462,7 +462,7 @@ a.card:hover { transform: translateY(-2px); }
 .map-neighbor.concept { border-right: 3px solid var(--accent); }
 .map-neighbor small, .edge-label { color: var(--muted); font-size: 11px; }
 
-/* Deep v0.3 visual/data polish */
+/* Deep visual/data polish */
 .atlas-hero { align-items: center; position: relative; }
 .atlas-hero-copy { position: relative; z-index: 2; }
 .atlas-hero-actions { margin-top: 28px; }
@@ -1101,7 +1101,7 @@ a.card:hover { transform: translateY(-2px); }
 .disorder-detail-en { margin-top: -7px; margin-bottom: 14px; }
 .compare-head-en { display: block; margin-top: 4px; font-weight: 400; }
 
-/* v0.3.1 · Disorders Explorer */
+/* Disorders Explorer */
 .disorder-explorer {
   display: grid;
   grid-template-columns: 278px minmax(0,1fr);
@@ -1300,4 +1300,193 @@ a.card:hover { transform: translateY(-2px); }
   .dsm-key-value-row { grid-template-columns: 1fr; gap: 6px; }
   .dsm-pagination { justify-content: space-between; gap: 7px; }
   .dsm-pagination .button { padding: 0 10px; font-size: 11px; }
+}
+
+/* Therapy Atlas */
+.therapies-page { gap: 24px; }
+.therapies-page-head {
+  display: grid;
+  grid-template-columns: minmax(0,1.25fr) minmax(320px,.75fr);
+  gap: 42px;
+  align-items: end;
+  padding: 22px 0 30px;
+  border-bottom: 1px solid var(--border);
+}
+.therapies-page-copy h1 { margin: 8px 0 14px; max-width: 920px; font-size: clamp(36px,5.4vw,68px); line-height: 1.28; }
+.therapies-page-copy > p { margin: 0; max-width: 900px; color: #cbd4df; line-height: 2; font-size: 16px; }
+.therapy-overview-stats { display: grid; grid-template-columns: repeat(2,1fr); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; background: var(--surface); }
+.therapy-overview-stats > div { min-height: 108px; display: grid; align-content: center; gap: 3px; padding: 16px 18px; border-left: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.therapy-overview-stats > div:nth-child(2n) { border-left: 0; }
+.therapy-overview-stats > div:nth-last-child(-n+2) { border-bottom: 0; }
+.therapy-overview-stats strong { font-size: 28px; color: var(--accent); }
+.therapy-overview-stats span { color: var(--muted); font-size: 10px; }
+.therapy-atlas-principles { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
+.therapy-atlas-principles .card { min-height: 150px; display: grid; align-content: start; gap: 7px; }
+.therapy-atlas-principles .card > span { color: var(--accent-2); font-size: 9px; direction: ltr; text-align: right; }
+.therapy-atlas-principles strong { font-size: 13px; }
+.therapy-atlas-principles p { margin: 0; color: var(--muted); line-height: 1.85; font-size: 11px; }
+
+.therapy-explorer { gap: 18px; }
+.therapy-mode-switch { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; background: var(--surface-3); }
+.therapy-mode-switch button { min-height: 68px; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 0 20px; border: 0; border-left: 1px solid var(--border); background: transparent; color: var(--muted); text-align: right; }
+.therapy-mode-switch button:last-child { border-left: 0; }
+.therapy-mode-switch button.active { background: rgba(128,225,193,.07); color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
+.therapy-mode-switch button strong { font-size: 20px; color: var(--accent); }
+.therapy-family-rail { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); padding: 0; overflow: hidden; }
+.therapy-family-rail button { min-height: 96px; display: grid; align-content: center; gap: 3px; padding: 14px 16px; border: 0; border-left: 1px solid var(--border); background: transparent; color: var(--text); text-align: right; }
+.therapy-family-rail button:last-child { border-left: 0; }
+.therapy-family-rail button:hover { background: rgba(255,255,255,.018); }
+.therapy-family-rail button.active { background: rgba(182,167,255,.055); box-shadow: inset 0 -2px 0 var(--accent-2); }
+.therapy-family-rail strong { color: var(--accent); font-size: 20px; }
+.therapy-family-rail span { font-size: 11px; font-weight: 700; }
+.therapy-family-rail small { color: var(--muted); font-size: 8px; direction: ltr; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.therapy-filters { grid-template-columns: minmax(0,1fr) 220px; }
+.therapy-classification-strip { display: flex; flex-wrap: wrap; gap: 7px; }
+.therapy-results-bar { display: flex; justify-content: space-between; align-items: center; gap: 18px; min-height: 66px; padding: 4px 0 10px; border-bottom: 1px solid var(--border); }
+.therapy-results-bar > div:first-child { display: flex; align-items: baseline; gap: 8px; }
+.therapy-results-bar > div:first-child strong { font-size: 28px; }
+.therapy-results-bar > div:first-child span { color: var(--muted); font-size: 10px; }
+.therapy-card-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.therapy-card, .technique-card { min-height: 330px; display: grid; align-content: start; gap: 13px; position: relative; overflow: hidden; transition: border-color .16s ease, transform .16s ease, background .16s ease; }
+.therapy-card::before, .technique-card::before { content: ""; position: absolute; top: 0; right: 0; width: 84px; height: 2px; background: var(--accent); }
+.technique-card::before { background: var(--accent-2); }
+.therapy-card:hover, .technique-card:hover { border-color: rgba(128,225,193,.42); transform: translateY(-2px); background: rgba(128,225,193,.018); }
+.technique-card:hover { border-color: rgba(182,167,255,.42); background: rgba(182,167,255,.018); }
+.therapy-card-topline { display: flex; justify-content: space-between; gap: 10px; align-items: center; color: var(--muted); font-size: 9px; }
+.therapy-card-topline > span { color: var(--accent); }
+.technique-card .therapy-card-topline > span { color: var(--accent-2); }
+.therapy-card h2, .technique-card h2 { margin: 0 0 4px; font-size: 22px; line-height: 1.5; }
+.therapy-card > p, .technique-card > p { margin: 0; color: var(--muted); line-height: 1.85; font-size: 11px; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.therapy-aliases, .therapy-classifications { display: flex; flex-wrap: wrap; gap: 6px; }
+.therapy-aliases span { padding: 4px 7px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); background: var(--surface-3); font-size: 8px; direction: ltr; }
+.therapy-classifications span { padding: 4px 7px; border: 1px solid rgba(182,167,255,.22); border-radius: 999px; color: var(--accent-2); background: rgba(182,167,255,.025); font-size: 8px; }
+.therapy-card-metrics { display: grid; grid-template-columns: repeat(3,1fr); margin-top: auto; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.therapy-card-metrics.two-col { grid-template-columns: repeat(2,1fr); }
+.therapy-card-metrics > div { display: grid; gap: 1px; padding: 10px 7px; border-left: 1px solid var(--border); }
+.therapy-card-metrics > div:last-child { border-left: 0; }
+.therapy-card-metrics strong { font-size: 16px; }
+.therapy-card-metrics span { color: var(--muted); font-size: 8px; }
+.therapy-card-cta { color: var(--accent); font-size: 10px; font-weight: 700; }
+.technique-card .therapy-card-cta { color: var(--accent-2); }
+.therapy-compact-list { display: grid; border-top: 1px solid var(--border); }
+.therapy-compact-row { min-height: 92px; display: grid; grid-template-columns: minmax(210px,.8fr) minmax(260px,1.3fr) minmax(210px,.75fr); gap: 18px; align-items: center; padding: 12px 7px; border-bottom: 1px solid var(--border); transition: background .16s ease, padding .16s ease; }
+.therapy-compact-row:hover { background: rgba(255,255,255,.018); padding-right: 11px; }
+.therapy-compact-row > div:first-child { display: grid; gap: 3px; min-width: 0; }
+.therapy-compact-row > div:first-child strong { font-size: 12px; }
+.therapy-compact-row > div:first-child small { color: var(--muted); font-size: 8px; direction: ltr; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.therapy-compact-row > p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.7; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.therapy-compact-metrics { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 6px; }
+.therapy-compact-metrics span { border: 1px solid var(--border); border-radius: 999px; padding: 5px 8px; color: var(--muted); font-size: 8px; }
+.therapy-evidence-note { border-right: 3px solid var(--accent-2); background: rgba(182,167,255,.025); }
+.therapy-evidence-note strong { display: block; margin: 6px 0; }
+.therapy-evidence-note p { margin: 0; color: var(--muted); line-height: 1.8; font-size: 11px; }
+.therapy-empty-state { min-height: 180px; display: grid; place-items: center; align-content: center; text-align: center; color: var(--muted); }
+.therapy-empty-state h3 { color: var(--text); margin-bottom: 2px; }
+.therapy-empty-state p { margin: 0; }
+
+.therapy-detail { gap: 20px; }
+.therapy-detail-header, .technique-detail-header { position: relative; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 26px 0 30px; }
+.therapy-detail-header::before, .technique-detail-header::before { content: ""; position: absolute; top: -1px; right: 0; width: 120px; height: 2px; background: var(--accent); }
+.technique-detail-header::before { background: var(--accent-2); }
+.therapy-detail-breadcrumb { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-bottom: 16px; color: var(--muted); font-size: 9px; }
+.therapy-detail-breadcrumb a:hover { color: var(--accent); }
+.therapy-detail-header h1, .technique-detail-header h1 { margin: 8px 0 6px; font-size: clamp(42px,6.5vw,74px); line-height: 1.18; max-width: 1000px; }
+.therapy-detail-header > .section-copy, .technique-detail-header > .section-copy { max-width: 940px; margin-top: 20px; color: #d0d9e3; font-size: 17px; line-height: 2; }
+.therapy-detail-aliases, .therapy-detail-classifications { margin-top: 12px; }
+.therapy-detail-metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); max-width: 760px; margin-top: 24px; border: 1px solid var(--border); border-radius: 13px; overflow: hidden; }
+.therapy-detail-metrics > div { display: grid; gap: 2px; padding: 13px 14px; border-left: 1px solid var(--border); }
+.therapy-detail-metrics > div:last-child { border-left: 0; }
+.therapy-detail-metrics strong { font-size: 21px; }
+.therapy-detail-metrics span { color: var(--muted); font-size: 8px; line-height: 1.5; }
+.technique-detail-metrics { grid-template-columns: repeat(3,minmax(0,1fr)); max-width: 560px; }
+.therapy-review-badge { width: fit-content; display: flex; align-items: center; gap: 7px; margin-top: 14px; color: var(--muted); font-size: 9px; }
+.therapy-review-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px rgba(128,225,193,.07); }
+.therapy-tabs { position: sticky; top: 101px; z-index: 7; background: rgba(9,12,17,.94); backdrop-filter: blur(12px); }
+.therapy-tab-panel { min-height: 360px; }
+.therapy-overview-grid { align-items: stretch; }
+.therapy-prose-card { min-height: 210px; }
+.therapy-prose-card h2 { margin: 7px 0 13px; font-size: 20px; }
+.therapy-prose-card p { line-height: 2; }
+.therapy-context-card, .therapy-safety-card { border-right: 3px solid rgba(182,167,255,.45); }
+.therapy-relation-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.therapy-relation-card { min-height: 210px; display: grid; align-content: start; gap: 8px; }
+.therapy-relation-card:hover { border-color: rgba(128,225,193,.38); }
+.therapy-relation-card-head { display: flex; justify-content: space-between; gap: 10px; color: var(--accent); font-size: 9px; }
+.therapy-relation-card-head small { color: var(--muted); }
+.therapy-relation-card h3 { margin: 4px 0 0; }
+.therapy-relation-card p { color: var(--muted); margin: 4px 0; line-height: 1.8; font-size: 11px; }
+.compact-metric-row { margin-top: 8px; }
+.therapy-disorder-list { display: grid; gap: 8px; }
+.therapy-disorder-row { display: grid; grid-template-columns: minmax(200px,.65fr) minmax(210px,.7fr) minmax(0,1.2fr); gap: 18px; align-items: start; }
+.therapy-disorder-title { display: grid; gap: 3px; }
+.therapy-disorder-title a:hover { color: var(--accent); }
+.therapy-disorder-title small { color: var(--muted); font-size: 9px; direction: ltr; text-align: right; }
+.therapy-evidence-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+.therapy-evidence-badges span { padding: 5px 8px; border: 1px solid rgba(182,167,255,.25); border-radius: 999px; color: var(--accent-2); background: rgba(182,167,255,.025); font-size: 8px; }
+.therapy-disorder-row > p { margin: 0; color: #cbd4df; line-height: 1.85; font-size: 11px; }
+.therapy-inline-note { grid-column: 3; border-top: 1px solid var(--border); padding-top: 10px; color: var(--muted); font-size: 9px; line-height: 1.8; }
+.therapy-source-line { grid-column: 3; }
+.therapy-concept-row { align-items: start; }
+.therapy-evidence-grid { align-items: stretch; }
+.therapy-source-list { gap: 8px; }
+.therapy-source-card { display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: center; }
+.therapy-source-card > div { display: grid; gap: 5px; }
+.therapy-source-card strong { font-size: 13px; }
+.therapy-source-card span { color: var(--muted); font-size: 10px; }
+.therapy-source-card p { margin: 3px 0 0; color: var(--muted); font-size: 10px; line-height: 1.75; }
+.therapy-source-card b { color: var(--accent); font-size: 10px; white-space: nowrap; }
+.technique-detail { gap: 26px; }
+
+@media (max-width: 1050px) {
+  .therapies-page-head { grid-template-columns: 1fr; gap: 22px; }
+  .therapy-overview-stats { max-width: 620px; }
+  .therapy-family-rail { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .therapy-family-rail button:nth-child(2n) { border-left: 0; }
+  .therapy-family-rail button { border-bottom: 1px solid var(--border); }
+  .therapy-family-rail button:nth-last-child(-n+2) { border-bottom: 0; }
+  .therapy-disorder-row { grid-template-columns: minmax(190px,.7fr) minmax(190px,.7fr) 1fr; }
+}
+
+@media (max-width: 800px) {
+  .therapy-atlas-principles, .therapy-card-grid, .therapy-relation-grid { grid-template-columns: 1fr; }
+  .therapy-filters { grid-template-columns: 1fr; }
+  .therapy-compact-row { grid-template-columns: minmax(180px,.8fr) 1.2fr; }
+  .therapy-compact-metrics { grid-column: 1 / -1; justify-content: flex-start; }
+  .therapy-detail-metrics { grid-template-columns: repeat(2,1fr); }
+  .therapy-detail-metrics > div:nth-child(2) { border-left: 0; }
+  .therapy-detail-metrics > div:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
+  .technique-detail-metrics { grid-template-columns: repeat(3,1fr); }
+  .technique-detail-metrics > div:nth-child(2) { border-left: 1px solid var(--border); }
+  .technique-detail-metrics > div:nth-child(-n+2) { border-bottom: 0; }
+  .therapy-disorder-row { grid-template-columns: 1fr; gap: 10px; }
+  .therapy-inline-note, .therapy-source-line { grid-column: 1; }
+  .therapy-source-card { grid-template-columns: 1fr; gap: 12px; }
+}
+
+@media (max-width: 620px) {
+  .therapies-page-copy h1 { font-size: 34px; }
+  .therapy-overview-stats { grid-template-columns: repeat(2,1fr); }
+  .therapy-overview-stats > div { min-height: 88px; padding: 12px; }
+  .therapy-atlas-principles { gap: 7px; }
+  .therapy-mode-switch button { min-height: 58px; padding-inline: 13px; }
+  .therapy-mode-switch button span { font-size: 10px; }
+  .therapy-family-rail { display: flex; overflow-x: auto; scrollbar-width: none; }
+  .therapy-family-rail::-webkit-scrollbar { display: none; }
+  .therapy-family-rail button { flex: 0 0 68%; border-bottom: 0 !important; border-left: 1px solid var(--border) !important; }
+  .therapy-results-bar { align-items: flex-start; flex-direction: column; }
+  .therapy-results-bar .compact-actions { width: 100%; }
+  .therapy-results-bar .button { flex: 1; }
+  .therapy-card, .technique-card { min-height: 0; }
+  .therapy-compact-row { grid-template-columns: 1fr; gap: 7px; min-height: 0; padding-block: 15px; }
+  .therapy-compact-metrics { grid-column: auto; }
+  .therapy-detail-header h1, .technique-detail-header h1 { font-size: 38px; }
+  .therapy-detail-header > .section-copy, .technique-detail-header > .section-copy { font-size: 14px; }
+  .therapy-detail-metrics, .technique-detail-metrics { grid-template-columns: 1fr 1fr; max-width: none; }
+  .therapy-detail-metrics > div, .technique-detail-metrics > div { border-bottom: 1px solid var(--border); }
+  .therapy-detail-metrics > div:nth-child(2n), .technique-detail-metrics > div:nth-child(2n) { border-left: 0; }
+  .therapy-detail-metrics > div:last-child, .technique-detail-metrics > div:last-child { border-bottom: 0; }
+  .technique-detail-metrics > div:last-child { grid-column: 1 / -1; border-left: 0; }
+  .therapy-tabs { top: 91px; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
+  .therapy-tabs::-webkit-scrollbar { display: none; }
+  .therapy-tabs .tab { flex: 0 0 auto; white-space: nowrap; }
 }

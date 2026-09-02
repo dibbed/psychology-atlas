@@ -1,12 +1,12 @@
-# Psychology Atlas — v0.5.2 · Scientific Therapy Seed + API
+# Psychology Atlas — v0.5.3 · Therapy Atlas Frontend
 
-یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. نسخه فعلی v0.5.2 بخش دوم Therapy Atlas است: foundation علمی v0.5.1 را با seed محدود و source-backed، taxonomy واقعی و API عمومی Therapy/Technique کامل می‌کند. UI اختصاصی Therapy Atlas و Graph integration هنوز برای v0.5.3 و v0.5.4 باقی مانده‌اند.
+یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. نسخه فعلی v0.5.3 بخش سوم Therapy Atlas است: seed و API علمی v0.5.2 را به یک Therapy Explorer فارسی، پروفایل ساختاریافته Therapy و پروفایل مستقل Technique متصل می‌کند. اتصال معکوس به صفحات Disorder/Concept و Knowledge Graph برای v0.5.4 باقی مانده است.
 
 > این نرم‌افزار آموزشی است و ابزار تشخیص، درمان یا جایگزین ارزیابی حرفه‌ای نیست.
 
-## Therapy Atlas Backend
+## Therapy Atlas
 
-v0.5.2 روی foundation درمان، یک dataset محدود و قابل‌ردیابی اضافه می‌کند. هیچ effectiveness percentage، رتبه‌بندی «بهترین درمان» یا recommendation شخصی seed نشده است. مدل‌های اصلی:
+v0.5.3 همان dataset محدود و قابل‌ردیابی v0.5.2 را بدون ادعای effectiveness percentage، رتبه‌بندی «بهترین درمان» یا recommendation شخصی در UI ارائه می‌کند. مدل‌های اصلی:
 
 ```text
 TherapyFamily
@@ -80,6 +80,21 @@ GET /api/techniques/<slug>/
 ```
 
 فیلترهای Therapy شامل `q`, `family`, `classification`, `disorder`, `concept`, `evidence_basis`, `clinical_role` هستند. Techniqueها با `q`, `therapy`, `concept` فیلتر می‌شوند. Detail responseها provenance هر relation را نیز برمی‌گردانند.
+
+### Therapy Atlas Frontend
+
+```text
+/therapies
+/therapies/[slug]
+/techniques/[slug]
+```
+
+- Therapy Explorer دارای جست‌وجوی فارسی/انگلیسی، Family rail، classification chips، مرتب‌سازی اتصال/نام و حالت card/compact است.
+- Therapy و Technique در UI همچنان دو Entity مستقل‌اند.
+- صفحه Therapy بخش‌های معرفی، تکنیک‌ها، زمینه‌های بالینی، مفاهیم، شواهد/محدودیت‌ها و منابع دارد.
+- رابطه‌های Therapy ↔ Disorder، Therapy ↔ Concept و Therapy ↔ Technique همراه provenance همان رابطه نمایش داده می‌شوند.
+- Technique Detail درمان‌های متصل، Conceptهای متصل، محدودیت‌ها، safety note و منابع مستقیم را نمایش می‌دهد.
+- Evidence Basis در UI به‌صراحت به‌عنوان نوع پشتوانه شواهد نمایش داده می‌شود، نه رتبه‌بندی شخصی درمان.
 
 ## Stack
 
@@ -587,7 +602,7 @@ Current validation baseline:
 
 ```text
 Django system check                  PASS
-Backend tests                        64 / 64 PASS
+Backend tests                        85 / 85 PASS
 DSM import idempotency               PASS · 1 corpus / 438 records / 241 canonical Disorder pages / 6 sources
 DSM diagnosis sync                    PASS · 243 formal records → 241 canonical pages · 211 created + 30 curated preserved
 Neurodevelopmental chapter            PASS · 22 Disorder pages including Autism Spectrum Disorder and ADHD
@@ -603,6 +618,8 @@ TypeScript typecheck                 PASS
 Next.js production build             PASS
 npm audit --audit-level=low           0 vulnerabilities
 Frontend main-route smoke test        PASS
+Therapy Atlas production build         PASS · /therapies + /therapies/[slug] + /techniques/[slug]
+Therapy Atlas HTTP runtime smoke       PASS · list + CBT detail + ERP detail render seeded content
 Disorders Explorer hydrated E2E       PASS · 241 catalog / chapter rail / recent Autism persistence
 DSM API + route smoke test            PASS
 Concept inventory                PASS · 44 concepts / 12 distortions / 8 aliases
@@ -648,14 +665,14 @@ Unified Notes
 - Keep source metadata attached to educational content.
 - Before production/publication, content should receive dedicated scientific review and more granular claim-level citations.
 
-## Roadmap from v0.5.1
+## Roadmap from v0.5.3
 
 Therapy Atlas is being implemented as five bounded v0.5.x parts:
 
 ```text
 v0.5.1  Therapy Architecture + Backend Foundation ✅
 v0.5.2  Scientific Therapy Seed + API ✅
-v0.5.3  Therapy Atlas Frontend
+v0.5.3  Therapy Atlas Frontend ✅
 v0.5.4  Cross-domain Integration + Knowledge Graph
 v0.5.5  Compare + Personal Features + Final Hardening
 v0.6    Psychologists + Theories + Timeline
@@ -665,12 +682,12 @@ v0.9    Brain Atlas + Assessments Atlas
 v1.0    Admin CMS + Scientific Review + Full cross-domain integration
 ```
 
-## Deliberately not part of v0.5.1
+## Deliberately not part of v0.5.3
 
 These remain later-version work rather than partially implemented placeholders:
 
-- Therapy Atlas frontend
 - Therapy/Technique Graph integration
+- اتصال معکوس Therapy به صفحات Disorder و Concept
 - Therapy Compare, bookmarks, notes and final hardening
 - Therapy progress/mastery until real learning evidence exists
 - Personalized treatment recommendation

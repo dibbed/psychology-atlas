@@ -1,7 +1,7 @@
 {
   "project": "Psychology Atlas",
-  "version": "0.5.2",
-  "release_name": "Scientific Therapy Seed + API",
+  "version": "0.5.3",
+  "release_name": "Therapy Atlas Frontend",
   "stack": {
     "frontend": "Next.js 16.3.3 + React 19 + TypeScript",
     "backend": "Django 5.2 + Django REST Framework",
@@ -97,7 +97,15 @@
     "therapy_structured_filtering",
     "technique_public_read_api",
     "therapy_relation_level_provenance_api",
-    "therapy_seed_idempotency"
+    "therapy_seed_idempotency",
+    "therapy_atlas_frontend",
+    "therapy_explorer",
+    "therapy_family_classification_ui",
+    "therapy_profile_ui",
+    "technique_profile_ui",
+    "therapy_relation_provenance_ui",
+    "therapy_evidence_semantics_ui",
+    "therapy_navigation_home_integration"
   ],
   "content": {
     "categories": 21,
@@ -176,9 +184,9 @@
     "python_compileall": "pass",
     "pip_check": "pass",
     "migration_drift_check": "pass",
-    "seed_idempotency": "pass · v0.5.2 counts stable across repeated runs / therapy links soft-deactivate rather than destructive cleanup",
+    "seed_idempotency": "pass · current Therapy counts stable across repeated runs / therapy links soft-deactivate rather than destructive cleanup",
     "typescript_typecheck": "pass",
-    "next_production_build": "pass · 19 static page generation steps completed",
+    "next_production_build": "pass · /therapies + /therapies/[slug] + /techniques/[slug] compiled as dynamic routes",
     "npm_audit_low": "0 vulnerabilities",
     "frontend_route_smoke_test": "pass",
     "dsm_master_source_sha256": "9680d7b1e85ae4ef58efa58f7c76bfcc04c7b317f1fbd40cbb2e27be02542694",
@@ -195,7 +203,7 @@
     "temporary_audit_user_cleanup": "pass",
     "therapy_foundation_tests": "3 targeted schema/provenance tests included in full suite",
     "canonical_module_cleanup": "pass · versioned backend runtime modules consolidated into views.py / serializers.py / seed_mvp.py",
-    "current_release": "v0.5.2 Scientific Therapy Seed + API",
+    "current_release": "v0.5.3 Therapy Atlas Frontend",
     "ruff": "not run · ruff is not installed in backend venv",
     "git_diff_check": "pass",
     "therapy_seed_api_tests": "6 targeted seed/API/provenance/filter/idempotency tests included in full suite",
@@ -203,7 +211,9 @@
     "therapy_provenance": "pass · seeded Therapy/Technique content and all seeded cross-domain relations carry SourceReference provenance",
     "therapy_api_smoke": "pass · therapies=6 / PTSD filter=2 / ERP exact alias=1 / invalid evidence filter=400",
     "therapy_source_integrity": "pass · 0 active Therapy/Technique or seeded cross-domain relations without SourceReference provenance",
-    "therapy_review_status_integrity": "pass · all 6 active seeded therapies and 9 active seeded techniques are source_checked"
+    "therapy_review_status_integrity": "pass · all 6 active seeded therapies and 9 active seeded techniques are source_checked",
+    "therapy_frontend_http_smoke": "pass · Therapy list + CBT detail + ERP detail SSR returned seeded content",
+    "therapy_frontend_visual_audit": "not run · Playwright optional support is not installed on local MCP environment"
   },
   "release_notes": {
     "graph_layers": [
@@ -216,7 +226,7 @@
     "roadmap": {
       "0.5.1": "Therapy Architecture + Backend Foundation ✅",
       "0.5.2": "Scientific Therapy Seed + API ✅",
-      "0.5.3": "Therapy Atlas Frontend",
+      "0.5.3": "Therapy Atlas Frontend ✅",
       "0.5.4": "Cross-domain Integration + Knowledge Graph",
       "0.5.5": "Compare + Personal Features + Final Hardening",
       "0.6": "Psychologists + Theories + Timeline",
@@ -237,11 +247,11 @@
       "advanced recommendation engine",
       "content admin CMS",
       "claim-level citation graph",
-      "Therapy Atlas frontend (v0.5.3)",
       "Therapy/Technique Knowledge Graph integration (v0.5.4)",
       "Therapy Compare, bookmarks, notes and final hardening (v0.5.5)",
       "Therapy user progress/mastery until learning evidence exists",
-      "Personalized treatment recommendation"
+      "Personalized treatment recommendation",
+      "Reverse Therapy integration in Disorder and Concept pages (v0.5.4)"
     ],
     "user_owned_data": [
       "concept bookmarks",
@@ -268,6 +278,17 @@
         "Beck Institute for Cognitive Behavior Therapy",
         "VA National Center for PTSD"
       ]
+    },
+    "therapy_frontend": {
+      "routes": [
+        "/therapies",
+        "/therapies/[slug]",
+        "/techniques/[slug]"
+      ],
+      "explorer": "Persian/English search, family rail, classification filters, connection/name sorting, grid/compact views",
+      "therapy_detail": "overview, techniques, clinical contexts, concepts, evidence/limitations, sources",
+      "technique_detail": "independent Technique profile with Therapy/Concept relations and provenance",
+      "guardrail": "Evidence Basis is displayed as evidence-source semantics, not personalized treatment ranking"
     }
   }
 }

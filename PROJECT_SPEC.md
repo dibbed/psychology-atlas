@@ -1,10 +1,10 @@
 # Psychology Atlas Product Spec
 
-## Current implemented version: v0.5.2 — Scientific Therapy Seed + API
+## Current implemented version: v0.5.3 — Therapy Atlas Frontend
 
 Psychology Atlas is an interactive educational system for psychology students. It should behave as a connected learning system, not as a psychology blog and not as a diagnostic product.
 
-v0.5.2 is Part 2 of Therapy Atlas. It preserves the v0.5.1 schema foundation and adds a compact source-backed Therapy/Technique dataset plus public read APIs. Dedicated Therapy frontend, Graph V3 integration, compare and personal features remain deferred to later v0.5.x parts.
+v0.5.3 is Part 3 of Therapy Atlas. It preserves the scientific schema and source-backed dataset/API from v0.5.1-v0.5.2 and adds the Persian Therapy Explorer, structured Therapy profiles and independent Technique profiles. Reverse integration into Disorder/Concept pages, Knowledge Graph expansion, compare and personal features remain deferred to later v0.5.x parts.
 
 ## Architecture decisions
 
@@ -52,7 +52,7 @@ Scientific/schema rules:
 ## Implemented learning domains
 
 
-### Therapy Atlas backend
+### Therapy Atlas
 
 Current seeded inventory:
 
@@ -79,6 +79,16 @@ GET /api/techniques/<slug>/
 ```
 
 The seed uses NICE clinical guidelines, NIMH, Beck Institute and the VA National Center for PTSD. `TherapyDisorder.clinical_role` and `evidence_basis` remain separate fields, and relation-level source links are returned in detail API responses.
+
+Frontend routes:
+
+```text
+/therapies
+/therapies/[slug]
+/techniques/[slug]
+```
+
+The Therapy Explorer supports Persian/English search, family and classification filters, connection/name sorting, and card/compact views. Therapy detail separates overview, techniques, clinical contexts, concepts, evidence/limitations and sources. Technique remains an independent detail surface and links back to therapies and concepts. The UI explicitly states that Evidence Basis is evidence-source semantics, not a personalized treatment ranking.
 
 ### Disorders Atlas
 
@@ -307,11 +317,15 @@ The following data is private per authenticated user:
 
 Seed updates must not intentionally delete these records.
 
-## Still outside v0.5.1
+## Still outside v0.5.3
 
 These are intentionally deferred rather than partially implemented placeholders:
 
-- Therapy Atlas
+- Therapy/Technique Knowledge Graph integration
+- reverse Therapy sections inside Disorder and Concept detail pages
+- Therapy Compare, bookmarks and notes
+- Therapy learning-progress/mastery until real learning evidence exists
+- personalized treatment recommendation
 - Psychologists Atlas
 - Theories Atlas
 - Psychology Timeline
@@ -351,14 +365,14 @@ Quizzes / Flashcards / Daily Practice
 Personal study plan and mastery
 ```
 
-The Concept Graph and Cognitive Distortions learning layer remain the current connected-learning baseline. v0.5.1 now establishes Therapy/Technique as the next cross-domain schema using the existing provenance foundation rather than creating a parallel source system.
+The Concept Graph and Cognitive Distortions learning layer remain the current connected-learning baseline. v0.5.3 exposes Therapy/Technique as a complete read-only learning surface using the existing provenance foundation; graph/cross-domain reverse integration is the next step.
 
 ## Version roadmap
 
 ```text
 v0.5.1  Therapy Architecture + Backend Foundation ✅
 v0.5.2  Scientific Therapy Seed + API ✅
-v0.5.3  Therapy Atlas Frontend
+v0.5.3  Therapy Atlas Frontend ✅
 v0.5.4  Cross-domain Integration + Knowledge Graph
 v0.5.5  Compare + Personal Features + Final Hardening
 v0.6    Psychologists + Theories + Timeline
@@ -368,4 +382,4 @@ v0.9  Brain Atlas + Assessments Atlas
 v1.0  Admin CMS + Scientific Review + Full cross-domain integration
 ```
 
-The current product version is v0.5.2 Scientific Therapy Seed + API.
+The current product version is v0.5.3 Therapy Atlas Frontend.

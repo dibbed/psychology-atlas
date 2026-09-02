@@ -20,6 +20,7 @@ const navItems: NavItem[] = [
   { href: "/disorders", label: "اختلالات", en: "Disorders", group: "explore" },
   { href: "/dsm", label: "DSM MASTER", en: "DSM Reference", group: "explore" },
   { href: "/concepts", label: "مفاهیم", en: "Concepts", group: "explore" },
+  { href: "/therapies", label: "درمان‌ها", en: "Therapy Atlas", group: "explore" },
   { href: "/cognitive-distortions", label: "تحریف‌های شناختی", en: "Cognitive Distortions", group: "explore" },
   { href: "/map", label: "نقشه دانش", en: "Knowledge Graph", group: "explore" },
   { href: "/compare", label: "مقایسه", en: "Compare", group: "explore" },
@@ -32,7 +33,7 @@ const navItems: NavItem[] = [
   { href: "/dashboard", label: "داشبورد", en: "Dashboard", group: "personal" },
 ];
 
-const primaryHrefs = new Set(["/search", "/disorders", "/dsm", "/concepts", "/map", "/study"]);
+const primaryHrefs = new Set(["/search", "/disorders", "/dsm", "/concepts", "/therapies", "/map", "/study"]);
 const primaryItems = navItems.filter(item => primaryHrefs.has(item.href));
 const moreItems = navItems.filter(item => !primaryHrefs.has(item.href));
 
@@ -45,6 +46,7 @@ const groupLabels: Record<NavGroup, string> = {
 };
 
 function isActive(pathname: string, href: string) {
+  if (href === "/therapies" && pathname.startsWith("/techniques/")) return true;
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -52,6 +54,8 @@ function detailKind(pathname: string) {
   if (/^\/disorders\/.+/.test(pathname)) return "صفحه اختلال";
   if (/^\/dsm\/.+/.test(pathname)) return "پروفایل MASTER";
   if (/^\/concepts\/.+/.test(pathname)) return "صفحه مفهوم";
+  if (/^\/therapies\/.+/.test(pathname)) return "پروفایل درمان";
+  if (/^\/techniques\/.+/.test(pathname)) return "پروفایل تکنیک";
   if (/^\/quizzes\/.+/.test(pathname)) return "آزمون";
   if (/^\/cases\/.+/.test(pathname)) return "کیس بالینی";
   return "";

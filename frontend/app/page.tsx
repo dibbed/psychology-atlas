@@ -31,15 +31,16 @@ export default async function Home() {
     <main>
       <section className="shell hero hero-v3 atlas-hero">
         <div className="atlas-hero-copy">
-          <div className="meta">Psychology Atlas · نسخه ۰.۳</div>
+          <div className="meta">Psychology Atlas · v0.5.3</div>
           <h1>روان‌شناسی را مثل یک شبکه یاد بگیر، نه یک فهرست پراکنده.</h1>
           <p>
-            اختلال، نشانه و مفهوم را در یک مدل واحد دنبال کن. بعد با Quiz، Clinical Case، فلش‌کارت،
+            اختلال، نشانه، مفهوم و رویکرد درمانی را در یک مدل واحد دنبال کن. بعد با Quiz، Clinical Case، فلش‌کارت،
             مرور فاصله‌دار و چالش روزانه همان شبکه را به مسیر مطالعه شخصی تبدیل کن.
           </p>
           <div className="actions atlas-hero-actions">
             <Link className="button primary" href="/map">کاوش نقشه دانش</Link>
             <Link className="button" href="/dsm">DSM MASTER</Link>
+            <Link className="button" href="/therapies">اطلس درمان</Link>
             <Link className="button" href="/study">مرکز مطالعه</Link>
             <Link className="button ghost" href="/search">جست‌وجوی سراسری</Link>
           </div>
@@ -87,11 +88,14 @@ export default async function Home() {
           <Link href="/concepts" className="learning-rail-item">
             <span className="rail-index">۰۳</span><div><strong>اطلس مفاهیم</strong><p>تعریف ساده و دانشگاهی، مثال و رابطه با اختلالات.</p></div>
           </Link>
+          <Link href="/therapies" className="learning-rail-item">
+            <span className="rail-index">۰۴</span><div><strong>Therapy Atlas</strong><p>رویکردها، تکنیک‌ها، زمینه‌های بالینی، شواهد و provenance ساختاریافته.</p></div>
+          </Link>
           <Link href="/map" className="learning-rail-item">
-            <span className="rail-index">۰۴</span><div><strong>Knowledge Graph</strong><p>حرکت بین Concept، Disorder و Symptom بر اساس edge واقعی.</p></div>
+            <span className="rail-index">۰۵</span><div><strong>Knowledge Graph</strong><p>حرکت بین Concept، Disorder و Symptom بر اساس edge واقعی.</p></div>
           </Link>
           <Link href="/study" className="learning-rail-item">
-            <span className="rail-index">۰۵</span><div><strong>Study Engine</strong><p>SRS، streak، heatmap، challenge و پیشنهاد مرور.</p></div>
+            <span className="rail-index">۰۶</span><div><strong>Study Engine</strong><p>SRS، streak، heatmap، challenge و پیشنهاد مرور.</p></div>
           </Link>
         </div>
 
