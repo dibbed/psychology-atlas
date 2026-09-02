@@ -47,7 +47,9 @@ export default function GlobalSearch({ initialQuery = "" }: { initialQuery?: str
     };
   }, [query]);
 
-  const atlasTotal = data ? data.disorders.length + data.concepts.length + data.symptoms.length : 0;
+  const atlasTotal = data
+    ? data.disorders.length + data.concepts.length + data.symptoms.length + data.therapies.length + data.techniques.length
+    : 0;
   const total = atlasTotal + (dsmData?.count || 0);
 
   return (
@@ -57,7 +59,7 @@ export default function GlobalSearch({ initialQuery = "" }: { initialQuery?: str
         className="search global-search-input"
         value={query}
         onChange={event => setQuery(event.target.value)}
-        placeholder="اختلال، DSM MASTER، مفهوم یا نشانه را جست‌وجو کن..."
+        placeholder="اختلال، DSM MASTER، مفهوم، درمان، تکنیک یا نشانه را جست‌وجو کن..."
         aria-label="جست‌وجوی سراسری اطلس"
       />
       {query.trim().length < 2 && <div className="card"><p>حداقل دو حرف بنویس. جست‌وجو همزمان Atlas و رکوردهای DSM MASTER را بررسی می‌کند.</p></div>}
@@ -105,6 +107,38 @@ export default function GlobalSearch({ initialQuery = "" }: { initialQuery?: str
             <div className="grid">
               {data.concepts.map(item => <ConceptCard concept={item} key={item.slug} />)}
               {!data.concepts.length && <div className="card muted">نتیجه‌ای در مفاهیم نیست.</div>}
+            </div>
+          </section>
+
+          <section className="search-section">
+            <div className="search-section-head"><div><div className="meta">Therapies</div><h2>رویکردهای درمانی</h2></div><span>{data.therapies.length.toLocaleString("fa-IR")}</span></div>
+            <div className="grid">
+              {data.therapies.map(item => (
+                <Link className="card" href={`/therapies/${item.slug}`} key={item.slug}>
+                  <div className="meta">{item.family.name_fa || item.family.name_en}</div>
+                  <h3>{item.name_fa || item.name_en}</h3>
+                  <div className="latin-label">{item.name_en}</div>
+                  <p>{item.summary}</p>
+                  <small className="muted">{item.technique_count.toLocaleString("fa-IR")} تکنیک · {item.disorder_count.toLocaleString("fa-IR")} زمینه بالینی</small>
+                </Link>
+              ))}
+              {!data.therapies.length && <div className="card muted">نتیجه‌ای در درمان‌ها نیست.</div>}
+            </div>
+          </section>
+
+          <section className="search-section">
+            <div className="search-section-head"><div><div className="meta">Techniques</div><h2>تکنیک‌های درمانی</h2></div><span>{data.techniques.length.toLocaleString("fa-IR")}</span></div>
+            <div className="grid">
+              {data.techniques.map(item => (
+                <Link className="card" href={`/techniques/${item.slug}`} key={item.slug}>
+                  <div className="meta">Technique</div>
+                  <h3>{item.name_fa || item.name_en}</h3>
+                  <div className="latin-label">{item.name_en}</div>
+                  <p>{item.summary}</p>
+                  <small className="muted">{item.therapy_count.toLocaleString("fa-IR")} درمان · {item.concept_count.toLocaleString("fa-IR")} مفهوم</small>
+                </Link>
+              ))}
+              {!data.techniques.length && <div className="card muted">نتیجه‌ای در تکنیک‌ها نیست.</div>}
             </div>
           </section>
 

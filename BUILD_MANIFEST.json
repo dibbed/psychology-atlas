@@ -1,7 +1,7 @@
 {
   "project": "Psychology Atlas",
-  "version": "0.5.3",
-  "release_name": "Therapy Atlas Frontend",
+  "version": "0.5.4",
+  "release_name": "Cross-domain Integration + Knowledge Graph",
   "stack": {
     "frontend": "Next.js 16.3.3 + React 19 + TypeScript",
     "backend": "Django 5.2 + Django REST Framework",
@@ -105,7 +105,17 @@
     "technique_profile_ui",
     "therapy_relation_provenance_ui",
     "therapy_evidence_semantics_ui",
-    "therapy_navigation_home_integration"
+    "therapy_navigation_home_integration",
+    "global_search_therapy_technique",
+    "disorder_therapy_reverse_integration",
+    "concept_therapy_technique_reverse_integration",
+    "knowledge_graph_therapy_nodes",
+    "knowledge_graph_technique_nodes",
+    "knowledge_graph_therapy_edges",
+    "knowledge_graph_relation_provenance",
+    "knowledge_graph_therapy_technique_pathfinding",
+    "therapy_graph_cache_invalidation",
+    "therapy_graph_family_filter"
   ],
   "content": {
     "categories": 21,
@@ -124,10 +134,10 @@
     "quiz_questions": 40,
     "clinical_cases": 6,
     "case_steps": 18,
-    "knowledge_graph_nodes": 315,
-    "knowledge_graph_base_edges": 168,
+    "knowledge_graph_nodes": 330,
+    "knowledge_graph_base_edges": 202,
     "knowledge_graph_dsm_nearby_edges": 570,
-    "knowledge_graph_edges_with_dsm": 738,
+    "knowledge_graph_edges_with_dsm": 772,
     "dsm_master_records": 438,
     "dsm_master_formal_diagnosis_records": 243,
     "dsm_master_canonical_disorder_pages": 241,
@@ -180,7 +190,7 @@
   ],
   "validation": {
     "django_check": "pass",
-    "backend_tests": "85/85 passed",
+    "backend_tests": "89/89 passed",
     "python_compileall": "pass",
     "pip_check": "pass",
     "migration_drift_check": "pass",
@@ -195,7 +205,7 @@
     "neurodevelopmental_catalog": "22 Disorder pages including Autism Spectrum Disorder and Attention-Deficit/Hyperactivity Disorder",
     "dsm_master_api_smoke_test": "pass",
     "dsm_master_graph": "438 nodes / 2400 edges",
-    "atlas_graph_with_dsm": "315 nodes / 738 edges",
+    "atlas_graph_with_dsm": "330 nodes / 772 edges",
     "dsm_study_inventory": "2190 self-tests / 438 exam tips / 14 glossary terms",
     "dsm_graph_initial_html": "~12 KB after lazy graph loading",
     "atlas_graph_initial_html": "~11.5 KB after lazy graph loading",
@@ -203,7 +213,7 @@
     "temporary_audit_user_cleanup": "pass",
     "therapy_foundation_tests": "3 targeted schema/provenance tests included in full suite",
     "canonical_module_cleanup": "pass · versioned backend runtime modules consolidated into views.py / serializers.py / seed_mvp.py",
-    "current_release": "v0.5.3 Therapy Atlas Frontend",
+    "current_release": "v0.5.4 Cross-domain Integration + Knowledge Graph",
     "ruff": "not run · ruff is not installed in backend venv",
     "git_diff_check": "pass",
     "therapy_seed_api_tests": "6 targeted seed/API/provenance/filter/idempotency tests included in full suite",
@@ -213,7 +223,15 @@
     "therapy_source_integrity": "pass · 0 active Therapy/Technique or seeded cross-domain relations without SourceReference provenance",
     "therapy_review_status_integrity": "pass · all 6 active seeded therapies and 9 active seeded techniques are source_checked",
     "therapy_frontend_http_smoke": "pass · Therapy list + CBT detail + ERP detail SSR returned seeded content",
-    "therapy_frontend_visual_audit": "not run · Playwright optional support is not installed on local MCP environment"
+    "therapy_frontend_visual_audit": "not run · Playwright optional support is not installed on local MCP environment",
+    "therapy_cross_domain_graph_tests": "4 targeted cross-domain/search/graph/cache tests included in full suite",
+    "atlas_graph_query_budget": "10 constant queries in sparse regression graph / 18 queries in current seeded graph with relation provenance",
+    "global_search_cross_domain": "pass · CBT therapy exact alias / ERP technique exact alias",
+    "cross_domain_detail_api": "pass · Disorder -> Therapy and Concept -> Therapy/Technique with relation-level provenance",
+    "graph_node_types": "44 concept / 241 disorder / 30 symptom / 6 therapy / 9 technique",
+    "graph_edge_inventory": "23 concept-concept / 65 disorder-concept / 15 concept-symptom / 65 disorder-symptom / 9 therapy-disorder / 7 therapy-concept / 10 therapy-technique / 8 technique-concept / 570 dsm_nearby",
+    "graph_cache_provenance_invalidation": "pass · Therapy models, relation models, relation-source models and SourceReference invalidate atlas_graph",
+    "cross_domain_runtime_smoke": "pass · graph=330/772 · Panic -> CBT -> Cognitive Restructuring path=2 hops · CBT search=1 therapy · Disorder/Concept/Therapy/Technique/Map/Search routes HTTP 200"
   },
   "release_notes": {
     "graph_layers": [
@@ -221,13 +239,17 @@
       "Disorder <-> Concept",
       "Concept <-> Symptom",
       "Disorder -> Symptom",
+      "Therapy <-> Disorder",
+      "Therapy <-> Concept",
+      "Therapy <-> Technique",
+      "Technique <-> Concept",
       "Disorder <-> Disorder via DSM nearby-title"
     ],
     "roadmap": {
       "0.5.1": "Therapy Architecture + Backend Foundation ✅",
       "0.5.2": "Scientific Therapy Seed + API ✅",
       "0.5.3": "Therapy Atlas Frontend ✅",
-      "0.5.4": "Cross-domain Integration + Knowledge Graph",
+      "0.5.4": "Cross-domain Integration + Knowledge Graph ✅",
       "0.5.5": "Compare + Personal Features + Final Hardening",
       "0.6": "Psychologists + Theories + Timeline",
       "0.7": "Advanced Branching Clinical Cases + Analytics",
@@ -247,11 +269,9 @@
       "advanced recommendation engine",
       "content admin CMS",
       "claim-level citation graph",
-      "Therapy/Technique Knowledge Graph integration (v0.5.4)",
       "Therapy Compare, bookmarks, notes and final hardening (v0.5.5)",
       "Therapy user progress/mastery until learning evidence exists",
-      "Personalized treatment recommendation",
-      "Reverse Therapy integration in Disorder and Concept pages (v0.5.4)"
+      "Personalized treatment recommendation"
     ],
     "user_owned_data": [
       "concept bookmarks",
@@ -277,7 +297,9 @@
         "NIMH",
         "Beck Institute for Cognitive Behavior Therapy",
         "VA National Center for PTSD"
-      ]
+      ],
+      "cross_domain": "Disorder/Concept details, Global Search and the five-layer Atlas Graph expose explicit Therapy/Technique relations",
+      "graph_provenance": "Therapy relation edges include relation-level SourceReference metadata and source changes invalidate graph cache"
     },
     "therapy_frontend": {
       "routes": [

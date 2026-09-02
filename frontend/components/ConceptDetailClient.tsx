@@ -15,6 +15,7 @@ const tabs = [
   ["relations", "روابط مفهومی"],
   ["disorders", "اختلالات مرتبط"],
   ["symptoms", "نشانه‌ها"],
+  ["therapy", "درمان و تکنیک"],
   ["neighborhood", "همسایگی"],
   ["notes", "یادداشت من"],
   ["sources", "منابع"],
@@ -174,6 +175,46 @@ export default function ConceptDetailClient({ concept }: { concept: ConceptDetai
                 <p>{item.explanation || "رابطه ساختاریافته میان این مفهوم و نشانه ثبت شده است."}</p>
               </Link>
             )) : <div className="card">هنوز نشانه ساختاریافته‌ای به این مفهوم متصل نشده است.</div>}
+          </div>
+        )}
+
+        {active === "therapy" && (
+          <div className="stack">
+            <div>
+              <div className="meta">Therapy Atlas · cross-domain</div>
+              <h2 className="section-title">درمان‌ها و تکنیک‌های متصل به این مفهوم</h2>
+              <p className="section-copy">این اتصال‌ها از relationهای ساختاریافته Therapy Atlas می‌آیند و provenance همان رابطه را نگه می‌دارند.</p>
+            </div>
+            <div className="grid-2">
+              <section className="stack">
+                <h3>رویکردهای درمانی</h3>
+                {concept.therapies.length ? concept.therapies.map(item => (
+                  <Link className="card therapy-crossdomain-card" href={`/therapies/${item.therapy.slug}`} key={`${item.therapy.slug}-${item.relationship_type}`}>
+                    <div className="meta">{item.relationship_type} · {item.therapy.family.name_fa || item.therapy.family.name_en}</div>
+                    <h3>{item.therapy.name_fa || item.therapy.name_en}</h3>
+                    <div className="latin-title">{item.therapy.name_en}</div>
+                    <p>{item.explanation || item.therapy.summary}</p>
+                    {!!item.sources.length && <small className="muted">منبع رابطه: {item.sources.map(source => source.organization || source.title).join(" · ")}</small>}
+                  </Link>
+                )) : <div className="card muted">درمان ساختاریافته‌ای به این مفهوم متصل نشده است.</div>}
+              </section>
+              <section className="stack">
+                <h3>تکنیک‌های درمانی</h3>
+                {concept.techniques.length ? concept.techniques.map(item => (
+                  <Link className="card therapy-crossdomain-card" href={`/techniques/${item.technique.slug}`} key={`${item.technique.slug}-${item.relationship_type}`}>
+                    <div className="meta">Technique · {item.relationship_type}</div>
+                    <h3>{item.technique.name_fa || item.technique.name_en}</h3>
+                    <div className="latin-title">{item.technique.name_en}</div>
+                    <p>{item.explanation || item.technique.summary}</p>
+                    {!!item.sources.length && <small className="muted">منبع رابطه: {item.sources.map(source => source.organization || source.title).join(" · ")}</small>}
+                  </Link>
+                )) : <div className="card muted">تکنیک ساختاریافته‌ای به این مفهوم متصل نشده است.</div>}
+              </section>
+            </div>
+            <div className="actions">
+              <Link className="button" href={`/map?node=concept:${concept.slug}`}>دیدن اتصال‌ها در Knowledge Graph</Link>
+              <Link className="button ghost" href="/therapies">باز کردن Therapy Atlas</Link>
+            </div>
           </div>
         )}
 

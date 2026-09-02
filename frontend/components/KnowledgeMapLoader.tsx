@@ -20,6 +20,6 @@ export default function KnowledgeMapLoader({ initialNodeId }: { initialNodeId?: 
   }, []);
 
   if (error) return <div className="card error-state"><p>{error}</p></div>;
-  if (!data) return <div className="card"><div className="meta">Atlas Knowledge Graph</div><h3>در حال دریافت گره‌ها و رابطه‌های واقعی...</h3><p className="muted">Concept، Disorder، Symptom و روابط DSM-backed از API بارگذاری می‌شوند.</p></div>;
+  if (!data) return <div className="card"><div className="meta">Atlas Knowledge Graph</div><h3>در حال دریافت گره‌ها و رابطه‌های واقعی...</h3><p className="muted">Concept، Disorder، Symptom، Therapy، Technique و روابط DSM-backed از API بارگذاری می‌شوند.</p></div>;
   return <KnowledgeMap data={data} initialNodeId={initialNodeId} />;
 }

@@ -624,7 +624,7 @@ class AtlasApiTests(APITestCase):
         with CaptureQueriesContext(connection) as captured:
             response = self.client.get("/api/concept-map/")
         self.assertEqual(response.status_code, 200)
-        self.assertLessEqual(len(captured), 8)
+        self.assertLessEqual(len(captured), 10)
 
     def test_daily_challenge_rolls_back_attempt_if_side_effect_fails(self):
         challenge = DailyChallenge.objects.create(
@@ -1617,3 +1617,95 @@ class TherapySeedApiTests(APITestCase):
             "technique_concepts": TechniqueConcept.objects.count(),
         }
         self.assertEqual(after, before)
+
+
+class TherapyCrossDomainGraphTests(APITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        call_command("seed_mvp", stdout=StringIO())
+
+    def test_global_search_includes_therapy_and_technique_exact_aliases(self):
+        therapy_response = self.client.get("/api/search/?q=CBT")
+        self.assertEqual(therapy_response.status_code, 200)
+        self.assertEqual(
+            [row["slug"] for row in therapy_response.json()["therapies"]],
+            ["cognitive-behavioral-therapy"],
+        )
+
+        technique_response = self.client.get("/api/search/?q=ERP")
+        self.assertEqual(technique_response.status_code, 200)
+        self.assertEqual(
+            [row["slug"] for row in technique_response.json()["techniques"]],
+            ["exposure-response-prevention"],
+        )
+
+    def test_disorder_and_concept_details_expose_cross_domain_relations_with_sources(self):
+        disorder_response = self.client.get("/api/disorders/panic-disorder/")
+        self.assertEqual(disorder_response.status_code, 200)
+        therapies = disorder_response.json()["therapies"]
+        self.assertEqual([row["slug"] for row in therapies], ["cognitive-behavioral-therapy"])
+        self.assertEqual(therapies[0]["evidence_basis"], "guideline")
+        self.assertTrue(therapies[0]["sources"])
+
+        concept_response = self.client.get("/api/concepts/avoidance/")
+        self.assertEqual(concept_response.status_code, 200)
+        payload = concept_response.json()
+        self.assertIn("behavioral-activation", {row["therapy"]["slug"] for row in payload["therapies"]})
+        self.assertIn("exposure", {row["technique"]["slug"] for row in payload["techniques"]})
+        self.assertTrue(all(row["sources"] for row in payload["therapies"]))
+        self.assertTrue(all(row["sources"] for row in payload["techniques"]))
+
+    def test_graph_contains_therapy_and_technique_nodes_and_real_path(self):
+        response = self.client.get("/api/concept-map/")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["meta"]["node_types"]["therapy"], 6)
+        self.assertEqual(payload["meta"]["node_types"]["technique"], 9)
+        self.assertIn("therapy:cognitive-behavioral-therapy", {row["id"] for row in payload["nodes"]})
+        self.assertIn("technique:exposure", {row["id"] for row in payload["nodes"]})
+
+        path_response = self.client.get(
+            "/api/concept-map/path/?from=disorder:panic-disorder&to=technique:cognitive-restructuring"
+        )
+        self.assertEqual(path_response.status_code, 200)
+        path_payload = path_response.json()
+        self.assertTrue(path_payload["found"])
+        self.assertEqual(path_payload["hops"], 2)
+        self.assertEqual(
+            [row["id"] for row in path_payload["nodes"]],
+            [
+                "disorder:panic-disorder",
+                "therapy:cognitive-behavioral-therapy",
+                "technique:cognitive-restructuring",
+            ],
+        )
+        self.assertTrue(all(edge.get("sources") for edge in path_payload["edges"]))
+
+    def test_graph_filters_and_cache_invalidation_cover_therapy_models(self):
+        therapy_only = self.client.get("/api/concept-map/?node_type=therapy")
+        self.assertEqual(therapy_only.status_code, 200)
+        self.assertEqual(therapy_only.json()["meta"]["node_count"], 6)
+        self.assertTrue(all(row["type"] == "therapy" for row in therapy_only.json()["nodes"]))
+
+        self.client.get("/api/concept-map/")
+        therapy = Therapy.objects.get(slug="cognitive-behavioral-therapy")
+        therapy.summary = "Cache invalidation sentinel"
+        therapy.save(update_fields=("summary", "updated_at"))
+        refreshed = self.client.get("/api/concept-map/").json()
+        node = next(row for row in refreshed["nodes"] if row["id"] == "therapy:cognitive-behavioral-therapy")
+        self.assertEqual(node["summary"], "Cache invalidation sentinel")
+
+        relation = TherapyDisorder.objects.get(
+            therapy__slug="cognitive-behavioral-therapy",
+            disorder__slug="panic-disorder",
+        )
+        source = relation.source_links.select_related("source").first().source
+        source.organization = "Graph source sentinel"
+        source.save(update_fields=("organization",))
+        source_refreshed = self.client.get("/api/concept-map/").json()
+        edge = next(
+            row for row in source_refreshed["edges"]
+            if row["source"] == "therapy:cognitive-behavioral-therapy"
+            and row["target"] == "disorder:panic-disorder"
+        )
+        self.assertEqual(edge["sources"][0]["organization"], "Graph source sentinel")

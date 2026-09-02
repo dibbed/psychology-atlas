@@ -27,12 +27,25 @@ const relationLabels: Record<string, string> = {
   concept_symptom_manifestation: "بازنمایی در نشانه",
   concept_symptom_overlaps_with: "همپوشانی با نشانه",
   concept_symptom_contrasts: "افتراق از نشانه",
+  therapy_concept_targets: "درمان → مفهوم · هدف",
+  therapy_concept_uses: "درمان → مفهوم · استفاده",
+  therapy_concept_addresses: "درمان → مفهوم · پرداختن",
+  therapy_concept_teaches: "درمان → مفهوم · آموزش",
+  therapy_concept_mechanism: "درمان → مفهوم · سازوکار",
+  therapy_concept_applied_to: "درمان → مفهوم · کاربرد",
+  technique_concept_targets: "تکنیک → مفهوم · هدف",
+  technique_concept_addresses: "تکنیک → مفهوم · پرداختن",
+  technique_concept_teaches: "تکنیک → مفهوم · آموزش",
+  technique_concept_mechanism: "تکنیک → مفهوم · سازوکار",
+  technique_concept_applied_to: "تکنیک → مفهوم · کاربرد",
 };
 
 function nodeTypeLabel(type: KnowledgeGraphNode["type"]) {
   if (type === "concept") return "مفهوم";
   if (type === "disorder") return "اختلال";
-  return "نشانه";
+  if (type === "symptom") return "نشانه";
+  if (type === "therapy") return "درمان";
+  return "تکنیک";
 }
 
 export default function ConceptNeighborhood({ slug }: { slug: string }) {
@@ -114,6 +127,7 @@ export default function ConceptNeighborhood({ slug }: { slug: string }) {
             <h3>{node.label}</h3>
             <div className="latin-title">{node.name_en}</div>
             <p>{edge.explanation || node.summary}</p>
+            {!!edge.sources?.length && <small className="muted">منبع: {edge.sources.map(source => source.organization || source.title).join(" · ")}</small>}
           </Link>
         ))}
       </div>

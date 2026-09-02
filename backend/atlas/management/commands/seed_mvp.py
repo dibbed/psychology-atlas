@@ -601,7 +601,7 @@ class Command(BaseCommand):
         cache.delete("atlas_graph")
 
         self.stdout.write(self.style.SUCCESS(
-            "Psychology Atlas v0.5.3 seed completed: "
+            "Psychology Atlas seed completed: "
             f"{len(DISORDERS)} disorders, {len(QUIZZES)} quizzes, {len(CASES)} cases, "
             f"{learning_counts['concepts']} concepts, {learning_counts['cognitive_distortions']} cognitive distortions, "
             f"{learning_counts['concept_aliases']} concept aliases, {learning_counts['concept_symptom_links']} concept-symptom links, "

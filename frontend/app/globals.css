@@ -594,7 +594,7 @@ a.card:hover { transform: translateY(-2px); }
 .graph-page-note { border-right: 1px solid var(--border); padding-right: 20px; display: grid; gap: 5px; }
 .graph-page-note strong { font-size: 38px; }
 .graph-page-note span { color: var(--muted); font-size: 12px; line-height: 1.7; }
-.graph-overview { display: grid; grid-template-columns: repeat(5,1fr); border: 1px solid var(--border); border-radius: 15px; overflow: hidden; }
+.graph-overview { display: grid; grid-template-columns: repeat(auto-fit,minmax(115px,1fr)); border: 1px solid var(--border); border-radius: 15px; overflow: hidden; }
 .graph-overview > div { padding: 14px 16px; background: var(--surface); border-left: 1px solid var(--border); display: grid; gap: 2px; }
 .graph-overview > div:last-child { border-left: 0; }
 .graph-overview strong { font-size: 22px; }
@@ -623,12 +623,14 @@ a.card:hover { transform: translateY(-2px); }
 .node-type-dot { width: 13px; height: 13px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 6px rgba(128,225,193,.07); }
 .node-type-dot.disorder { background: var(--accent-2); box-shadow: 0 0 0 6px rgba(182,167,255,.07); }
 .node-type-dot.symptom { background: #d7b878; box-shadow: 0 0 0 6px rgba(215,184,120,.07); }
+.node-type-dot.therapy { background: #76b8e8; box-shadow: 0 0 0 6px rgba(118,184,232,.07); }
+.node-type-dot.technique { background: #d08de8; box-shadow: 0 0 0 6px rgba(208,141,232,.07); }
 .node-profile-grid { display: grid; grid-template-columns: minmax(220px,.62fr) 1.38fr; gap: 20px; padding: 28px 0; border-bottom: 1px solid var(--border); }
 .map-core-v2 { width: 100%; min-height: 170px; }
 .map-core-v2 small { color: var(--muted); font-size: 10px; direction: ltr; }
 .node-profile-copy { display: grid; align-content: center; gap: 20px; }
 .node-profile-copy > p { margin: 0; color: #cbd4df; line-height: 2; font-size: 16px; }
-.node-facts { display: grid; grid-template-columns: repeat(4,1fr); border-top: 1px solid var(--border); border-right: 1px solid var(--border); }
+.node-facts { display: grid; grid-template-columns: repeat(auto-fit,minmax(105px,1fr)); border-top: 1px solid var(--border); border-right: 1px solid var(--border); }
 .node-facts div { display: grid; gap: 3px; padding: 12px; border-left: 1px solid var(--border); border-bottom: 1px solid var(--border); }
 .node-facts strong { font-size: 18px; }
 .node-facts span { color: var(--muted); font-size: 10px; }
@@ -640,6 +642,14 @@ a.card:hover { transform: translateY(-2px); }
 .map-neighbors-v2 { grid-template-columns: repeat(2,1fr); }
 .map-neighbor-v2 { min-height: 150px; align-content: start; gap: 7px; padding: 15px; }
 .map-neighbor-v2 p { margin: 5px 0 0; color: var(--muted); line-height: 1.7; font-size: 11px; }
+.map-edge-sources { display: block; margin-top: 4px; color: var(--accent); line-height: 1.6; }
+.map-neighbor-v2.therapy { border-color: rgba(118,184,232,.24); }
+.map-neighbor-v2.technique { border-color: rgba(208,141,232,.24); }
+.therapy-crossdomain-card { display: grid; gap: 12px; }
+.therapy-crossdomain-head { display: flex; justify-content: space-between; gap: 16px; align-items: start; }
+.therapy-crossdomain-head h3 { margin: 5px 0 2px; }
+.therapy-evidence-badges { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.therapy-evidence-badges span { border: 1px solid var(--border); border-radius: 999px; padding: 5px 8px; color: var(--muted); font-size: 9px; }
 .neighbor-topline { display: flex; justify-content: space-between; gap: 8px; }
 .neighbor-topline b { color: var(--muted); font-size: 10px; }
 .empty-relation { grid-column: 1 / -1; padding: 30px; text-align: center; color: var(--muted); border: 1px dashed var(--border); border-radius: 12px; }

@@ -1,10 +1,10 @@
 # Psychology Atlas Product Spec
 
-## Current implemented version: v0.5.3 — Therapy Atlas Frontend
+## Current implemented version: v0.5.4 — Cross-domain Integration + Knowledge Graph
 
 Psychology Atlas is an interactive educational system for psychology students. It should behave as a connected learning system, not as a psychology blog and not as a diagnostic product.
 
-v0.5.3 is Part 3 of Therapy Atlas. It preserves the scientific schema and source-backed dataset/API from v0.5.1-v0.5.2 and adds the Persian Therapy Explorer, structured Therapy profiles and independent Technique profiles. Reverse integration into Disorder/Concept pages, Knowledge Graph expansion, compare and personal features remain deferred to later v0.5.x parts.
+v0.5.4 is Part 4 of Therapy Atlas. It preserves the source-backed Therapy/Technique dataset and frontend while integrating Therapy/Technique into Disorder and Concept details, Global Search and the explicit database-backed Knowledge Graph. Compare, bookmarks/notes and final hardening remain deferred to v0.5.5.
 
 ## Architecture decisions
 
@@ -45,7 +45,7 @@ Scientific/schema rules:
 - `TherapyDisorder` stores `clinical_role` separately from `evidence_basis`; neither field is a personalized recommendation.
 - `Therapy`, `Technique` and cross-domain relationship provenance reuses the shared `SourceReference` registry through explicit source-link models.
 - `review_status` is lightweight metadata only. Full moderation/scientific-review workflow remains deferred.
-- v0.5.2 seeds only source-backed educational summaries. It does not seed treatment rankings, personalized recommendations or fabricated effectiveness percentages.
+- Seeded Therapy content uses source-backed educational summaries only. It does not seed treatment rankings, personalized recommendations or fabricated effectiveness percentages.
 - Seeded content is marked `source_checked`, not scientifically `reviewed`; full review workflow remains deferred.
 - Runtime code uses canonical unversioned modules (`views.py`, `serializers.py`, `seed_mvp.py`). Historical migration files remain because they are required for safe database upgrades.
 
@@ -89,6 +89,15 @@ Frontend routes:
 ```
 
 The Therapy Explorer supports Persian/English search, family and classification filters, connection/name sorting, and card/compact views. Therapy detail separates overview, techniques, clinical contexts, concepts, evidence/limitations and sources. Technique remains an independent detail surface and links back to therapies and concepts. The UI explicitly states that Evidence Basis is evidence-source semantics, not a personalized treatment ranking.
+
+Cross-domain integration in v0.5.4:
+
+- Disorder detail exposes source-backed `TherapyDisorder` relations without replacing the legacy educational `treatment_overview`.
+- Concept detail exposes `TherapyConcept` and `TechniqueConcept` relations with relation-level sources.
+- Global Search includes Therapy and Technique with exact alias priority.
+- Therapy and Technique are independent Knowledge Graph node types and retain direct profile links.
+- Graph treatment edges carry relation-level provenance when present.
+- No graph edge or search result is interpreted as a personalized treatment recommendation.
 
 ### Disorders Atlas
 
@@ -135,6 +144,10 @@ Concept ↔ Concept
 Disorder ↔ Concept
 Concept ↔ Symptom
 Disorder → Symptom
+Therapy ↔ Disorder
+Therapy ↔ Concept
+Therapy ↔ Technique
+Technique ↔ Concept
 Disorder ↔ Disorder via DSM nearby-title links
 ```
 
@@ -154,19 +167,25 @@ Current graph:
 44 Concept nodes
 241 canonical Disorder nodes
 30 Symptom nodes
-315 total nodes
-738 total edges
+6 Therapy nodes
+9 Technique nodes
+330 total nodes
+772 total edges
 
 23 Concept ↔ Concept edges
 65 Disorder ↔ Concept edges
 15 Concept ↔ Symptom edges
 65 Disorder → Symptom edges
+9 Therapy ↔ Disorder edges
+7 Therapy ↔ Concept edges
+10 Therapy ↔ Technique edges
+8 Technique ↔ Concept edges
 570 DSM nearby-title Disorder ↔ Disorder edges
 ```
 
 The graph must use explicit structured relationships. Do not invent similarity percentages.
 
-Current Graph UX includes domain/subtype/minimum-degree filtering, depth-1/depth-2 Concept neighborhoods and server-side shortest-path finding between Atlas nodes. Node-type filters are applied before neighborhood traversal, minimum degree is evaluated on the final filtered graph, traversal direction is preserved in path results, and `dsm_nearby` structural shortcuts are excluded from the default conceptual shortest path. Path results are still computed only from stored edges.
+Current Graph UX includes five node types, Concept domain/subtype/minimum-degree filtering, Therapy family filtering, depth-1/depth-2 Concept neighborhoods and server-side shortest-path finding between Atlas nodes. Node-type filters are applied before neighborhood traversal, minimum degree is evaluated on the final filtered graph, traversal direction is preserved in path results, and `dsm_nearby` structural shortcuts are excluded from the default conceptual shortest path. Path results are still computed only from stored edges.
 
 ### Active-learning tools
 
@@ -317,12 +336,10 @@ The following data is private per authenticated user:
 
 Seed updates must not intentionally delete these records.
 
-## Still outside v0.5.3
+## Still outside v0.5.4
 
 These are intentionally deferred rather than partially implemented placeholders:
 
-- Therapy/Technique Knowledge Graph integration
-- reverse Therapy sections inside Disorder and Concept detail pages
 - Therapy Compare, bookmarks and notes
 - Therapy learning-progress/mastery until real learning evidence exists
 - personalized treatment recommendation
@@ -365,7 +382,7 @@ Quizzes / Flashcards / Daily Practice
 Personal study plan and mastery
 ```
 
-The Concept Graph and Cognitive Distortions learning layer remain the current connected-learning baseline. v0.5.3 exposes Therapy/Technique as a complete read-only learning surface using the existing provenance foundation; graph/cross-domain reverse integration is the next step.
+The Concept Graph and Cognitive Distortions learning layer remain the connected-learning baseline. v0.5.4 now integrates Therapy/Technique into Disorder and Concept detail surfaces, global search, neighborhoods, shortest paths and the five-layer Knowledge Graph while preserving explicit DB edges and relation-level provenance.
 
 ## Version roadmap
 
@@ -373,7 +390,7 @@ The Concept Graph and Cognitive Distortions learning layer remain the current co
 v0.5.1  Therapy Architecture + Backend Foundation ✅
 v0.5.2  Scientific Therapy Seed + API ✅
 v0.5.3  Therapy Atlas Frontend ✅
-v0.5.4  Cross-domain Integration + Knowledge Graph
+v0.5.4  Cross-domain Integration + Knowledge Graph ✅
 v0.5.5  Compare + Personal Features + Final Hardening
 v0.6    Psychologists + Theories + Timeline
 v0.7  Advanced Branching Clinical Cases + Analytics
@@ -382,4 +399,4 @@ v0.9  Brain Atlas + Assessments Atlas
 v1.0  Admin CMS + Scientific Review + Full cross-domain integration
 ```
 
-The current product version is v0.5.3 Therapy Atlas Frontend.
+The current product version is v0.5.4 Cross-domain Integration + Knowledge Graph.

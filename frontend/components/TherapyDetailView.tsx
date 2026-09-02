@@ -91,6 +91,9 @@ export default function TherapyDetailView({ therapy }: { therapy: TherapyDetail 
           <span className="therapy-review-dot" />
           {therapy.review_status === "source_checked" ? "محتوای seed این نسخه با منبع ثبت شده است" : `وضعیت بررسی: ${therapy.review_status}`}
         </div>
+        <div className="actions">
+          <Link className="button" href={`/map?node=therapy:${therapy.slug}`}>دیدن در Knowledge Graph</Link>
+        </div>
       </header>
 
       <div className="tabs therapy-tabs" role="tablist" aria-label="بخش‌های پروفایل درمان">

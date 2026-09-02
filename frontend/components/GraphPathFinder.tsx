@@ -32,6 +32,29 @@ const edgeLabels: Record<string, string> = {
   concept_symptom_overlaps_with: "همپوشانی با نشانه",
   concept_symptom_contrasts: "افتراق از نشانه",
   dsm_nearby: "عنوان نزدیک DSM",
+  therapy_disorder_guideline_recommended: "درمان ↔ اختلال · توصیه راهنما",
+  therapy_disorder_context_dependent: "درمان ↔ اختلال · وابسته به زمینه",
+  therapy_disorder_commonly_used: "درمان ↔ اختلال · کاربرد رایج",
+  therapy_disorder_adjunctive: "درمان ↔ اختلال · کمکی",
+  therapy_disorder_alternative: "درمان ↔ اختلال · جایگزین",
+  therapy_disorder_not_first_line: "درمان ↔ اختلال · نه خط اول",
+  therapy_disorder_research_context: "درمان ↔ اختلال · پژوهشی",
+  therapy_concept_targets: "درمان → مفهوم · هدف",
+  therapy_concept_uses: "درمان → مفهوم · استفاده",
+  therapy_concept_addresses: "درمان → مفهوم · پرداختن",
+  therapy_concept_teaches: "درمان → مفهوم · آموزش",
+  therapy_concept_mechanism: "درمان → مفهوم · سازوکار",
+  therapy_concept_applied_to: "درمان → مفهوم · کاربرد",
+  therapy_technique_core: "درمان → تکنیک · محوری",
+  therapy_technique_common: "درمان → تکنیک · رایج",
+  therapy_technique_optional: "درمان → تکنیک · اختیاری",
+  therapy_technique_adapted: "درمان → تکنیک · انطباق‌یافته",
+  therapy_technique_component: "درمان → تکنیک · مؤلفه",
+  technique_concept_targets: "تکنیک → مفهوم · هدف",
+  technique_concept_addresses: "تکنیک → مفهوم · پرداختن",
+  technique_concept_teaches: "تکنیک → مفهوم · آموزش",
+  technique_concept_mechanism: "تکنیک → مفهوم · سازوکار",
+  technique_concept_applied_to: "تکنیک → مفهوم · کاربرد",
 };
 
 export default function GraphPathFinder({ nodes, initialFrom }: { nodes: KnowledgeGraphNode[]; initialFrom?: string }) {
@@ -83,7 +106,7 @@ export default function GraphPathFinder({ nodes, initialFrom }: { nodes: Knowled
       <div>
         <div className="meta">Structured Path Finder</div>
         <h3>دو گره را انتخاب کن و کوتاه‌ترین مسیر واقعی را پیدا کن.</h3>
-        <p className="muted">مسیر فقط از edgeهای ثبت‌شده در Atlas ساخته می‌شود. اتصال‌های ساختاری «عنوان نزدیک DSM» به‌طور پیش‌فرض وارد کوتاه‌ترین مسیر نمی‌شوند.</p>
+        <p className="muted">مسیر فقط از edgeهای ثبت‌شده در Atlas ساخته می‌شود؛ Therapy و Technique نیز از relationهای واقعی DB وارد مسیر می‌شوند. اتصال ساختاری «عنوان نزدیک DSM» به‌طور پیش‌فرض shortcut مسیر مفهومی نیست.</p>
       </div>
       <div className="graph-path-controls">
         <label>

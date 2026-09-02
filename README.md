@@ -1,12 +1,12 @@
-# Psychology Atlas — v0.5.3 · Therapy Atlas Frontend
+# Psychology Atlas — v0.5.4 · Cross-domain Integration + Knowledge Graph
 
-یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. نسخه فعلی v0.5.3 بخش سوم Therapy Atlas است: seed و API علمی v0.5.2 را به یک Therapy Explorer فارسی، پروفایل ساختاریافته Therapy و پروفایل مستقل Technique متصل می‌کند. اتصال معکوس به صفحات Disorder/Concept و Knowledge Graph برای v0.5.4 باقی مانده است.
+یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. نسخه فعلی v0.5.4 بخش چهارم Therapy Atlas است: Therapy و Technique را به صفحات Disorder/Concept، جست‌وجوی سراسری و Knowledge Graph پنج‌لایه وصل می‌کند. همه edgeهای درمانی از relationهای صریح دیتابیس ساخته می‌شوند و provenance همان رابطه در API و Graph حفظ می‌شود.
 
 > این نرم‌افزار آموزشی است و ابزار تشخیص، درمان یا جایگزین ارزیابی حرفه‌ای نیست.
 
 ## Therapy Atlas
 
-v0.5.3 همان dataset محدود و قابل‌ردیابی v0.5.2 را بدون ادعای effectiveness percentage، رتبه‌بندی «بهترین درمان» یا recommendation شخصی در UI ارائه می‌کند. مدل‌های اصلی:
+نسخه فعلی همان dataset محدود و قابل‌ردیابی Therapy Atlas را بدون ادعای effectiveness percentage، رتبه‌بندی «بهترین درمان» یا recommendation شخصی در UI و Graph ارائه می‌کند. مدل‌های اصلی:
 
 ```text
 TherapyFamily
@@ -42,7 +42,7 @@ Migration جدید:
 
 ### Scientific Therapy Seed
 
-موجودی اولیه v0.5.2 عمداً کوچک است:
+موجودی seeded Therapy Atlas عمداً کوچک و source-backed نگه داشته شده است:
 
 ```text
 3 Therapy families
@@ -95,6 +95,17 @@ GET /api/techniques/<slug>/
 - رابطه‌های Therapy ↔ Disorder، Therapy ↔ Concept و Therapy ↔ Technique همراه provenance همان رابطه نمایش داده می‌شوند.
 - Technique Detail درمان‌های متصل، Conceptهای متصل، محدودیت‌ها، safety note و منابع مستقیم را نمایش می‌دهد.
 - Evidence Basis در UI به‌صراحت به‌عنوان نوع پشتوانه شواهد نمایش داده می‌شود، نه رتبه‌بندی شخصی درمان.
+
+### Cross-domain Integration + Knowledge Graph
+
+- تب درمان در Disorder Detail اکنون relationهای ساختاریافته `TherapyDisorder` را همراه Clinical Role، Evidence Basis و منبع همان رابطه نمایش می‌دهد.
+- Concept Detail درمان‌ها و Techniqueهای مرتبط را مستقیماً از `TherapyConcept` و `TechniqueConcept` نشان می‌دهد.
+- Global Search اکنون Disorder، Concept، Symptom، Therapy، Technique و DSM MASTER را پوشش می‌دهد و aliasهای دقیق مانند CBT/ERP را اولویت می‌دهد.
+- Atlas Graph اکنون پنج node type دارد: Concept، Disorder، Symptom، Therapy و Technique.
+- چهار خانواده edge جدید به Graph اضافه شده‌اند: Therapy ↔ Disorder، Therapy ↔ Concept، Therapy ↔ Technique و Technique ↔ Concept.
+- edgeهای Therapy/Technique در Graph provenance منبع دارند و تغییر source/relation cache را invalidate می‌کند.
+- Path Finder همچنان shortest path واقعی را روی edgeهای ذخیره‌شده محاسبه می‌کند؛ `dsm_nearby` به‌طور پیش‌فرض shortcut مسیر مفهومی نیست.
+- Graph هیچ treatment ranking یا personalized recommendation تولید نمی‌کند.
 
 ## Stack
 
@@ -240,6 +251,10 @@ Concept ↔ Concept
 Disorder ↔ Concept
 Concept ↔ Symptom
 Disorder → Symptom
+Therapy ↔ Disorder
+Therapy ↔ Concept
+Therapy ↔ Technique
+Technique ↔ Concept
 Disorder ↔ Disorder via DSM nearby-title links
 ```
 
@@ -256,17 +271,23 @@ Original curated graph baseline:
 Current graph:
 
 ```text
-315 nodes
+330 nodes
   44 concepts
  241 canonical disorders
   30 symptoms
+   6 therapies
+   9 techniques
 
 23 Concept ↔ Concept edges
 65 Disorder ↔ Concept edges
 15 Concept ↔ Symptom edges
 65 Disorder → Symptom edges
+ 9 Therapy ↔ Disorder edges
+ 7 Therapy ↔ Concept edges
+10 Therapy ↔ Technique edges
+ 8 Technique ↔ Concept edges
 570 DSM MASTER nearby-title edges
-= 738 edges
+= 772 edges
 ```
 
 The map supports two source-grounded scopes: the original Atlas graph and a DSM MASTER graph. The DSM scope contains 438 MASTER nodes and 2,400 relations (415 hierarchy, 1,826 nearby-title links, 159 differential links that resolve to another MASTER record). Generic differential phrases are not forced into graph nodes.
@@ -602,13 +623,13 @@ Current validation baseline:
 
 ```text
 Django system check                  PASS
-Backend tests                        85 / 85 PASS
+Backend tests                        89 / 89 PASS
 DSM import idempotency               PASS · 1 corpus / 438 records / 241 canonical Disorder pages / 6 sources
 DSM diagnosis sync                    PASS · 243 formal records → 241 canonical pages · 211 created + 30 curated preserved
 Neurodevelopmental chapter            PASS · 22 Disorder pages including Autism Spectrum Disorder and ADHD
 DSM resolved relations               PASS · 1,826 nearby / 159 differential
 DSM graph                            PASS · 438 nodes / 2,400 edges
-Atlas graph with DSM layer           PASS · 315 nodes / 738 edges
+Atlas graph with DSM layer           PASS · 330 nodes / 772 edges
 DSM study inventory                  PASS · 2,190 self-tests / 438 exam tips / 14 glossary terms
 DSM source SHA256                    PASS · matches bundle manifest
 Migration drift                      none
@@ -627,7 +648,7 @@ Relation provenance              PASS · 12 Beck-backed distortion membership re
 Concept ↔ Symptom layer          PASS · 15 structured links
 Flashcard inventory              PASS · 50 active cards
 Distortion practice              PASS · 18 items / 72 choices / exactly 1 correct per item
-Knowledge Graph                         PASS · filters / depth-2 neighborhood / shortest-path
+Knowledge Graph                         PASS · 5 node types / 772 edges / provenance / filters / depth-2 neighborhood / shortest-path
 Seed/DSM category compatibility       PASS · two seed runs keep 21 DSM-backed categories
 Live route smoke                 PASS · API + /cognitive-distortions + /concepts + /map + /study
 Authenticated Practice E2E            PASS · submit → StudyActivity → ConceptProgress → StudyOverview
@@ -665,7 +686,7 @@ Unified Notes
 - Keep source metadata attached to educational content.
 - Before production/publication, content should receive dedicated scientific review and more granular claim-level citations.
 
-## Roadmap from v0.5.3
+## Roadmap from v0.5.4
 
 Therapy Atlas is being implemented as five bounded v0.5.x parts:
 
@@ -673,7 +694,7 @@ Therapy Atlas is being implemented as five bounded v0.5.x parts:
 v0.5.1  Therapy Architecture + Backend Foundation ✅
 v0.5.2  Scientific Therapy Seed + API ✅
 v0.5.3  Therapy Atlas Frontend ✅
-v0.5.4  Cross-domain Integration + Knowledge Graph
+v0.5.4  Cross-domain Integration + Knowledge Graph ✅
 v0.5.5  Compare + Personal Features + Final Hardening
 v0.6    Psychologists + Theories + Timeline
 v0.7    Advanced Branching Clinical Cases + Analytics
@@ -682,12 +703,10 @@ v0.9    Brain Atlas + Assessments Atlas
 v1.0    Admin CMS + Scientific Review + Full cross-domain integration
 ```
 
-## Deliberately not part of v0.5.3
+## Deliberately not part of v0.5.4
 
 These remain later-version work rather than partially implemented placeholders:
 
-- Therapy/Technique Graph integration
-- اتصال معکوس Therapy به صفحات Disorder و Concept
 - Therapy Compare, bookmarks, notes and final hardening
 - Therapy progress/mastery until real learning evidence exists
 - Personalized treatment recommendation

@@ -29,10 +29,17 @@ from .models import (
     Quiz,
     StudyActivity,
     Technique,
+    TechniqueConcept,
+    TechniqueConceptSource,
     Therapy,
     TherapyClassification,
+    TherapyConcept,
+    TherapyConceptSource,
     TherapyDisorder,
+    TherapyDisorderSource,
     TherapyFamily,
+    TherapyTechnique,
+    TherapyTechniqueSource,
     UserConceptProgress,
     UserFlashcardProgress,
     UserNote,
@@ -181,6 +188,8 @@ class DisorderDetailView(generics.RetrieveAPIView):
             "quizzes",
             "clinical_cases",
             "concept_links__concept",
+            "therapy_links__therapy__family",
+            "therapy_links__source_links__source",
         )
     )
 
@@ -204,6 +213,8 @@ def compare_disorders(request):
             "quizzes",
             "clinical_cases",
             "concept_links__concept",
+            "therapy_links__therapy__family",
+            "therapy_links__source_links__source",
         )
     )
     by_slug = {x.slug: x for x in qs}
@@ -632,6 +643,10 @@ class ConceptDetailView(generics.RetrieveAPIView):
             "incoming_concept_relationships__source_links__source",
             "disorder_links__disorder__category",
             "symptom_links__symptom",
+            "therapy_links__therapy__family",
+            "therapy_links__source_links__source",
+            "technique_links__technique",
+            "technique_links__source_links__source",
             "source_links__source",
             "flashcards",
         )
@@ -671,7 +686,14 @@ def concept_view(request, slug):
 def global_search(request):
     q = request.query_params.get("q", "").strip()
     if len(q) < 2:
-        return Response({"query": q, "disorders": [], "concepts": [], "symptoms": []})
+        return Response({
+            "query": q,
+            "disorders": [],
+            "concepts": [],
+            "symptoms": [],
+            "therapies": [],
+            "techniques": [],
+        })
 
     disorders = (
         Disorder.objects.filter(is_active=True)
@@ -722,6 +744,49 @@ def global_search(request):
         .distinct()[:10]
     )
 
+    therapy_base = Therapy.objects.filter(is_active=True, family__is_active=True).select_related("family")
+    therapy_exact = (
+        Q(name_en__iexact=q)
+        | Q(name_fa__iexact=q)
+        | Q(slug__iexact=q)
+        | Q(aliases__text__iexact=q)
+    )
+    therapies = therapy_base.filter(therapy_exact)
+    if not therapies.exists():
+        therapies = therapy_base.filter(icontains_any(
+            (
+                "slug", "name_en", "name_fa", "summary", "academic_definition",
+                "core_principles", "aliases__text", "family__name_en", "family__name_fa",
+            ),
+            q,
+        ))
+    therapies = therapies.prefetch_related(
+        "aliases",
+        "classification_links__classification",
+        "technique_links__technique",
+        "disorder_links__disorder",
+        "concept_links__concept",
+    ).distinct()[:10]
+
+    technique_base = Technique.objects.filter(is_active=True)
+    technique_exact = (
+        Q(name_en__iexact=q)
+        | Q(name_fa__iexact=q)
+        | Q(slug__iexact=q)
+        | Q(aliases__text__iexact=q)
+    )
+    techniques = technique_base.filter(technique_exact)
+    if not techniques.exists():
+        techniques = technique_base.filter(icontains_any(
+            ("slug", "name_en", "name_fa", "summary", "academic_definition", "aliases__text"),
+            q,
+        ))
+    techniques = techniques.prefetch_related(
+        "aliases",
+        "therapy_links__therapy__family",
+        "concept_links__concept",
+    ).distinct()[:10]
+
     return Response({
         "query": q,
         "disorders": DisorderListSerializer(disorders, many=True).data,
@@ -744,6 +809,8 @@ def global_search(request):
             }
             for symptom in symptoms
         ],
+        "therapies": TherapyListSerializer(therapies, many=True).data,
+        "techniques": TechniqueListSerializer(techniques, many=True).data,
     })
 
 
@@ -822,6 +889,8 @@ def atlas_overview(request):
         .distinct()
         .count()
     )
+    therapy_count = Therapy.objects.filter(is_active=True, family__is_active=True).count()
+    technique_count = Technique.objects.filter(is_active=True).count()
     dsm_nearby_edges = _linked_dsm_nearby_edges()
     graph_edge_count = (
         ConceptRelationship.objects.filter(
@@ -834,6 +903,29 @@ def atlas_overview(request):
         ).count()
         + DisorderSymptom.objects.filter(disorder__is_active=True).count()
         + ConceptSymptom.objects.filter(concept__is_active=True).count()
+        + TherapyDisorder.objects.filter(
+            is_active=True,
+            therapy__is_active=True,
+            therapy__family__is_active=True,
+            disorder__is_active=True,
+        ).count()
+        + TherapyConcept.objects.filter(
+            is_active=True,
+            therapy__is_active=True,
+            therapy__family__is_active=True,
+            concept__is_active=True,
+        ).count()
+        + TherapyTechnique.objects.filter(
+            is_active=True,
+            therapy__is_active=True,
+            therapy__family__is_active=True,
+            technique__is_active=True,
+        ).count()
+        + TechniqueConcept.objects.filter(
+            is_active=True,
+            technique__is_active=True,
+            concept__is_active=True,
+        ).count()
         + len(dsm_nearby_edges)
     )
 
@@ -843,13 +935,21 @@ def atlas_overview(request):
             "disorders": Disorder.objects.filter(is_active=True).count(),
             "concepts": Concept.objects.filter(is_active=True).count(),
             "symptoms": symptom_count,
+            "therapies": therapy_count,
+            "techniques": technique_count,
             "flashcards": available_flashcards().count(),
             "daily_challenges": valid_challenges.count(),
             "quizzes": valid_quizzes.count(),
             "clinical_cases": valid_cases.count(),
         },
         "graph": {
-            "nodes": Disorder.objects.filter(is_active=True).count() + Concept.objects.filter(is_active=True).count() + symptom_count,
+            "nodes": (
+                Disorder.objects.filter(is_active=True).count()
+                + Concept.objects.filter(is_active=True).count()
+                + symptom_count
+                + therapy_count
+                + technique_count
+            ),
             "edges": graph_edge_count,
         },
         "categories": [
@@ -1176,8 +1276,16 @@ from .validation import positive_int
 def _build_atlas_graph():
     concepts = list(Concept.objects.filter(is_active=True).order_by("name_en"))
     disorders = list(Disorder.objects.filter(is_active=True).select_related("category").order_by("name_en"))
+    therapies = list(
+        Therapy.objects.filter(is_active=True, family__is_active=True)
+        .select_related("family")
+        .order_by("name_en")
+    )
+    techniques = list(Technique.objects.filter(is_active=True).order_by("name_en"))
     concept_ids = {concept.id for concept in concepts}
     disorder_ids = {disorder.id for disorder in disorders}
+    therapy_ids = {therapy.id for therapy in therapies}
+    technique_ids = {technique.id for technique in techniques}
     disorder_id_by_slug = {disorder.slug: disorder.id for disorder in disorders}
 
     nodes = [
@@ -1199,6 +1307,16 @@ def _build_atlas_graph():
         for concept in concepts
     ]
     edges = []
+
+    def edge_sources(link):
+        return [
+            {
+                "title": source_link.source.title,
+                "organization": source_link.source.organization,
+                "url": source_link.source.url,
+            }
+            for source_link in link.source_links.all()
+        ]
 
     for relation in (
         ConceptRelationship.objects.filter(
@@ -1254,6 +1372,78 @@ def _build_atlas_graph():
             "explanation": link.note,
         })
 
+    for link in (
+        TherapyDisorder.objects.filter(
+            is_active=True,
+            therapy_id__in=therapy_ids,
+            disorder_id__in=disorder_ids,
+        )
+        .select_related("therapy", "disorder")
+        .prefetch_related(Prefetch("source_links", queryset=TherapyDisorderSource.objects.select_related("source")))
+        .order_by("therapy_id", "sort_order", "id")
+    ):
+        edges.append({
+            "source": f"therapy:{link.therapy.slug}",
+            "target": f"disorder:{link.disorder.slug}",
+            "kind": f"therapy_disorder_{link.clinical_role}",
+            "explanation": link.explanation or link.evidence_note,
+            "sources": edge_sources(link),
+        })
+
+    for link in (
+        TherapyConcept.objects.filter(
+            is_active=True,
+            therapy_id__in=therapy_ids,
+            concept_id__in=concept_ids,
+        )
+        .select_related("therapy", "concept")
+        .prefetch_related(Prefetch("source_links", queryset=TherapyConceptSource.objects.select_related("source")))
+        .order_by("therapy_id", "sort_order", "id")
+    ):
+        edges.append({
+            "source": f"therapy:{link.therapy.slug}",
+            "target": f"concept:{link.concept.slug}",
+            "kind": f"therapy_concept_{link.relationship_type}",
+            "explanation": link.explanation,
+            "sources": edge_sources(link),
+        })
+
+    for link in (
+        TherapyTechnique.objects.filter(
+            is_active=True,
+            therapy_id__in=therapy_ids,
+            technique_id__in=technique_ids,
+        )
+        .select_related("therapy", "technique")
+        .prefetch_related(Prefetch("source_links", queryset=TherapyTechniqueSource.objects.select_related("source")))
+        .order_by("therapy_id", "sort_order", "id")
+    ):
+        edges.append({
+            "source": f"therapy:{link.therapy.slug}",
+            "target": f"technique:{link.technique.slug}",
+            "kind": f"therapy_technique_{link.role}",
+            "explanation": link.explanation,
+            "sources": edge_sources(link),
+        })
+
+    for link in (
+        TechniqueConcept.objects.filter(
+            is_active=True,
+            technique_id__in=technique_ids,
+            concept_id__in=concept_ids,
+        )
+        .select_related("technique", "concept")
+        .prefetch_related(Prefetch("source_links", queryset=TechniqueConceptSource.objects.select_related("source")))
+        .order_by("technique_id", "sort_order", "id")
+    ):
+        edges.append({
+            "source": f"technique:{link.technique.slug}",
+            "target": f"concept:{link.concept.slug}",
+            "kind": f"technique_concept_{link.relationship_type}",
+            "explanation": link.explanation,
+            "sources": edge_sources(link),
+        })
+
     for source_id, source_slug, target_id, target_slug in _linked_dsm_nearby_edges():
         if source_id not in disorder_ids or target_id not in disorder_ids:
             continue
@@ -1277,6 +1467,35 @@ def _build_atlas_graph():
         "summary": disorder.short_description,
         "href": f"/disorders/{disorder.slug}",
     } for disorder in disorders)
+
+    nodes.extend({
+        "id": f"therapy:{therapy.slug}",
+        "type": "therapy",
+        "slug": therapy.slug,
+        "label": therapy.name_fa or therapy.name_en,
+        "name_en": therapy.name_en,
+        "name_fa": therapy.name_fa,
+        "kind": therapy.family.slug,
+        "group": therapy.family.name_fa or therapy.family.name_en,
+        "family": therapy.family.slug,
+        "review_status": therapy.review_status,
+        "summary": therapy.summary,
+        "href": f"/therapies/{therapy.slug}",
+    } for therapy in therapies)
+
+    nodes.extend({
+        "id": f"technique:{technique.slug}",
+        "type": "technique",
+        "slug": technique.slug,
+        "label": technique.name_fa or technique.name_en,
+        "name_en": technique.name_en,
+        "name_fa": technique.name_fa,
+        "kind": "technique",
+        "group": "تکنیک درمانی",
+        "review_status": technique.review_status,
+        "summary": technique.summary,
+        "href": f"/techniques/{technique.slug}",
+    } for technique in techniques)
 
     dsm_by_disorder = {
         row.linked_disorder_id: row
@@ -1339,10 +1558,11 @@ def _filter_graph(nodes, edges, request):
     kind = request.query_params.get("kind", "").strip()
     subtype = request.query_params.get("subtype", "").strip()
     category = request.query_params.get("category", "").strip()
+    family = request.query_params.get("family", "").strip()
     relation = request.query_params.get("relation", "").strip()
     raw_degree = request.query_params.get("min_degree", "").strip()
 
-    if node_type and node_type not in {"all", "concept", "disorder", "symptom"}:
+    if node_type and node_type not in {"all", "concept", "disorder", "symptom", "therapy", "technique"}:
         raise ValidationError({"node_type": "نوع گره معتبر نیست."})
 
     min_degree = 0
@@ -1362,6 +1582,8 @@ def _filter_graph(nodes, edges, request):
         if subtype and (node["type"] != "concept" or node.get("subtype") != subtype):
             continue
         if category and (node["type"] != "disorder" or node.get("category") != category):
+            continue
+        if family and (node["type"] != "therapy" or node.get("family") != family):
             continue
         filtered.append(node)
 
@@ -1408,6 +1630,8 @@ def concept_map(request):
         "concept": sum(1 for node in filtered_nodes if node["type"] == "concept"),
         "disorder": sum(1 for node in filtered_nodes if node["type"] == "disorder"),
         "symptom": sum(1 for node in filtered_nodes if node["type"] == "symptom"),
+        "therapy": sum(1 for node in filtered_nodes if node["type"] == "therapy"),
+        "technique": sum(1 for node in filtered_nodes if node["type"] == "technique"),
     }
     edge_kinds = {}
     for edge in filtered_edges:
@@ -1434,7 +1658,7 @@ def concept_neighborhood(request, slug):
     depth = int(raw_depth)
     relation = request.query_params.get("relation", "").strip()
     node_type = request.query_params.get("node_type", "").strip()
-    if node_type and node_type not in {"all", "concept", "disorder", "symptom"}:
+    if node_type and node_type not in {"all", "concept", "disorder", "symptom", "therapy", "technique"}:
         raise ValidationError({"node_type": "نوع گره معتبر نیست."})
 
     nodes, edges, all_edge_kinds = _get_atlas_graph()

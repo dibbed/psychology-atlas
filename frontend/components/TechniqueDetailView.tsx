@@ -42,6 +42,9 @@ export default function TechniqueDetailView({ technique }: { technique: Techniqu
           <div><strong>{fa(technique.concept_count)}</strong><span>مفهوم مرتبط</span></div>
           <div><strong>{fa(technique.sources.length)}</strong><span>منبع مستقیم</span></div>
         </div>
+        <div className="actions">
+          <Link className="button" href={`/map?node=technique:${technique.slug}`}>دیدن در Knowledge Graph</Link>
+        </div>
       </header>
 
       <section className="grid-2 therapy-overview-grid">

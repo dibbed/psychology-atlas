@@ -16,7 +16,9 @@ type MapNeighbor = {
 function nodeTypeLabel(type: KnowledgeGraphNode["type"]) {
   if (type === "concept") return "مفهوم";
   if (type === "disorder") return "اختلال";
-  return "نشانه";
+  if (type === "symptom") return "نشانه";
+  if (type === "therapy") return "درمان";
+  return "تکنیک";
 }
 
 const edgeLabels: Record<string, string> = {
@@ -46,6 +48,29 @@ const edgeLabels: Record<string, string> = {
   concept_symptom_manifestation: "بازنمایی مفهوم در لایه نشانه",
   concept_symptom_overlaps_with: "همپوشانی مفهوم و نشانه",
   concept_symptom_contrasts: "تفاوت مفهوم و نشانه",
+  therapy_disorder_guideline_recommended: "درمان ↔ اختلال · توصیه راهنما",
+  therapy_disorder_commonly_used: "درمان ↔ اختلال · کاربرد رایج",
+  therapy_disorder_adjunctive: "درمان ↔ اختلال · کمکی",
+  therapy_disorder_alternative: "درمان ↔ اختلال · جایگزین",
+  therapy_disorder_context_dependent: "درمان ↔ اختلال · وابسته به زمینه",
+  therapy_disorder_not_first_line: "درمان ↔ اختلال · نه خط اول",
+  therapy_disorder_research_context: "درمان ↔ اختلال · پژوهشی",
+  therapy_concept_targets: "درمان → مفهوم · هدف",
+  therapy_concept_uses: "درمان → مفهوم · استفاده",
+  therapy_concept_addresses: "درمان → مفهوم · پرداختن",
+  therapy_concept_teaches: "درمان → مفهوم · آموزش",
+  therapy_concept_mechanism: "درمان → مفهوم · سازوکار",
+  therapy_concept_applied_to: "درمان → مفهوم · کاربرد",
+  therapy_technique_core: "درمان → تکنیک · محوری",
+  therapy_technique_common: "درمان → تکنیک · رایج",
+  therapy_technique_optional: "درمان → تکنیک · اختیاری",
+  therapy_technique_adapted: "درمان → تکنیک · انطباق‌یافته",
+  therapy_technique_component: "درمان → تکنیک · مؤلفه",
+  technique_concept_targets: "تکنیک → مفهوم · هدف",
+  technique_concept_addresses: "تکنیک → مفهوم · پرداختن",
+  technique_concept_teaches: "تکنیک → مفهوم · آموزش",
+  technique_concept_mechanism: "تکنیک → مفهوم · سازوکار",
+  technique_concept_applied_to: "تکنیک → مفهوم · کاربرد",
 };
 
 function relationLabel(kind: string) {
@@ -60,7 +85,7 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
 
   const [selectedId, setSelectedId] = useState(preferred?.id || "");
   const [query, setQuery] = useState("");
-  const [type, setType] = useState<"all" | "concept" | "disorder" | "symptom">("all");
+  const [type, setType] = useState<"all" | "concept" | "disorder" | "symptom" | "therapy" | "technique">("all");
   const [domain, setDomain] = useState("");
   const [subtype, setSubtype] = useState("");
   const [minDegree, setMinDegree] = useState(0);
@@ -124,6 +149,8 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
     concept: neighbors.filter(row => row.node.type === "concept").length,
     disorder: neighbors.filter(row => row.node.type === "disorder").length,
     symptom: neighbors.filter(row => row.node.type === "symptom").length,
+    therapy: neighbors.filter(row => row.node.type === "therapy").length,
+    technique: neighbors.filter(row => row.node.type === "technique").length,
   }), [neighbors]);
 
   function selectNode(id: string) {
@@ -151,6 +178,8 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
         <div><strong>{data.meta.node_types.concept.toLocaleString("fa-IR")}</strong><span>مفهوم</span></div>
         <div><strong>{data.meta.node_types.disorder.toLocaleString("fa-IR")}</strong><span>اختلال</span></div>
         <div><strong>{data.meta.node_types.symptom.toLocaleString("fa-IR")}</strong><span>نشانه</span></div>
+        <div><strong>{data.meta.node_types.therapy.toLocaleString("fa-IR")}</strong><span>درمان</span></div>
+        <div><strong>{data.meta.node_types.technique.toLocaleString("fa-IR")}</strong><span>تکنیک</span></div>
       </section>
 
       <GraphPathFinder nodes={data.nodes} initialFrom={selected?.id} />
@@ -169,7 +198,7 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
             aria-label="جست‌وجوی گره‌های نقشه"
           />
           <div className="category-chips compact-chips">
-            {(["all", "concept", "disorder", "symptom"] as const).map(value => (
+            {(["all", "concept", "disorder", "symptom", "therapy", "technique"] as const).map(value => (
               <button className={`chip ${type === value ? "active" : ""}`} onClick={() => setType(value)} key={value}>
                 {value === "all" ? "همه" : nodeTypeLabel(value)}
               </button>
@@ -264,6 +293,8 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
                   <div><strong>{neighborTypeCounts.concept.toLocaleString("fa-IR")}</strong><span>Concept</span></div>
                   <div><strong>{neighborTypeCounts.disorder.toLocaleString("fa-IR")}</strong><span>Disorder</span></div>
                   <div><strong>{neighborTypeCounts.symptom.toLocaleString("fa-IR")}</strong><span>Symptom</span></div>
+                  <div><strong>{neighborTypeCounts.therapy.toLocaleString("fa-IR")}</strong><span>Therapy</span></div>
+                  <div><strong>{neighborTypeCounts.technique.toLocaleString("fa-IR")}</strong><span>Technique</span></div>
                 </div>
               </div>
             </div>
@@ -290,6 +321,7 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
                   <strong>{node.label}</strong>
                   <small>{nodeTypeLabel(node.type)} · {node.group}</small>
                   {edge.explanation && <p>{edge.explanation}</p>}
+                  {!!edge.sources?.length && <small className="map-edge-sources">منبع: {edge.sources.map(source => source.organization || source.title).join(" · ")}</small>}
                 </button>
               ))}
               {!visibleNeighbors.length && <div className="empty-relation">برای این فیلتر رابطه‌ای ثبت نشده است.</div>}

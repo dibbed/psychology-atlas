@@ -98,6 +98,7 @@ class DisorderDetailSerializer(DisorderListSerializer):
     sources = serializers.SerializerMethodField()
     study_resources = serializers.SerializerMethodField()
     concepts = serializers.SerializerMethodField()
+    therapies = serializers.SerializerMethodField()
 
     class Meta(DisorderListSerializer.Meta):
         fields = DisorderListSerializer.Meta.fields + (
@@ -113,6 +114,7 @@ class DisorderDetailSerializer(DisorderListSerializer):
             "sources",
             "study_resources",
             "concepts",
+            "therapies",
         )
 
     def get_related(self, obj):
@@ -177,6 +179,32 @@ class DisorderDetailSerializer(DisorderListSerializer):
             for link in obj.concept_links.all()
             if link.concept.is_active
         ]
+
+    def get_therapies(self, obj):
+        rows = []
+        for link in obj.therapy_links.all():
+            therapy = link.therapy
+            if not link.is_active or not therapy.is_active or not therapy.family.is_active:
+                continue
+            rows.append({
+                "slug": therapy.slug,
+                "name_en": therapy.name_en,
+                "name_fa": therapy.name_fa,
+                "summary": therapy.summary,
+                "family": {
+                    "slug": therapy.family.slug,
+                    "name_en": therapy.family.name_en,
+                    "name_fa": therapy.family.name_fa,
+                },
+                "clinical_role": link.clinical_role,
+                "clinical_role_label": link.get_clinical_role_display(),
+                "evidence_basis": link.evidence_basis,
+                "evidence_basis_label": link.get_evidence_basis_display(),
+                "explanation": link.explanation,
+                "evidence_note": link.evidence_note,
+                "sources": SourceSerializer([row.source for row in link.source_links.all()], many=True).data,
+            })
+        return rows
 
 
 class QuizChoiceSerializer(serializers.ModelSerializer):
@@ -373,6 +401,8 @@ class ConceptDetailSerializer(ConceptCatalogSerializer):
     relationships = serializers.SerializerMethodField()
     disorders = serializers.SerializerMethodField()
     sources = serializers.SerializerMethodField()
+    therapies = serializers.SerializerMethodField()
+    techniques = serializers.SerializerMethodField()
 
     symptoms = serializers.SerializerMethodField()
 
@@ -386,6 +416,8 @@ class ConceptDetailSerializer(ConceptCatalogSerializer):
             "relationships",
             "disorders",
             "symptoms",
+            "therapies",
+            "techniques",
             "sources",
         )
 
@@ -451,6 +483,49 @@ class ConceptDetailSerializer(ConceptCatalogSerializer):
             }
             for link in obj.symptom_links.all()
         ]
+
+    def get_therapies(self, obj):
+        rows = []
+        for link in obj.therapy_links.all():
+            therapy = link.therapy
+            if not link.is_active or not therapy.is_active or not therapy.family.is_active:
+                continue
+            rows.append({
+                "relationship_type": link.relationship_type,
+                "explanation": link.explanation,
+                "therapy": {
+                    "slug": therapy.slug,
+                    "name_en": therapy.name_en,
+                    "name_fa": therapy.name_fa,
+                    "summary": therapy.summary,
+                    "family": {
+                        "slug": therapy.family.slug,
+                        "name_en": therapy.family.name_en,
+                        "name_fa": therapy.family.name_fa,
+                    },
+                },
+                "sources": SourceSerializer([row.source for row in link.source_links.all()], many=True).data,
+            })
+        return rows
+
+    def get_techniques(self, obj):
+        rows = []
+        for link in obj.technique_links.all():
+            technique = link.technique
+            if not link.is_active or not technique.is_active:
+                continue
+            rows.append({
+                "relationship_type": link.relationship_type,
+                "explanation": link.explanation,
+                "technique": {
+                    "slug": technique.slug,
+                    "name_en": technique.name_en,
+                    "name_fa": technique.name_fa,
+                    "summary": technique.summary,
+                },
+                "sources": SourceSerializer([row.source for row in link.source_links.all()], many=True).data,
+            })
+        return rows
 
     def get_sources(self, obj):
         return SourceSerializer([link.source for link in obj.source_links.all()], many=True).data

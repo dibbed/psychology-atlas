@@ -164,11 +164,42 @@ export default function DisorderDetailClient({ disorder: d, dsmMaster = null }: 
         )}
 
         {active === "treatment" && (
-          <article className="prose card">
-            <h2>نمای کلی درمان</h2>
-            <p>{d.treatment_overview}</p>
-            <div className="study-hint">این بخش آموزشی است و توصیه درمانی شخصی ارائه نمی‌کند.</div>
-          </article>
+          <div className="stack">
+            <article className="prose card">
+              <h2>نمای کلی درمان</h2>
+              <p>{d.treatment_overview}</p>
+              <div className="study-hint">این بخش آموزشی است و توصیه درمانی شخصی ارائه نمی‌کند. Clinical Role و Evidence Basis نیز رتبه‌بندی درمان برای یک فرد نیستند.</div>
+            </article>
+            <section className="stack">
+              <div>
+                <div className="meta">Therapy Atlas · structured relations</div>
+                <h2 className="section-title">درمان‌های ساختاریافته مرتبط</h2>
+                <p className="section-copy">فقط رابطه‌هایی نمایش داده می‌شوند که در Therapy Atlas ثبت شده‌اند و provenance همان رابطه نیز همراه آن است.</p>
+              </div>
+              {d.therapies.length ? d.therapies.map(item => (
+                <article className="card therapy-crossdomain-card" key={item.slug}>
+                  <div className="therapy-crossdomain-head">
+                    <div>
+                      <div className="meta">{item.family.name_fa || item.family.name_en}</div>
+                      <Link href={`/therapies/${item.slug}`}><h3>{item.name_fa || item.name_en}</h3></Link>
+                      <div className="latin-title">{item.name_en}</div>
+                    </div>
+                    <div className="therapy-evidence-badges">
+                      <span>{item.clinical_role_label}</span>
+                      <span>{item.evidence_basis_label}</span>
+                    </div>
+                  </div>
+                  <p>{item.explanation || item.summary}</p>
+                  {item.evidence_note && <p className="muted small">{item.evidence_note}</p>}
+                  {!!item.sources.length && <small className="muted">منبع رابطه: {item.sources.map(source => source.organization || source.title).join(" · ")}</small>}
+                  <div className="actions">
+                    <Link className="button" href={`/therapies/${item.slug}`}>پروفایل درمان</Link>
+                    <Link className="button ghost" href={`/map?node=therapy:${item.slug}`}>دیدن در Knowledge Graph</Link>
+                  </div>
+                </article>
+              )) : <div className="card"><p>هنوز رابطه ساختاریافته‌ای از Therapy Atlas برای این اختلال ثبت نشده است.</p></div>}
+            </section>
+          </div>
         )}
 
         {active === "study" && (

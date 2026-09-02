@@ -69,6 +69,24 @@ export type ConceptDetail = Concept & {
     relationship_type: string;
     explanation: string;
   }[];
+  therapies: {
+    relationship_type: string;
+    explanation: string;
+    therapy: {
+      slug: string;
+      name_en: string;
+      name_fa: string;
+      summary: string;
+      family: { slug: string; name_en: string; name_fa: string };
+    };
+    sources: SourceReference[];
+  }[];
+  techniques: {
+    relationship_type: string;
+    explanation: string;
+    technique: { slug: string; name_en: string; name_fa: string; summary: string };
+    sources: SourceReference[];
+  }[];
   sources: {
     id: number;
     title: string;
@@ -123,6 +141,20 @@ export type DisorderDetail = Disorder & {
     quizzes: { slug: string; title: string }[];
     cases: { slug: string; title: string; difficulty: string }[];
   };
+  therapies: {
+    slug: string;
+    name_en: string;
+    name_fa: string;
+    summary: string;
+    family: { slug: string; name_en: string; name_fa: string };
+    clinical_role: string;
+    clinical_role_label: string;
+    evidence_basis: string;
+    evidence_basis_label: string;
+    explanation: string;
+    evidence_note: string;
+    sources: SourceReference[];
+  }[];
 };
 
 export type Quiz = {
@@ -234,6 +266,8 @@ export type SearchResults = {
   query: string;
   disorders: Disorder[];
   concepts: Concept[];
+  therapies: Therapy[];
+  techniques: Technique[];
   symptoms: {
     slug: string;
     name_en: string;
@@ -250,6 +284,8 @@ export type AtlasOverview = {
     disorders: number;
     concepts: number;
     symptoms: number;
+    therapies: number;
+    techniques: number;
     flashcards: number;
     daily_challenges: number;
     quizzes: number;
@@ -264,7 +300,7 @@ export type AtlasOverview = {
 
 export type KnowledgeGraphNode = {
   id: string;
-  type: "concept" | "disorder" | "symptom";
+  type: "concept" | "disorder" | "symptom" | "therapy" | "technique";
   slug: string;
   label: string;
   name_en: string;
@@ -281,6 +317,9 @@ export type KnowledgeGraphNode = {
   dsm_chapter_number?: number | null;
   dsm_chapter_name_fa?: string;
   category?: string;
+  family?: string;
+  classifications?: string[];
+  review_status?: string;
   distance?: number;
   filtered_degree?: number;
 };
@@ -293,6 +332,7 @@ export type KnowledgeGraphEdge = {
   traversal_direction?: "forward" | "reverse";
   traversed_from?: string;
   traversed_to?: string;
+  sources?: { title: string; organization: string; url: string }[];
 };
 
 export type ConceptNeighborhood = {
@@ -350,7 +390,7 @@ export type KnowledgeGraphData = {
   meta: {
     node_count: number;
     edge_count: number;
-    node_types: { concept: number; disorder: number; symptom: number };
+    node_types: { concept: number; disorder: number; symptom: number; therapy: number; technique: number };
     edge_kinds: Record<string, number>;
     available_edge_kinds?: Record<string, number>;
   };

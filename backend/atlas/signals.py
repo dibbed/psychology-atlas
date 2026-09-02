@@ -13,7 +13,21 @@ from .models import (
     DSMCorpus,
     DSMRecord,
     DSMRecordRelation,
+    SourceReference,
     Symptom,
+    Technique,
+    TechniqueConcept,
+    TechniqueConceptSource,
+    Therapy,
+    TherapyClassification,
+    TherapyClassificationLink,
+    TherapyConcept,
+    TherapyConceptSource,
+    TherapyDisorder,
+    TherapyDisorderSource,
+    TherapyFamily,
+    TherapyTechnique,
+    TherapyTechniqueSource,
 )
 
 
@@ -28,7 +42,21 @@ GRAPH_MODELS = (
     DSMCorpus,
     DSMRecord,
     DSMRecordRelation,
+    SourceReference,
     Symptom,
+    Technique,
+    TechniqueConcept,
+    TechniqueConceptSource,
+    Therapy,
+    TherapyClassification,
+    TherapyClassificationLink,
+    TherapyConcept,
+    TherapyConceptSource,
+    TherapyDisorder,
+    TherapyDisorderSource,
+    TherapyFamily,
+    TherapyTechnique,
+    TherapyTechniqueSource,
 )
 
 
