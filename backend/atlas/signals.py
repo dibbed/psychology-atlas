@@ -33,7 +33,7 @@ GRAPH_MODELS = (
 
 
 def invalidate_graph_caches(*_args, **_kwargs):
-    cache.delete("atlas_graph_v4")
+    cache.delete("atlas_graph")
 
 
 for model in GRAPH_MODELS:

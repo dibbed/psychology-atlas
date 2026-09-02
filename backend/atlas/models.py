@@ -738,6 +738,436 @@ class DailyChallengeAttempt(models.Model):
         indexes = [models.Index(fields=("user", "-activity_date"))]
 
 
+class ScientificReviewStatus(models.TextChoices):
+    UNREVIEWED = "unreviewed", "Unreviewed"
+    SOURCE_CHECKED = "source_checked", "Source checked"
+    REVIEWED = "reviewed", "Reviewed"
+
+
+class TherapyFamily(TimeStampedModel):
+    """Primary theoretical/orientation family for a therapy.
+
+    This is deliberately separate from overlapping classifications such as
+    trauma-focused, exposure-based, or mindfulness-based.
+    """
+
+    slug = models.SlugField(max_length=120, unique=True)
+    name_en = models.CharField(max_length=220)
+    name_fa = models.CharField(max_length=220, blank=True)
+    description = models.TextField(blank=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    seed_managed = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ("sort_order", "name_en")
+        indexes = [models.Index(fields=("is_active", "sort_order"))]
+
+    def __str__(self):
+        return self.name_en
+
+
+class TherapyClassification(TimeStampedModel):
+    """Optional overlapping classification/tag for therapies.
+
+    Unlike TherapyFamily, multiple classifications may apply to one therapy.
+    """
+
+    class Kind(models.TextChoices):
+        FOCUS = "focus", "Focus"
+        METHOD = "method", "Method"
+        DELIVERY = "delivery", "Delivery"
+        POPULATION = "population", "Population"
+        OTHER = "other", "Other"
+
+    slug = models.SlugField(max_length=120, unique=True)
+    name_en = models.CharField(max_length=220)
+    name_fa = models.CharField(max_length=220, blank=True)
+    kind = models.CharField(max_length=24, choices=Kind.choices, default=Kind.OTHER, db_index=True)
+    description = models.TextField(blank=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    seed_managed = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ("kind", "sort_order", "name_en")
+        indexes = [models.Index(fields=("kind", "is_active"))]
+
+    def __str__(self):
+        return self.name_en
+
+
+class Therapy(TimeStampedModel):
+    family = models.ForeignKey(
+        TherapyFamily,
+        on_delete=models.PROTECT,
+        related_name="therapies",
+    )
+    slug = models.SlugField(max_length=180, unique=True)
+    name_en = models.CharField(max_length=255)
+    name_fa = models.CharField(max_length=255, blank=True)
+    summary = models.TextField(blank=True)
+    academic_definition = models.TextField(blank=True)
+    historical_context = models.TextField(blank=True)
+    core_principles = models.TextField(blank=True)
+    typical_structure = models.TextField(blank=True)
+    appropriate_contexts = models.TextField(blank=True)
+    limitations = models.TextField(blank=True)
+    safety_notes = models.TextField(blank=True)
+    evidence_note = models.TextField(blank=True)
+    review_status = models.CharField(
+        max_length=24,
+        choices=ScientificReviewStatus.choices,
+        default=ScientificReviewStatus.UNREVIEWED,
+        db_index=True,
+    )
+    is_active = models.BooleanField(default=True)
+    seed_managed = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ("name_en",)
+        indexes = [
+            models.Index(fields=("family", "is_active")),
+            models.Index(fields=("review_status", "is_active")),
+            models.Index(fields=("name_en",)),
+            models.Index(fields=("name_fa",)),
+        ]
+
+    def __str__(self):
+        return self.name_en
+
+
+class TherapyAlias(models.Model):
+    class Language(models.TextChoices):
+        FA = "fa", "Persian"
+        EN = "en", "English"
+        OTHER = "other", "Other"
+
+    class AliasType(models.TextChoices):
+        ALTERNATIVE = "alternative", "Alternative"
+        ABBREVIATION = "abbreviation", "Abbreviation"
+        HISTORICAL = "historical", "Historical"
+
+    therapy = models.ForeignKey(Therapy, on_delete=models.CASCADE, related_name="aliases")
+    text = models.CharField(max_length=255)
+    language = models.CharField(max_length=12, choices=Language.choices, default=Language.OTHER)
+    alias_type = models.CharField(max_length=24, choices=AliasType.choices, default=AliasType.ALTERNATIVE)
+
+    class Meta:
+        ordering = ("language", "text")
+        constraints = [
+            models.UniqueConstraint(fields=("therapy", "text", "language"), name="uq_therapy_alias")
+        ]
+        indexes = [models.Index(fields=("text",))]
+
+
+class TherapyClassificationLink(TimeStampedModel):
+    therapy = models.ForeignKey(Therapy, on_delete=models.CASCADE, related_name="classification_links")
+    classification = models.ForeignKey(
+        TherapyClassification,
+        on_delete=models.PROTECT,
+        related_name="therapy_links",
+    )
+    explanation = models.TextField(blank=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ("sort_order", "id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("therapy", "classification"),
+                name="uq_therapy_classification",
+            )
+        ]
+
+
+class Technique(TimeStampedModel):
+    slug = models.SlugField(max_length=180, unique=True)
+    name_en = models.CharField(max_length=255)
+    name_fa = models.CharField(max_length=255, blank=True)
+    summary = models.TextField(blank=True)
+    academic_definition = models.TextField(blank=True)
+    application_notes = models.TextField(blank=True)
+    limitations = models.TextField(blank=True)
+    safety_notes = models.TextField(blank=True)
+    review_status = models.CharField(
+        max_length=24,
+        choices=ScientificReviewStatus.choices,
+        default=ScientificReviewStatus.UNREVIEWED,
+        db_index=True,
+    )
+    is_active = models.BooleanField(default=True)
+    seed_managed = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ("name_en",)
+        indexes = [
+            models.Index(fields=("review_status", "is_active")),
+            models.Index(fields=("name_en",)),
+            models.Index(fields=("name_fa",)),
+        ]
+
+    def __str__(self):
+        return self.name_en
+
+
+class TechniqueAlias(models.Model):
+    class Language(models.TextChoices):
+        FA = "fa", "Persian"
+        EN = "en", "English"
+        OTHER = "other", "Other"
+
+    class AliasType(models.TextChoices):
+        ALTERNATIVE = "alternative", "Alternative"
+        ABBREVIATION = "abbreviation", "Abbreviation"
+        HISTORICAL = "historical", "Historical"
+
+    technique = models.ForeignKey(Technique, on_delete=models.CASCADE, related_name="aliases")
+    text = models.CharField(max_length=255)
+    language = models.CharField(max_length=12, choices=Language.choices, default=Language.OTHER)
+    alias_type = models.CharField(max_length=24, choices=AliasType.choices, default=AliasType.ALTERNATIVE)
+
+    class Meta:
+        ordering = ("language", "text")
+        constraints = [
+            models.UniqueConstraint(fields=("technique", "text", "language"), name="uq_technique_alias")
+        ]
+        indexes = [models.Index(fields=("text",))]
+
+
+class TherapyTechnique(TimeStampedModel):
+    class Role(models.TextChoices):
+        CORE = "core", "Core"
+        COMMON = "common", "Common"
+        OPTIONAL = "optional", "Optional"
+        ADAPTED = "adapted", "Adapted"
+        COMPONENT = "component", "Component"
+
+    therapy = models.ForeignKey(Therapy, on_delete=models.CASCADE, related_name="technique_links")
+    technique = models.ForeignKey(Technique, on_delete=models.PROTECT, related_name="therapy_links")
+    role = models.CharField(max_length=24, choices=Role.choices, default=Role.COMMON)
+    explanation = models.TextField(blank=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    review_status = models.CharField(
+        max_length=24,
+        choices=ScientificReviewStatus.choices,
+        default=ScientificReviewStatus.UNREVIEWED,
+    )
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ("sort_order", "id")
+        constraints = [
+            models.UniqueConstraint(fields=("therapy", "technique"), name="uq_therapy_technique")
+        ]
+        indexes = [models.Index(fields=("therapy", "is_active"))]
+
+
+class TherapyDisorder(TimeStampedModel):
+    class ClinicalRole(models.TextChoices):
+        UNSPECIFIED = "unspecified", "Unspecified"
+        GUIDELINE_RECOMMENDED = "guideline_recommended", "Guideline recommended"
+        COMMONLY_USED = "commonly_used", "Commonly used"
+        ADJUNCTIVE = "adjunctive", "Adjunctive"
+        ALTERNATIVE = "alternative", "Alternative"
+        CONTEXT_DEPENDENT = "context_dependent", "Context dependent"
+        NOT_FIRST_LINE = "not_first_line", "Not first line"
+        RESEARCH_CONTEXT = "research_context", "Research context"
+
+    class EvidenceBasis(models.TextChoices):
+        NOT_ASSESSED = "not_assessed", "Not assessed"
+        GUIDELINE = "guideline", "Guideline"
+        SYSTEMATIC_REVIEW = "systematic_review", "Systematic review / meta-analysis"
+        CONTROLLED_TRIALS = "controlled_trials", "Controlled trials"
+        OBSERVATIONAL = "observational", "Observational evidence"
+        MIXED = "mixed", "Mixed evidence"
+        EMERGING = "emerging", "Emerging evidence"
+        INSUFFICIENT = "insufficient", "Insufficient evidence"
+
+    therapy = models.ForeignKey(Therapy, on_delete=models.CASCADE, related_name="disorder_links")
+    disorder = models.ForeignKey(Disorder, on_delete=models.CASCADE, related_name="therapy_links")
+    clinical_role = models.CharField(
+        max_length=32,
+        choices=ClinicalRole.choices,
+        default=ClinicalRole.UNSPECIFIED,
+        db_index=True,
+    )
+    evidence_basis = models.CharField(
+        max_length=32,
+        choices=EvidenceBasis.choices,
+        default=EvidenceBasis.NOT_ASSESSED,
+        db_index=True,
+    )
+    explanation = models.TextField(blank=True)
+    evidence_note = models.TextField(blank=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    review_status = models.CharField(
+        max_length=24,
+        choices=ScientificReviewStatus.choices,
+        default=ScientificReviewStatus.UNREVIEWED,
+    )
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ("sort_order", "id")
+        constraints = [
+            models.UniqueConstraint(fields=("therapy", "disorder"), name="uq_therapy_disorder")
+        ]
+        indexes = [
+            models.Index(fields=("therapy", "is_active")),
+            models.Index(fields=("disorder", "is_active")),
+            models.Index(fields=("evidence_basis", "is_active")),
+        ]
+
+
+class TherapyConcept(TimeStampedModel):
+    class Kind(models.TextChoices):
+        TARGETS = "targets", "Targets"
+        USES = "uses", "Uses"
+        ADDRESSES = "addresses", "Addresses"
+        TEACHES = "teaches", "Teaches"
+        MECHANISM = "mechanism", "Mechanism"
+        APPLIED_TO = "applied_to", "Applied to"
+
+    therapy = models.ForeignKey(Therapy, on_delete=models.CASCADE, related_name="concept_links")
+    concept = models.ForeignKey(Concept, on_delete=models.CASCADE, related_name="therapy_links")
+    relationship_type = models.CharField(max_length=24, choices=Kind.choices)
+    explanation = models.TextField(blank=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    review_status = models.CharField(
+        max_length=24,
+        choices=ScientificReviewStatus.choices,
+        default=ScientificReviewStatus.UNREVIEWED,
+    )
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ("sort_order", "id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("therapy", "concept", "relationship_type"),
+                name="uq_therapy_concept_relation",
+            )
+        ]
+        indexes = [
+            models.Index(fields=("therapy", "is_active")),
+            models.Index(fields=("concept", "is_active")),
+        ]
+
+
+class TechniqueConcept(TimeStampedModel):
+    class Kind(models.TextChoices):
+        TARGETS = "targets", "Targets"
+        ADDRESSES = "addresses", "Addresses"
+        TEACHES = "teaches", "Teaches"
+        MECHANISM = "mechanism", "Mechanism"
+        APPLIED_TO = "applied_to", "Applied to"
+
+    technique = models.ForeignKey(Technique, on_delete=models.CASCADE, related_name="concept_links")
+    concept = models.ForeignKey(Concept, on_delete=models.CASCADE, related_name="technique_links")
+    relationship_type = models.CharField(max_length=24, choices=Kind.choices)
+    explanation = models.TextField(blank=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    review_status = models.CharField(
+        max_length=24,
+        choices=ScientificReviewStatus.choices,
+        default=ScientificReviewStatus.UNREVIEWED,
+    )
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ("sort_order", "id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("technique", "concept", "relationship_type"),
+                name="uq_technique_concept_relation",
+            )
+        ]
+        indexes = [
+            models.Index(fields=("technique", "is_active")),
+            models.Index(fields=("concept", "is_active")),
+        ]
+
+
+class TherapySource(models.Model):
+    therapy = models.ForeignKey(Therapy, on_delete=models.CASCADE, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="therapy_links")
+    note = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("therapy", "source"), name="uq_therapy_source")
+        ]
+
+
+class TechniqueSource(models.Model):
+    technique = models.ForeignKey(Technique, on_delete=models.CASCADE, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="technique_links")
+    note = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("technique", "source"), name="uq_technique_source")
+        ]
+
+
+class TherapyTechniqueSource(models.Model):
+    relationship = models.ForeignKey(TherapyTechnique, on_delete=models.CASCADE, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="therapy_technique_links")
+    note = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("relationship", "source"),
+                name="uq_therapy_technique_source",
+            )
+        ]
+
+
+class TherapyDisorderSource(models.Model):
+    relationship = models.ForeignKey(TherapyDisorder, on_delete=models.CASCADE, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="therapy_disorder_links")
+    note = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("relationship", "source"),
+                name="uq_therapy_disorder_source",
+            )
+        ]
+
+
+class TherapyConceptSource(models.Model):
+    relationship = models.ForeignKey(TherapyConcept, on_delete=models.CASCADE, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="therapy_concept_links")
+    note = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("relationship", "source"),
+                name="uq_therapy_concept_source",
+            )
+        ]
+
+
+class TechniqueConceptSource(models.Model):
+    relationship = models.ForeignKey(TechniqueConcept, on_delete=models.CASCADE, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="technique_concept_links")
+    note = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("relationship", "source"),
+                name="uq_technique_concept_source",
+            )
+        ]
+
+
 class DSMCorpus(TimeStampedModel):
     """One imported DSM MASTER educational corpus.
 

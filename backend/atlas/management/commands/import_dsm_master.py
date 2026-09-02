@@ -39,7 +39,7 @@ class Command(BaseCommand):
             raise CommandError(str(exc)) from exc
 
         if not options["dry_run"]:
-            cache.delete("atlas_graph_v4")
+            cache.delete("atlas_graph")
 
         prefix = "DRY RUN · " if options["dry_run"] else ""
         self.stdout.write(

@@ -17,6 +17,10 @@ from .models import (
     CognitiveDistortionPracticeItem, DailyChallenge, DailyChallengeAttempt, DailyChallengeChoice, Disorder, DisorderConcept,
     DisorderSymptom, DSMCorpus, DSMRecord, DSMRecordRelation, Flashcard, Quiz, QuizChoice, QuizQuestion, SourceReference, StudyActivity, Symptom, UserConceptProgress,
     UserFlashcardProgress, UserNote, UserProgress,
+    ScientificReviewStatus, Technique, TechniqueConcept, TechniqueConceptSource, TechniqueSource,
+    Therapy, TherapyAlias, TherapyClassification, TherapyClassificationLink, TherapyConcept,
+    TherapyConceptSource, TherapyDisorder, TherapyDisorderSource, TherapyFamily, TherapySource,
+    TherapyTechnique, TherapyTechniqueSource,
 )
 
 
@@ -235,7 +239,7 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(response.json()["count"], 30)
         self.assertEqual(len(response.json()["results"]), 30)
 
-    def test_v3_concept_detail_search_and_disorder_link(self):
+    def test_concept_detail_search_and_disorder_link(self):
         concept = Concept.objects.create(
             slug="test-concept",
             name_en="Test Concept",
@@ -254,7 +258,7 @@ class AtlasApiTests(APITestCase):
         disorder_detail = self.client.get(f"/api/disorders/{self.disorder.slug}/")
         self.assertEqual(disorder_detail.json()["concepts"][0]["slug"], concept.slug)
 
-    def test_v3_concept_bookmark_and_note_are_user_scoped(self):
+    def test_concept_bookmark_and_note_are_user_scoped(self):
         concept = Concept.objects.create(
             slug="private-concept",
             name_en="Private Concept",
@@ -277,7 +281,7 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(self.client.get("/api/concept-bookmarks/").json(), [])
         self.assertEqual(self.client.get("/api/concept-notes/").json(), [])
 
-    def test_v3_flashcard_review_queue_and_srs_progress(self):
+    def test_flashcard_review_queue_and_srs_progress(self):
         concept = Concept.objects.create(
             slug="review-concept",
             name_en="Review Concept",
@@ -315,14 +319,14 @@ class AtlasApiTests(APITestCase):
             ).exists()
         )
 
-    def test_v3_review_queue_rejects_invalid_limit_without_500(self):
+    def test_review_queue_rejects_invalid_limit_without_500(self):
         self.auth(self.user_a)
         for raw_limit in ("abc", "0", "-1", "1.5"):
             with self.subTest(limit=raw_limit):
                 response = self.client.get(f"/api/flashcards/review-queue/?limit={raw_limit}")
                 self.assertEqual(response.status_code, 400)
 
-    def test_v3_flashcard_review_rejects_inactive_linked_content(self):
+    def test_flashcard_review_rejects_inactive_linked_content(self):
         concept = Concept.objects.create(
             slug="inactive-review-concept",
             name_en="Inactive Review Concept",
@@ -345,7 +349,7 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(response.status_code, 404)
         self.assertFalse(UserFlashcardProgress.objects.filter(user=self.user_a, flashcard=card).exists())
 
-    def test_v3_flashcard_review_rejects_invalid_rating(self):
+    def test_flashcard_review_rejects_invalid_rating(self):
         card = Flashcard.objects.create(slug="bad-rating-card", front="Front", back="Back", is_active=True)
         self.auth(self.user_a)
         response = self.client.post(
@@ -355,7 +359,7 @@ class AtlasApiTests(APITestCase):
         )
         self.assertEqual(response.status_code, 400)
 
-    def test_v3_daily_challenge_is_single_attempt_per_day(self):
+    def test_daily_challenge_is_single_attempt_per_day(self):
         concept = Concept.objects.create(
             slug="daily-concept",
             name_en="Daily Concept",
@@ -400,7 +404,7 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(after_change.json()["id"], challenge.id)
         self.assertEqual(after_change.json()["attempt"]["selected_choice_id"], correct.id)
 
-    def test_v3_study_overview_and_dashboard_expose_learning_metrics(self):
+    def test_study_overview_and_dashboard_expose_learning_metrics(self):
         concept = Concept.objects.create(
             slug="metric-concept",
             name_en="Metric Concept",
@@ -418,7 +422,7 @@ class AtlasApiTests(APITestCase):
         for key in ("streak", "heatmap", "recommendations", "review_due", "continue_concepts"):
             self.assertIn(key, dashboard.json())
 
-    def test_v3_concept_map_returns_concept_and_disorder_edges(self):
+    def test_concept_map_returns_concept_and_disorder_edges(self):
         concept = Concept.objects.create(
             slug="map-concept",
             name_en="Map Concept",
@@ -448,7 +452,7 @@ class AtlasApiTests(APITestCase):
             for edge in data["edges"]
         ))
 
-    def test_v3_heatmap_does_not_double_count_new_disorder_view(self):
+    def test_heatmap_does_not_double_count_new_disorder_view(self):
         self.auth(self.user_a)
         response = self.client.post(f"/api/progress/{self.disorder.slug}/view/")
         self.assertEqual(response.status_code, 200)
@@ -467,7 +471,7 @@ class AtlasApiTests(APITestCase):
         today = overview.json()["heatmap"][-1]
         self.assertEqual(today["count"], 1)
 
-    def test_v3_concept_detail_hides_inactive_related_concepts(self):
+    def test_concept_detail_hides_inactive_related_concepts(self):
         active = Concept.objects.create(
             slug="active-concept",
             name_en="Active Concept",
@@ -489,7 +493,7 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["relationships"], [])
 
-    def test_v3_global_search_hides_orphan_symptoms(self):
+    def test_global_search_hides_orphan_symptoms(self):
         Symptom.objects.create(
             slug="orphan-search-symptom",
             name_en="Orphan Search Symptom",
@@ -500,7 +504,7 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["symptoms"], [])
 
-    def test_v3_daily_challenge_attempt_survives_when_all_challenges_are_deactivated(self):
+    def test_daily_challenge_attempt_survives_when_all_challenges_are_deactivated(self):
         challenge = DailyChallenge.objects.create(
             prompt="Historical daily prompt",
             explanation="Historical explanation",
@@ -523,7 +527,7 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(response.json()["id"], challenge.id)
         self.assertEqual(response.json()["attempt"]["selected_choice_id"], choice.id)
 
-    def test_v3_global_search_matches_disorder_and_concept_slugs(self):
+    def test_global_search_matches_disorder_and_concept_slugs(self):
         slug_disorder = Disorder.objects.create(
             category=self.category,
             slug="opaque-disorder-code",
@@ -560,7 +564,7 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["related"], [])
 
-    def test_v3_review_and_study_metrics_hide_cards_and_progress_for_inactive_concepts(self):
+    def test_review_and_study_metrics_hide_cards_and_progress_for_inactive_concepts(self):
         inactive = Concept.objects.create(
             slug="inactive-study-concept",
             name_en="Inactive Study Concept",
@@ -595,7 +599,7 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(dashboard.json()["review_due"], 0)
         self.assertEqual(dashboard.json()["concepts_studied"], 0)
 
-    def test_v3_concept_map_query_count_does_not_scale_per_concept(self):
+    def test_concept_map_query_count_does_not_scale_per_concept(self):
         concepts = [
             Concept.objects.create(
                 slug=f"query-concept-{index}",
@@ -622,7 +626,7 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertLessEqual(len(captured), 8)
 
-    def test_v3_daily_challenge_rolls_back_attempt_if_side_effect_fails(self):
+    def test_daily_challenge_rolls_back_attempt_if_side_effect_fails(self):
         challenge = DailyChallenge.objects.create(
             prompt="Atomic daily prompt",
             explanation="Atomic explanation",
@@ -635,7 +639,7 @@ class AtlasApiTests(APITestCase):
             sort_order=0,
         )
         self.auth(self.user_a)
-        with patch("atlas.v3_views.record_activity", side_effect=RuntimeError("activity failed")):
+        with patch("atlas.views.record_activity", side_effect=RuntimeError("activity failed")):
             with self.assertRaises(RuntimeError):
                 self.client.post("/api/daily-challenge/", {"choice_id": choice.id}, format="json")
         self.assertFalse(DailyChallengeAttempt.objects.filter(user=self.user_a).exists())
@@ -672,7 +676,7 @@ class AtlasApiTests(APITestCase):
                 note = ConceptNote.objects.get(user=self.user_a, concept=concept)
                 self.assertEqual(note.body, "keep concept note")
 
-    def test_v3_daily_challenge_handles_oversized_integer_choice_id_without_500(self):
+    def test_daily_challenge_handles_oversized_integer_choice_id_without_500(self):
         challenge = DailyChallenge.objects.create(
             prompt="Large id prompt",
             explanation="Large id explanation",
@@ -693,7 +697,7 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(response.status_code, 400)
         self.assertFalse(DailyChallengeAttempt.objects.filter(user=self.user_a).exists())
 
-    def test_v3_search_normalizes_common_arabic_and_persian_letter_variants(self):
+    def test_search_normalizes_common_arabic_and_persian_letter_variants(self):
         concept = Concept.objects.create(
             slug="persian-search-concept",
             name_en="Persian Search Concept",
@@ -718,7 +722,7 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(concept_list.status_code, 200)
         self.assertIn(concept.slug, [row["slug"] for row in concept_list.json()["results"]])
 
-    def test_v3_daily_challenge_skips_inactive_linked_content(self):
+    def test_daily_challenge_skips_inactive_linked_content(self):
         inactive = Concept.objects.create(
             slug="inactive-challenge-concept",
             name_en="Inactive Challenge Concept",
@@ -740,7 +744,7 @@ class AtlasApiTests(APITestCase):
         response = self.client.get("/api/daily-challenge/")
         self.assertEqual(response.status_code, 404)
 
-    def test_v3_historical_daily_challenge_hides_deactivated_links_but_preserves_attempt(self):
+    def test_historical_daily_challenge_hides_deactivated_links_but_preserves_attempt(self):
         concept = Concept.objects.create(
             slug="historical-challenge-concept",
             name_en="Historical Challenge Concept",
@@ -859,7 +863,7 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(dashboard.json()["disorders_studied"], 0)
         self.assertEqual(dashboard.json()["concepts_studied"], 0)
 
-    def test_v3_atlas_overview_uses_live_database_counts(self):
+    def test_atlas_overview_uses_live_database_counts(self):
         concept = Concept.objects.create(
             slug="overview-concept",
             name_en="Overview Concept",
@@ -882,7 +886,7 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(data["graph"]["nodes"], 2)
         self.assertEqual(data["categories"][0]["count"], 1)
 
-    def test_v3_concept_catalog_exposes_real_connection_counts(self):
+    def test_concept_catalog_exposes_real_connection_counts(self):
         concept = Concept.objects.create(
             slug="catalog-metrics",
             name_en="Catalog Metrics",
@@ -910,7 +914,7 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(row["flashcard_count"], 1)
         self.assertEqual(row["relationship_count"], 1)
 
-    def test_v3_graph_exposes_node_metadata_degree_and_edge_explanation(self):
+    def test_graph_exposes_node_metadata_degree_and_edge_explanation(self):
         concept = Concept.objects.create(
             slug="metadata-concept",
             name_en="Metadata Concept",
@@ -934,7 +938,7 @@ class AtlasApiTests(APITestCase):
         edge = next(edge for edge in data["edges"] if edge["target"] == f"concept:{concept.slug}")
         self.assertEqual(edge["explanation"], "why these nodes are linked")
 
-    def test_v3_symptom_search_returns_active_related_disorders(self):
+    def test_symptom_search_returns_active_related_disorders(self):
         symptom = Symptom.objects.create(
             slug="linked-search-symptom",
             name_en="Linked Search Symptom",
@@ -947,7 +951,7 @@ class AtlasApiTests(APITestCase):
         row = response.json()["symptoms"][0]
         self.assertEqual(row["disorders"][0]["slug"], self.disorder.slug)
 
-    def test_v4_concept_catalog_filters_domain_subtype_and_searches_aliases(self):
+    def test_concept_catalog_filters_domain_subtype_and_searches_aliases(self):
         concept = Concept.objects.create(
             slug="v4-distortion",
             name_en="V4 Distortion",
@@ -969,7 +973,7 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(rows[0]["subtype"], "cognitive_distortion")
         self.assertEqual(rows[0]["aliases"][0]["text"], "نام جایگزین ویژه")
 
-    def test_v4_concept_detail_exposes_distortion_fields_and_relation_provenance(self):
+    def test_concept_detail_exposes_distortion_fields_and_relation_provenance(self):
         root = Concept.objects.create(
             slug="v4-root",
             name_en="V4 Root",
@@ -1010,7 +1014,7 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(data["common_confusions"], "confusion")
         self.assertEqual(data["relationships"][0]["sources"][0]["title"], "Evidence Source")
 
-    def test_v4_concept_symptom_is_exposed_in_detail_and_graph(self):
+    def test_concept_symptom_is_exposed_in_detail_and_graph(self):
         concept = Concept.objects.create(
             slug="v4-symptom-concept",
             name_en="V4 Symptom Concept",
@@ -1044,7 +1048,7 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(edge["kind"], "concept_symptom_manifestation")
         self.assertEqual(edge["explanation"], "explicit concept symptom link")
 
-    def test_v4_atlas_overview_exposes_concept_taxonomy(self):
+    def test_atlas_overview_exposes_concept_taxonomy(self):
         Concept.objects.create(
             slug="v4-taxonomy",
             name_en="V4 Taxonomy",
@@ -1060,7 +1064,7 @@ class AtlasApiTests(APITestCase):
         self.assertTrue(any(row["domain"] == "cbt" for row in data["concept_domains"]))
         self.assertTrue(any(row["subtype"] == "cognitive_distortion" for row in data["concept_subtypes"]))
 
-    def test_v4_seed_preserves_dsm_category_for_linked_curated_disorder(self):
+    def test_seed_preserves_dsm_category_for_linked_curated_disorder(self):
         dsm_category = Category.objects.create(
             slug="dsm-chapter-04",
             name_en="DSM Anxiety",
@@ -1108,7 +1112,7 @@ class AtlasApiTests(APITestCase):
                 category.disorders.filter(is_active=True).exists(),
             )
 
-    def test_v4_part2_graph_filters_by_domain_and_relation(self):
+    def test_graph_filters_by_domain_and_relation(self):
         root = Concept.objects.create(
             slug="graph-root-v4",
             name_en="Graph Root V4",
@@ -1139,7 +1143,7 @@ class AtlasApiTests(APITestCase):
         self.assertEqual({node["id"] for node in data["nodes"]}, {f"concept:{root.slug}", f"concept:{child.slug}"})
         self.assertEqual(data["meta"]["edge_count"], 1)
 
-    def test_v4_part2_neighborhood_supports_depth_two(self):
+    def test_neighborhood_supports_depth_two(self):
         a = Concept.objects.create(slug="neighbor-a", name_en="A", simple_definition="a", is_active=True)
         b = Concept.objects.create(slug="neighbor-b", name_en="B", simple_definition="b", is_active=True)
         c = Concept.objects.create(slug="neighbor-c", name_en="C", simple_definition="c", is_active=True)
@@ -1151,7 +1155,7 @@ class AtlasApiTests(APITestCase):
         self.assertEqual({node["id"] for node in data["nodes"]}, {"concept:neighbor-a", "concept:neighbor-b", "concept:neighbor-c"})
         self.assertEqual(data["depth"], 2)
 
-    def test_v4_part2_graph_path_finds_shortest_structured_route(self):
+    def test_graph_path_finds_shortest_structured_route(self):
         a = Concept.objects.create(slug="path-a", name_en="Path A", simple_definition="a", is_active=True)
         b = Concept.objects.create(slug="path-b", name_en="Path B", simple_definition="b", is_active=True)
         c = Concept.objects.create(slug="path-c", name_en="Path C", simple_definition="c", is_active=True)
@@ -1164,7 +1168,7 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(data["hops"], 2)
         self.assertEqual([node["id"] for node in data["nodes"]], ["concept:path-a", "concept:path-b", "concept:path-c"])
 
-    def test_v4_part2_practice_queue_hides_correct_answer(self):
+    def test_practice_queue_hides_correct_answer(self):
         correct = Concept.objects.create(
             slug="practice-correct",
             name_en="Practice Correct",
@@ -1194,7 +1198,7 @@ class AtlasApiTests(APITestCase):
         self.assertNotIn("is_correct", choice)
         self.assertNotIn("explanation", response.json()["items"][0])
 
-    def test_v4_part2_practice_submit_records_activity_and_progress(self):
+    def test_practice_submit_records_activity_and_progress(self):
         correct = Concept.objects.create(
             slug="practice-submit-correct",
             name_en="Practice Submit Correct",
@@ -1230,7 +1234,7 @@ class AtlasApiTests(APITestCase):
         self.assertTrue(CognitiveDistortionPracticeAttempt.objects.filter(user=self.user_a, item=item, is_correct=True).exists())
         self.assertTrue(StudyActivity.objects.filter(user=self.user_a, activity_type="distortion_practice", concept=correct).exists())
 
-    def test_v4_part2_practice_submit_rejects_choice_from_other_item(self):
+    def test_practice_submit_rejects_choice_from_other_item(self):
         correct = Concept.objects.create(
             slug="practice-cross-correct",
             name_en="Practice Cross Correct",
@@ -1257,7 +1261,7 @@ class AtlasApiTests(APITestCase):
         )
         self.assertEqual(response.status_code, 404)
 
-    def test_v041_practice_invalid_content_has_no_side_effects(self):
+    def test_practice_invalid_content_has_no_side_effects(self):
         target = Concept.objects.create(slug="v041-practice-target", name_en="V041 Practice Target", simple_definition="target", subtype="cognitive_distortion", is_active=True)
         other = Concept.objects.create(slug="v041-practice-other", name_en="V041 Practice Other", simple_definition="other", subtype="cognitive_distortion", is_active=True)
         item = CognitiveDistortionPracticeItem.objects.create(slug="v041-invalid-practice", prompt="Invalid content", explanation="Invalid", target_concept=target, is_active=True)
@@ -1270,7 +1274,7 @@ class AtlasApiTests(APITestCase):
         self.assertFalse(UserConceptProgress.objects.filter(user=self.user_a, concept=target).exists())
         self.assertFalse(StudyActivity.objects.filter(user=self.user_a, activity_type=StudyActivity.Kind.DISTORTION_PRACTICE, concept=target).exists())
 
-    def test_v041_practice_queue_hides_inactive_choice_concepts(self):
+    def test_practice_queue_hides_inactive_choice_concepts(self):
         target = Concept.objects.create(slug="v041-queue-target", name_en="V041 Queue Target", simple_definition="target", subtype="cognitive_distortion", is_active=True)
         active_wrong = Concept.objects.create(slug="v041-queue-active-wrong", name_en="V041 Queue Active Wrong", simple_definition="wrong", subtype="cognitive_distortion", is_active=True)
         inactive_wrong = Concept.objects.create(slug="v041-queue-inactive-wrong", name_en="V041 Queue Inactive Wrong", simple_definition="inactive", subtype="cognitive_distortion", is_active=False)
@@ -1283,7 +1287,7 @@ class AtlasApiTests(APITestCase):
         row = next(row for row in response.json()["items"] if row["slug"] == "v041-queue-item")
         self.assertEqual({choice["concept"]["slug"] for choice in row["choices"]}, {target.slug, active_wrong.slug})
 
-    def test_v041_neighborhood_node_type_never_returns_disconnected_second_level_node(self):
+    def test_neighborhood_node_type_never_returns_disconnected_second_level_node(self):
         center = Concept.objects.create(slug="v041-neighbor-center", name_en="Center", simple_definition="center", is_active=True)
         second = Concept.objects.create(slug="v041-neighbor-second", name_en="Second", simple_definition="second", is_active=True)
         bridge_disorder = Disorder.objects.create(category=self.category, slug="v041-neighbor-bridge", name_en="Bridge Disorder", is_active=True)
@@ -1295,7 +1299,7 @@ class AtlasApiTests(APITestCase):
         self.assertEqual({node["id"] for node in data["nodes"]}, {f"concept:{center.slug}"})
         self.assertEqual(data["edges"], [])
 
-    def test_v041_graph_min_degree_is_applied_after_relation_filter(self):
+    def test_graph_min_degree_is_applied_after_relation_filter(self):
         a = Concept.objects.create(slug="v041-degree-a", name_en="Degree A", simple_definition="a", is_active=True)
         b = Concept.objects.create(slug="v041-degree-b", name_en="Degree B", simple_definition="b", is_active=True)
         c = Concept.objects.create(slug="v041-degree-c", name_en="Degree C", simple_definition="c", is_active=True)
@@ -1308,7 +1312,7 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(response.json()["nodes"], [])
         self.assertEqual(response.json()["edges"], [])
 
-    def test_v041_graph_path_marks_reverse_traversal(self):
+    def test_graph_path_marks_reverse_traversal(self):
         child = Concept.objects.create(slug="v041-path-child", name_en="Child", simple_definition="child", is_active=True)
         parent = Concept.objects.create(slug="v041-path-parent", name_en="Parent", simple_definition="parent", is_active=True)
         ConceptRelationship.objects.create(source_concept=child, target_concept=parent, relationship_type="part_of")
@@ -1317,7 +1321,7 @@ class AtlasApiTests(APITestCase):
         self.assertTrue(response.json()["found"])
         self.assertEqual(response.json()["edges"][0]["traversal_direction"], "reverse")
 
-    def test_v041_graph_path_excludes_dsm_nearby_shortcuts_by_default(self):
+    def test_graph_path_excludes_dsm_nearby_shortcuts_by_default(self):
         second_disorder = Disorder.objects.create(category=self.category, slug="v041-path-disorder-two", name_en="Path Disorder Two", is_active=True)
         left = Concept.objects.create(slug="v041-path-left", name_en="Left", simple_definition="left", is_active=True)
         right = Concept.objects.create(slug="v041-path-right", name_en="Right", simple_definition="right", is_active=True)
@@ -1335,14 +1339,14 @@ class AtlasApiTests(APITestCase):
         self.assertTrue(structural.json()["found"])
         self.assertTrue(any(edge["kind"] == "dsm_nearby" for edge in structural.json()["edges"]))
 
-    def test_v041_disorder_get_is_read_only_for_progress(self):
+    def test_disorder_get_is_read_only_for_progress(self):
         self.auth(self.user_a)
         response = self.client.get(f"/api/disorders/{self.disorder.slug}/")
         self.assertEqual(response.status_code, 200)
         self.assertFalse(UserProgress.objects.filter(user=self.user_a, disorder=self.disorder).exists())
         self.assertFalse(StudyActivity.objects.filter(user=self.user_a, activity_type=StudyActivity.Kind.DISORDER_VIEW, disorder=self.disorder).exists())
 
-    def test_v041_failed_quiz_and_case_do_not_grant_mastery_progress(self):
+    def test_failed_quiz_and_case_do_not_grant_mastery_progress(self):
         quiz = Quiz.objects.create(slug="v041-zero-quiz", title="Zero Quiz", disorder=self.disorder, is_active=True)
         question = QuizQuestion.objects.create(quiz=quiz, prompt="Q", sort_order=1)
         QuizChoice.objects.create(question=question, text="Correct", is_correct=True, sort_order=1)
@@ -1363,7 +1367,7 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(progress.progress_percent, 25)
         self.assertNotEqual(progress.status, UserProgress.Status.COMPLETED)
 
-    def test_v041_graph_cache_invalidates_after_model_change(self):
+    def test_graph_cache_invalidates_after_model_change(self):
         first = Concept.objects.create(slug="v041-cache-first", name_en="First", simple_definition="first", is_active=True)
         initial = self.client.get("/api/concept-map/")
         self.assertIn(f"concept:{first.slug}", {node["id"] for node in initial.json()["nodes"]})
@@ -1371,7 +1375,7 @@ class AtlasApiTests(APITestCase):
         refreshed = self.client.get("/api/concept-map/")
         self.assertIn(f"concept:{second.slug}", {node["id"] for node in refreshed.json()["nodes"]})
 
-    def test_v041_seed_soft_deactivates_stale_protected_practice_choice_and_quiz_choice(self):
+    def test_seed_soft_deactivates_stale_protected_practice_choice_and_quiz_choice(self):
         call_command("seed_mvp", stdout=StringIO())
         item = CognitiveDistortionPracticeItem.objects.get(slug="dp-all-or-nothing-1")
         stale_concept = Concept.objects.get(slug="mind-reading")
@@ -1390,7 +1394,7 @@ class AtlasApiTests(APITestCase):
         self.assertFalse(stale_quiz_choice.is_correct)
         self.assertEqual(quiz_question.choices.filter(is_active=True, is_correct=True).count(), 1)
 
-    def test_v041_oversized_numeric_inputs_return_400_instead_of_500(self):
+    def test_oversized_numeric_inputs_return_400_instead_of_500(self):
         concept = Concept.objects.create(slug="v041-large-input", name_en="Large", simple_definition="large", is_active=True)
         huge = "9" * 5000
         responses = [
@@ -1401,7 +1405,7 @@ class AtlasApiTests(APITestCase):
         for response in responses:
             self.assertEqual(response.status_code, 400)
 
-    def test_v041_logout_blacklists_refresh_token(self):
+    def test_logout_blacklists_refresh_token(self):
         refresh = RefreshToken.for_user(self.user_a)
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}")
         response = self.client.post("/api/auth/logout/", {"refresh": str(refresh)}, format="json")
@@ -1409,3 +1413,98 @@ class AtlasApiTests(APITestCase):
         self.client.credentials()
         replay = self.client.post("/api/auth/refresh/", {"refresh": str(refresh)}, format="json")
         self.assertEqual(replay.status_code, 401)
+
+
+class TherapyFoundationTests(APITestCase):
+    def setUp(self):
+        self.category = Category.objects.create(slug="therapy-test", name_en="Therapy Test")
+        self.disorder = Disorder.objects.create(
+            category=self.category,
+            slug="therapy-test-disorder",
+            name_en="Therapy Test Disorder",
+            is_active=True,
+        )
+        self.concept = Concept.objects.create(
+            slug="therapy-test-concept",
+            name_en="Therapy Test Concept",
+            simple_definition="Test concept",
+            is_active=True,
+        )
+        self.family = TherapyFamily.objects.create(
+            slug="cognitive-behavioral",
+            name_en="Cognitive and Behavioral",
+            name_fa="شناختی و رفتاری",
+        )
+        self.therapy = Therapy.objects.create(
+            family=self.family,
+            slug="test-therapy",
+            name_en="Test Therapy",
+        )
+        self.technique = Technique.objects.create(
+            slug="test-technique",
+            name_en="Test Technique",
+        )
+        self.source = SourceReference.objects.create(
+            title="Test guideline",
+            organization="Test Organization",
+            source_type="guideline",
+        )
+
+    def test_therapy_family_is_primary_while_classifications_can_overlap(self):
+        trauma_focused = TherapyClassification.objects.create(
+            slug="trauma-focused",
+            name_en="Trauma-focused",
+            kind=TherapyClassification.Kind.FOCUS,
+        )
+        exposure_based = TherapyClassification.objects.create(
+            slug="exposure-based",
+            name_en="Exposure-based",
+            kind=TherapyClassification.Kind.METHOD,
+        )
+        TherapyClassificationLink.objects.create(therapy=self.therapy, classification=trauma_focused)
+        TherapyClassificationLink.objects.create(therapy=self.therapy, classification=exposure_based)
+
+        self.assertEqual(self.therapy.family, self.family)
+        self.assertEqual(self.therapy.classification_links.filter(is_active=True).count(), 2)
+        self.assertEqual(self.therapy.review_status, ScientificReviewStatus.UNREVIEWED)
+
+    def test_therapy_relationships_keep_clinical_role_separate_from_evidence_basis(self):
+        link = TherapyDisorder.objects.create(
+            therapy=self.therapy,
+            disorder=self.disorder,
+            clinical_role=TherapyDisorder.ClinicalRole.CONTEXT_DEPENDENT,
+            evidence_basis=TherapyDisorder.EvidenceBasis.GUIDELINE,
+        )
+        TherapyDisorderSource.objects.create(relationship=link, source=self.source)
+
+        self.assertEqual(link.clinical_role, TherapyDisorder.ClinicalRole.CONTEXT_DEPENDENT)
+        self.assertEqual(link.evidence_basis, TherapyDisorder.EvidenceBasis.GUIDELINE)
+        self.assertEqual(link.source_links.count(), 1)
+
+    def test_therapy_and_technique_relations_reuse_shared_source_registry(self):
+        TherapySource.objects.create(therapy=self.therapy, source=self.source)
+        TechniqueSource.objects.create(technique=self.technique, source=self.source)
+        therapy_technique = TherapyTechnique.objects.create(
+            therapy=self.therapy,
+            technique=self.technique,
+            role=TherapyTechnique.Role.CORE,
+        )
+        TherapyTechniqueSource.objects.create(relationship=therapy_technique, source=self.source)
+        therapy_concept = TherapyConcept.objects.create(
+            therapy=self.therapy,
+            concept=self.concept,
+            relationship_type=TherapyConcept.Kind.TARGETS,
+        )
+        TherapyConceptSource.objects.create(relationship=therapy_concept, source=self.source)
+        technique_concept = TechniqueConcept.objects.create(
+            technique=self.technique,
+            concept=self.concept,
+            relationship_type=TechniqueConcept.Kind.ADDRESSES,
+        )
+        TechniqueConceptSource.objects.create(relationship=technique_concept, source=self.source)
+
+        self.assertEqual(self.therapy.source_links.get().source_id, self.source.id)
+        self.assertEqual(self.technique.source_links.get().source_id, self.source.id)
+        self.assertEqual(therapy_technique.source_links.get().source_id, self.source.id)
+        self.assertEqual(therapy_concept.source_links.get().source_id, self.source.id)
+        self.assertEqual(technique_concept.source_links.get().source_id, self.source.id)

@@ -1,10 +1,10 @@
 # Psychology Atlas Product Spec
 
-## Current implemented version: v0.4.1 — Graph & Study Hardening
+## Current implemented version: v0.5.1 — Therapy Architecture Foundation
 
 Psychology Atlas is an interactive educational system for psychology students. It should behave as a connected learning system, not as a psychology blog and not as a diagnostic product.
 
-v0.4.1 is a hardening release over v0.4. It preserves the scientific content scope while tightening data integrity, content lifecycle, Graph semantics/performance, learning-progress behavior, production security and frontend async-state consistency.
+v0.5.1 is Part 1 of Therapy Atlas. It adds the scientific/backend schema foundation for therapies and techniques while preserving the existing Graph, Study, lifecycle, security and provenance guarantees. Therapy seed data, public Therapy API and Therapy frontend are intentionally deferred to later v0.5.x parts.
 
 ## Architecture decisions
 
@@ -20,6 +20,34 @@ v0.4.1 is a hardening release over v0.4. It preserves the scientific content sco
 - Server controls quiz/case scoring and SRS scheduling
 - Do not couple frontend logic to SQLite
 
+### Therapy architecture foundation
+
+Current v0.5.1 backend entities:
+
+```text
+TherapyFamily
+TherapyClassification
+Therapy
+TherapyAlias
+Technique
+TechniqueAlias
+TherapyClassificationLink
+TherapyTechnique
+TherapyDisorder
+TherapyConcept
+TechniqueConcept
+```
+
+Scientific/schema rules:
+
+- Therapy is a coherent therapeutic approach/model; Technique is a reusable intervention procedure. They are not stored as the same entity.
+- Primary orientation is represented by one `TherapyFamily`. Overlapping labels such as focus/method/delivery/population are separate `TherapyClassification` links and may be multiple.
+- `TherapyDisorder` stores `clinical_role` separately from `evidence_basis`; neither field is a personalized recommendation.
+- `Therapy`, `Technique` and cross-domain relationship provenance reuses the shared `SourceReference` registry through explicit source-link models.
+- `review_status` is lightweight metadata only. Full moderation/scientific-review workflow remains deferred.
+- No Therapy facts, treatment rankings or effectiveness percentages are seeded in v0.5.1.
+- Runtime code uses canonical unversioned modules (`views.py`, `serializers.py`, `seed_mvp.py`). Historical migration files remain because they are required for safe database upgrades.
+
 ## Implemented learning domains
 
 ### Disorders Atlas
@@ -34,7 +62,7 @@ v0.4.1 is a hardening release over v0.4. It preserves the scientific content sco
 - source metadata
 - related quizzes/cases/concepts where curated learning links exist
 - private bookmark/note/progress
-- v0.3.1 chapter-oriented Disorders Explorer with deep search, grid/compact views and browser-local recently viewed history
+- chapter-oriented Disorders Explorer with deep search, grid/compact views and browser-local recently viewed history
 
 ### Concepts Atlas
 
@@ -56,9 +84,9 @@ v0.4.1 is a hardening release over v0.4. It preserves the scientific content sco
 - private bookmark/note/progress
 
 Every one of the 30 curated seeded Disorders currently has at least one Concept link. DSM-generated Disorder pages may rely primarily on their MASTER profile until later cross-domain enrichment.
-The completed v0.4 seed has 44 concepts, 50 active flashcards and an 18-item Cognitive Distortion recognition bank. Practice scoring is server-side and feeds StudyActivity plus Concept Progress.
+The current seed has 44 concepts, 50 active flashcards and an 18-item Cognitive Distortion recognition bank. Practice scoring is server-side and feeds StudyActivity plus Concept Progress.
 
-### Knowledge Graph V2
+### Knowledge Graph
 
 Current graph layers:
 
@@ -80,7 +108,7 @@ Original curated graph baseline:
 144 base Atlas edges
 ```
 
-Current graph in v0.4:
+Current graph:
 
 ```text
 44 Concept nodes
@@ -98,11 +126,11 @@ Current graph in v0.4:
 
 The graph must use explicit structured relationships. Do not invent similarity percentages.
 
-v0.4 Graph UX adds domain/subtype/minimum-degree filtering, depth-1/depth-2 Concept neighborhoods and server-side shortest-path finding between Atlas nodes. v0.4.1 applies node-type filters before neighborhood traversal, evaluates minimum degree on the final filtered graph, preserves traversal direction in path results and excludes `dsm_nearby` structural shortcuts from the default conceptual shortest path. Path results are still computed only from stored edges.
+Current Graph UX includes domain/subtype/minimum-degree filtering, depth-1/depth-2 Concept neighborhoods and server-side shortest-path finding between Atlas nodes. Node-type filters are applied before neighborhood traversal, minimum degree is evaluated on the final filtered graph, traversal direction is preserved in path results, and `dsm_nearby` structural shortcuts are excluded from the default conceptual shortest path. Path results are still computed only from stored edges.
 
 ### Active-learning tools
 
-- Compare Disorders V2
+- Compare Disorders
 - 5 quizzes / 40 questions
 - 6 staged clinical cases / 18 stages
 - 50 flashcards
@@ -110,9 +138,9 @@ v0.4 Graph UX adds domain/subtype/minimum-degree filtering, depth-1/depth-2 Conc
 - 12 Daily Challenges
 - 18 Cognitive Distortion recognition items / 72 choices
 - Cognitive Distortions Explorer with basic/intermediate/advanced practice
-- Search V3 across Disorder / Concept / Symptom
+- Search across Disorder / Concept / Symptom
 
-## Study Engine v0.3
+## Study Engine
 
 The study engine records meaningful user activity:
 
@@ -137,12 +165,12 @@ Repeated page-view events are deduplicated over a short server-side window so an
 - review due/new/reviewed counts
 - concepts studied/mastered
 - Daily Challenge completion
-- Recommendation Engine V1
-- Dashboard V3
+- Recommendation Engine
+- Dashboard
 - unified Saved base for Disorder + Concept
 - unified Notes base for Disorder + Concept
 
-The v0.3 streak/heatmap logic remains backward-compatible with pre-v0.3 Disorder progress, Quiz attempts and Case attempts while avoiding double-counting new StudyActivity events.
+The streak/heatmap logic remains backward-compatible with historical Disorder progress, Quiz attempts and Case attempts while avoiding double-counting StudyActivity events.
 
 ## Progress semantics
 
@@ -161,7 +189,7 @@ Progress must never regress because a page is revisited.
 
 ### Concept progress
 
-Current v0.3 signals include:
+Current signals include:
 
 - Concept view: at least 20%
 - Flashcard `again`: at least 30%
@@ -249,7 +277,7 @@ The following data is private per authenticated user:
 
 Seed updates must not intentionally delete these records.
 
-## Still outside v0.4
+## Still outside v0.5.1
 
 These are intentionally deferred rather than partially implemented placeholders:
 
@@ -293,18 +321,21 @@ Quizzes / Flashcards / Daily Practice
 Personal study plan and mastery
 ```
 
-v0.4 completes the Concept Graph and Cognitive Distortions learning layer. The next cross-domain expansion is Therapy Atlas, which can reuse the graph taxonomy/provenance foundation instead of creating a parallel content system.
+The Concept Graph and Cognitive Distortions learning layer remain the current connected-learning baseline. v0.5.1 now establishes Therapy/Technique as the next cross-domain schema using the existing provenance foundation rather than creating a parallel source system.
 
 ## Version roadmap
 
 ```text
-v0.4  Full Concept Graph + Cognitive Distortions ✅
-v0.5  Therapy Atlas
-v0.6  Psychologists + Theories + Timeline
+v0.5.1  Therapy Architecture + Backend Foundation ✅
+v0.5.2  Scientific Therapy Seed + API
+v0.5.3  Therapy Atlas Frontend
+v0.5.4  Cross-domain Integration + Knowledge Graph
+v0.5.5  Compare + Personal Features + Final Hardening
+v0.6    Psychologists + Theories + Timeline
 v0.7  Advanced Branching Clinical Cases + Analytics
 v0.8  Study Mode + Exam Planning + Advanced Recommendations
 v0.9  Brain Atlas + Assessments Atlas
 v1.0  Admin CMS + Scientific Review + Full cross-domain integration
 ```
 
-v0.4 was implemented internally as Part 1 + Part 2, but the current product/version is the completed v0.4 release.
+The current product version is v0.5.1 Therapy Architecture Foundation.

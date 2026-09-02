@@ -1,8 +1,44 @@
-# Psychology Atlas — v0.4.1 · Graph & Study Hardening
+# Psychology Atlas — v0.5.1 · Therapy Architecture Foundation
 
-یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.4.1 یک bug-hardening release روی v0.4 است: integrity و lifecycle محتوای تمرین/Quiz/Case، semantics و performance Graph، progress logic، input validation، timezone، JWT logout/blacklist و production security defaults را سخت‌گیری می‌کند، بدون تغییر taxonomy علمی اصلی v0.4.
+یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. نسخه فعلی v0.5.1 بخش اول Therapy Atlas است: مرز علمی Therapy و Technique، taxonomy قابل‌گسترش، مدل‌های relation/provenance و migration پایه را اضافه می‌کند و در عین حال hardening و رفتارهای پایدار قبلی را حفظ می‌کند. در این مرحله هنوز Therapy seed، API عمومی یا UI درمان‌ها منتشر نشده است.
 
 > این نرم‌افزار آموزشی است و ابزار تشخیص، درمان یا جایگزین ارزیابی حرفه‌ای نیست.
+
+## Therapy Architecture Foundation
+
+v0.5.1 فقط foundation درمان را می‌سازد و عمداً محتوای درمانی ساختگی اضافه نمی‌کند. مدل‌های اصلی فعلی:
+
+```text
+TherapyFamily
+TherapyClassification
+Therapy
+TherapyAlias
+Technique
+TechniqueAlias
+TherapyClassificationLink
+TherapyTechnique
+TherapyDisorder
+TherapyConcept
+TechniqueConcept
++ explicit SourceReference link models
+```
+
+تصمیم‌های اصلی schema:
+
+- `Therapy` و `Technique` دو entity مستقل‌اند.
+- هر Therapy یک `TherapyFamily` اصلی دارد، اما classificationهای هم‌پوشان می‌توانند چندتایی باشند.
+- `TherapyDisorder.clinical_role` از `evidence_basis` جدا است تا «نقش بالینی» با «نوع پشتوانه شواهد» یکی نشود.
+- provenance جدید registry جدا نمی‌سازد و از `SourceReference` موجود استفاده می‌کند.
+- `review_status` فقط metadata ساده `unreviewed / source_checked / reviewed` است؛ workflow کامل review همچنان برای v1.0 باقی مانده است.
+- content entityهای اصلی `is_active` و `seed_managed` دارند تا lifecycle آینده history-safe بماند.
+- فایل‌های runtime نسخه‌ای قدیمی ادغام شده‌اند؛ backend اکنون `views.py`, `serializers.py` و `seed_mvp.py` canonical دارد و فایل‌های `v3_*` / `v4_*` موازی ندارد.
+- migration history حذف نشده است، چون برای ارتقای امن دیتابیس‌های قبلی لازم است.
+
+Migration جدید:
+
+```text
+0013_therapy_technique_techniqueconcept_and_more.py
+```
 
 ## Stack
 
@@ -13,7 +49,7 @@
 - **Database later:** PostgreSQL-ready through Django ORM + migrations
 - **Content:** deterministic/idempotent seed command, no content-admin UI yet
 
-## v0.4.1 hardening
+## Preserved hardening baseline
 
 - Practice submit قبل از هر تغییر state، integrity پاسخ صحیح و active بودن choice/concept را validate می‌کند.
 - Seed محتوای تاریخی user-owned را حذف نمی‌کند؛ stale child content به‌صورت soft-inactive نگه داشته می‌شود.
@@ -28,7 +64,7 @@
 - production بدون `SECRET_KEY` بالا نمی‌آید؛ secure cookie/HSTS/HTTPS defaults، GZip، DRF throttling، CSP/security headers و JWT refresh blacklist/logout اضافه شده‌اند.
 - Frontend raceهای Practice/Neighborhood/Path، stale Compare و DSM Graph URL/count state اصلاح شده‌اند.
 
-## v0.4 content
+## Current content inventory
 
 - **241 canonical disorder pages** across 20 DSM chapters + 1 supplemental medication/adverse-effects section
 - **30 structured symptoms**
@@ -48,7 +84,7 @@
 - **243 formal-diagnosis MASTER records → 241 canonical Atlas disorder pages**; 2 duplicate structural occurrences remain independently addressable in DSM MASTER but collapse to one Disorder page each
 - **30 curated disorder pages preserved + 211 DSM-generated disorder pages**
 - **22 Neurodevelopmental Disorder pages**, including Autism Spectrum Disorder and Attention-Deficit/Hyperactivity Disorder
-- **Disorders Explorer v0.3.1:** sticky chapter rail, responsive chapter selector, deep Persian/English search, grid/compact view modes, keyboard `/` focus shortcut, and browser-local recently viewed disorders
+- **Disorders Explorer:** sticky chapter rail, responsive chapter selector, deep Persian/English search, grid/compact view modes, keyboard `/` focus shortcut, and browser-local recently viewed disorders
 
 ## DSM-5-TR Persian MASTER reference layer
 
@@ -96,7 +132,7 @@ python manage.py import_dsm_master --dry-run
 
 The bundle itself states that it is an educational/structural reference, not verbatim DSM diagnostic criteria, not an automated diagnostic tool, and not a substitute for current professional coding or individualized treatment guidance. Proposed/non-final changes remain distinct from approved updates.
 
-## Core features through v0.4
+## Core features
 
 ### Concepts Atlas
 
@@ -128,7 +164,7 @@ Each concept can include:
 
 Every curated seeded disorder has at least one Concept link. Every Cognitive Distortion subtype now has an active flashcard, and the dedicated practice bank covers definition recognition plus harder confusion/contrast cases. DSM-generated Disorder pages may rely primarily on their linked MASTER profile until dedicated cross-domain enrichment is added.
 
-### Knowledge Graph V2
+### Knowledge Graph
 
 Route:
 
@@ -158,7 +194,7 @@ Original curated graph baseline:
 144 base Atlas edges
 ```
 
-Current graph in v0.4:
+Current graph:
 
 ```text
 315 nodes
@@ -267,9 +303,9 @@ Includes:
 - concepts studied
 - concepts mastered
 - Daily Challenge
-- Recommendation Engine V1
+- Recommendation Engine
 
-The streak and heatmap remain backward-compatible with v0.2 quiz, case and disorder-progress history while avoiding double-counting new v0.3 events.
+The streak and heatmap remain backward-compatible with historical quiz, case and disorder-progress data while avoiding double-counting StudyActivity events.
 
 ### Daily Challenge
 
@@ -289,7 +325,7 @@ Properties:
 - existing attempts continue to show the original challenge even if active challenge content changes later that day
 - concept progress and study activity are updated after submission
 
-### Search V3
+### Search
 
 Route:
 
@@ -305,7 +341,7 @@ Searches simultaneously across:
 
 The client uses cancellation/debounce to prevent stale request races.
 
-### Dashboard V3
+### Dashboard
 
 Route:
 
@@ -345,9 +381,9 @@ Routes:
 
 Both pages now combine Disorder and Concept user data while keeping ownership private per authenticated user.
 
-## Preserved v0.2 features
+## Core account and learning features
 
-v0.3 extends rather than replaces the previous learning core:
+The current system preserves the established learning core:
 
 - registration / login / logout
 - automatic JWT access-token refresh
@@ -395,7 +431,7 @@ Django ORM
 SQLite now / PostgreSQL later
 ```
 
-v0.3 migrations:
+Current migration history includes:
 
 ```text
 0003_concept_dailychallenge_dailychallengechoice_and_more.py
@@ -503,7 +539,7 @@ POST /api/cases/<slug>/submit/
 
 ## Release validation baseline
 
-Validated on the completed v0.4 release after both the Concept Graph foundation and Part 2 Explorer/Practice upgrade:
+Current validation baseline:
 
 ```text
 Django system check                  PASS
@@ -525,19 +561,19 @@ npm audit --audit-level=low           0 vulnerabilities
 Frontend main-route smoke test        PASS
 Disorders Explorer hydrated E2E       PASS · 241 catalog / chapter rail / recent Autism persistence
 DSM API + route smoke test            PASS
-v0.4 concept inventory                PASS · 44 concepts / 12 distortions / 8 aliases
-v0.4 relation provenance              PASS · 12 Beck-backed distortion membership relations
-v0.4 Concept ↔ Symptom layer          PASS · 15 structured links
-v0.4 flashcard inventory              PASS · 50 active cards
-v0.4 distortion practice              PASS · 18 items / 72 choices / exactly 1 correct per item
-v0.4 Graph V2                         PASS · filters / depth-2 neighborhood / shortest-path
+Concept inventory                PASS · 44 concepts / 12 distortions / 8 aliases
+Relation provenance              PASS · 12 Beck-backed distortion membership relations
+Concept ↔ Symptom layer          PASS · 15 structured links
+Flashcard inventory              PASS · 50 active cards
+Distortion practice              PASS · 18 items / 72 choices / exactly 1 correct per item
+Knowledge Graph                         PASS · filters / depth-2 neighborhood / shortest-path
 Seed/DSM category compatibility       PASS · two seed runs keep 21 DSM-backed categories
-Live v0.4 route smoke                 PASS · API + /cognitive-distortions + /concepts + /map + /study
+Live route smoke                 PASS · API + /cognitive-distortions + /concepts + /map + /study
 Authenticated Practice E2E            PASS · submit → StudyActivity → ConceptProgress → StudyOverview
 DSM overview HTML payload             ~115 KB after lazy metadata loading
 ```
 
-The existing v0.3.1 Disorders Explorer browser validation remains part of the regression baseline. v0.4 additionally passed production-build and live HTTP smoke tests for the new Concept/Graph/Distortion routes plus an authenticated Practice-to-Study-Engine runtime flow.
+The Disorders Explorer browser validation remains part of the regression baseline together with production-build, live HTTP smoke tests for Concept/Graph/Distortion routes, and an authenticated Practice-to-Study-Engine runtime flow.
 
 Real user-flow validation covered:
 
@@ -554,7 +590,7 @@ Flashcard Review
 Daily Challenge
 Cognitive Distortion Practice
 Study Overview
-Dashboard V3
+Dashboard
 Unified Saved
 Unified Notes
 ```
@@ -568,24 +604,33 @@ Unified Notes
 - Keep source metadata attached to educational content.
 - Before production/publication, content should receive dedicated scientific review and more granular claim-level citations.
 
-## Roadmap after v0.4
+## Roadmap from v0.5.1
 
-v0.4 was implemented in two internal phases and is now complete. The next product-domain expansion is Therapy Atlas:
+Therapy Atlas is being implemented as five bounded v0.5.x parts:
 
 ```text
-v0.5  Therapy Atlas
-v0.6  Psychologists + Theories + Timeline
-v0.7  Advanced Branching Clinical Cases + Analytics
-v0.8  Study Mode + Exam Planning + Advanced Recommendations
-v0.9  Brain Atlas + Assessments Atlas
-v1.0  Admin CMS + Scientific Review + Full cross-domain integration
+v0.5.1  Therapy Architecture + Backend Foundation ✅
+v0.5.2  Scientific Therapy Seed + API
+v0.5.3  Therapy Atlas Frontend
+v0.5.4  Cross-domain Integration + Knowledge Graph
+v0.5.5  Compare + Personal Features + Final Hardening
+v0.6    Psychologists + Theories + Timeline
+v0.7    Advanced Branching Clinical Cases + Analytics
+v0.8    Study Mode + Exam Planning + Advanced Recommendations
+v0.9    Brain Atlas + Assessments Atlas
+v1.0    Admin CMS + Scientific Review + Full cross-domain integration
 ```
 
-## Deliberately not part of v0.4
+## Deliberately not part of v0.5.1
 
 These remain later-version work rather than partially implemented placeholders:
 
-- Therapy Atlas
+- Therapy scientific seed and public API
+- Therapy Atlas frontend
+- Therapy/Technique Graph integration
+- Therapy Compare, bookmarks, notes and final hardening
+- Therapy progress/mastery until real learning evidence exists
+- Personalized treatment recommendation
 - Psychologists Atlas
 - Theories Atlas
 - Psychology Timeline
