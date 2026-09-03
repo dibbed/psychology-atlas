@@ -1,7 +1,7 @@
 {
   "project": "Psychology Atlas",
-  "version": "0.5.4",
-  "release_name": "Cross-domain Integration + Knowledge Graph",
+  "version": "0.5.5",
+  "release_name": "Compare + Personal Features + Final Hardening",
   "stack": {
     "frontend": "Next.js 16.3.3 + React 19 + TypeScript",
     "backend": "Django 5.2 + Django REST Framework",
@@ -115,7 +115,17 @@
     "knowledge_graph_relation_provenance",
     "knowledge_graph_therapy_technique_pathfinding",
     "therapy_graph_cache_invalidation",
-    "therapy_graph_family_filter"
+    "therapy_graph_family_filter",
+    "therapy_compare_api",
+    "therapy_compare_ui",
+    "therapy_compare_relation_provenance",
+    "therapy_bookmarks",
+    "therapy_notes",
+    "therapy_personal_saved_notes_dashboard_integration",
+    "therapy_personal_study_activity",
+    "therapy_personal_active_content_filtering",
+    "therapy_compare_query_hardening",
+    "compare_request_race_hardening"
   ],
   "content": {
     "categories": 21,
@@ -186,17 +196,18 @@
     "0010_cognitivedistortionpracticechoice_is_active.py",
     "0011_content_children_is_active.py",
     "0012_seed_managed_content.py",
-    "0013_therapy_technique_techniqueconcept_and_more.py"
+    "0013_therapy_technique_techniqueconcept_and_more.py",
+    "0014_studyactivity_therapy_therapybookmark_therapynote.py"
   ],
   "validation": {
     "django_check": "pass",
-    "backend_tests": "89/89 passed",
+    "backend_tests": "97/97 passed",
     "python_compileall": "pass",
     "pip_check": "pass",
     "migration_drift_check": "pass",
     "seed_idempotency": "pass · current Therapy counts stable across repeated runs / therapy links soft-deactivate rather than destructive cleanup",
     "typescript_typecheck": "pass",
-    "next_production_build": "pass · /therapies + /therapies/[slug] + /techniques/[slug] compiled as dynamic routes",
+    "next_production_build": "pass · v0.5.5 production build · /compare + /therapies + /therapies/[slug] + /saved + /notes + /dashboard validated",
     "npm_audit_low": "0 vulnerabilities",
     "frontend_route_smoke_test": "pass",
     "dsm_master_source_sha256": "9680d7b1e85ae4ef58efa58f7c76bfcc04c7b317f1fbd40cbb2e27be02542694",
@@ -210,10 +221,10 @@
     "dsm_graph_initial_html": "~12 KB after lazy graph loading",
     "atlas_graph_initial_html": "~11.5 KB after lazy graph loading",
     "hidden_daily_challenge_answer_check": "pass",
-    "temporary_audit_user_cleanup": "pass",
+    "temporary_audit_user_cleanup": "pass · both v0.5.5 runtime-audit users deleted; 0 remaining",
     "therapy_foundation_tests": "3 targeted schema/provenance tests included in full suite",
     "canonical_module_cleanup": "pass · versioned backend runtime modules consolidated into views.py / serializers.py / seed_mvp.py",
-    "current_release": "v0.5.4 Cross-domain Integration + Knowledge Graph",
+    "current_release": "v0.5.5 Compare + Personal Features + Final Hardening",
     "ruff": "not run · ruff is not installed in backend venv",
     "git_diff_check": "pass",
     "therapy_seed_api_tests": "6 targeted seed/API/provenance/filter/idempotency tests included in full suite",
@@ -231,7 +242,14 @@
     "graph_node_types": "44 concept / 241 disorder / 30 symptom / 6 therapy / 9 technique",
     "graph_edge_inventory": "23 concept-concept / 65 disorder-concept / 15 concept-symptom / 65 disorder-symptom / 9 therapy-disorder / 7 therapy-concept / 10 therapy-technique / 8 technique-concept / 570 dsm_nearby",
     "graph_cache_provenance_invalidation": "pass · Therapy models, relation models, relation-source models and SourceReference invalidate atlas_graph",
-    "cross_domain_runtime_smoke": "pass · graph=330/772 · Panic -> CBT -> Cognitive Restructuring path=2 hops · CBT search=1 therapy · Disorder/Concept/Therapy/Technique/Map/Search routes HTTP 200"
+    "cross_domain_runtime_smoke": "pass · graph=330/772 · Panic -> CBT -> Cognitive Restructuring path=2 hops · CBT search=1 therapy · Disorder/Concept/Therapy/Technique/Map/Search routes HTTP 200",
+    "therapy_compare_personal_tests": "8 targeted compare/ownership/validation/query-budget/seed-preservation tests included in full suite",
+    "therapy_compare_query_budget": "pass · <=14 queries for bounded 2-item comparison fixture after prefetch hardening",
+    "therapy_personal_auth_scope": "pass · bookmarks/notes require auth and cross-user read/delete isolation is covered",
+    "therapy_personal_inactive_filtering": "pass · inactive Therapy rows are hidden from personal lists and dashboard aggregates",
+    "therapy_personal_note_validation": "pass · string-only / trim / 12000-char bound / empty-save delete",
+    "therapy_personal_http_e2e": "pass · real HTTP JWT flow with two temporary users · compare ordering/guardrail · bookmark 201->200 idempotency · cross-user bookmark/note isolation · dashboard aggregation · delete cleanup · six frontend routes HTTP 200",
+    "therapy_personal_seed_preservation": "pass · seed_mvp preserves TherapyBookmark, TherapyNote and StudyActivity.therapy links for seeded Therapy content"
   },
   "release_notes": {
     "graph_layers": [
@@ -250,7 +268,7 @@
       "0.5.2": "Scientific Therapy Seed + API ✅",
       "0.5.3": "Therapy Atlas Frontend ✅",
       "0.5.4": "Cross-domain Integration + Knowledge Graph ✅",
-      "0.5.5": "Compare + Personal Features + Final Hardening",
+      "0.5.5": "Compare + Personal Features + Final Hardening ✅",
       "0.6": "Psychologists + Theories + Timeline",
       "0.7": "Advanced Branching Clinical Cases + Analytics",
       "0.8": "Study Mode + Exam Planning + Advanced Recommendations",
@@ -269,7 +287,6 @@
       "advanced recommendation engine",
       "content admin CMS",
       "claim-level citation graph",
-      "Therapy Compare, bookmarks, notes and final hardening (v0.5.5)",
       "Therapy user progress/mastery until learning evidence exists",
       "Personalized treatment recommendation"
     ],
@@ -280,7 +297,9 @@
       "flashcard SRS progress",
       "daily challenge attempts",
       "study activity",
-      "cognitive distortion practice attempts"
+      "cognitive distortion practice attempts",
+      "therapy bookmarks",
+      "therapy notes"
     ],
     "therapy_foundation": {
       "entity_boundary": "Therapy and Technique are separate entities",
@@ -299,7 +318,9 @@
         "VA National Center for PTSD"
       ],
       "cross_domain": "Disorder/Concept details, Global Search and the five-layer Atlas Graph expose explicit Therapy/Technique relations",
-      "graph_provenance": "Therapy relation edges include relation-level SourceReference metadata and source changes invalidate graph cache"
+      "graph_provenance": "Therapy relation edges include relation-level SourceReference metadata and source changes invalidate graph cache",
+      "personal_features": "TherapyBookmark and TherapyNote are private user-owned study utilities; no Therapy mastery/progress is inferred",
+      "compare": "2-4 active unique therapies, requested order preserved, structured provenance-aware comparison only"
     },
     "therapy_frontend": {
       "routes": [
@@ -310,7 +331,9 @@
       "explorer": "Persian/English search, family rail, classification filters, connection/name sorting, grid/compact views",
       "therapy_detail": "overview, techniques, clinical contexts, concepts, evidence/limitations, sources",
       "technique_detail": "independent Technique profile with Therapy/Concept relations and provenance",
-      "guardrail": "Evidence Basis is displayed as evidence-source semantics, not personalized treatment ranking"
+      "guardrail": "Evidence Basis is displayed as evidence-source semantics, not personalized treatment ranking",
+      "compare": "shared /compare surface with type=therapy; source-backed dimensions only and explicit no-ranking guardrail",
+      "personal": "Therapy detail bookmark + private note; Saved/Notes/Dashboard integration"
     }
   }
 }

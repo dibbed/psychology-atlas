@@ -648,6 +648,7 @@ class StudyActivity(models.Model):
     quiz = models.ForeignKey(Quiz, on_delete=models.SET_NULL, null=True, blank=True, related_name="study_activities")
     clinical_case = models.ForeignKey(ClinicalCase, on_delete=models.SET_NULL, null=True, blank=True, related_name="study_activities")
     flashcard = models.ForeignKey(Flashcard, on_delete=models.SET_NULL, null=True, blank=True, related_name="study_activities")
+    therapy = models.ForeignKey("Therapy", on_delete=models.SET_NULL, null=True, blank=True, related_name="study_activities")
     metadata = models.JSONField(default=dict, blank=True)
     occurred_at = models.DateTimeField(default=timezone.now, db_index=True)
 
@@ -835,6 +836,35 @@ class Therapy(TimeStampedModel):
 
     def __str__(self):
         return self.name_en
+
+
+class TherapyBookmark(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="therapy_bookmarks")
+    therapy = models.ForeignKey(Therapy, on_delete=models.CASCADE, related_name="bookmarked_by")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-created_at", "-id")
+        constraints = [
+            models.UniqueConstraint(fields=("user", "therapy"), name="uq_user_therapy_bookmark")
+        ]
+        indexes = [models.Index(fields=("user", "-created_at"))]
+
+
+class TherapyNote(TimeStampedModel):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="therapy_notes")
+    therapy = models.ForeignKey(Therapy, on_delete=models.CASCADE, related_name="user_notes")
+    body = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ("-updated_at", "-id")
+        constraints = [
+            models.UniqueConstraint(fields=("user", "therapy"), name="uq_user_therapy_note")
+        ]
+        indexes = [models.Index(fields=("user", "-updated_at"))]
+
+    def __str__(self):
+        return f"{self.user_id}:{self.therapy.slug}"
 
 
 class TherapyAlias(models.Model):

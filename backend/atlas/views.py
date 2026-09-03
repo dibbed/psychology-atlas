@@ -32,12 +32,16 @@ from .models import (
     TechniqueConcept,
     TechniqueConceptSource,
     Therapy,
+    TherapyBookmark,
     TherapyClassification,
+    TherapyClassificationLink,
     TherapyConcept,
     TherapyConceptSource,
     TherapyDisorder,
     TherapyDisorderSource,
     TherapyFamily,
+    TherapyNote,
+    TherapySource,
     TherapyTechnique,
     TherapyTechniqueSource,
     UserConceptProgress,
@@ -57,10 +61,12 @@ from .serializers import (
     RegisterSerializer,
     TechniqueDetailSerializer,
     TechniqueListSerializer,
+    TherapyBookmarkSerializer,
     TherapyClassificationSerializer,
     TherapyDetailSerializer,
     TherapyFamilySerializer,
     TherapyListSerializer,
+    TherapyNoteSerializer,
     UserNoteSerializer,
     UserSerializer,
 )
@@ -396,6 +402,16 @@ def dashboard(request):
     notes_qs = UserNote.objects.filter(user=request.user, disorder__is_active=True).select_related("disorder", "disorder__category").order_by("-updated_at")
     concept_bookmarks_qs = ConceptBookmark.objects.filter(user=request.user, concept__is_active=True).select_related("concept").order_by("-created_at")
     concept_notes_qs = ConceptNote.objects.filter(user=request.user, concept__is_active=True).select_related("concept").order_by("-updated_at")
+    therapy_bookmarks_qs = TherapyBookmark.objects.filter(
+        user=request.user,
+        therapy__is_active=True,
+        therapy__family__is_active=True,
+    ).select_related("therapy", "therapy__family").order_by("-created_at")
+    therapy_notes_qs = TherapyNote.objects.filter(
+        user=request.user,
+        therapy__is_active=True,
+        therapy__family__is_active=True,
+    ).select_related("therapy", "therapy__family").order_by("-updated_at")
     concept_progress_qs = UserConceptProgress.objects.filter(user=request.user, concept__is_active=True).select_related("concept")
     visible_cards = available_flashcards()
     due_flashcards = UserFlashcardProgress.objects.filter(
@@ -447,7 +463,7 @@ def dashboard(request):
     ]
 
     return Response({
-        "saved_topics": bookmarks_qs.count() + concept_bookmarks_qs.count(),
+        "saved_topics": bookmarks_qs.count() + concept_bookmarks_qs.count() + therapy_bookmarks_qs.count(),
         "disorders_studied": progress_qs.count(),
         "concepts_studied": concept_progress_qs.count(),
         "concepts_mastered": concept_progress_qs.filter(status=UserConceptProgress.Status.COMPLETED).count(),
@@ -456,7 +472,7 @@ def dashboard(request):
         "quiz_accuracy": avg_quiz_score,
         "cases_completed": completed_cases,
         "case_accuracy": avg_case_score,
-        "notes_count": notes_qs.count() + concept_notes_qs.count(),
+        "notes_count": notes_qs.count() + concept_notes_qs.count() + therapy_notes_qs.count(),
         "study_days": len(activity_dates),
         "streak": current_streak(request.user),
         "heatmap": activity_heatmap(request.user, days=42),
@@ -475,6 +491,16 @@ def dashboard(request):
             }
             for row in concept_bookmarks_qs[:4]
         ],
+        "recent_therapy_saved": [
+            {
+                "id": row.id,
+                "slug": row.therapy.slug,
+                "name_en": row.therapy.name_en,
+                "name_fa": row.therapy.name_fa,
+                "family": row.therapy.family.name_fa or row.therapy.family.name_en,
+            }
+            for row in therapy_bookmarks_qs[:4]
+        ],
         "recent_notes": UserNoteSerializer(notes_qs[:4], many=True).data,
         "recent_concept_notes": [
             {
@@ -485,6 +511,17 @@ def dashboard(request):
                 "body": row.body,
             }
             for row in concept_notes_qs[:4]
+        ],
+        "recent_therapy_notes": [
+            {
+                "id": row.id,
+                "slug": row.therapy.slug,
+                "name_en": row.therapy.name_en,
+                "name_fa": row.therapy.name_fa,
+                "family": row.therapy.family.name_fa or row.therapy.family.name_en,
+                "body": row.body,
+            }
+            for row in therapy_notes_qs[:4]
         ],
         "weak_topics": weak_topics,
         "recent_quizzes": [
@@ -1945,6 +1982,69 @@ def distortion_practice_submit(request, slug):
         "progress_percent": progress.progress_percent,
     }, status=status.HTTP_201_CREATED)
 
+def _therapy_detail_queryset():
+    active_classifications = TherapyClassificationLink.objects.filter(
+        is_active=True,
+        classification__is_active=True,
+    ).select_related("classification")
+    active_technique_links = TherapyTechnique.objects.filter(
+        is_active=True,
+        technique__is_active=True,
+    ).select_related("technique").prefetch_related(
+        "technique__aliases",
+        Prefetch(
+            "technique__therapy_links",
+            queryset=TherapyTechnique.objects.filter(
+                is_active=True,
+                therapy__is_active=True,
+                therapy__family__is_active=True,
+            ).select_related("therapy", "therapy__family"),
+        ),
+        Prefetch(
+            "technique__concept_links",
+            queryset=TechniqueConcept.objects.filter(
+                is_active=True,
+                concept__is_active=True,
+            ).select_related("concept"),
+        ),
+        Prefetch(
+            "source_links",
+            queryset=TherapyTechniqueSource.objects.select_related("source"),
+        ),
+    )
+    active_disorder_links = TherapyDisorder.objects.filter(
+        is_active=True,
+        disorder__is_active=True,
+    ).select_related("disorder", "disorder__category").prefetch_related(
+        Prefetch(
+            "source_links",
+            queryset=TherapyDisorderSource.objects.select_related("source"),
+        )
+    )
+    active_concept_links = TherapyConcept.objects.filter(
+        is_active=True,
+        concept__is_active=True,
+    ).select_related("concept").prefetch_related(
+        "concept__aliases",
+        Prefetch(
+            "source_links",
+            queryset=TherapyConceptSource.objects.select_related("source"),
+        ),
+    )
+    return (
+        Therapy.objects.filter(is_active=True, family__is_active=True)
+        .select_related("family")
+        .prefetch_related(
+            "aliases",
+            Prefetch("classification_links", queryset=active_classifications),
+            Prefetch("source_links", queryset=TherapySource.objects.select_related("source")),
+            Prefetch("technique_links", queryset=active_technique_links),
+            Prefetch("disorder_links", queryset=active_disorder_links),
+            Prefetch("concept_links", queryset=active_concept_links),
+        )
+    )
+
+
 class TherapyListView(generics.ListAPIView):
     serializer_class = TherapyListSerializer
 
@@ -2027,23 +2127,27 @@ class TherapyListView(generics.ListAPIView):
 class TherapyDetailView(generics.RetrieveAPIView):
     serializer_class = TherapyDetailSerializer
     lookup_field = "slug"
-    queryset = (
-        Therapy.objects.filter(is_active=True, family__is_active=True)
-        .select_related("family")
-        .prefetch_related(
-            "aliases",
-            "classification_links__classification",
-            "source_links__source",
-            "technique_links__technique__aliases",
-            "technique_links__technique__therapy_links__therapy__family",
-            "technique_links__technique__concept_links__concept",
-            "technique_links__source_links__source",
-            "disorder_links__disorder__category",
-            "disorder_links__source_links__source",
-            "concept_links__concept__aliases",
-            "concept_links__source_links__source",
-        )
-    )
+    queryset = _therapy_detail_queryset()
+
+
+@api_view(["GET"])
+def compare_therapies(request):
+    slugs = [value.strip() for value in request.query_params.get("slugs", "").split(",") if value.strip()]
+    if not 2 <= len(slugs) <= 4:
+        return Response({"detail": "بین ۲ تا ۴ درمان انتخاب کن."}, status=400)
+    if len(set(slugs)) != len(slugs):
+        return Response({"detail": "هر درمان فقط یک بار می‌تواند در مقایسه باشد."}, status=400)
+
+    rows = list(_therapy_detail_queryset().filter(slug__in=slugs))
+    by_slug = {row.slug: row for row in rows}
+    missing = [slug for slug in slugs if slug not in by_slug]
+    if missing:
+        return Response({"detail": "یک یا چند درمان انتخاب‌شده پیدا نشد یا غیرفعال است."}, status=404)
+    ordered = [by_slug[slug] for slug in slugs]
+    return Response({
+        "items": TherapyDetailSerializer(ordered, many=True).data,
+        "note": "این جدول برای مقایسه ساختاریافته آموزشی است و رتبه‌بندی اثربخشی یا توصیه درمانی شخصی نیست.",
+    })
 
 
 @api_view(["GET"])
@@ -2063,6 +2167,99 @@ def therapy_taxonomy(request):
         ],
         "note": "این taxonomy آموزشی است؛ evidence_basis نوع منبع شواهد را نشان می‌دهد و رتبه‌بندی شخصی درمان نیست.",
     })
+
+
+@api_view(["GET", "POST"])
+@permission_classes([permissions.IsAuthenticated])
+def therapy_bookmarks(request):
+    qs = TherapyBookmark.objects.filter(
+        user=request.user,
+        therapy__is_active=True,
+        therapy__family__is_active=True,
+    ).select_related("therapy", "therapy__family").prefetch_related(
+        "therapy__aliases",
+        "therapy__classification_links__classification",
+        "therapy__technique_links__technique",
+        "therapy__disorder_links__disorder",
+        "therapy__concept_links__concept",
+    ).order_by("-created_at", "-id")
+    if request.method == "GET":
+        return Response(TherapyBookmarkSerializer(qs, many=True).data)
+
+    payload = _object_payload(request)
+    slug = payload.get("slug")
+    if not isinstance(slug, str) or not slug.strip():
+        raise ValidationError({"slug": "شناسه درمان باید یک slug معتبر باشد."})
+    therapy = get_object_or_404(Therapy.objects.filter(is_active=True, family__is_active=True), slug=slug.strip())
+    bookmark, created = TherapyBookmark.objects.get_or_create(user=request.user, therapy=therapy)
+    if created:
+        record_activity(request.user, StudyActivity.Kind.BOOKMARK_SAVED, therapy=therapy)
+    bookmark = qs.filter(pk=bookmark.pk).first() or bookmark
+    return Response(TherapyBookmarkSerializer(bookmark).data, status=201 if created else 200)
+
+
+@api_view(["DELETE"])
+@permission_classes([permissions.IsAuthenticated])
+def therapy_bookmark_delete(request, slug):
+    TherapyBookmark.objects.filter(user=request.user, therapy__slug=slug).delete()
+    return Response(status=204)
+
+
+@api_view(["GET"])
+@permission_classes([permissions.IsAuthenticated])
+def therapy_notes(request):
+    qs = TherapyNote.objects.filter(
+        user=request.user,
+        therapy__is_active=True,
+        therapy__family__is_active=True,
+    ).select_related("therapy", "therapy__family").prefetch_related(
+        "therapy__aliases",
+        "therapy__classification_links__classification",
+        "therapy__technique_links__technique",
+        "therapy__disorder_links__disorder",
+        "therapy__concept_links__concept",
+    ).order_by("-updated_at", "-id")
+    return Response(TherapyNoteSerializer(qs, many=True).data)
+
+
+@api_view(["GET", "PUT", "DELETE"])
+@permission_classes([permissions.IsAuthenticated])
+def therapy_note_detail(request, slug):
+    therapy = get_object_or_404(Therapy.objects.filter(is_active=True, family__is_active=True), slug=slug)
+    note = TherapyNote.objects.filter(user=request.user, therapy=therapy).first()
+
+    if request.method == "GET":
+        if not note:
+            return Response({"therapy_slug": slug, "body": "", "exists": False})
+        data = TherapyNoteSerializer(note).data
+        data["exists"] = True
+        return Response(data)
+
+    if request.method == "DELETE":
+        if note:
+            note.delete()
+        return Response(status=204)
+
+    payload = _object_payload(request)
+    if "body" not in payload or not isinstance(payload["body"], str):
+        raise ValidationError({"body": "متن یادداشت باید رشته متنی باشد."})
+    body = payload["body"].strip()
+    if len(body) > 12000:
+        raise ValidationError({"body": "یادداشت بیش از حد طولانی است."})
+    if not body:
+        if note:
+            note.delete()
+        return Response({"therapy_slug": slug, "body": "", "exists": False})
+
+    note, _ = TherapyNote.objects.update_or_create(
+        user=request.user,
+        therapy=therapy,
+        defaults={"body": body},
+    )
+    record_activity(request.user, StudyActivity.Kind.NOTE_SAVED, therapy=therapy)
+    data = TherapyNoteSerializer(note).data
+    data["exists"] = True
+    return Response(data)
 
 
 class TechniqueListView(generics.ListAPIView):

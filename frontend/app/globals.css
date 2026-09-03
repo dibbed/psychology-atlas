@@ -1446,6 +1446,21 @@ a.card:hover { transform: translateY(-2px); }
 .therapy-source-card p { margin: 3px 0 0; color: var(--muted); font-size: 10px; line-height: 1.75; }
 .therapy-source-card b { color: var(--accent); font-size: 10px; white-space: nowrap; }
 .technique-detail { gap: 26px; }
+.therapy-detail-actions { align-items: flex-start; flex-wrap: wrap; }
+.therapy-detail-actions .therapy-personal-action { display: contents; }
+.therapy-note-editor .note-input { min-height: 220px; }
+.therapy-note-meta { display: flex; justify-content: flex-end; color: var(--muted); font-size: 10px; }
+.compare-page-head { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 24px; align-items: end; }
+.compare-domain-switch { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.therapy-compare-options { max-height: 390px; }
+.therapy-compare-selection-summary { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 11px; }
+.therapy-compare-note { line-height: 1.9; }
+.therapy-compare-table table { min-width: 1120px; }
+.therapy-compare-table th:first-child, .therapy-compare-table td:first-child { position: sticky; right: 0; z-index: 2; min-width: 170px; background: var(--surface); }
+.therapy-compare-table th:first-child { z-index: 4; }
+.therapy-compare-table td { min-width: 240px; vertical-align: top; line-height: 1.85; }
+.therapy-compare-table th a:hover { color: var(--accent); }
+.compare-cell-sub { display: block; margin-top: 4px; color: var(--muted); direction: ltr; text-align: right; }
 
 @media (max-width: 1050px) {
   .therapies-page-head { grid-template-columns: 1fr; gap: 22px; }
@@ -1455,6 +1470,8 @@ a.card:hover { transform: translateY(-2px); }
   .therapy-family-rail button { border-bottom: 1px solid var(--border); }
   .therapy-family-rail button:nth-last-child(-n+2) { border-bottom: 0; }
   .therapy-disorder-row { grid-template-columns: minmax(190px,.7fr) minmax(190px,.7fr) 1fr; }
+  .compare-page-head { grid-template-columns: 1fr; }
+  .compare-domain-switch { justify-content: flex-start; }
 }
 
 @media (max-width: 800px) {
@@ -1471,6 +1488,7 @@ a.card:hover { transform: translateY(-2px); }
   .therapy-disorder-row { grid-template-columns: 1fr; gap: 10px; }
   .therapy-inline-note, .therapy-source-line { grid-column: 1; }
   .therapy-source-card { grid-template-columns: 1fr; gap: 12px; }
+  .therapy-compare-options { grid-template-columns: repeat(2,minmax(0,1fr)); }
 }
 
 @media (max-width: 620px) {
@@ -1499,4 +1517,10 @@ a.card:hover { transform: translateY(-2px); }
   .therapy-tabs { top: 91px; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
   .therapy-tabs::-webkit-scrollbar { display: none; }
   .therapy-tabs .tab { flex: 0 0 auto; white-space: nowrap; }
+  .compare-domain-switch { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
+  .compare-domain-switch .button { text-align: center; }
+  .therapy-compare-options { grid-template-columns: 1fr; }
+  .therapy-compare-selection-summary { align-items: flex-start; flex-direction: column; }
+  .therapy-detail-actions { display: grid; grid-template-columns: 1fr; }
+  .therapy-detail-actions .button, .therapy-detail-actions .therapy-personal-action > .button { width: 100%; }
 }

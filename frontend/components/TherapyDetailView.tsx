@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { SourceReference, TherapyDetail } from "@/lib/types";
+import TherapyBookmarkButton from "./TherapyBookmarkButton";
+import TherapyNoteEditor from "./TherapyNoteEditor";
 
 const tabs = [
   ["overview", "معرفی"],
@@ -10,6 +12,7 @@ const tabs = [
   ["disorders", "زمینه‌های بالینی"],
   ["concepts", "مفاهیم"],
   ["evidence", "شواهد و محدودیت‌ها"],
+  ["notes", "یادداشت من"],
   ["sources", "منابع"],
 ] as const;
 
@@ -91,7 +94,9 @@ export default function TherapyDetailView({ therapy }: { therapy: TherapyDetail 
           <span className="therapy-review-dot" />
           {therapy.review_status === "source_checked" ? "محتوای seed این نسخه با منبع ثبت شده است" : `وضعیت بررسی: ${therapy.review_status}`}
         </div>
-        <div className="actions">
+        <div className="actions therapy-detail-actions">
+          <TherapyBookmarkButton slug={therapy.slug} />
+          <Link className="button primary" href={`/compare?type=therapy&add=${therapy.slug}`}>مقایسه با درمان دیگر</Link>
           <Link className="button" href={`/map?node=therapy:${therapy.slug}`}>دیدن در Knowledge Graph</Link>
         </div>
       </header>
@@ -110,6 +115,7 @@ export default function TherapyDetailView({ therapy }: { therapy: TherapyDetail 
         {active === "disorders" && <Disorders therapy={therapy} />}
         {active === "concepts" && <Concepts therapy={therapy} />}
         {active === "evidence" && <Evidence therapy={therapy} />}
+        {active === "notes" && <TherapyNoteEditor slug={therapy.slug} />}
         {active === "sources" && <Sources sources={therapy.sources} />}
       </section>
     </div>

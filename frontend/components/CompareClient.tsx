@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { faNumber } from "@/lib/fa";
 import { normalizePersianSearch } from "@/lib/text";
@@ -15,13 +15,18 @@ export default function CompareClient({ initialSlug }: { initialSlug?: string })
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [comparing, setComparing] = useState(false);
+  const compareRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    api<{ results: Disorder[] }>("/disorders/?page_size=300")
-      .then(x => setAll(x.results))
-      .catch((e: any) => setError(e.message || "دریافت اختلالات انجام نشد."))
-      .finally(() => setLoading(false));
+    const controller = new AbortController();
+    api<{ results: Disorder[] }>("/disorders/?page_size=300", { signal: controller.signal })
+      .then(x => { if (!controller.signal.aborted) setAll(x.results); })
+      .catch((e: any) => { if (e?.name !== "AbortError") setError(e.message || "دریافت اختلالات انجام نشد."); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
   }, []);
+
+  useEffect(() => () => compareRef.current?.abort(), []);
 
   useEffect(() => {
     if (initialSlug && all.some(d => d.slug === initialSlug)) {
@@ -41,6 +46,8 @@ export default function CompareClient({ initialSlug }: { initialSlug?: string })
         ? current.filter(value => value !== slug)
         : current.length < 4 ? [...current, slug] : current;
       if (next !== current) {
+        compareRef.current?.abort();
+        setComparing(false);
         setItems([]);
         setDsmItems({});
         setError("");
@@ -51,28 +58,36 @@ export default function CompareClient({ initialSlug }: { initialSlug?: string })
 
   async function compare() {
     if (selected.length < 2 || comparing) return;
+    compareRef.current?.abort();
+    const controller = new AbortController();
+    compareRef.current = controller;
     try {
       setComparing(true);
       setError("");
       const [comparison, dsmRows] = await Promise.all([
-        api<DisorderDetail[]>(`/disorders/compare/?slugs=${selected.join(",")}`),
+        api<DisorderDetail[]>(`/disorders/compare/?slugs=${selected.join(",")}`, { signal: controller.signal }),
         Promise.all(selected.map(async slug => {
           try {
-            const record = await api<DSMRecordDetail>(`/dsm/records/by-disorder/${slug}/?detail=true`);
+            const record = await api<DSMRecordDetail>(`/dsm/records/by-disorder/${slug}/?detail=true`, { signal: controller.signal });
             return [slug, record] as const;
-          } catch {
+          } catch (reason: any) {
+            if (reason?.name === "AbortError") throw reason;
             return [slug, null] as const;
           }
         })),
       ]);
-      setItems(comparison);
-      setDsmItems(Object.fromEntries(dsmRows));
+      if (!controller.signal.aborted) {
+        setItems(comparison);
+        setDsmItems(Object.fromEntries(dsmRows));
+      }
     } catch (e: any) {
-      setItems([]);
-      setDsmItems({});
-      setError(e.message || "مقایسه انجام نشد.");
+      if (e?.name !== "AbortError") {
+        setItems([]);
+        setDsmItems({});
+        setError(e.message || "مقایسه انجام نشد.");
+      }
     } finally {
-      setComparing(false);
+      if (!controller.signal.aborted) setComparing(false);
     }
   }
 
@@ -101,7 +116,7 @@ export default function CompareClient({ initialSlug }: { initialSlug?: string })
         )}
         <div className="actions">
           <button className="button primary" disabled={selected.length < 2 || comparing} onClick={compare}>{comparing ? "در حال مقایسه..." : "ساخت جدول مقایسه"}</button>
-          {selected.length > 0 && <button className="button" onClick={() => { setSelected([]); setItems([]); setDsmItems({}); }}>پاک‌کردن انتخاب‌ها</button>}
+          {selected.length > 0 && <button className="button" onClick={() => { compareRef.current?.abort(); setSelected([]); setItems([]); setDsmItems({}); setError(""); setComparing(false); }}>پاک‌کردن انتخاب‌ها</button>}
         </div>
         {error && <p className="error">{error}</p>}
       </div>

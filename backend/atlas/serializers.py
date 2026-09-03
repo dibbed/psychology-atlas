@@ -338,8 +338,10 @@ from .models import (
     TechniqueAlias,
     Therapy,
     TherapyAlias,
+    TherapyBookmark,
     TherapyClassification,
     TherapyFamily,
+    TherapyNote,
 )
 
 
@@ -692,6 +694,24 @@ class TherapyListSerializer(serializers.ModelSerializer):
 
     def get_concept_count(self, obj):
         return sum(1 for link in obj.concept_links.all() if link.is_active and link.concept.is_active)
+
+
+class TherapyBookmarkSerializer(serializers.ModelSerializer):
+    therapy = TherapyListSerializer(read_only=True)
+
+    class Meta:
+        model = TherapyBookmark
+        fields = ("id", "therapy", "created_at")
+        read_only_fields = ("id", "therapy", "created_at")
+
+
+class TherapyNoteSerializer(serializers.ModelSerializer):
+    therapy = TherapyListSerializer(read_only=True)
+
+    class Meta:
+        model = TherapyNote
+        fields = ("id", "therapy", "body", "created_at", "updated_at")
+        read_only_fields = ("id", "therapy", "created_at", "updated_at")
 
 
 class TherapyDetailSerializer(TherapyListSerializer):

@@ -18,8 +18,8 @@ from .models import (
     DisorderSymptom, DSMCorpus, DSMRecord, DSMRecordRelation, Flashcard, Quiz, QuizChoice, QuizQuestion, SourceReference, StudyActivity, Symptom, UserConceptProgress,
     UserFlashcardProgress, UserNote, UserProgress,
     ScientificReviewStatus, Technique, TechniqueConcept, TechniqueConceptSource, TechniqueSource,
-    Therapy, TherapyAlias, TherapyClassification, TherapyClassificationLink, TherapyConcept,
-    TherapyConceptSource, TherapyDisorder, TherapyDisorderSource, TherapyFamily, TherapySource,
+    Therapy, TherapyAlias, TherapyBookmark, TherapyClassification, TherapyClassificationLink, TherapyConcept,
+    TherapyConceptSource, TherapyDisorder, TherapyDisorderSource, TherapyFamily, TherapyNote, TherapySource,
     TherapyTechnique, TherapyTechniqueSource,
 )
 
@@ -1709,3 +1709,187 @@ class TherapyCrossDomainGraphTests(APITestCase):
             and row["target"] == "disorder:panic-disorder"
         )
         self.assertEqual(edge["sources"][0]["organization"], "Graph source sentinel")
+
+
+class TherapyPersonalCompareTests(APITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        call_command("seed_mvp", stdout=StringIO())
+        cls.user_a = User.objects.create_user(username="therapy-a@example.com", email="therapy-a@example.com", password="ComplexPass123!")
+        cls.user_b = User.objects.create_user(username="therapy-b@example.com", email="therapy-b@example.com", password="ComplexPass123!")
+
+    def auth(self, user):
+        token = RefreshToken.for_user(user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token.access_token}")
+
+    def test_therapy_compare_preserves_order_and_structured_provenance(self):
+        response = self.client.get(
+            "/api/therapies/compare/?slugs=behavioral-activation,cognitive-behavioral-therapy"
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(
+            [row["slug"] for row in payload["items"]],
+            ["behavioral-activation", "cognitive-behavioral-therapy"],
+        )
+        self.assertIn("رتبه‌بندی", payload["note"])
+        self.assertTrue(payload["items"][0]["sources"])
+        self.assertTrue(payload["items"][0]["disorders"])
+        self.assertTrue(all(row["sources"] for row in payload["items"][0]["disorders"]))
+
+    def test_therapy_compare_query_budget_is_constant_for_bounded_comparison(self):
+        with CaptureQueriesContext(connection) as captured:
+            response = self.client.get(
+                "/api/therapies/compare/?slugs=cognitive-behavioral-therapy,behavioral-activation"
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertLessEqual(len(captured), 14)
+
+    def test_therapy_compare_rejects_invalid_sets_and_inactive_rows(self):
+        one = self.client.get("/api/therapies/compare/?slugs=cognitive-behavioral-therapy")
+        self.assertEqual(one.status_code, 400)
+        duplicate = self.client.get(
+            "/api/therapies/compare/?slugs=cognitive-behavioral-therapy,cognitive-behavioral-therapy"
+        )
+        self.assertEqual(duplicate.status_code, 400)
+        Therapy.objects.filter(slug="interpersonal-psychotherapy").update(is_active=False)
+        inactive = self.client.get(
+            "/api/therapies/compare/?slugs=cognitive-behavioral-therapy,interpersonal-psychotherapy"
+        )
+        self.assertEqual(inactive.status_code, 404)
+
+    def test_therapy_bookmarks_are_idempotent_scoped_and_record_activity(self):
+        self.auth(self.user_a)
+        created = self.client.post(
+            "/api/therapy-bookmarks/", {"slug": "cognitive-behavioral-therapy"}, format="json"
+        )
+        self.assertEqual(created.status_code, 201)
+        repeated = self.client.post(
+            "/api/therapy-bookmarks/", {"slug": "cognitive-behavioral-therapy"}, format="json"
+        )
+        self.assertEqual(repeated.status_code, 200)
+        self.assertEqual(TherapyBookmark.objects.filter(user=self.user_a).count(), 1)
+        self.assertEqual(
+            StudyActivity.objects.filter(
+                user=self.user_a,
+                activity_type=StudyActivity.Kind.BOOKMARK_SAVED,
+                therapy__slug="cognitive-behavioral-therapy",
+            ).count(),
+            1,
+        )
+
+        self.auth(self.user_b)
+        self.assertEqual(self.client.get("/api/therapy-bookmarks/").json(), [])
+        deleted = self.client.delete("/api/therapy-bookmarks/cognitive-behavioral-therapy/")
+        self.assertEqual(deleted.status_code, 204)
+        self.assertTrue(
+            TherapyBookmark.objects.filter(
+                user=self.user_a, therapy__slug="cognitive-behavioral-therapy"
+            ).exists()
+        )
+
+    def test_therapy_notes_are_private_trimmed_bounded_and_deletable(self):
+        self.auth(self.user_a)
+        saved = self.client.put(
+            "/api/therapy-notes/cognitive-behavioral-therapy/",
+            {"body": "  نکته شخصی درمان  "},
+            format="json",
+        )
+        self.assertEqual(saved.status_code, 200)
+        self.assertEqual(saved.json()["body"], "نکته شخصی درمان")
+        self.assertTrue(
+            StudyActivity.objects.filter(
+                user=self.user_a,
+                activity_type=StudyActivity.Kind.NOTE_SAVED,
+                therapy__slug="cognitive-behavioral-therapy",
+            ).exists()
+        )
+
+        bad_type = self.client.put(
+            "/api/therapy-notes/cognitive-behavioral-therapy/", {"body": 123}, format="json"
+        )
+        self.assertEqual(bad_type.status_code, 400)
+        too_long = self.client.put(
+            "/api/therapy-notes/cognitive-behavioral-therapy/",
+            {"body": "x" * 12001},
+            format="json",
+        )
+        self.assertEqual(too_long.status_code, 400)
+
+        self.auth(self.user_b)
+        private = self.client.get("/api/therapy-notes/cognitive-behavioral-therapy/")
+        self.assertEqual(private.status_code, 200)
+        self.assertFalse(private.json()["exists"])
+        self.client.delete("/api/therapy-notes/cognitive-behavioral-therapy/")
+        self.assertTrue(
+            TherapyNote.objects.filter(
+                user=self.user_a, therapy__slug="cognitive-behavioral-therapy"
+            ).exists()
+        )
+
+        self.auth(self.user_a)
+        emptied = self.client.put(
+            "/api/therapy-notes/cognitive-behavioral-therapy/", {"body": "   "}, format="json"
+        )
+        self.assertEqual(emptied.status_code, 200)
+        self.assertFalse(emptied.json()["exists"])
+        self.assertFalse(TherapyNote.objects.filter(user=self.user_a).exists())
+
+    def test_dashboard_and_personal_lists_include_only_active_therapy_content(self):
+        cbt = Therapy.objects.get(slug="cognitive-behavioral-therapy")
+        ba = Therapy.objects.get(slug="behavioral-activation")
+        TherapyBookmark.objects.create(user=self.user_a, therapy=cbt)
+        TherapyBookmark.objects.create(user=self.user_a, therapy=ba)
+        TherapyNote.objects.create(user=self.user_a, therapy=cbt, body="CBT note")
+        TherapyNote.objects.create(user=self.user_a, therapy=ba, body="BA note")
+        ba.is_active = False
+        ba.save(update_fields=("is_active", "updated_at"))
+
+        self.auth(self.user_a)
+        bookmarks = self.client.get("/api/therapy-bookmarks/")
+        notes = self.client.get("/api/therapy-notes/")
+        dashboard = self.client.get("/api/dashboard/")
+        self.assertEqual(bookmarks.status_code, 200)
+        self.assertEqual(notes.status_code, 200)
+        self.assertEqual([row["therapy"]["slug"] for row in bookmarks.json()], ["cognitive-behavioral-therapy"])
+        self.assertEqual([row["therapy"]["slug"] for row in notes.json()], ["cognitive-behavioral-therapy"])
+        self.assertEqual(dashboard.status_code, 200)
+        self.assertEqual(dashboard.json()["saved_topics"], 1)
+        self.assertEqual(dashboard.json()["notes_count"], 1)
+        self.assertEqual(
+            [row["slug"] for row in dashboard.json()["recent_therapy_saved"]],
+            ["cognitive-behavioral-therapy"],
+        )
+        self.assertEqual(
+            [row["slug"] for row in dashboard.json()["recent_therapy_notes"]],
+            ["cognitive-behavioral-therapy"],
+        )
+
+    def test_seed_preserves_therapy_personal_data_and_activity_links(self):
+        cbt = Therapy.objects.get(slug="cognitive-behavioral-therapy")
+        bookmark = TherapyBookmark.objects.create(user=self.user_a, therapy=cbt)
+        note = TherapyNote.objects.create(user=self.user_a, therapy=cbt, body="seed preservation note")
+        activity = StudyActivity.objects.create(
+            user=self.user_a,
+            activity_type=StudyActivity.Kind.NOTE_SAVED,
+            therapy=cbt,
+        )
+
+        call_command("seed_mvp", stdout=StringIO())
+
+        self.assertTrue(TherapyBookmark.objects.filter(pk=bookmark.pk, user=self.user_a).exists())
+        self.assertEqual(TherapyNote.objects.get(pk=note.pk).body, "seed preservation note")
+        activity.refresh_from_db()
+        self.assertEqual(activity.therapy_id, cbt.id)
+        cbt.refresh_from_db()
+        self.assertTrue(cbt.is_active)
+
+    def test_therapy_personal_endpoints_require_authentication(self):
+        for method, path in (
+            ("get", "/api/therapy-bookmarks/"),
+            ("post", "/api/therapy-bookmarks/"),
+            ("get", "/api/therapy-notes/"),
+            ("get", "/api/therapy-notes/cognitive-behavioral-therapy/"),
+        ):
+            response = getattr(self.client, method)(path, {}, format="json")
+            self.assertEqual(response.status_code, 401)

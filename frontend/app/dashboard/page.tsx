@@ -131,7 +131,8 @@ export default function DashboardPage() {
           <div className="stack" style={{ marginTop: 14, gap: 12 }}>
             {data.recent_notes.map((item: any) => <Link href={`/disorders/${item.disorder.slug}`} key={`dn-${item.id}`}><strong>{item.disorder.name_fa || item.disorder.name_en}</strong><p className="muted small note-preview">{item.body}</p></Link>)}
             {data.recent_concept_notes?.map((item: any) => <Link href={`/concepts/${item.slug}`} key={`cn-${item.id}`}><strong>{item.name_fa || item.name_en}</strong><p className="muted small note-preview">{item.body}</p></Link>)}
-            {!data.recent_notes.length && !data.recent_concept_notes?.length && <p>هنوز یادداشتی ثبت نکرده‌ای.</p>}
+            {data.recent_therapy_notes?.map((item: any) => <Link href={`/therapies/${item.slug}`} key={`tn-${item.id}`}><strong>{item.name_fa || item.name_en}</strong><p className="muted small note-preview">{item.body}</p></Link>)}
+            {!data.recent_notes.length && !data.recent_concept_notes?.length && !data.recent_therapy_notes?.length && <p>هنوز یادداشتی ثبت نکرده‌ای.</p>}
           </div>
         </section>
         <section className="card">
@@ -139,7 +140,8 @@ export default function DashboardPage() {
           <div className="stack" style={{ marginTop: 14, gap: 12 }}>
             {data.recent_saved.map((item: any) => <Link href={`/disorders/${item.disorder.slug}`} className="resource-link" key={`db-${item.id}`}><strong>{item.disorder.name_fa || item.disorder.name_en}</strong><span>اختلال</span></Link>)}
             {data.recent_concept_saved?.map((item: any) => <Link href={`/concepts/${item.slug}`} className="resource-link" key={`cb-${item.id}`}><strong>{item.name_fa || item.name_en}</strong><span>مفهوم</span></Link>)}
-            {!data.recent_saved.length && !data.recent_concept_saved?.length && <p>هنوز چیزی ذخیره نکرده‌ای.</p>}
+            {data.recent_therapy_saved?.map((item: any) => <Link href={`/therapies/${item.slug}`} className="resource-link" key={`tb-${item.id}`}><strong>{item.name_fa || item.name_en}</strong><span>درمان</span></Link>)}
+            {!data.recent_saved.length && !data.recent_concept_saved?.length && !data.recent_therapy_saved?.length && <p>هنوز چیزی ذخیره نکرده‌ای.</p>}
           </div>
         </section>
       </div>

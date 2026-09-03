@@ -1,3 +1,4 @@
+import Link from "next/link";
 import TherapyExplorer from "@/components/TherapyExplorer";
 import { publicFetch } from "@/lib/api";
 import type { Paginated, Technique, Therapy, TherapyTaxonomy } from "@/lib/types";
@@ -18,6 +19,10 @@ export default async function TherapiesPage() {
           <p>
             هر Therapy خانواده، تکنیک‌ها، زمینه‌های بالینی، مفاهیم و provenance خودش را دارد. Technique هم یک Entity مستقل است تا روش‌های مشترک بین چند رویکرد گم نشوند.
           </p>
+          <div className="actions" style={{ marginTop: 16 }}>
+            <Link className="button primary" href="/compare?type=therapy">مقایسه ساختاریافته درمان‌ها</Link>
+            <Link className="button" href="/saved">کتابخانه خصوصی من</Link>
+          </div>
         </div>
         <div className="therapy-overview-stats" aria-label="آمار اطلس درمان">
           <div><strong>{therapyData.count.toLocaleString("fa-IR")}</strong><span>رویکرد درمانی</span></div>

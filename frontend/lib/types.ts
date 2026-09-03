@@ -457,6 +457,27 @@ export type Therapy = {
   concept_count: number;
 };
 
+export type TherapyBookmark = {
+  id: number;
+  therapy: Therapy;
+  created_at: string;
+};
+
+export type TherapyNote = {
+  id?: number;
+  therapy?: Therapy;
+  therapy_slug?: string;
+  body: string;
+  exists?: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type TherapyCompareResponse = {
+  items: TherapyDetail[];
+  note: string;
+};
+
 export type TherapyDetail = Therapy & {
   academic_definition: string;
   historical_context: string;

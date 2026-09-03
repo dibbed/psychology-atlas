@@ -27,7 +27,7 @@ def available_flashcards():
 
 
 def record_activity(user, activity_type, **links):
-    allowed = {"disorder", "concept", "quiz", "clinical_case", "flashcard", "metadata", "occurred_at"}
+    allowed = {"disorder", "concept", "quiz", "clinical_case", "flashcard", "therapy", "metadata", "occurred_at"}
     payload = {key: value for key, value in links.items() if key in allowed and value is not None}
 
     if activity_type in {StudyActivity.Kind.DISORDER_VIEW, StudyActivity.Kind.CONCEPT_VIEW}:

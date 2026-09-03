@@ -1,10 +1,10 @@
 # Psychology Atlas Product Spec
 
-## Current implemented version: v0.5.4 — Cross-domain Integration + Knowledge Graph
+## Current implemented version: v0.5.5 — Compare + Personal Features + Final Hardening
 
 Psychology Atlas is an interactive educational system for psychology students. It should behave as a connected learning system, not as a psychology blog and not as a diagnostic product.
 
-v0.5.4 is Part 4 of Therapy Atlas. It preserves the source-backed Therapy/Technique dataset and frontend while integrating Therapy/Technique into Disorder and Concept details, Global Search and the explicit database-backed Knowledge Graph. Compare, bookmarks/notes and final hardening remain deferred to v0.5.5.
+v0.5.5 completes the five-part Therapy Atlas series. It preserves the source-backed schema, frontend and five-layer Knowledge Graph while adding structured Therapy Compare, private Therapy bookmarks/notes, Saved/Notes/Dashboard integration and final compare/personal-data hardening. Therapy progress/mastery remains intentionally deferred because no real Therapy learning-evidence model exists yet.
 
 ## Architecture decisions
 
@@ -29,6 +29,8 @@ TherapyFamily
 TherapyClassification
 Therapy
 TherapyAlias
+TherapyBookmark
+TherapyNote
 Technique
 TechniqueAlias
 TherapyClassificationLink
@@ -73,7 +75,12 @@ Public APIs:
 ```text
 GET /api/therapies/
 GET /api/therapies/taxonomy/
+GET /api/therapies/compare/?slugs=<2-to-4-slugs>
 GET /api/therapies/<slug>/
+GET/POST /api/therapy-bookmarks/
+DELETE /api/therapy-bookmarks/<slug>/
+GET /api/therapy-notes/
+GET/PUT/DELETE /api/therapy-notes/<slug>/
 GET /api/techniques/
 GET /api/techniques/<slug>/
 ```
@@ -90,7 +97,17 @@ Frontend routes:
 
 The Therapy Explorer supports Persian/English search, family and classification filters, connection/name sorting, and card/compact views. Therapy detail separates overview, techniques, clinical contexts, concepts, evidence/limitations and sources. Technique remains an independent detail surface and links back to therapies and concepts. The UI explicitly states that Evidence Basis is evidence-source semantics, not a personalized treatment ranking.
 
-Cross-domain integration in v0.5.4:
+Compare/personal completion in v0.5.5:
+
+- Therapy Compare accepts exactly 2–4 unique active therapies, preserves requested order and returns full structured detail plus an explicit no-ranking/no-recommendation note.
+- Therapy Compare UI covers family/classification, principles, structure, techniques, clinical-role/evidence-basis relations, concepts, limitations, safety and entity/relation provenance.
+- `TherapyBookmark` and `TherapyNote` are private per authenticated user. Bookmark creation is idempotent; notes are trimmed, bounded to 12,000 characters and empty-save deletes the note.
+- Saved, Notes and Dashboard aggregate active Therapy personal data alongside Disorder and Concept data.
+- Therapy bookmark/note actions may create `StudyActivity` rows linked to Therapy, but there is no Therapy progress percentage or mastery state.
+- Compare frontend requests are abort-safe in both Disorder and Therapy modes; stale requests cannot overwrite current selection state.
+- Therapy Detail/Compare prefetch plan is bounded and regression-tested at <=14 DB queries for the two-item compare fixture.
+
+Cross-domain integration from v0.5.4:
 
 - Disorder detail exposes source-backed `TherapyDisorder` relations without replacing the legacy educational `treatment_overview`.
 - Concept detail exposes `TherapyConcept` and `TechniqueConcept` relations with relation-level sources.
@@ -323,8 +340,10 @@ The following data is private per authenticated user:
 
 - Disorder bookmarks
 - Concept bookmarks
+- Therapy bookmarks
 - Disorder notes
 - Concept notes
+- Therapy notes
 - Disorder progress
 - Concept progress
 - Flashcard SRS progress
@@ -336,11 +355,10 @@ The following data is private per authenticated user:
 
 Seed updates must not intentionally delete these records.
 
-## Still outside v0.5.4
+## Still outside v0.5.5
 
 These are intentionally deferred rather than partially implemented placeholders:
 
-- Therapy Compare, bookmarks and notes
 - Therapy learning-progress/mastery until real learning evidence exists
 - personalized treatment recommendation
 - Psychologists Atlas
@@ -382,7 +400,7 @@ Quizzes / Flashcards / Daily Practice
 Personal study plan and mastery
 ```
 
-The Concept Graph and Cognitive Distortions learning layer remain the connected-learning baseline. v0.5.4 now integrates Therapy/Technique into Disorder and Concept detail surfaces, global search, neighborhoods, shortest paths and the five-layer Knowledge Graph while preserving explicit DB edges and relation-level provenance.
+The Concept Graph and Cognitive Distortions learning layer remain the connected-learning baseline. v0.5.5 completes Therapy Atlas with structured comparison and private study utilities on top of the v0.5.4 cross-domain graph, while keeping all scientific edges explicit and refusing to infer personalized treatment rankings or Therapy mastery.
 
 ## Version roadmap
 
@@ -391,7 +409,7 @@ v0.5.1  Therapy Architecture + Backend Foundation ✅
 v0.5.2  Scientific Therapy Seed + API ✅
 v0.5.3  Therapy Atlas Frontend ✅
 v0.5.4  Cross-domain Integration + Knowledge Graph ✅
-v0.5.5  Compare + Personal Features + Final Hardening
+v0.5.5  Compare + Personal Features + Final Hardening ✅
 v0.6    Psychologists + Theories + Timeline
 v0.7  Advanced Branching Clinical Cases + Analytics
 v0.8  Study Mode + Exam Planning + Advanced Recommendations
@@ -399,4 +417,4 @@ v0.9  Brain Atlas + Assessments Atlas
 v1.0  Admin CMS + Scientific Review + Full cross-domain integration
 ```
 
-The current product version is v0.5.4 Cross-domain Integration + Knowledge Graph.
+The current product version is v0.5.5 Compare + Personal Features + Final Hardening.

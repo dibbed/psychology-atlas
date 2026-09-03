@@ -1,6 +1,6 @@
-# Psychology Atlas — v0.5.4 · Cross-domain Integration + Knowledge Graph
+# Psychology Atlas — v0.5.5 · Compare + Personal Features + Final Hardening
 
-یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. نسخه فعلی v0.5.4 بخش چهارم Therapy Atlas است: Therapy و Technique را به صفحات Disorder/Concept، جست‌وجوی سراسری و Knowledge Graph پنج‌لایه وصل می‌کند. همه edgeهای درمانی از relationهای صریح دیتابیس ساخته می‌شوند و provenance همان رابطه در API و Graph حفظ می‌شود.
+یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. نسخه فعلی v0.5.5 بخش نهایی Therapy Atlas در سری v0.5.x است: Therapy Compare ساختاریافته، Bookmark/Note خصوصی، ادغام Saved/Notes/Dashboard و hardening نهایی Compare/API را به لایه علمی و Graph نسخه‌های قبل اضافه می‌کند؛ بدون treatment ranking، effectiveness percentage یا recommendation شخصی.
 
 > این نرم‌افزار آموزشی است و ابزار تشخیص، درمان یا جایگزین ارزیابی حرفه‌ای نیست.
 
@@ -13,6 +13,8 @@ TherapyFamily
 TherapyClassification
 Therapy
 TherapyAlias
+TherapyBookmark
+TherapyNote
 Technique
 TechniqueAlias
 TherapyClassificationLink
@@ -34,10 +36,11 @@ TechniqueConcept
 - فایل‌های runtime نسخه‌ای قدیمی ادغام شده‌اند؛ backend اکنون `views.py`, `serializers.py` و `seed_mvp.py` canonical دارد و فایل‌های `v3_*` / `v4_*` موازی ندارد.
 - migration history حذف نشده است، چون برای ارتقای امن دیتابیس‌های قبلی لازم است.
 
-Migration جدید:
+Therapy migrations:
 
 ```text
 0013_therapy_technique_techniqueconcept_and_more.py
+0014_studyactivity_therapy_therapybookmark_therapynote.py
 ```
 
 ### Scientific Therapy Seed
@@ -74,7 +77,12 @@ Prolonged Exposure Therapy (PE)
 ```text
 GET /api/therapies/
 GET /api/therapies/taxonomy/
+GET /api/therapies/compare/?slugs=<2-to-4-slugs>
 GET /api/therapies/<slug>/
+GET/POST /api/therapy-bookmarks/
+DELETE   /api/therapy-bookmarks/<slug>/
+GET      /api/therapy-notes/
+GET/PUT/DELETE /api/therapy-notes/<slug>/
 GET /api/techniques/
 GET /api/techniques/<slug>/
 ```
@@ -95,6 +103,17 @@ GET /api/techniques/<slug>/
 - رابطه‌های Therapy ↔ Disorder، Therapy ↔ Concept و Therapy ↔ Technique همراه provenance همان رابطه نمایش داده می‌شوند.
 - Technique Detail درمان‌های متصل، Conceptهای متصل، محدودیت‌ها، safety note و منابع مستقیم را نمایش می‌دهد.
 - Evidence Basis در UI به‌صراحت به‌عنوان نوع پشتوانه شواهد نمایش داده می‌شود، نه رتبه‌بندی شخصی درمان.
+
+### Compare + Personal Features + Final Hardening
+
+- `/compare?type=therapy` بین ۲ تا ۴ Therapy را با ترتیب انتخاب کاربر و فقط روی ابعاد ساختاریافته مقایسه می‌کند: Family، classifications، اصول، ساختار، Techniques، Disorder relations، Concepts، limitations، safety و provenance.
+- Compare هیچ efficacy ranking، similarity percentage یا «بهترین درمان» تولید نمی‌کند و API نیز disclaimer صریح برمی‌گرداند.
+- Therapy Detail اکنون Bookmark خصوصی، لینک مستقیم به Therapy Compare و تب «یادداشت من» دارد.
+- `TherapyBookmark` و `TherapyNote` کاملاً user-scoped هستند؛ duplicate bookmark idempotent است، note تا ۱۲٬۰۰۰ کاراکتر محدود می‌شود و محتوای inactive در لیست‌های شخصی نمایش داده نمی‌شود.
+- Saved، Notes و Dashboard اکنون Therapy را کنار Disorder و Concept پوشش می‌دهند.
+- Bookmark/Note درمان در `StudyActivity` ثبت می‌شود، اما هیچ `UserTherapyProgress` یا mastery percentage ساخته نشده است.
+- Compare requestها در هر دو حوزه Disorder/Therapy abort-safe شده‌اند تا response قدیمی نتواند انتخاب جدید را overwrite کند.
+- query plan Therapy Compare از ۲۵ query ثابت به حداکثر ۱۴ query در regression fixture کاهش یافت و budget تستی دارد.
 
 ### Cross-domain Integration + Knowledge Graph
 
@@ -623,7 +642,7 @@ Current validation baseline:
 
 ```text
 Django system check                  PASS
-Backend tests                        89 / 89 PASS
+Backend tests                        97 / 97 PASS
 DSM import idempotency               PASS · 1 corpus / 438 records / 241 canonical Disorder pages / 6 sources
 DSM diagnosis sync                    PASS · 243 formal records → 241 canonical pages · 211 created + 30 curated preserved
 Neurodevelopmental chapter            PASS · 22 Disorder pages including Autism Spectrum Disorder and ADHD
@@ -641,6 +660,8 @@ npm audit --audit-level=low           0 vulnerabilities
 Frontend main-route smoke test        PASS
 Therapy Atlas production build         PASS · /therapies + /therapies/[slug] + /techniques/[slug]
 Therapy Atlas HTTP runtime smoke       PASS · list + CBT detail + ERP detail render seeded content
+Therapy Compare + Personal tests        PASS · 8 targeted compare/ownership/validation/query-budget/seed-preservation tests
+Therapy Compare query budget            PASS · <=14 queries for bounded 2-item comparison fixture
 Disorders Explorer hydrated E2E       PASS · 241 catalog / chapter rail / recent Autism persistence
 DSM API + route smoke test            PASS
 Concept inventory                PASS · 44 concepts / 12 distortions / 8 aliases
@@ -673,6 +694,9 @@ Daily Challenge
 Cognitive Distortion Practice
 Study Overview
 Dashboard
+Therapy Compare
+Therapy Bookmark
+Therapy Note
 Unified Saved
 Unified Notes
 ```
@@ -686,7 +710,7 @@ Unified Notes
 - Keep source metadata attached to educational content.
 - Before production/publication, content should receive dedicated scientific review and more granular claim-level citations.
 
-## Roadmap from v0.5.4
+## Roadmap from v0.5.5
 
 Therapy Atlas is being implemented as five bounded v0.5.x parts:
 
@@ -695,7 +719,7 @@ v0.5.1  Therapy Architecture + Backend Foundation ✅
 v0.5.2  Scientific Therapy Seed + API ✅
 v0.5.3  Therapy Atlas Frontend ✅
 v0.5.4  Cross-domain Integration + Knowledge Graph ✅
-v0.5.5  Compare + Personal Features + Final Hardening
+v0.5.5  Compare + Personal Features + Final Hardening ✅
 v0.6    Psychologists + Theories + Timeline
 v0.7    Advanced Branching Clinical Cases + Analytics
 v0.8    Study Mode + Exam Planning + Advanced Recommendations
@@ -703,11 +727,10 @@ v0.9    Brain Atlas + Assessments Atlas
 v1.0    Admin CMS + Scientific Review + Full cross-domain integration
 ```
 
-## Deliberately not part of v0.5.4
+## Deliberately not part of v0.5.5
 
 These remain later-version work rather than partially implemented placeholders:
 
-- Therapy Compare, bookmarks, notes and final hardening
 - Therapy progress/mastery until real learning evidence exists
 - Personalized treatment recommendation
 - Psychologists Atlas

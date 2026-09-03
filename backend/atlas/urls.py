@@ -53,7 +53,12 @@ urlpatterns = [
 
     path("therapies/", views.TherapyListView.as_view()),
     path("therapies/taxonomy/", views.therapy_taxonomy),
+    path("therapies/compare/", views.compare_therapies),
     path("therapies/<slug:slug>/", views.TherapyDetailView.as_view()),
+    path("therapy-bookmarks/", views.therapy_bookmarks),
+    path("therapy-bookmarks/<slug:slug>/", views.therapy_bookmark_delete),
+    path("therapy-notes/", views.therapy_notes),
+    path("therapy-notes/<slug:slug>/", views.therapy_note_detail),
     path("techniques/", views.TechniqueListView.as_view()),
     path("techniques/<slug:slug>/", views.TechniqueDetailView.as_view()),
 
