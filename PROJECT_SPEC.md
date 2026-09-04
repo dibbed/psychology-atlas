@@ -24,26 +24,41 @@ v0.5.5 completes the five-part Therapy Atlas series. It preserves the source-bac
 
 ### Research dataset ingestion
 
-v0.5.5 accepts the two research JSON corpora through `python manage.py import_research_datasets`. The importer is idempotent by dataset SHA-256 and keeps the complete original document plus normalized per-record indexing.
+v0.5.5 stores the two research corpora fully inside the database. The original JSON files were removed from the project root only after exact SHA-256/byte-size round-trip verification from DB storage. New external research files can still be imported explicitly by path.
 
 Current research-ingestion invariants:
 
 - 2 imported `ResearchDataset` rows and 1,918 indexed `ResearchRecord` rows are retained losslessly.
-- `SourceReference` now stores authors, DOI, PMID, verification status and extra bibliographic metadata; source dedupe priority is DOI → URL → title/year.
+- `ResearchDataset.raw_text` preserves the exact UTF-8 source text; `source_sha256` validates exact reconstruction and `raw_document` preserves the parsed JSON form.
+- `ResearchDataset.ingestion_audit` stores section counts and bilingual coverage for primary educational sections.
+- `SourceReference` stores authors, DOI, PMID, verification status and extra bibliographic metadata; source dedupe priority is DOI → URL → title/year.
 - Complete/source-checked records may promote into the current Concept, Symptom, Therapy, Technique and explicit relation models when the v0.5.5 schema can represent the semantics faithfully.
 - Lower-confidence or unsupported records remain staging-only instead of being forced into a misleading runtime model.
-- Psychologist, Theory, Timeline Event and Claim records remain research-staging until the dedicated v0.6 domain is intentionally implemented.
+- Psychologist, Theory, Timeline Event and Claim records remain research-staging until the dedicated v0.6 domain is intentionally implemented, but their normalized English/Persian index fields are populated.
+- Primary educational sections are audited for bilingual English/Persian names and key content. Official bibliographic titles, DOI/PMID and source-native metadata are preserved in their original form rather than receiving fabricated translations.
 - Imported runtime entities use `seed_managed=False`; Therapy classification/Technique/Disorder/Concept relation rows also have explicit seed ownership so repeated `seed_mvp` cannot deactivate externally imported relations.
 - Imported scientific relation promotion requires resolved source provenance.
 - Current enriched live inventory is 148 Concepts, 107 Symptoms, 241 canonical Disorders, 20 Therapies, 35 Techniques and 189 canonical sources.
 - Current Knowledge Graph after repeated seed runs is 478 nodes / 934 edges with an 18-query build budget.
 
-Importer modes:
+Operational commands:
 
 ```text
-python manage.py import_research_datasets
-python manage.py import_research_datasets --dry-run
-python manage.py import_research_datasets --no-promote
+python manage.py import_research_datasets <paths...>
+python manage.py import_research_datasets <paths...> --dry-run
+python manage.py import_research_datasets <paths...> --no-promote
+python manage.py verify_research_datasets
+python manage.py export_research_datasets <output-dir>
+```
+
+The archived source files can be reconstructed exactly from the database with these verified hashes:
+
+```text
+psychology_atlas_research_dataset.json
+SHA-256 753a7d3edf2239becdf2bb27073e8e56fcd24399a5a901bea98da89fbb660bc0
+
+psychology_atlas_research_dataset_complete___1.json
+SHA-256 3bfa4fe8b465ff0b6b5b1aaf511372efb136c42ccb0db58a5468645aaf6b27e9
 ```
 
 ### Therapy architecture foundation

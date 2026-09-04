@@ -205,14 +205,22 @@ class Command(BaseCommand):
             paths = [(project_root / filename).resolve() for filename in DEFAULT_FILENAMES]
         missing = [str(path) for path in paths if not path.is_file()]
         if missing:
-            raise CommandError("Research dataset file(s) not found: " + ", ".join(missing))
+            suffix = ""
+            if not supplied and ResearchDataset.objects.filter(is_active=True, raw_text__gt="").exists():
+                suffix = (
+                    " The original files may have been intentionally removed after verified ingestion; "
+                    "use `python manage.py export_research_datasets <output_dir>` to reconstruct them "
+                    "from the database, then pass the exported paths explicitly."
+                )
+            raise CommandError("Research dataset file(s) not found: " + ", ".join(missing) + suffix)
         return paths
 
     def _ingest_dataset(self, path, report):
         raw_bytes = path.read_bytes()
         sha256 = hashlib.sha256(raw_bytes).hexdigest()
         try:
-            document = json.loads(raw_bytes.decode("utf-8"))
+            raw_text = raw_bytes.decode("utf-8")
+            document = json.loads(raw_text)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise CommandError(f"Invalid UTF-8 JSON: {path}: {exc}") from exc
         if not isinstance(document, dict):
@@ -227,6 +235,7 @@ class Command(BaseCommand):
         quality_control = document.get("quality_control") or {}
         if not isinstance(quality_control, dict):
             quality_control = {}
+        ingestion_audit = self._build_ingestion_audit(document)
 
         dataset_name = str(metadata.get("dataset_name") or path.stem)[:300]
         dataset_version = str(metadata.get("dataset_version") or metadata.get("version") or "")[:120]
@@ -245,7 +254,9 @@ class Command(BaseCommand):
                 "metadata": metadata,
                 "statistics": stats,
                 "quality_control": quality_control,
+                "ingestion_audit": ingestion_audit,
                 "raw_document": document,
+                "raw_text": raw_text,
                 "is_active": True,
             },
         )
@@ -262,7 +273,9 @@ class Command(BaseCommand):
                 ("metadata", metadata),
                 ("statistics", stats),
                 ("quality_control", quality_control),
+                ("ingestion_audit", ingestion_audit),
                 ("raw_document", document),
+                ("raw_text", raw_text),
                 ("is_active", True),
             ):
                 if getattr(dataset, field) != value:
@@ -352,6 +365,11 @@ class Command(BaseCommand):
             or payload.get("full_name")
             or payload.get("title_en")
             or payload.get("event_en")
+            or payload.get("claim_en")
+            or payload.get("statement_en")
+            or payload.get("note_en")
+            or payload.get("issue_en")
+            or payload.get("reason_en")
             or (payload.get("title") if section == "sources" else "")
             or ""
         )
@@ -359,10 +377,77 @@ class Command(BaseCommand):
             payload.get("name_fa")
             or payload.get("title_fa")
             or payload.get("event_fa")
+            or payload.get("claim_fa")
+            or payload.get("statement_fa")
+            or payload.get("note_fa")
+            or payload.get("issue_fa")
+            or payload.get("reason_fa")
             or payload.get("persian_title")
             or ""
         )
         return str(name_en), str(name_fa)
+
+    def _build_ingestion_audit(self, document):
+        rules = {
+            "concepts": (("name_en",), ("name_fa",), ("definition_en", "simple_definition_en", "academic_definition_en"), ("definition_fa", "simple_definition_fa", "academic_definition_fa")),
+            "cognitive_distortions": (("name_en", "canonical_name_en"), ("name_fa",), ("definition_en",), ("definition_fa",)),
+            "symptoms": (("name_en",), ("name_fa",), ("definition_en", "description_en"), ("definition_fa", "description_fa")),
+            "disorders": (("name_en",), ("name_fa",), ("brief_description_en", "overview_en"), ("brief_description_fa", "overview_fa")),
+            "therapy_families": (("name_en",), ("name_fa",), ("definition_en", "description_en"), ("definition_fa", "description_fa")),
+            "therapy_classifications": (("name_en",), ("name_fa",), ("scheme_en", "description_en"), ("scheme_fa", "description_fa")),
+            "therapies": (("name_en",), ("name_fa",), ("description_en", "academic_definition_en"), ("description_fa", "academic_definition_fa")),
+            "techniques": (("name_en",), ("name_fa",), ("description_en", "academic_definition_en"), ("description_fa", "academic_definition_fa")),
+            "psychologists": (("name_en", "canonical_name", "full_name"), ("name_fa",), (), ()),
+            "theories": (("name_en",), ("name_fa",), ("core_proposition_en", "summary_en"), ("core_proposition_fa", "summary_fa")),
+            "timeline_events": (("title_en", "event_en"), ("title_fa", "event_fa"), ("description_en", "event_en"), ("description_fa", "event_fa")),
+            "claims": (("claim_en", "statement_en"), ("claim_fa", "statement_fa"), ("claim_en", "statement_en"), ("claim_fa", "statement_fa")),
+        }
+
+        def has_value(payload, keys):
+            return any(payload.get(key) not in (None, "", [], {}) for key in keys)
+
+        sections = {}
+        for section, (name_en_keys, name_fa_keys, content_en_keys, content_fa_keys) in rules.items():
+            rows = document.get(section) or []
+            if not isinstance(rows, list):
+                rows = []
+            result = {
+                "records": len(rows),
+                "bilingual_name_records": 0,
+                "missing_english_name": 0,
+                "missing_persian_name": 0,
+                "bilingual_content_records": 0,
+                "content_pair_applicable": bool(content_en_keys or content_fa_keys),
+            }
+            for payload in rows:
+                if not isinstance(payload, dict):
+                    continue
+                en_name = has_value(payload, name_en_keys)
+                fa_name = has_value(payload, name_fa_keys)
+                if en_name and fa_name:
+                    result["bilingual_name_records"] += 1
+                elif not en_name:
+                    result["missing_english_name"] += 1
+                elif not fa_name:
+                    result["missing_persian_name"] += 1
+                if content_en_keys or content_fa_keys:
+                    if has_value(payload, content_en_keys) and has_value(payload, content_fa_keys):
+                        result["bilingual_content_records"] += 1
+            sections[section] = result
+
+        list_counts = {
+            section: len(document.get(section) or [])
+            for section in LIST_SECTIONS
+            if isinstance(document.get(section) or [], list)
+        }
+        return {
+            "schema": "research-ingestion-audit-v1",
+            "list_section_counts": list_counts,
+            "list_record_total": sum(list_counts.values()),
+            "bilingual_educational_sections": sections,
+            "bibliographic_title_policy": "preserve_original_title_without_fabricated_translation",
+            "staging_metadata_policy": "preserve_source_language_and_payload_losslessly_until_dedicated_domain_schema",
+        }
 
     def _source_ids(self, payload):
         values = payload.get("source_ids")

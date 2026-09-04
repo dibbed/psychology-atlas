@@ -1,3 +1,4 @@
+import hashlib
 import json
 from io import StringIO
 from pathlib import Path
@@ -1950,7 +1951,9 @@ class ResearchDatasetImportTests(APITestCase):
                     "slug": "test-import-process",
                     "name_en": "Test Import Process",
                     "name_fa": "فرایند آزمایشی ورود",
+                    "simple_definition_en": "English definition for the research import test.",
                     "simple_definition_fa": "تعریف فارسی آزمون ورود داده.",
+                    "academic_definition_en": "Academic English definition for the research import test.",
                     "academic_definition_fa": "تعریف دانشگاهی فارسی برای آزمون ورود داده.",
                     "domain": "cognitive_psychology",
                     "source_ids": [source_id],
@@ -1963,6 +1966,7 @@ class ResearchDatasetImportTests(APITestCase):
                     "slug": "test-import-family",
                     "name_en": "Test Import Family",
                     "name_fa": "خانواده آزمایشی ورود",
+                    "description_en": "Therapy family used to test research ingestion.",
                     "description_fa": "خانواده درمانی برای تست import.",
                     "source_ids": [source_id],
                     "review": {"status": "source_checked"},
@@ -1974,6 +1978,8 @@ class ResearchDatasetImportTests(APITestCase):
                     "slug": "test-import-structured",
                     "name_en": "Test Import Structured",
                     "name_fa": "ساختاریافته آزمایشی",
+                    "description_en": "Structured classification used by the import test.",
+                    "description_fa": "طبقه‌بندی ساختاریافته برای آزمون ورود داده.",
                     "source_ids": [source_id],
                     "review": {"status": "source_checked"},
                 }
@@ -1986,6 +1992,7 @@ class ResearchDatasetImportTests(APITestCase):
                     "name_fa": "درمان آزمایشی ورود",
                     "primary_family_id": "therapy-family:test-import-family",
                     "classification_ids": ["therapy-classification:test-import-structured"],
+                    "academic_definition_en": "Academic definition of the test import therapy.",
                     "academic_definition_fa": "تعریف درمان آزمایشی.",
                     "source_ids": [source_id],
                     "review": {"status": "source_checked"},
@@ -1996,6 +2003,7 @@ class ResearchDatasetImportTests(APITestCase):
                     "name_en": "Cognitive Behavioral Therapy",
                     "name_fa": "درمان شناختی رفتاری",
                     "primary_family_id": "therapy-family:test-import-family",
+                    "academic_definition_en": "This incoming text must not overwrite existing curated content.",
                     "academic_definition_fa": "این متن نباید محتوای curated موجود را overwrite کند.",
                     "source_ids": [source_id],
                     "review": {"status": "source_checked"},
@@ -2007,6 +2015,7 @@ class ResearchDatasetImportTests(APITestCase):
                     "slug": "test-import-technique",
                     "name_en": "Test Import Technique",
                     "name_fa": "تکنیک آزمایشی ورود",
+                    "academic_definition_en": "Academic definition of the test import technique.",
                     "academic_definition_fa": "تعریف تکنیک آزمایشی.",
                     "source_ids": [source_id],
                     "review": {"status": "source_checked"},
@@ -2051,6 +2060,8 @@ class ResearchDatasetImportTests(APITestCase):
                     "family_id": "tf_legacy_only",
                     "name_en": "Legacy Only Therapy Family",
                     "name_fa": "خانواده فقط داده قدیمی",
+                    "definition_en": "Legacy family definition for the research ingestion test.",
+                    "definition_fa": "تعریف خانواده قدیمی برای آزمون ورود داده پژوهشی.",
                     "sources": [source_id],
                     "verification": "citation_from_model_knowledge",
                 }
@@ -2062,6 +2073,7 @@ class ResearchDatasetImportTests(APITestCase):
                     "name_en": "Legacy Only Therapy",
                     "name_fa": "درمان فقط داده قدیمی",
                     "family_id": "tf_legacy_only",
+                    "description_en": "This record must remain staging-only.",
                     "description_fa": "این رکورد باید فقط staging شود.",
                     "sources": [source_id],
                     "verification": "citation_from_model_knowledge",
@@ -2089,6 +2101,37 @@ class ResearchDatasetImportTests(APITestCase):
             )
 
             self.assertEqual(ResearchDataset.objects.count(), 2)
+            for source_path in (legacy_path, complete_path):
+                dataset = ResearchDataset.objects.get(source_filename=source_path.name)
+                self.assertEqual(dataset.raw_text, source_path.read_text(encoding="utf-8"))
+                self.assertEqual(
+                    hashlib.sha256(dataset.raw_text.encode("utf-8")).hexdigest(),
+                    dataset.source_sha256,
+                )
+                self.assertEqual(
+                    dataset.ingestion_audit["list_record_total"],
+                    dataset.records.count(),
+                )
+
+            complete_dataset = ResearchDataset.objects.get(source_filename=complete_path.name)
+            psychologist_audit = complete_dataset.ingestion_audit["bilingual_educational_sections"]["psychologists"]
+            self.assertEqual(psychologist_audit["records"], 1)
+            self.assertEqual(psychologist_audit["bilingual_name_records"], 1)
+            psychologist_record = ResearchRecord.objects.get(
+                dataset=complete_dataset,
+                section="psychologists",
+                external_id="psychologist:test-import-person",
+            )
+            self.assertEqual(psychologist_record.name_en, "Import Test Researcher")
+            self.assertEqual(psychologist_record.name_fa, "پژوهشگر آزمایشی ورود")
+
+            export_dir = directory / "exported"
+            call_command("export_research_datasets", str(export_dir), stdout=StringIO())
+            for source_path in (legacy_path, complete_path):
+                exported_path = export_dir / source_path.name
+                self.assertEqual(exported_path.read_bytes(), source_path.read_bytes())
+            call_command("verify_research_datasets", stdout=StringIO(), stderr=StringIO())
+
             expected_records = sum(
                 len(value)
                 for document in (legacy_doc, complete_doc)

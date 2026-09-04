@@ -1230,7 +1230,9 @@ class ResearchDataset(TimeStampedModel):
     metadata = models.JSONField(default=dict, blank=True)
     statistics = models.JSONField(default=dict, blank=True)
     quality_control = models.JSONField(default=dict, blank=True)
+    ingestion_audit = models.JSONField(default=dict, blank=True)
     raw_document = models.JSONField(default=dict, blank=True)
+    raw_text = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
 
     class Meta:

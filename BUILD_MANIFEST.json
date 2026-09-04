@@ -133,7 +133,12 @@
     "research_future_domain_staging",
     "research_relation_provenance_promotion",
     "research_seed_ownership_isolation",
-    "research_import_idempotency"
+    "research_import_idempotency",
+    "research_exact_raw_text_archive",
+    "research_bilingual_ingestion_audit",
+    "research_exact_export_recovery",
+    "research_archive_verifier",
+    "research_source_json_removed_after_verified_ingestion"
   ],
   "content": {
     "categories": 21,
@@ -219,7 +224,8 @@
     "0013_therapy_technique_techniqueconcept_and_more.py",
     "0014_studyactivity_therapy_therapybookmark_therapynote.py",
     "0015_researchdataset_researchrecord_and_more.py",
-    "0016_techniqueconcept_seed_managed_and_more.py"
+    "0016_techniqueconcept_seed_managed_and_more.py",
+    "0017_researchdataset_ingestion_audit_and_more.py"
   ],
   "validation": {
     "django_check": "pass",
@@ -280,7 +286,12 @@
     "research_relationship_promotion": "176 source-resolved research relations promoted; unsupported/unmapped semantics retained losslessly in staging",
     "research_seed_preservation": "pass · two repeated seed_mvp runs preserve imported TherapyClassificationLink/TherapyTechnique/TherapyDisorder/TherapyConcept/TechniqueConcept ownership and active state",
     "research_graph_runtime": "pass · 478 nodes / 934 edges / 18 build queries after repeated seed runs",
-    "research_api_http_smoke": "pass · working-memory Concept / ACT Therapy / cognitive-defusion Technique / CBT-vs-Schema Compare / Knowledge Graph returned HTTP 200 (final graph smoke refreshed after seed ownership fix)"
+    "research_api_http_smoke": "pass · working-memory Concept / ACT Therapy / cognitive-defusion Technique / CBT-vs-Schema Compare / Knowledge Graph returned HTTP 200 (final graph smoke refreshed after seed ownership fix)",
+    "research_exact_source_archive": "pass · raw_text round-trip exact · 618107 bytes / sha256 753a7d3edf2239becdf2bb27073e8e56fcd24399a5a901bea98da89fbb660bc0 · 1281373 bytes / sha256 3bfa4fe8b465ff0b6b5b1aaf511372efb136c42ccb0db58a5468645aaf6b27e9",
+    "research_bilingual_ingestion_audit": "pass · primary educational sections have complete EN/FA names and key content in both corpora; normalized Claim/Psychologist/Theory/Timeline indexes have no missing EN/FA values",
+    "research_archive_verifier": "pass · verify_research_datasets validates 2 datasets / 1918 records without original JSON files",
+    "research_source_files_removed": "pass · both original research JSON files removed from project root after exact export/hash verification",
+    "research_recovery_export": "pass · export_research_datasets reconstructs both deleted source files byte-for-byte from DB raw_text"
   },
   "release_notes": {
     "graph_layers": [
@@ -372,7 +383,14 @@
       "source_policy": "dedupe DOI > URL > title/year; preserve authors/DOI/PMID/verification metadata",
       "seed_ownership": "explicit seed_managed on Therapy classification and cross-domain relation rows prevents seed from deactivating imported research relations",
       "graph_after_import": "478 nodes / 934 edges / 18 queries",
-      "future_domains": "Psychologists/Theories/Timeline/Claims staged only"
+      "future_domains": "Psychologists/Theories/Timeline/Claims staged only",
+      "exact_archive": "ResearchDataset stores parsed raw_document plus exact raw_text and source SHA-256; source JSON can be reconstructed byte-for-byte.",
+      "bilingual_audit": "Primary educational sections are audited for English/Persian names and key content; source-native bibliographic titles/DOI/PMID are preserved without fabricated translation.",
+      "source_cleanup": "The two imported research JSON files were removed from the project root only after exact DB export/hash round-trip verification.",
+      "recovery_commands": [
+        "python manage.py verify_research_datasets",
+        "python manage.py export_research_datasets <output-dir>"
+      ]
     }
   }
 }

@@ -43,34 +43,48 @@ Therapy migrations:
 0014_studyactivity_therapy_therapybookmark_therapynote.py
 0015_researchdataset_researchrecord_and_more.py
 0016_techniqueconcept_seed_managed_and_more.py
+0017_researchdataset_ingestion_audit_and_more.py
 ```
 
 ### Research Dataset Ingestion (v0.5.5 data enrichment)
 
-دو corpus پژوهشی JSON می‌توانند بدون تغییر version roadmap با command زیر وارد شوند:
+دو corpus پژوهشی JSON به‌صورت کامل داخل DB import شده‌اند و فایل‌های اصلی پس از ممیزی SHA/round-trip از root پروژه حذف شده‌اند. برای import فایل پژوهشی جدید یا re-import فایل بازسازی‌شده:
 
 ```bash
-python manage.py import_research_datasets
+python manage.py import_research_datasets <path-a.json> <path-b.json>
 ```
 
-حالت‌های ایمن:
+برای verify کردن آرشیو DB بدون نیاز به فایل اصلی:
 
 ```bash
-python manage.py import_research_datasets --dry-run
-python manage.py import_research_datasets --no-promote
+python manage.py verify_research_datasets
+```
+
+برای بازسازی دقیق فایل‌های اصلی از DB:
+
+```bash
+python manage.py export_research_datasets <output-dir>
+```
+
+اگر فایل ورودی موقت در اختیار باشد، حالت‌های ایمن import نیز حفظ شده‌اند:
+
+```bash
+python manage.py import_research_datasets <paths...> --dry-run
+python manage.py import_research_datasets <paths...> --no-promote
 ```
 
 معماری import دو لایه است:
 
-- `ResearchDataset` کل JSON، metadata، statistics، quality-control و SHA-256 ورودی را lossless نگه می‌دارد.
-- `ResearchRecord` هر entity/relation/claim را با external ID، canonical key، source IDs و وضعیت promotion ایندکس می‌کند.
+- `ResearchDataset` علاوه بر JSON parsed، metadata، statistics، quality-control و SHA-256، حالا `raw_text` دقیق فایل اصلی و `ingestion_audit` را هم نگه می‌دارد؛ بنابراین source file بعد از import قابل بازسازی byte-for-byte است.
+- `ResearchRecord` هر entity/relation/claim را با external ID، canonical key، source IDs، `name_en/name_fa` و وضعیت promotion ایندکس می‌کند.
 - Sourceها با اولویت DOI → URL → title/year dedupe می‌شوند و author/DOI/PMID/verification metadata حفظ می‌شود.
 - داده‌های schema-compatible و source-backed به Concept/Symptom/Therapy/Technique و relationهای موجود promote می‌شوند؛ داده‌های ضعیف‌تر یا ناسازگار staging-only می‌مانند.
-- Psychologist/Theory/Timeline/Claim در این مرحله فقط research-staging هستند و به معنی شروع v0.6 نیستند.
+- Psychologist/Theory/Timeline/Claim در این مرحله research-staging هستند و به معنی شروع v0.6 نیستند، اما normalized bilingual index آن‌ها کامل است.
 - existing curated content overwrite نمی‌شود؛ importer فقط رکورد جدید می‌سازد یا فیلدهای خالی را محافظه‌کارانه تکمیل می‌کند.
 - relationهای imported دارای `seed_managed=False` هستند؛ `seed_mvp` فقط relationهای متعلق به خودش را مدیریت می‌کند و research relationها را deactivate نمی‌کند.
+- bilingual audit روی بخش‌های آموزشی اصلی رکوردبه‌رکورد انجام می‌شود. عنوان رسمی مقالات، DOI/PMID و bibliographic metadata عمداً به ترجمه ساختگی تبدیل نمی‌شوند و به زبان اصلی منبع حفظ می‌شوند.
 
-وضعیت corpus فعلی پس از import:
+وضعیت corpus فعلی پس از import و حذف فایل‌های source:
 
 ```text
 2 ResearchDataset
@@ -85,6 +99,18 @@ python manage.py import_research_datasets --no-promote
 35 Technique
 176 research relationships promoted with resolved provenance
 478 Knowledge Graph nodes / 934 edges / 18 build queries
+```
+
+آرشیو دقیق فایل‌های حذف‌شده داخل DB:
+
+```text
+psychology_atlas_research_dataset.json
+618,107 bytes
+SHA-256 753a7d3edf2239becdf2bb27073e8e56fcd24399a5a901bea98da89fbb660bc0
+
+psychology_atlas_research_dataset_complete___1.json
+1,281,373 bytes
+SHA-256 3bfa4fe8b465ff0b6b5b1aaf511372efb136c42ccb0db58a5468645aaf6b27e9
 ```
 
 داده‌های آینده که losslessly در staging محفوظ‌اند شامل 130 Psychologist record، 53 Theory record، 63 Timeline event، 82 Claim، 25 Research Gap و audit/correction metadata هستند.
@@ -709,8 +735,11 @@ Therapy Atlas HTTP runtime smoke       PASS · list + CBT detail + ERP detail re
 Therapy Compare + Personal tests        PASS · 8 targeted compare/ownership/validation/query-budget/seed-preservation tests
 Therapy Compare query budget            PASS · <=14 queries for bounded 2-item comparison fixture
 Research dataset import test             PASS · lossless + source dedupe + conservative promotion + idempotency + seed-preservation
-Research corpus live inventory           PASS · 2 datasets / 1,918 records / 189 sources / 148 concepts / 107 symptoms / 20 therapies / 35 techniques
-Research-enriched Knowledge Graph        PASS · 478 nodes / 934 edges / 18 build queries after repeated seed runs
+Research raw-file round-trip              PASS · exact byte size + SHA-256 reproduction from DB after source deletion
+Research bilingual ingestion audit        PASS · all primary educational sections have complete EN/FA names + key content; normalized Claim/Psychologist/Theory/Timeline indexes complete
+Research archive verifier                 PASS · 2 datasets / 1,918 records verified without original JSON files
+Research corpus live inventory            PASS · 2 datasets / 1,918 records / 189 sources / 148 concepts / 107 symptoms / 20 therapies / 35 techniques
+Research-enriched Knowledge Graph         PASS · 478 nodes / 934 edges / 18 build queries after repeated seed runs
 Disorders Explorer hydrated E2E       PASS · 241 catalog / chapter rail / recent Autism persistence
 DSM API + route smoke test            PASS
 Concept inventory                PASS · 44 concepts / 12 distortions / 8 aliases
