@@ -127,9 +127,20 @@ class SourceReference(TimeStampedModel):
     title = models.CharField(max_length=500)
     organization = models.CharField(max_length=255, blank=True)
     citation = models.TextField(blank=True)
-    url = models.URLField(blank=True)
+    url = models.URLField(max_length=1000, blank=True)
     publication_year = models.PositiveSmallIntegerField(null=True, blank=True)
     source_type = models.CharField(max_length=64, blank=True)
+    authors = models.JSONField(default=list, blank=True)
+    doi = models.CharField(max_length=255, blank=True, db_index=True)
+    pmid = models.CharField(max_length=64, blank=True, db_index=True)
+    verification_status = models.CharField(max_length=64, blank=True, db_index=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=("title",)),
+            models.Index(fields=("publication_year",)),
+        ]
 
 
 class DisorderSource(models.Model):
@@ -901,6 +912,7 @@ class TherapyClassificationLink(TimeStampedModel):
     explanation = models.TextField(blank=True)
     sort_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
+    seed_managed = models.BooleanField(default=False)
 
     class Meta:
         ordering = ("sort_order", "id")
@@ -985,6 +997,7 @@ class TherapyTechnique(TimeStampedModel):
         default=ScientificReviewStatus.UNREVIEWED,
     )
     is_active = models.BooleanField(default=True)
+    seed_managed = models.BooleanField(default=False)
 
     class Meta:
         ordering = ("sort_order", "id")
@@ -1038,6 +1051,7 @@ class TherapyDisorder(TimeStampedModel):
         default=ScientificReviewStatus.UNREVIEWED,
     )
     is_active = models.BooleanField(default=True)
+    seed_managed = models.BooleanField(default=False)
 
     class Meta:
         ordering = ("sort_order", "id")
@@ -1071,6 +1085,7 @@ class TherapyConcept(TimeStampedModel):
         default=ScientificReviewStatus.UNREVIEWED,
     )
     is_active = models.BooleanField(default=True)
+    seed_managed = models.BooleanField(default=False)
 
     class Meta:
         ordering = ("sort_order", "id")
@@ -1105,6 +1120,7 @@ class TechniqueConcept(TimeStampedModel):
         default=ScientificReviewStatus.UNREVIEWED,
     )
     is_active = models.BooleanField(default=True)
+    seed_managed = models.BooleanField(default=False)
 
     class Meta:
         ordering = ("sort_order", "id")
@@ -1196,6 +1212,71 @@ class TechniqueConceptSource(models.Model):
                 name="uq_technique_concept_source",
             )
         ]
+
+
+class ResearchDataset(TimeStampedModel):
+    """Lossless import envelope for externally researched Psychology Atlas data.
+
+    Raw JSON is retained so future schema upgrades can re-project the source
+    without asking the research agent to regenerate it.
+    """
+
+    key = models.SlugField(max_length=180, unique=True)
+    source_filename = models.CharField(max_length=500)
+    source_sha256 = models.CharField(max_length=64, unique=True, db_index=True)
+    dataset_name = models.CharField(max_length=300, blank=True)
+    dataset_version = models.CharField(max_length=120, blank=True)
+    generated_at_text = models.CharField(max_length=120, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    statistics = models.JSONField(default=dict, blank=True)
+    quality_control = models.JSONField(default=dict, blank=True)
+    raw_document = models.JSONField(default=dict, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ("-created_at", "-id")
+
+    def __str__(self):
+        return self.dataset_name or self.source_filename
+
+
+class ResearchRecord(TimeStampedModel):
+    """Normalized searchable index over one ResearchDataset record.
+
+    `payload` is lossless for the individual row. `canonical_key` is a
+    cross-dataset semantic key used for dedupe/promotion, while external_id
+    preserves the source dataset's own identifier.
+    """
+
+    dataset = models.ForeignKey(ResearchDataset, on_delete=models.CASCADE, related_name="records")
+    section = models.CharField(max_length=64, db_index=True)
+    external_id = models.CharField(max_length=300)
+    canonical_key = models.CharField(max_length=400, blank=True, db_index=True)
+    slug = models.SlugField(max_length=220, blank=True, db_index=True)
+    name_en = models.CharField(max_length=500, blank=True)
+    name_fa = models.CharField(max_length=500, blank=True)
+    source_ids = models.JSONField(default=list, blank=True)
+    verification_status = models.CharField(max_length=64, blank=True, db_index=True)
+    review_status = models.CharField(max_length=64, blank=True, db_index=True)
+    payload = models.JSONField(default=dict)
+    promoted_model = models.CharField(max_length=80, blank=True, db_index=True)
+    promoted_pk = models.PositiveBigIntegerField(null=True, blank=True)
+
+    class Meta:
+        ordering = ("dataset_id", "section", "id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("dataset", "section", "external_id"),
+                name="uq_research_dataset_section_external_id",
+            )
+        ]
+        indexes = [
+            models.Index(fields=("section", "canonical_key")),
+            models.Index(fields=("promoted_model", "promoted_pk")),
+        ]
+
+    def __str__(self):
+        return f"{self.section}:{self.external_id}"
 
 
 class DSMCorpus(TimeStampedModel):

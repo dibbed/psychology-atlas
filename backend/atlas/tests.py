@@ -1,4 +1,7 @@
+import json
 from io import StringIO
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
@@ -20,7 +23,7 @@ from .models import (
     ScientificReviewStatus, Technique, TechniqueConcept, TechniqueConceptSource, TechniqueSource,
     Therapy, TherapyAlias, TherapyBookmark, TherapyClassification, TherapyClassificationLink, TherapyConcept,
     TherapyConceptSource, TherapyDisorder, TherapyDisorderSource, TherapyFamily, TherapyNote, TherapySource,
-    TherapyTechnique, TherapyTechniqueSource,
+    TherapyTechnique, TherapyTechniqueSource, ResearchDataset, ResearchRecord,
 )
 
 
@@ -1893,3 +1896,287 @@ class TherapyPersonalCompareTests(APITestCase):
         ):
             response = getattr(self.client, method)(path, {}, format="json")
             self.assertEqual(response.status_code, 401)
+
+
+class ResearchDatasetImportTests(APITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        call_command("seed_mvp", stdout=StringIO())
+
+    def _write_dataset(self, path, *, complete):
+        source_id = "source:test-shared-complete" if complete else "src_test_shared_legacy"
+        metadata = {
+            "dataset_name": "Psychology Atlas Import Test",
+            "dataset_version": "research-1-complete" if complete else "1.0.0",
+            "generated_at": "2026-09-03",
+        }
+        document = {
+            "dataset_metadata": metadata,
+            "sources": [
+                {
+                    "id" if complete else "source_id": source_id,
+                    "title": "Shared Import Test Source",
+                    "authors": ["Example, A."],
+                    "publication_year": 2024,
+                    "doi": "10.1234/import-test",
+                    "url": "https://example.test/import-source",
+                    "source_type": "review_article",
+                    "verification_status" if complete else "verification": "verified" if complete else "citation_from_model_knowledge",
+                }
+            ],
+            "concepts": [],
+            "cognitive_distortions": [],
+            "symptoms": [],
+            "disorders": [],
+            "therapy_families": [],
+            "therapy_classifications": [],
+            "therapies": [],
+            "techniques": [],
+            "psychologists": [],
+            "theories": [],
+            "timeline_events": [],
+            "relationships": [],
+            "claims": [],
+            "research_gaps": [],
+            "potential_duplicates": [],
+            "terminology_notes": [],
+            "corrections": [],
+            "quality_control": {},
+        }
+        if complete:
+            document["concepts"] = [
+                {
+                    "id": "concept:test-import-process",
+                    "slug": "test-import-process",
+                    "name_en": "Test Import Process",
+                    "name_fa": "فرایند آزمایشی ورود",
+                    "simple_definition_fa": "تعریف فارسی آزمون ورود داده.",
+                    "academic_definition_fa": "تعریف دانشگاهی فارسی برای آزمون ورود داده.",
+                    "domain": "cognitive_psychology",
+                    "source_ids": [source_id],
+                    "review": {"status": "source_checked"},
+                }
+            ]
+            document["therapy_families"] = [
+                {
+                    "id": "therapy-family:test-import-family",
+                    "slug": "test-import-family",
+                    "name_en": "Test Import Family",
+                    "name_fa": "خانواده آزمایشی ورود",
+                    "description_fa": "خانواده درمانی برای تست import.",
+                    "source_ids": [source_id],
+                    "review": {"status": "source_checked"},
+                }
+            ]
+            document["therapy_classifications"] = [
+                {
+                    "id": "therapy-classification:test-import-structured",
+                    "slug": "test-import-structured",
+                    "name_en": "Test Import Structured",
+                    "name_fa": "ساختاریافته آزمایشی",
+                    "source_ids": [source_id],
+                    "review": {"status": "source_checked"},
+                }
+            ]
+            document["therapies"] = [
+                {
+                    "id": "therapy:test-import-therapy",
+                    "slug": "test-import-therapy",
+                    "name_en": "Test Import Therapy",
+                    "name_fa": "درمان آزمایشی ورود",
+                    "primary_family_id": "therapy-family:test-import-family",
+                    "classification_ids": ["therapy-classification:test-import-structured"],
+                    "academic_definition_fa": "تعریف درمان آزمایشی.",
+                    "source_ids": [source_id],
+                    "review": {"status": "source_checked"},
+                },
+                {
+                    "id": "therapy:cognitive-behavioral-therapy",
+                    "slug": "cognitive-behavioral-therapy",
+                    "name_en": "Cognitive Behavioral Therapy",
+                    "name_fa": "درمان شناختی رفتاری",
+                    "primary_family_id": "therapy-family:test-import-family",
+                    "academic_definition_fa": "این متن نباید محتوای curated موجود را overwrite کند.",
+                    "source_ids": [source_id],
+                    "review": {"status": "source_checked"},
+                },
+            ]
+            document["techniques"] = [
+                {
+                    "id": "technique:test-import-technique",
+                    "slug": "test-import-technique",
+                    "name_en": "Test Import Technique",
+                    "name_fa": "تکنیک آزمایشی ورود",
+                    "academic_definition_fa": "تعریف تکنیک آزمایشی.",
+                    "source_ids": [source_id],
+                    "review": {"status": "source_checked"},
+                }
+            ]
+            document["relationships"] = [
+                {
+                    "id": "relation:test-import-therapy-uses-technique",
+                    "source_id": "therapy:test-import-therapy",
+                    "target_id": "technique:test-import-technique",
+                    "relation_type": "uses",
+                    "directionality": "directed",
+                    "explanation_fa": "درمان آزمایشی از تکنیک آزمایشی استفاده می‌کند.",
+                    "evidence_status": "source_supported_summary",
+                    "confidence": "high",
+                    "source_ids": [source_id],
+                },
+                {
+                    "id": "relation:test-import-therapy-targets-concept",
+                    "source_id": "therapy:test-import-therapy",
+                    "target_id": "concept:test-import-process",
+                    "relation_type": "targets_or_organizes_around",
+                    "directionality": "directed",
+                    "explanation_fa": "درمان آزمایشی پیرامون مفهوم آزمایشی سازمان می‌یابد.",
+                    "evidence_status": "source_supported_summary",
+                    "confidence": "high",
+                    "source_ids": [source_id],
+                },
+            ]
+            document["psychologists"] = [
+                {
+                    "id": "psychologist:test-import-person",
+                    "full_name": "Import Test Researcher",
+                    "canonical_name": "Import Test Researcher",
+                    "name_fa": "پژوهشگر آزمایشی ورود",
+                    "source_ids": [source_id],
+                }
+            ]
+        else:
+            document["therapy_families"] = [
+                {
+                    "family_id": "tf_legacy_only",
+                    "name_en": "Legacy Only Therapy Family",
+                    "name_fa": "خانواده فقط داده قدیمی",
+                    "sources": [source_id],
+                    "verification": "citation_from_model_knowledge",
+                }
+            ]
+            document["therapies"] = [
+                {
+                    "therapy_id": "therapy_legacy_only",
+                    "slug": "legacy-only-therapy",
+                    "name_en": "Legacy Only Therapy",
+                    "name_fa": "درمان فقط داده قدیمی",
+                    "family_id": "tf_legacy_only",
+                    "description_fa": "این رکورد باید فقط staging شود.",
+                    "sources": [source_id],
+                    "verification": "citation_from_model_knowledge",
+                }
+            ]
+        path.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+        return document
+
+    def test_research_import_is_lossless_deduplicated_conservative_and_idempotent(self):
+        cbt = Therapy.objects.get(slug="cognitive-behavioral-therapy")
+        original_cbt_summary = cbt.summary
+
+        with TemporaryDirectory() as directory:
+            directory = Path(directory)
+            legacy_path = directory / "legacy-research.json"
+            complete_path = directory / "complete-research.json"
+            legacy_doc = self._write_dataset(legacy_path, complete=False)
+            complete_doc = self._write_dataset(complete_path, complete=True)
+
+            call_command(
+                "import_research_datasets",
+                str(legacy_path),
+                str(complete_path),
+                stdout=StringIO(),
+            )
+
+            self.assertEqual(ResearchDataset.objects.count(), 2)
+            expected_records = sum(
+                len(value)
+                for document in (legacy_doc, complete_doc)
+                for value in document.values()
+                if isinstance(value, list)
+            )
+            self.assertEqual(ResearchRecord.objects.count(), expected_records)
+            self.assertEqual(SourceReference.objects.filter(doi="10.1234/import-test").count(), 1)
+
+            imported_therapy = Therapy.objects.get(slug="test-import-therapy")
+            imported_technique = Technique.objects.get(slug="test-import-technique")
+            imported_concept = Concept.objects.get(slug="test-import-process")
+            self.assertEqual(imported_therapy.review_status, ScientificReviewStatus.SOURCE_CHECKED)
+            self.assertFalse(imported_therapy.seed_managed)
+            self.assertTrue(imported_therapy.source_links.exists())
+            self.assertTrue(imported_technique.source_links.exists())
+            self.assertTrue(imported_concept.source_links.exists())
+            self.assertFalse(Therapy.objects.filter(slug="legacy-only-therapy").exists())
+            self.assertTrue(
+                ResearchRecord.objects.filter(
+                    section="therapies",
+                    external_id="therapy_legacy_only",
+                    promoted_pk__isnull=True,
+                ).exists()
+            )
+
+            cbt.refresh_from_db()
+            self.assertEqual(cbt.summary, original_cbt_summary)
+
+            therapy_technique = TherapyTechnique.objects.get(
+                therapy=imported_therapy,
+                technique=imported_technique,
+            )
+            self.assertTrue(therapy_technique.source_links.exists())
+            relationship_record = ResearchRecord.objects.get(
+                section="relationships",
+                external_id="relation:test-import-therapy-uses-technique",
+            )
+            self.assertEqual(relationship_record.promoted_model, "atlas.therapytechnique")
+            self.assertEqual(relationship_record.promoted_pk, therapy_technique.pk)
+            self.assertEqual(
+                ResearchRecord.objects.filter(section="psychologists", promoted_pk__isnull=True).count(),
+                1,
+            )
+
+            stable_counts = {
+                "datasets": ResearchDataset.objects.count(),
+                "records": ResearchRecord.objects.count(),
+                "sources": SourceReference.objects.count(),
+                "therapies": Therapy.objects.count(),
+                "techniques": Technique.objects.count(),
+                "concepts": Concept.objects.count(),
+                "relations": TherapyTechnique.objects.count(),
+            }
+            call_command(
+                "import_research_datasets",
+                str(legacy_path),
+                str(complete_path),
+                stdout=StringIO(),
+            )
+            self.assertEqual(stable_counts["datasets"], ResearchDataset.objects.count())
+            self.assertEqual(stable_counts["records"], ResearchRecord.objects.count())
+            self.assertEqual(stable_counts["sources"], SourceReference.objects.count())
+            self.assertEqual(stable_counts["therapies"], Therapy.objects.count())
+            self.assertEqual(stable_counts["techniques"], Technique.objects.count())
+            self.assertEqual(stable_counts["concepts"], Concept.objects.count())
+            self.assertEqual(stable_counts["relations"], TherapyTechnique.objects.count())
+
+            call_command("seed_mvp", stdout=StringIO())
+            self.assertTrue(Therapy.objects.filter(pk=imported_therapy.pk, is_active=True).exists())
+            self.assertTrue(Technique.objects.filter(pk=imported_technique.pk, is_active=True).exists())
+            self.assertTrue(Concept.objects.filter(pk=imported_concept.pk, is_active=True).exists())
+            therapy_technique.refresh_from_db()
+            self.assertTrue(therapy_technique.is_active)
+            self.assertFalse(therapy_technique.seed_managed)
+            therapy_concept = TherapyConcept.objects.get(
+                therapy=imported_therapy,
+                concept=imported_concept,
+                relationship_type=TherapyConcept.Kind.TARGETS,
+            )
+            self.assertTrue(therapy_concept.is_active)
+            self.assertFalse(therapy_concept.seed_managed)
+            self.assertTrue(
+                TherapyClassificationLink.objects.filter(
+                    therapy=imported_therapy,
+                    classification__slug="test-import-structured",
+                    is_active=True,
+                    seed_managed=False,
+                ).exists()
+            )
+            self.assertEqual(ResearchDataset.objects.count(), 2)

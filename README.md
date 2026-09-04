@@ -1,12 +1,12 @@
 # Psychology Atlas — v0.5.5 · Compare + Personal Features + Final Hardening
 
-یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. نسخه فعلی v0.5.5 بخش نهایی Therapy Atlas در سری v0.5.x است: Therapy Compare ساختاریافته، Bookmark/Note خصوصی، ادغام Saved/Notes/Dashboard و hardening نهایی Compare/API را به لایه علمی و Graph نسخه‌های قبل اضافه می‌کند؛ بدون treatment ranking، effectiveness percentage یا recommendation شخصی.
+یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. نسخه فعلی v0.5.5 بخش نهایی Therapy Atlas در سری v0.5.x است: Therapy Compare ساختاریافته، Bookmark/Note خصوصی، ادغام Saved/Notes/Dashboard و hardening نهایی Compare/API را به لایه علمی و Graph نسخه‌های قبل اضافه می‌کند؛ بدون treatment ranking، effectiveness percentage یا recommendation شخصی. در همین baseline، یک لایه Research Dataset Ingestion نیز اضافه شده تا corpusهای پژوهشی بزرگ به‌صورت lossless، provenance-aware و non-destructive وارد DB شوند، بدون اینکه roadmap به v0.6 جلو برده شود.
 
 > این نرم‌افزار آموزشی است و ابزار تشخیص، درمان یا جایگزین ارزیابی حرفه‌ای نیست.
 
 ## Therapy Atlas
 
-نسخه فعلی همان dataset محدود و قابل‌ردیابی Therapy Atlas را بدون ادعای effectiveness percentage، رتبه‌بندی «بهترین درمان» یا recommendation شخصی در UI و Graph ارائه می‌کند. مدل‌های اصلی:
+هسته seeded Therapy Atlas همچنان عمداً کوچک و قابل‌ردیابی است؛ علاوه بر آن، v0.5.5 می‌تواند research corpusهای source-backed را با ownership مستقل import کند. محتوای imported هیچ ادعای effectiveness percentage، رتبه‌بندی «بهترین درمان» یا recommendation شخصی ایجاد نمی‌کند. مدل‌های اصلی runtime:
 
 ```text
 TherapyFamily
@@ -41,7 +41,53 @@ Therapy migrations:
 ```text
 0013_therapy_technique_techniqueconcept_and_more.py
 0014_studyactivity_therapy_therapybookmark_therapynote.py
+0015_researchdataset_researchrecord_and_more.py
+0016_techniqueconcept_seed_managed_and_more.py
 ```
+
+### Research Dataset Ingestion (v0.5.5 data enrichment)
+
+دو corpus پژوهشی JSON می‌توانند بدون تغییر version roadmap با command زیر وارد شوند:
+
+```bash
+python manage.py import_research_datasets
+```
+
+حالت‌های ایمن:
+
+```bash
+python manage.py import_research_datasets --dry-run
+python manage.py import_research_datasets --no-promote
+```
+
+معماری import دو لایه است:
+
+- `ResearchDataset` کل JSON، metadata، statistics، quality-control و SHA-256 ورودی را lossless نگه می‌دارد.
+- `ResearchRecord` هر entity/relation/claim را با external ID، canonical key، source IDs و وضعیت promotion ایندکس می‌کند.
+- Sourceها با اولویت DOI → URL → title/year dedupe می‌شوند و author/DOI/PMID/verification metadata حفظ می‌شود.
+- داده‌های schema-compatible و source-backed به Concept/Symptom/Therapy/Technique و relationهای موجود promote می‌شوند؛ داده‌های ضعیف‌تر یا ناسازگار staging-only می‌مانند.
+- Psychologist/Theory/Timeline/Claim در این مرحله فقط research-staging هستند و به معنی شروع v0.6 نیستند.
+- existing curated content overwrite نمی‌شود؛ importer فقط رکورد جدید می‌سازد یا فیلدهای خالی را محافظه‌کارانه تکمیل می‌کند.
+- relationهای imported دارای `seed_managed=False` هستند؛ `seed_mvp` فقط relationهای متعلق به خودش را مدیریت می‌کند و research relationها را deactivate نمی‌کند.
+
+وضعیت corpus فعلی پس از import:
+
+```text
+2 ResearchDataset
+1,918 ResearchRecord
+189 canonical SourceReference
+148 Concept (20 cognitive distortions)
+107 Symptom
+241 Disorder (existing canonical disorder catalog preserved)
+10 TherapyFamily
+16 TherapyClassification
+20 Therapy
+35 Technique
+176 research relationships promoted with resolved provenance
+478 Knowledge Graph nodes / 934 edges / 18 build queries
+```
+
+داده‌های آینده که losslessly در staging محفوظ‌اند شامل 130 Psychologist record، 53 Theory record، 63 Timeline event، 82 Claim، 25 Research Gap و audit/correction metadata هستند.
 
 ### Scientific Therapy Seed
 
@@ -642,7 +688,7 @@ Current validation baseline:
 
 ```text
 Django system check                  PASS
-Backend tests                        97 / 97 PASS
+Backend tests                        98 / 98 PASS
 DSM import idempotency               PASS · 1 corpus / 438 records / 241 canonical Disorder pages / 6 sources
 DSM diagnosis sync                    PASS · 243 formal records → 241 canonical pages · 211 created + 30 curated preserved
 Neurodevelopmental chapter            PASS · 22 Disorder pages including Autism Spectrum Disorder and ADHD
@@ -662,6 +708,9 @@ Therapy Atlas production build         PASS · /therapies + /therapies/[slug] + 
 Therapy Atlas HTTP runtime smoke       PASS · list + CBT detail + ERP detail render seeded content
 Therapy Compare + Personal tests        PASS · 8 targeted compare/ownership/validation/query-budget/seed-preservation tests
 Therapy Compare query budget            PASS · <=14 queries for bounded 2-item comparison fixture
+Research dataset import test             PASS · lossless + source dedupe + conservative promotion + idempotency + seed-preservation
+Research corpus live inventory           PASS · 2 datasets / 1,918 records / 189 sources / 148 concepts / 107 symptoms / 20 therapies / 35 techniques
+Research-enriched Knowledge Graph        PASS · 478 nodes / 934 edges / 18 build queries after repeated seed runs
 Disorders Explorer hydrated E2E       PASS · 241 catalog / chapter rail / recent Autism persistence
 DSM API + route smoke test            PASS
 Concept inventory                PASS · 44 concepts / 12 distortions / 8 aliases
@@ -720,6 +769,7 @@ v0.5.2  Scientific Therapy Seed + API ✅
 v0.5.3  Therapy Atlas Frontend ✅
 v0.5.4  Cross-domain Integration + Knowledge Graph ✅
 v0.5.5  Compare + Personal Features + Final Hardening ✅
+        Research Dataset Ingestion + provenance-safe enrichment ✅ (same v0.5.5 baseline)
 v0.6    Psychologists + Theories + Timeline
 v0.7    Advanced Branching Clinical Cases + Analytics
 v0.8    Study Mode + Exam Planning + Advanced Recommendations

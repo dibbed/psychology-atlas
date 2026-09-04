@@ -125,7 +125,15 @@
     "therapy_personal_study_activity",
     "therapy_personal_active_content_filtering",
     "therapy_compare_query_hardening",
-    "compare_request_race_hardening"
+    "compare_request_race_hardening",
+    "research_dataset_lossless_ingestion",
+    "research_record_normalized_staging",
+    "research_source_doi_url_title_deduplication",
+    "research_conservative_runtime_promotion",
+    "research_future_domain_staging",
+    "research_relation_provenance_promotion",
+    "research_seed_ownership_isolation",
+    "research_import_idempotency"
   ],
   "content": {
     "categories": 21,
@@ -183,7 +191,19 @@
     "therapy_technique_links": 10,
     "technique_concept_links": 8,
     "therapy_dedicated_sources": 10,
-    "technique_aliases": 1
+    "technique_aliases": 1,
+    "research_ingestion": {
+      "datasets": 2,
+      "records": 1918,
+      "canonical_sources": 189,
+      "live_concepts": 148,
+      "live_symptoms": 107,
+      "live_therapies": 20,
+      "live_techniques": 35,
+      "promoted_research_relationships": 176,
+      "staging_policy": "future-domain and unsupported/lower-confidence records remain lossless staging-only",
+      "version_boundary": "same v0.5.5 baseline; does not implement v0.6 Psychologists/Theories/Timeline runtime"
+    }
   },
   "migrations": [
     "0003_concept_dailychallenge_dailychallengechoice_and_more.py",
@@ -197,15 +217,17 @@
     "0011_content_children_is_active.py",
     "0012_seed_managed_content.py",
     "0013_therapy_technique_techniqueconcept_and_more.py",
-    "0014_studyactivity_therapy_therapybookmark_therapynote.py"
+    "0014_studyactivity_therapy_therapybookmark_therapynote.py",
+    "0015_researchdataset_researchrecord_and_more.py",
+    "0016_techniqueconcept_seed_managed_and_more.py"
   ],
   "validation": {
     "django_check": "pass",
-    "backend_tests": "97/97 passed",
+    "backend_tests": "98/98 passed",
     "python_compileall": "pass",
     "pip_check": "pass",
     "migration_drift_check": "pass",
-    "seed_idempotency": "pass · current Therapy counts stable across repeated runs / therapy links soft-deactivate rather than destructive cleanup",
+    "seed_idempotency": "pass · repeated seed runs preserve imported seed_managed=False entities and relations while seed-owned relations remain independently managed",
     "typescript_typecheck": "pass",
     "next_production_build": "pass · v0.5.5 production build · /compare + /therapies + /therapies/[slug] + /saved + /notes + /dashboard validated",
     "npm_audit_low": "0 vulnerabilities",
@@ -249,7 +271,16 @@
     "therapy_personal_inactive_filtering": "pass · inactive Therapy rows are hidden from personal lists and dashboard aggregates",
     "therapy_personal_note_validation": "pass · string-only / trim / 12000-char bound / empty-save delete",
     "therapy_personal_http_e2e": "pass · real HTTP JWT flow with two temporary users · compare ordering/guardrail · bookmark 201->200 idempotency · cross-user bookmark/note isolation · dashboard aggregation · delete cleanup · six frontend routes HTTP 200",
-    "therapy_personal_seed_preservation": "pass · seed_mvp preserves TherapyBookmark, TherapyNote and StudyActivity.therapy links for seeded Therapy content"
+    "therapy_personal_seed_preservation": "pass · seed_mvp preserves TherapyBookmark, TherapyNote and StudyActivity.therapy links for seeded Therapy content",
+    "research_dataset_import": "pass · 2 JSON corpora / SHA-256 idempotent / lossless raw storage + normalized ResearchRecord index",
+    "research_record_inventory": "1918 ResearchRecord rows across 2 ResearchDataset rows",
+    "research_source_deduplication": "pass · DOI -> URL -> title/year canonicalization · 189 live SourceReference rows after import",
+    "research_runtime_inventory": "148 concepts / 20 cognitive distortions / 107 symptoms / 241 canonical disorders / 10 therapy families / 16 classifications / 20 therapies / 35 techniques",
+    "research_future_domain_staging": "130 psychologist / 53 theory / 63 timeline event / 82 claim / 25 research gap records retained staging-only; v0.6 runtime not started",
+    "research_relationship_promotion": "176 source-resolved research relations promoted; unsupported/unmapped semantics retained losslessly in staging",
+    "research_seed_preservation": "pass · two repeated seed_mvp runs preserve imported TherapyClassificationLink/TherapyTechnique/TherapyDisorder/TherapyConcept/TechniqueConcept ownership and active state",
+    "research_graph_runtime": "pass · 478 nodes / 934 edges / 18 build queries after repeated seed runs",
+    "research_api_http_smoke": "pass · working-memory Concept / ACT Therapy / cognitive-defusion Technique / CBT-vs-Schema Compare / Knowledge Graph returned HTTP 200 (final graph smoke refreshed after seed ownership fix)"
   },
   "release_notes": {
     "graph_layers": [
@@ -334,6 +365,14 @@
       "guardrail": "Evidence Basis is displayed as evidence-source semantics, not personalized treatment ranking",
       "compare": "shared /compare surface with type=therapy; source-backed dimensions only and explicit no-ranking guardrail",
       "personal": "Therapy detail bookmark + private note; Saved/Notes/Dashboard integration"
+    },
+    "research_ingestion": {
+      "version": "v0.5.5 data enrichment",
+      "architecture": "ResearchDataset raw envelope + ResearchRecord searchable staging + conservative runtime promotion",
+      "source_policy": "dedupe DOI > URL > title/year; preserve authors/DOI/PMID/verification metadata",
+      "seed_ownership": "explicit seed_managed on Therapy classification and cross-domain relation rows prevents seed from deactivating imported research relations",
+      "graph_after_import": "478 nodes / 934 edges / 18 queries",
+      "future_domains": "Psychologists/Theories/Timeline/Claims staged only"
     }
   }
 }

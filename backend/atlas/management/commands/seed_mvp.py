@@ -1487,9 +1487,9 @@ def seed_therapy_content(disorder_objs):
             TherapyClassificationLink.objects.update_or_create(
                 therapy=therapy,
                 classification=classification,
-                defaults={"sort_order": order, "is_active": True},
+                defaults={"sort_order": order, "is_active": True, "seed_managed": True},
             )
-        therapy.classification_links.exclude(classification_id__in=active_classification_ids).update(is_active=False)
+        therapy.classification_links.filter(seed_managed=True).exclude(classification_id__in=active_classification_ids).update(is_active=False)
     Therapy.objects.filter(seed_managed=True).exclude(slug__in=therapy_objs).update(is_active=False)
 
     technique_objs = {}
@@ -1532,12 +1532,13 @@ def seed_therapy_content(disorder_objs):
                 "sort_order": order,
                 "review_status": ScientificReviewStatus.SOURCE_CHECKED,
                 "is_active": True,
+                "seed_managed": True,
             },
         )
         therapy_technique_keys.add((relation.therapy_id, relation.technique_id))
         TherapyTechniqueSource.objects.get_or_create(relationship=relation, source=source_objs[source_key])
     for therapy in therapy_objs.values():
-        for relation in therapy.technique_links.filter(is_active=True):
+        for relation in therapy.technique_links.filter(is_active=True, seed_managed=True):
             if (relation.therapy_id, relation.technique_id) not in therapy_technique_keys:
                 relation.is_active = False
                 relation.save(update_fields=("is_active", "updated_at"))
@@ -1558,12 +1559,13 @@ def seed_therapy_content(disorder_objs):
                 "sort_order": order,
                 "review_status": ScientificReviewStatus.SOURCE_CHECKED,
                 "is_active": True,
+                "seed_managed": True,
             },
         )
         therapy_disorder_keys.add((relation.therapy_id, relation.disorder_id))
         TherapyDisorderSource.objects.get_or_create(relationship=relation, source=source_objs[source_key])
     for therapy in therapy_objs.values():
-        for relation in therapy.disorder_links.filter(is_active=True):
+        for relation in therapy.disorder_links.filter(is_active=True, seed_managed=True):
             if (relation.therapy_id, relation.disorder_id) not in therapy_disorder_keys:
                 relation.is_active = False
                 relation.save(update_fields=("is_active", "updated_at"))
@@ -1585,12 +1587,13 @@ def seed_therapy_content(disorder_objs):
                 "sort_order": order,
                 "review_status": ScientificReviewStatus.SOURCE_CHECKED,
                 "is_active": True,
+                "seed_managed": True,
             },
         )
         therapy_concept_keys.add((relation.therapy_id, relation.concept_id, relation.relationship_type))
         TherapyConceptSource.objects.get_or_create(relationship=relation, source=source_objs[source_key])
     for therapy in therapy_objs.values():
-        for relation in therapy.concept_links.filter(is_active=True):
+        for relation in therapy.concept_links.filter(is_active=True, seed_managed=True):
             key = (relation.therapy_id, relation.concept_id, relation.relationship_type)
             if key not in therapy_concept_keys:
                 relation.is_active = False
@@ -1610,12 +1613,13 @@ def seed_therapy_content(disorder_objs):
                 "sort_order": order,
                 "review_status": ScientificReviewStatus.SOURCE_CHECKED,
                 "is_active": True,
+                "seed_managed": True,
             },
         )
         technique_concept_keys.add((relation.technique_id, relation.concept_id, relation.relationship_type))
         TechniqueConceptSource.objects.get_or_create(relationship=relation, source=source_objs[source_key])
     for technique in technique_objs.values():
-        for relation in technique.concept_links.filter(is_active=True):
+        for relation in technique.concept_links.filter(is_active=True, seed_managed=True):
             key = (relation.technique_id, relation.concept_id, relation.relationship_type)
             if key not in technique_concept_keys:
                 relation.is_active = False

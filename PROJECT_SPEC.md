@@ -4,7 +4,7 @@
 
 Psychology Atlas is an interactive educational system for psychology students. It should behave as a connected learning system, not as a psychology blog and not as a diagnostic product.
 
-v0.5.5 completes the five-part Therapy Atlas series. It preserves the source-backed schema, frontend and five-layer Knowledge Graph while adding structured Therapy Compare, private Therapy bookmarks/notes, Saved/Notes/Dashboard integration and final compare/personal-data hardening. Therapy progress/mastery remains intentionally deferred because no real Therapy learning-evidence model exists yet.
+v0.5.5 completes the five-part Therapy Atlas series. It preserves the source-backed schema, frontend and five-layer Knowledge Graph while adding structured Therapy Compare, private Therapy bookmarks/notes, Saved/Notes/Dashboard integration and final compare/personal-data hardening. The same v0.5.5 baseline now also includes provenance-safe Research Dataset Ingestion for large external psychology corpora; this is data enrichment, not a version bump or partial v0.6 implementation. Therapy progress/mastery remains intentionally deferred because no real Therapy learning-evidence model exists yet.
 
 ## Architecture decisions
 
@@ -15,10 +15,36 @@ v0.5.5 completes the five-part Therapy Atlas series. It preserves the source-bac
 - Current database: **SQLite**
 - Future database: **PostgreSQL** without business-logic rewrite
 - Django ORM/migrations are the persistence source of truth
-- Content administration: **deterministic seed data for now**, dedicated content-admin UI later
+- Content administration: deterministic seed data plus provenance-aware external research ingestion; dedicated content-admin UI later
+- External research is stored losslessly in `ResearchDataset` + `ResearchRecord` before any selective runtime promotion
+- Research promotion is non-destructive: existing curated fields are not overwritten and imported content uses independent seed ownership
 - User-owned data must remain isolated by authenticated user
 - Server controls quiz/case scoring and SRS scheduling
 - Do not couple frontend logic to SQLite
+
+### Research dataset ingestion
+
+v0.5.5 accepts the two research JSON corpora through `python manage.py import_research_datasets`. The importer is idempotent by dataset SHA-256 and keeps the complete original document plus normalized per-record indexing.
+
+Current research-ingestion invariants:
+
+- 2 imported `ResearchDataset` rows and 1,918 indexed `ResearchRecord` rows are retained losslessly.
+- `SourceReference` now stores authors, DOI, PMID, verification status and extra bibliographic metadata; source dedupe priority is DOI → URL → title/year.
+- Complete/source-checked records may promote into the current Concept, Symptom, Therapy, Technique and explicit relation models when the v0.5.5 schema can represent the semantics faithfully.
+- Lower-confidence or unsupported records remain staging-only instead of being forced into a misleading runtime model.
+- Psychologist, Theory, Timeline Event and Claim records remain research-staging until the dedicated v0.6 domain is intentionally implemented.
+- Imported runtime entities use `seed_managed=False`; Therapy classification/Technique/Disorder/Concept relation rows also have explicit seed ownership so repeated `seed_mvp` cannot deactivate externally imported relations.
+- Imported scientific relation promotion requires resolved source provenance.
+- Current enriched live inventory is 148 Concepts, 107 Symptoms, 241 canonical Disorders, 20 Therapies, 35 Techniques and 189 canonical sources.
+- Current Knowledge Graph after repeated seed runs is 478 nodes / 934 edges with an 18-query build budget.
+
+Importer modes:
+
+```text
+python manage.py import_research_datasets
+python manage.py import_research_datasets --dry-run
+python manage.py import_research_datasets --no-promote
+```
 
 ### Therapy architecture foundation
 
@@ -410,6 +436,7 @@ v0.5.2  Scientific Therapy Seed + API ✅
 v0.5.3  Therapy Atlas Frontend ✅
 v0.5.4  Cross-domain Integration + Knowledge Graph ✅
 v0.5.5  Compare + Personal Features + Final Hardening ✅
+        Research Dataset Ingestion + provenance-safe enrichment ✅ (same v0.5.5 baseline)
 v0.6    Psychologists + Theories + Timeline
 v0.7  Advanced Branching Clinical Cases + Analytics
 v0.8  Study Mode + Exam Planning + Advanced Recommendations
