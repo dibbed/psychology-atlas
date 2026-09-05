@@ -1,7 +1,7 @@
 {
   "project": "Psychology Atlas",
-  "version": "0.6.2",
-  "release_name": "Conservative Research Promotion + Dedupe + Aliases",
+  "version": "0.6.3",
+  "release_name": "Psychologist + Theory + Timeline Read APIs",
   "stack": {
     "frontend": "Next.js 16.3.3 + React 19 + TypeScript",
     "backend": "Django 5.2 + Django REST Framework",
@@ -161,7 +161,16 @@
     "v062_timeline_technique_relation",
     "v062_promotion_dry_run",
     "v062_promotion_idempotency",
-    "v062_staging_canonical_key_repair"
+    "v062_staging_canonical_key_repair",
+    "v063_psychologist_public_read_api",
+    "v063_theory_public_read_api",
+    "v063_timeline_public_read_api",
+    "v063_cross_domain_api_filters",
+    "v063_rich_source_provenance_api",
+    "v063_relation_level_provenance_api",
+    "v063_timeline_date_precision_api",
+    "v063_query_budget_hardening",
+    "v063_inactive_content_boundary"
   ],
   "content": {
     "categories": 21,
@@ -230,7 +239,7 @@
       "live_techniques": 35,
       "promoted_research_relationships": 176,
       "staging_policy": "future-domain and unsupported/lower-confidence records remain lossless staging-only",
-      "version_boundary": "v0.6.2 source-backed future-domain runtime promotion; APIs/frontend/graph integration deferred",
+      "version_boundary": "v0.6.3 source-backed future-domain read APIs live; frontend deferred to v0.6.4 and graph/search integration deferred to v0.6.5",
       "staged_psychologists": 130,
       "staged_theories": 53,
       "staged_timeline_events": 63,
@@ -242,9 +251,9 @@
       "unpromoted_timeline_events": 2,
       "fully_resolved_sourced_future_relations_remaining": 0
     },
-    "psychologists_runtime": 0,
-    "theories_runtime": 0,
-    "timeline_events_runtime": 0,
+    "psychologists_runtime": 76,
+    "theories_runtime": 45,
+    "timeline_events_runtime": 61,
     "psychologists": 76,
     "psychologist_aliases": 7,
     "theories": 45,
@@ -286,13 +295,13 @@
   ],
   "validation": {
     "django_check": "pass",
-    "backend_tests": "114/114 passed",
+    "backend_tests": "120/120 passed",
     "python_compileall": "pass",
     "pip_check": "pass",
     "migration_drift_check": "pass · no changes detected",
     "seed_idempotency": "pass · repeated seed runs preserve imported seed_managed=False entities and relations while seed-owned relations remain independently managed",
-    "typescript_typecheck": "pass · frontend 0.6.2",
-    "next_production_build": "pass · frontend 0.6.2 · existing route set preserved; no v0.6.2 public UI routes yet",
+    "typescript_typecheck": "pass · frontend 0.6.3",
+    "next_production_build": "pass · frontend 0.6.3 · existing route set preserved; no v0.6.3 public UI routes yet",
     "npm_audit_low": "0 vulnerabilities",
     "frontend_route_smoke_test": "pass",
     "dsm_master_source_sha256": "9680d7b1e85ae4ef58efa58f7c76bfcc04c7b317f1fbd40cbb2e27be02542694",
@@ -309,7 +318,7 @@
     "temporary_audit_user_cleanup": "pass · both v0.5.5 runtime-audit users deleted; 0 remaining",
     "therapy_foundation_tests": "3 targeted schema/provenance tests included in full suite",
     "canonical_module_cleanup": "pass · versioned backend runtime modules consolidated into views.py / serializers.py / seed_mvp.py",
-    "current_release": "v0.6.2 Conservative Research Promotion + Dedupe + Aliases",
+    "current_release": "v0.6.3 Psychologist + Theory + Timeline Read APIs",
     "ruff": "not run · ruff is not installed in backend venv",
     "git_diff_check": "pass",
     "therapy_seed_api_tests": "6 targeted seed/API/provenance/filter/idempotency tests included in full suite",
@@ -321,7 +330,7 @@
     "therapy_frontend_http_smoke": "pass · Therapy list + CBT detail + ERP detail SSR returned seeded content",
     "therapy_frontend_visual_audit": "not run · Playwright optional support is not installed on local MCP environment",
     "therapy_cross_domain_graph_tests": "4 targeted cross-domain/search/graph/cache tests included in full suite",
-    "atlas_graph_query_budget": "18 queries · 478 nodes / 934 edges · unchanged in v0.6.2",
+    "atlas_graph_query_budget": "18 queries · 478 nodes / 934 edges · unchanged in v0.6.3",
     "global_search_cross_domain": "pass · CBT therapy exact alias / ERP technique exact alias",
     "cross_domain_detail_api": "pass · Disorder -> Therapy and Concept -> Therapy/Technique with relation-level provenance",
     "graph_node_types": "44 concept / 241 disorder / 30 symptom / 6 therapy / 9 technique",
@@ -339,10 +348,10 @@
     "research_record_inventory": "1918 ResearchRecord rows across 2 ResearchDataset rows",
     "research_source_deduplication": "pass · DOI -> URL -> title/year canonicalization · 189 live SourceReference rows after import",
     "research_runtime_inventory": "148 concepts / 20 cognitive distortions / 107 symptoms / 241 canonical disorders / 10 therapy families / 16 classifications / 20 therapies / 35 techniques",
-    "research_future_domain_staging": "130 psychologist / 53 theory / 63 timeline event / 82 claim / 25 research gap records retained in ResearchRecord; canonical v0.6.1 tables exist but remain unpromoted",
+    "research_future_domain_staging": "130 psychologist / 53 theory / 63 timeline event staged records retained losslessly; source-backed identities project to 76 Psychologist / 45 Theory / 61 TimelineEvent runtime rows; Claim/ResearchGap remain staging-only",
     "research_relationship_promotion": "176 source-resolved research relations promoted; unsupported/unmapped semantics retained losslessly in staging",
     "research_seed_preservation": "pass · two repeated seed_mvp runs preserve imported TherapyClassificationLink/TherapyTechnique/TherapyDisorder/TherapyConcept/TechniqueConcept ownership and active state",
-    "research_graph_runtime": "pass · 478 nodes / 934 edges / 18 build queries; v0.6.1 models intentionally not graph-visible yet",
+    "research_graph_runtime": "pass · 478 nodes / 934 edges / 18 build queries; v0.6.3 Psychologist/Theory/Timeline APIs are intentionally not graph-visible yet",
     "research_api_http_smoke": "pass · working-memory Concept / ACT Therapy / cognitive-defusion Technique / CBT-vs-Schema Compare / Knowledge Graph returned HTTP 200 (final graph smoke refreshed after seed ownership fix)",
     "research_exact_source_archive": "pass · raw_text round-trip exact · 618107 bytes / sha256 753a7d3edf2239becdf2bb27073e8e56fcd24399a5a901bea98da89fbb660bc0 · 1281373 bytes / sha256 3bfa4fe8b465ff0b6b5b1aaf511372efb136c42ccb0db58a5468645aaf6b27e9",
     "research_bilingual_ingestion_audit": "pass · primary educational sections have complete EN/FA names and key content in both corpora; normalized Claim/Psychologist/Theory/Timeline indexes have no missing EN/FA values",
@@ -358,7 +367,13 @@
     "v062_provenance_integrity": "pass · 0 promoted entity/relation source gaps",
     "v062_promotion_idempotency": "pass · repeated committed promotion creates no duplicate runtime rows",
     "v062_seed_preservation": "pass · repeated seed_mvp preserves promoted v0.6.2 data",
-    "v062_future_relation_coverage": "pass · 0 fully-resolved source-backed future-domain relations left without canonical mapping"
+    "v062_future_relation_coverage": "pass · 0 fully-resolved source-backed future-domain relations left without canonical mapping",
+    "v063_api_tests": "6/6 targeted list/detail/filter/provenance/date-precision/inactive/query-budget tests included in full suite",
+    "v063_real_api_inventory": "pass · 76 psychologists / 45 theories / 61 timeline events returned by live read APIs",
+    "v063_real_api_query_budget": "pass · full lists 3/3/2 queries and representative details 13/13/9 queries for Psychologist/Theory/Timeline",
+    "v063_timeline_precision_api": "pass · year-only events serialize exact_date=null; invalid date precision and year windows return 400",
+    "v063_provenance_api": "pass · entity source roles plus relation-level SourceReference data expose authors/DOI/PMID/verification status when present",
+    "v063_migration": "pass · API-only slice; makemigrations --check --dry-run reports no changes detected"
   },
   "release_notes": {
     "graph_layers": [
@@ -385,15 +400,12 @@
       "1.0": "Admin CMS + Scientific Review + Full cross-domain integration",
       "0.6.1": "Psychologist/Theory/Timeline Architecture Foundation ✅",
       "0.6.2": "Conservative Research Promotion + Dedupe + Aliases ✅",
-      "0.6.3": "Psychologist + Theory + Timeline APIs",
+      "0.6.3": "Psychologist + Theory + Timeline APIs ✅",
       "0.6.4": "Frontend Atlas pages + Timeline UX",
       "0.6.5": "Knowledge Graph + global search integration",
       "0.6.6": "Final hardening + performance + release freeze"
     },
     "deliberately_deferred": [
-      "Psychologists Atlas promotion/API/frontend",
-      "Theories Atlas promotion/API/frontend",
-      "Psychology Timeline promotion/API/frontend",
       "Brain Atlas",
       "Assessment Atlas",
       "fully branching clinical cases",
@@ -403,7 +415,11 @@
       "content admin CMS",
       "claim-level citation graph",
       "Therapy user progress/mastery until learning evidence exists",
-      "Personalized treatment recommendation"
+      "Personalized treatment recommendation",
+      "Psychologists Atlas frontend",
+      "Theories Atlas frontend",
+      "Psychology Timeline frontend",
+      "Psychologist/Theory/Timeline Knowledge Graph + Global Search integration"
     ],
     "user_owned_data": [
       "concept bookmarks",
@@ -456,7 +472,7 @@
       "source_policy": "dedupe DOI > URL > title/year; preserve authors/DOI/PMID/verification metadata",
       "seed_ownership": "explicit seed_managed on Therapy classification and cross-domain relation rows prevents seed from deactivating imported research relations",
       "graph_after_import": "478 nodes / 934 edges / 18 queries",
-      "future_domains": "Psychologist/Theory/Timeline canonical schema added in v0.6.1; staged rows remain unpromoted until v0.6.2; Claims/ResearchGaps remain staging-only",
+      "future_domains": "Psychologist/Theory/Timeline canonical schema v0.6.1; conservative source-backed promotion v0.6.2; read APIs v0.6.3; Claims/ResearchGaps remain staging-only",
       "exact_archive": "ResearchDataset stores parsed raw_document plus exact raw_text and source SHA-256; source JSON can be reconstructed byte-for-byte.",
       "bilingual_audit": "Primary educational sections are audited for English/Persian names and key content; source-native bibliographic titles/DOI/PMID are preserved without fabricated translation.",
       "source_cleanup": "The two imported research JSON files were removed from the project root only after exact DB export/hash round-trip verification.",
@@ -521,6 +537,22 @@
         "marks_technique_evidence_milestone"
       ],
       "graph": "intentionally unchanged until graph integration slice"
+    },
+    "v063_knowledge_apis": {
+      "scope": "public read-only Psychologist/Theory/Timeline list/detail APIs in canonical views.py/serializers.py/urls.py; no frontend or graph integration",
+      "routes": [
+        "/api/psychologists/",
+        "/api/psychologists/<slug>/",
+        "/api/theories/",
+        "/api/theories/<slug>/",
+        "/api/timeline/",
+        "/api/timeline/<slug>/"
+      ],
+      "provenance": "entity source roles and exact relation-level SourceReference metadata; no fabricated citation/date metadata",
+      "timeline_precision": "exact_date/year/year_range/approximate_year/unknown serialized without inventing precision",
+      "real_query_budget": "lists 3/3/2 queries; representative details 13/13/9 queries",
+      "tests": "6 targeted; 120 full backend tests",
+      "graph": "intentionally unchanged at 478 nodes / 934 edges / 18 queries"
     }
   }
 }

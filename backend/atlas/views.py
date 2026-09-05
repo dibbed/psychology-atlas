@@ -1,7 +1,7 @@
 from collections.abc import Mapping
 
 from django.contrib.auth.models import User
-from django.db.models import Case, Count, IntegerField, Q, Value, When
+from django.db.models import Case, Count, IntegerField, Prefetch, Q, Value, When
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, permissions, status
@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from . import models as atlas_models
 from .learning import (
     activity_heatmap,
     available_flashcards,
@@ -59,6 +60,8 @@ from .serializers import (
     QuizDetailSerializer,
     QuizListSerializer,
     RegisterSerializer,
+    PsychologistDetailSerializer,
+    PsychologistListSerializer,
     TechniqueDetailSerializer,
     TechniqueListSerializer,
     TherapyBookmarkSerializer,
@@ -67,6 +70,10 @@ from .serializers import (
     TherapyFamilySerializer,
     TherapyListSerializer,
     TherapyNoteSerializer,
+    TheoryDetailSerializer,
+    TheoryListSerializer,
+    TimelineEventDetailSerializer,
+    TimelineEventListSerializer,
     UserNoteSerializer,
     UserSerializer,
 )
@@ -2315,3 +2322,569 @@ class TechniqueDetailView(generics.RetrieveAPIView):
         "concept_links__concept__aliases",
         "concept_links__source_links__source",
     )
+
+
+# v0.6.3 Psychologist / Theory / Timeline read APIs
+
+def _v063_choice_param(request, key, allowed, message):
+    value = request.query_params.get(key, "").strip()
+    if value and value not in allowed:
+        raise ValidationError({key: message})
+    return value
+
+
+def _v063_year_param(request, key):
+    raw = request.query_params.get(key, "").strip()
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise ValidationError({key: "سال باید یک عدد صحیح معتبر باشد."})
+    if not 1 <= value <= 9999:
+        raise ValidationError({key: "سال باید بین ۱ و ۹۹۹۹ باشد."})
+    return value
+
+
+def _v063_psychologist_counts(qs):
+    return qs.annotate(
+        theory_count=Count(
+            "theory_links",
+            filter=Q(theory_links__is_active=True, theory_links__theory__is_active=True),
+            distinct=True,
+        ),
+        concept_count=Count(
+            "concept_links",
+            filter=Q(concept_links__is_active=True, concept_links__concept__is_active=True),
+            distinct=True,
+        ),
+        therapy_count=Count(
+            "therapy_links",
+            filter=Q(
+                therapy_links__is_active=True,
+                therapy_links__therapy__is_active=True,
+                therapy_links__therapy__family__is_active=True,
+            ),
+            distinct=True,
+        ),
+        timeline_event_count=Count(
+            "timeline_links",
+            filter=Q(timeline_links__is_active=True, timeline_links__event__is_active=True),
+            distinct=True,
+        ),
+    )
+
+
+def _v063_theory_counts(qs):
+    return qs.annotate(
+        psychologist_count=Count(
+            "psychologist_links",
+            filter=Q(psychologist_links__is_active=True, psychologist_links__psychologist__is_active=True),
+            distinct=True,
+        ),
+        concept_count=Count(
+            "concept_links",
+            filter=Q(concept_links__is_active=True, concept_links__concept__is_active=True),
+            distinct=True,
+        ),
+        therapy_count=Count(
+            "therapy_links",
+            filter=Q(
+                therapy_links__is_active=True,
+                therapy_links__therapy__is_active=True,
+                therapy_links__therapy__family__is_active=True,
+            ),
+            distinct=True,
+        ),
+        technique_count=Count(
+            "technique_links",
+            filter=Q(technique_links__is_active=True, technique_links__technique__is_active=True),
+            distinct=True,
+        ),
+        timeline_event_count=Count(
+            "timeline_links",
+            filter=Q(timeline_links__is_active=True, timeline_links__event__is_active=True),
+            distinct=True,
+        ),
+    )
+
+
+def _v063_timeline_counts(qs):
+    return qs.annotate(
+        psychologist_count=Count(
+            "psychologist_links",
+            filter=Q(psychologist_links__is_active=True, psychologist_links__psychologist__is_active=True),
+            distinct=True,
+        ),
+        theory_count=Count(
+            "theory_links",
+            filter=Q(theory_links__is_active=True, theory_links__theory__is_active=True),
+            distinct=True,
+        ),
+        therapy_count=Count(
+            "therapy_links",
+            filter=Q(
+                therapy_links__is_active=True,
+                therapy_links__therapy__is_active=True,
+                therapy_links__therapy__family__is_active=True,
+            ),
+            distinct=True,
+        ),
+        technique_count=Count(
+            "technique_links",
+            filter=Q(technique_links__is_active=True, technique_links__technique__is_active=True),
+            distinct=True,
+        ),
+        concept_count=Count(
+            "concept_links",
+            filter=Q(concept_links__is_active=True, concept_links__concept__is_active=True),
+            distinct=True,
+        ),
+    )
+
+
+def _v063_psychologist_detail_queryset():
+    theory_links = atlas_models.PsychologistTheory.objects.filter(
+        is_active=True,
+        theory__is_active=True,
+    ).select_related("theory").prefetch_related(
+        Prefetch(
+            "source_links",
+            queryset=atlas_models.PsychologistTheorySource.objects.select_related("source"),
+        )
+    )
+    concept_links = atlas_models.PsychologistConcept.objects.filter(
+        is_active=True,
+        concept__is_active=True,
+    ).select_related("concept").prefetch_related(
+        Prefetch(
+            "source_links",
+            queryset=atlas_models.PsychologistConceptSource.objects.select_related("source"),
+        )
+    )
+    therapy_links = atlas_models.PsychologistTherapy.objects.filter(
+        is_active=True,
+        therapy__is_active=True,
+        therapy__family__is_active=True,
+    ).select_related("therapy", "therapy__family").prefetch_related(
+        Prefetch(
+            "source_links",
+            queryset=atlas_models.PsychologistTherapySource.objects.select_related("source"),
+        )
+    )
+    outgoing_person_links = atlas_models.PsychologistPsychologist.objects.filter(
+        is_active=True,
+        related_psychologist__is_active=True,
+    ).select_related("related_psychologist").prefetch_related(
+        Prefetch(
+            "source_links",
+            queryset=atlas_models.PsychologistPsychologistSource.objects.select_related("source"),
+        )
+    )
+    incoming_person_links = atlas_models.PsychologistPsychologist.objects.filter(
+        is_active=True,
+        psychologist__is_active=True,
+    ).select_related("psychologist").prefetch_related(
+        Prefetch(
+            "source_links",
+            queryset=atlas_models.PsychologistPsychologistSource.objects.select_related("source"),
+        )
+    )
+    timeline_links = atlas_models.TimelinePsychologist.objects.filter(
+        is_active=True,
+        event__is_active=True,
+    ).select_related("event").prefetch_related(
+        Prefetch(
+            "source_links",
+            queryset=atlas_models.TimelinePsychologistSource.objects.select_related("source"),
+        )
+    )
+    qs = atlas_models.Psychologist.objects.filter(is_active=True).prefetch_related(
+        "aliases",
+        Prefetch(
+            "source_links",
+            queryset=atlas_models.PsychologistSource.objects.select_related("source").order_by("role", "id"),
+        ),
+        Prefetch("theory_links", queryset=theory_links),
+        Prefetch("concept_links", queryset=concept_links),
+        Prefetch("therapy_links", queryset=therapy_links),
+        Prefetch("outgoing_psychologist_links", queryset=outgoing_person_links),
+        Prefetch("incoming_psychologist_links", queryset=incoming_person_links),
+        Prefetch("timeline_links", queryset=timeline_links),
+    )
+    return _v063_psychologist_counts(qs)
+
+
+def _v063_theory_detail_queryset():
+    psychologist_links = atlas_models.PsychologistTheory.objects.filter(
+        is_active=True,
+        psychologist__is_active=True,
+    ).select_related("psychologist").prefetch_related(
+        Prefetch(
+            "source_links",
+            queryset=atlas_models.PsychologistTheorySource.objects.select_related("source"),
+        )
+    )
+    concept_links = atlas_models.TheoryConcept.objects.filter(
+        is_active=True,
+        concept__is_active=True,
+    ).select_related("concept").prefetch_related(
+        Prefetch(
+            "source_links",
+            queryset=atlas_models.TheoryConceptSource.objects.select_related("source"),
+        )
+    )
+    therapy_links = atlas_models.TheoryTherapy.objects.filter(
+        is_active=True,
+        therapy__is_active=True,
+        therapy__family__is_active=True,
+    ).select_related("therapy", "therapy__family").prefetch_related(
+        Prefetch(
+            "source_links",
+            queryset=atlas_models.TheoryTherapySource.objects.select_related("source"),
+        )
+    )
+    technique_links = atlas_models.TheoryTechnique.objects.filter(
+        is_active=True,
+        technique__is_active=True,
+    ).select_related("technique").prefetch_related(
+        Prefetch(
+            "source_links",
+            queryset=atlas_models.TheoryTechniqueSource.objects.select_related("source"),
+        )
+    )
+    outgoing_theory_links = atlas_models.TheoryTheory.objects.filter(
+        is_active=True,
+        related_theory__is_active=True,
+    ).select_related("related_theory").prefetch_related(
+        Prefetch(
+            "source_links",
+            queryset=atlas_models.TheoryTheorySource.objects.select_related("source"),
+        )
+    )
+    incoming_theory_links = atlas_models.TheoryTheory.objects.filter(
+        is_active=True,
+        theory__is_active=True,
+    ).select_related("theory").prefetch_related(
+        Prefetch(
+            "source_links",
+            queryset=atlas_models.TheoryTheorySource.objects.select_related("source"),
+        )
+    )
+    timeline_links = atlas_models.TimelineTheory.objects.filter(
+        is_active=True,
+        event__is_active=True,
+    ).select_related("event").prefetch_related(
+        Prefetch(
+            "source_links",
+            queryset=atlas_models.TimelineTheorySource.objects.select_related("source"),
+        )
+    )
+    qs = atlas_models.Theory.objects.filter(is_active=True).prefetch_related(
+        "aliases",
+        Prefetch(
+            "source_links",
+            queryset=atlas_models.TheorySource.objects.select_related("source").order_by("role", "id"),
+        ),
+        Prefetch("psychologist_links", queryset=psychologist_links),
+        Prefetch("concept_links", queryset=concept_links),
+        Prefetch("therapy_links", queryset=therapy_links),
+        Prefetch("technique_links", queryset=technique_links),
+        Prefetch("outgoing_theory_links", queryset=outgoing_theory_links),
+        Prefetch("incoming_theory_links", queryset=incoming_theory_links),
+        Prefetch("timeline_links", queryset=timeline_links),
+    )
+    return _v063_theory_counts(qs)
+
+
+def _v063_timeline_detail_queryset():
+    psychologist_links = atlas_models.TimelinePsychologist.objects.filter(
+        is_active=True,
+        psychologist__is_active=True,
+    ).select_related("psychologist").prefetch_related(
+        Prefetch(
+            "source_links",
+            queryset=atlas_models.TimelinePsychologistSource.objects.select_related("source"),
+        )
+    )
+    theory_links = atlas_models.TimelineTheory.objects.filter(
+        is_active=True,
+        theory__is_active=True,
+    ).select_related("theory").prefetch_related(
+        Prefetch(
+            "source_links",
+            queryset=atlas_models.TimelineTheorySource.objects.select_related("source"),
+        )
+    )
+    therapy_links = atlas_models.TimelineTherapy.objects.filter(
+        is_active=True,
+        therapy__is_active=True,
+        therapy__family__is_active=True,
+    ).select_related("therapy", "therapy__family").prefetch_related(
+        Prefetch(
+            "source_links",
+            queryset=atlas_models.TimelineTherapySource.objects.select_related("source"),
+        )
+    )
+    technique_links = atlas_models.TimelineTechnique.objects.filter(
+        is_active=True,
+        technique__is_active=True,
+    ).select_related("technique").prefetch_related(
+        Prefetch(
+            "source_links",
+            queryset=atlas_models.TimelineTechniqueSource.objects.select_related("source"),
+        )
+    )
+    concept_links = atlas_models.TimelineConcept.objects.filter(
+        is_active=True,
+        concept__is_active=True,
+    ).select_related("concept").prefetch_related(
+        Prefetch(
+            "source_links",
+            queryset=atlas_models.TimelineConceptSource.objects.select_related("source"),
+        )
+    )
+    qs = atlas_models.TimelineEvent.objects.filter(is_active=True).prefetch_related(
+        Prefetch(
+            "source_links",
+            queryset=atlas_models.TimelineEventSource.objects.select_related("source").order_by("role", "id"),
+        ),
+        Prefetch("psychologist_links", queryset=psychologist_links),
+        Prefetch("theory_links", queryset=theory_links),
+        Prefetch("therapy_links", queryset=therapy_links),
+        Prefetch("technique_links", queryset=technique_links),
+        Prefetch("concept_links", queryset=concept_links),
+    )
+    return _v063_timeline_counts(qs)
+
+
+class PsychologistListView(generics.ListAPIView):
+    serializer_class = PsychologistListSerializer
+
+    def get_queryset(self):
+        qs = atlas_models.Psychologist.objects.filter(is_active=True).prefetch_related("aliases")
+        q = self.request.query_params.get("q", "").strip()
+        review_status = _v063_choice_param(
+            self.request,
+            "review_status",
+            atlas_models.ScientificReviewStatus.values,
+            "وضعیت بازبینی معتبر نیست.",
+        )
+        nationality = self.request.query_params.get("nationality", "").strip()
+        theory = self.request.query_params.get("theory", "").strip()
+        concept = self.request.query_params.get("concept", "").strip()
+        therapy = self.request.query_params.get("therapy", "").strip()
+        birth_from = _v063_year_param(self.request, "birth_from")
+        birth_to = _v063_year_param(self.request, "birth_to")
+        if birth_from is not None and birth_to is not None and birth_from > birth_to:
+            raise ValidationError({"birth_to": "birth_to نمی‌تواند قبل از birth_from باشد."})
+
+        if q:
+            qs = qs.filter(icontains_any(
+                (
+                    "name_en", "name_fa", "slug", "summary_en", "summary_fa",
+                    "role_en", "role_fa", "nationality_en", "nationality_fa", "aliases__text",
+                ),
+                q,
+            ))
+        if review_status:
+            qs = qs.filter(review_status=review_status)
+        if nationality:
+            qs = qs.filter(Q(nationality_en__icontains=nationality) | Q(nationality_fa__icontains=nationality))
+        if theory:
+            qs = qs.filter(
+                theory_links__theory__slug=theory,
+                theory_links__is_active=True,
+                theory_links__theory__is_active=True,
+            )
+        if concept:
+            qs = qs.filter(
+                concept_links__concept__slug=concept,
+                concept_links__is_active=True,
+                concept_links__concept__is_active=True,
+            )
+        if therapy:
+            qs = qs.filter(
+                therapy_links__therapy__slug=therapy,
+                therapy_links__is_active=True,
+                therapy_links__therapy__is_active=True,
+                therapy_links__therapy__family__is_active=True,
+            )
+        if birth_from is not None:
+            qs = qs.filter(birth_year__gte=birth_from)
+        if birth_to is not None:
+            qs = qs.filter(birth_year__lte=birth_to)
+        return _v063_psychologist_counts(qs.distinct()).order_by("name_en", "id")
+
+
+class PsychologistDetailView(generics.RetrieveAPIView):
+    serializer_class = PsychologistDetailSerializer
+    lookup_field = "slug"
+    queryset = _v063_psychologist_detail_queryset()
+
+
+class TheoryListView(generics.ListAPIView):
+    serializer_class = TheoryListSerializer
+
+    def get_queryset(self):
+        qs = atlas_models.Theory.objects.filter(is_active=True).prefetch_related("aliases")
+        q = self.request.query_params.get("q", "").strip()
+        review_status = _v063_choice_param(
+            self.request,
+            "review_status",
+            atlas_models.ScientificReviewStatus.values,
+            "وضعیت بازبینی معتبر نیست.",
+        )
+        domain = self.request.query_params.get("domain", "").strip()
+        modern_status = self.request.query_params.get("modern_status", "").strip()
+        psychologist = self.request.query_params.get("psychologist", "").strip()
+        concept = self.request.query_params.get("concept", "").strip()
+        therapy = self.request.query_params.get("therapy", "").strip()
+        technique = self.request.query_params.get("technique", "").strip()
+
+        if q:
+            qs = qs.filter(icontains_any(
+                (
+                    "name_en", "name_fa", "slug", "summary_en", "summary_fa",
+                    "core_proposition_en", "core_proposition_fa", "historical_context_en",
+                    "historical_context_fa", "aliases__text", "domain", "modern_status",
+                ),
+                q,
+            ))
+        if review_status:
+            qs = qs.filter(review_status=review_status)
+        if domain:
+            qs = qs.filter(domain__iexact=domain)
+        if modern_status:
+            qs = qs.filter(modern_status__iexact=modern_status)
+        if psychologist:
+            qs = qs.filter(
+                psychologist_links__psychologist__slug=psychologist,
+                psychologist_links__is_active=True,
+                psychologist_links__psychologist__is_active=True,
+            )
+        if concept:
+            qs = qs.filter(
+                concept_links__concept__slug=concept,
+                concept_links__is_active=True,
+                concept_links__concept__is_active=True,
+            )
+        if therapy:
+            qs = qs.filter(
+                therapy_links__therapy__slug=therapy,
+                therapy_links__is_active=True,
+                therapy_links__therapy__is_active=True,
+                therapy_links__therapy__family__is_active=True,
+            )
+        if technique:
+            qs = qs.filter(
+                technique_links__technique__slug=technique,
+                technique_links__is_active=True,
+                technique_links__technique__is_active=True,
+            )
+        return _v063_theory_counts(qs.distinct()).order_by("name_en", "id")
+
+
+class TheoryDetailView(generics.RetrieveAPIView):
+    serializer_class = TheoryDetailSerializer
+    lookup_field = "slug"
+    queryset = _v063_theory_detail_queryset()
+
+
+class TimelineEventListView(generics.ListAPIView):
+    serializer_class = TimelineEventListSerializer
+
+    def get_queryset(self):
+        qs = atlas_models.TimelineEvent.objects.filter(is_active=True)
+        q = self.request.query_params.get("q", "").strip()
+        event_type = _v063_choice_param(
+            self.request,
+            "event_type",
+            atlas_models.TimelineEvent.EventType.values,
+            "نوع رویداد معتبر نیست.",
+        )
+        date_precision = _v063_choice_param(
+            self.request,
+            "date_precision",
+            atlas_models.TimelineEvent.DatePrecision.values,
+            "دقت تاریخ معتبر نیست.",
+        )
+        review_status = _v063_choice_param(
+            self.request,
+            "review_status",
+            atlas_models.ScientificReviewStatus.values,
+            "وضعیت بازبینی معتبر نیست.",
+        )
+        category = self.request.query_params.get("category", "").strip()
+        psychologist = self.request.query_params.get("psychologist", "").strip()
+        theory = self.request.query_params.get("theory", "").strip()
+        therapy = self.request.query_params.get("therapy", "").strip()
+        technique = self.request.query_params.get("technique", "").strip()
+        concept = self.request.query_params.get("concept", "").strip()
+        year_from = _v063_year_param(self.request, "year_from")
+        year_to = _v063_year_param(self.request, "year_to")
+        if year_from is not None and year_to is not None and year_from > year_to:
+            raise ValidationError({"year_to": "year_to نمی‌تواند قبل از year_from باشد."})
+
+        if q:
+            qs = qs.filter(icontains_any(
+                (
+                    "title_en", "title_fa", "description_en", "description_fa",
+                    "historical_importance_en", "historical_importance_fa", "category", "date_text",
+                ),
+                q,
+            ))
+        if event_type:
+            qs = qs.filter(event_type=event_type)
+        if date_precision:
+            qs = qs.filter(date_precision=date_precision)
+        if review_status:
+            qs = qs.filter(review_status=review_status)
+        if category:
+            qs = qs.filter(category__iexact=category)
+        if psychologist:
+            qs = qs.filter(
+                psychologist_links__psychologist__slug=psychologist,
+                psychologist_links__is_active=True,
+                psychologist_links__psychologist__is_active=True,
+            )
+        if theory:
+            qs = qs.filter(
+                theory_links__theory__slug=theory,
+                theory_links__is_active=True,
+                theory_links__theory__is_active=True,
+            )
+        if therapy:
+            qs = qs.filter(
+                therapy_links__therapy__slug=therapy,
+                therapy_links__is_active=True,
+                therapy_links__therapy__is_active=True,
+                therapy_links__therapy__family__is_active=True,
+            )
+        if technique:
+            qs = qs.filter(
+                technique_links__technique__slug=technique,
+                technique_links__is_active=True,
+                technique_links__technique__is_active=True,
+            )
+        if concept:
+            qs = qs.filter(
+                concept_links__concept__slug=concept,
+                concept_links__is_active=True,
+                concept_links__concept__is_active=True,
+            )
+        if year_from is not None:
+            qs = qs.filter(
+                Q(year_end__gte=year_from)
+                | Q(year_end__isnull=True, year_start__gte=year_from)
+                | Q(year_start__isnull=True, exact_date__year__gte=year_from)
+            )
+        if year_to is not None:
+            qs = qs.filter(Q(year_start__lte=year_to) | Q(year_start__isnull=True, exact_date__year__lte=year_to))
+        return _v063_timeline_counts(qs.distinct()).order_by("year_start", "exact_date", "title_en", "id")
+
+
+class TimelineEventDetailView(generics.RetrieveAPIView):
+    serializer_class = TimelineEventDetailSerializer
+    lookup_field = "slug"
+    queryset = _v063_timeline_detail_queryset()

@@ -4,6 +4,7 @@ from django.db import IntegrityError
 from django.db.models import Q
 from rest_framework import serializers
 
+from . import models as atlas_models
 from .models import (
     Bookmark,
     CaseChoice,
@@ -818,3 +819,571 @@ class TechniqueDetailSerializer(TechniqueListSerializer):
                 "sources": SourceSerializer([row.source for row in link.source_links.all()], many=True).data,
             })
         return rows
+
+
+class ScientificSourceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = atlas_models.SourceReference
+        fields = (
+            "id", "title", "organization", "citation", "url", "publication_year",
+            "source_type", "authors", "doi", "pmid", "verification_status",
+        )
+
+
+class PsychologistAliasV6Serializer(serializers.ModelSerializer):
+    class Meta:
+        model = atlas_models.PsychologistAlias
+        fields = ("text", "language", "alias_type")
+
+
+class TheoryAliasV6Serializer(serializers.ModelSerializer):
+    class Meta:
+        model = atlas_models.TheoryAlias
+        fields = ("text", "language", "alias_type")
+
+
+def _entity_source_links(links):
+    return [
+        {
+            "role": link.role,
+            "role_label": link.get_role_display(),
+            "note": link.note,
+            "source": ScientificSourceSerializer(link.source).data,
+        }
+        for link in links
+    ]
+
+
+def _relation_sources(link):
+    return ScientificSourceSerializer(
+        [row.source for row in link.source_links.all()],
+        many=True,
+    ).data
+
+
+def _psychologist_brief(obj):
+    return {
+        "slug": obj.slug,
+        "name_en": obj.name_en,
+        "name_fa": obj.name_fa,
+        "role_en": obj.role_en,
+        "role_fa": obj.role_fa,
+        "review_status": obj.review_status,
+    }
+
+
+def _theory_brief(obj):
+    return {
+        "slug": obj.slug,
+        "name_en": obj.name_en,
+        "name_fa": obj.name_fa,
+        "domain": obj.domain,
+        "modern_status": obj.modern_status,
+        "review_status": obj.review_status,
+    }
+
+
+def _concept_brief(obj):
+    return {
+        "slug": obj.slug,
+        "name_en": obj.name_en,
+        "name_fa": obj.name_fa,
+        "kind": obj.kind,
+        "domain": obj.domain,
+    }
+
+
+def _therapy_brief(obj):
+    return {
+        "slug": obj.slug,
+        "name_en": obj.name_en,
+        "name_fa": obj.name_fa,
+        "family": {
+            "slug": obj.family.slug,
+            "name_en": obj.family.name_en,
+            "name_fa": obj.family.name_fa,
+        } if obj.family_id else None,
+        "review_status": obj.review_status,
+    }
+
+
+def _technique_brief(obj):
+    return {
+        "slug": obj.slug,
+        "name_en": obj.name_en,
+        "name_fa": obj.name_fa,
+        "review_status": obj.review_status,
+    }
+
+
+def _timeline_brief(obj):
+    return {
+        "slug": obj.slug,
+        "title_en": obj.title_en,
+        "title_fa": obj.title_fa,
+        "event_type": obj.event_type,
+        "date_precision": obj.date_precision,
+        "date_text": obj.date_text,
+        "year_start": obj.year_start,
+        "year_end": obj.year_end,
+        "exact_date": obj.exact_date,
+        "review_status": obj.review_status,
+    }
+
+
+def _annotated_or_prefetched_count(obj, annotation, manager_name, predicate):
+    value = getattr(obj, annotation, None)
+    if value is not None:
+        return value
+    return sum(1 for row in getattr(obj, manager_name).all() if predicate(row))
+
+
+class PsychologistListSerializer(serializers.ModelSerializer):
+    aliases = PsychologistAliasV6Serializer(many=True, read_only=True)
+    theory_count = serializers.SerializerMethodField()
+    concept_count = serializers.SerializerMethodField()
+    therapy_count = serializers.SerializerMethodField()
+    timeline_event_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = atlas_models.Psychologist
+        fields = (
+            "id", "slug", "name_en", "name_fa", "summary_en", "summary_fa",
+            "role_en", "role_fa", "nationality_en", "nationality_fa",
+            "birth_year", "death_year", "review_status", "aliases",
+            "theory_count", "concept_count", "therapy_count", "timeline_event_count",
+        )
+
+    def get_theory_count(self, obj):
+        return _annotated_or_prefetched_count(
+            obj, "theory_count", "theory_links",
+            lambda row: row.is_active and row.theory.is_active,
+        )
+
+    def get_concept_count(self, obj):
+        return _annotated_or_prefetched_count(
+            obj, "concept_count", "concept_links",
+            lambda row: row.is_active and row.concept.is_active,
+        )
+
+    def get_therapy_count(self, obj):
+        return _annotated_or_prefetched_count(
+            obj, "therapy_count", "therapy_links",
+            lambda row: row.is_active and row.therapy.is_active and row.therapy.family.is_active,
+        )
+
+    def get_timeline_event_count(self, obj):
+        return _annotated_or_prefetched_count(
+            obj, "timeline_event_count", "timeline_links",
+            lambda row: row.is_active and row.event.is_active,
+        )
+
+
+class PsychologistDetailSerializer(PsychologistListSerializer):
+    sources = serializers.SerializerMethodField()
+    theories = serializers.SerializerMethodField()
+    concepts = serializers.SerializerMethodField()
+    therapies = serializers.SerializerMethodField()
+    related_psychologists = serializers.SerializerMethodField()
+    timeline_events = serializers.SerializerMethodField()
+
+    class Meta(PsychologistListSerializer.Meta):
+        fields = PsychologistListSerializer.Meta.fields + (
+            "academic_disciplines", "contributions_en", "contributions_fa", "affiliations",
+            "historical_context_en", "historical_context_fa", "sources", "theories",
+            "concepts", "therapies", "related_psychologists", "timeline_events",
+        )
+
+    def get_sources(self, obj):
+        return _entity_source_links(obj.source_links.all())
+
+    def get_theories(self, obj):
+        return [
+            {
+                "relationship_type": link.relationship_type,
+                "relationship_label": link.get_relationship_type_display(),
+                "explanation_en": link.explanation_en,
+                "explanation_fa": link.explanation_fa,
+                "review_status": link.review_status,
+                "theory": _theory_brief(link.theory),
+                "sources": _relation_sources(link),
+            }
+            for link in obj.theory_links.all()
+            if link.is_active and link.theory.is_active
+        ]
+
+    def get_concepts(self, obj):
+        return [
+            {
+                "relationship_type": link.relationship_type,
+                "relationship_label": link.get_relationship_type_display(),
+                "explanation_en": link.explanation_en,
+                "explanation_fa": link.explanation_fa,
+                "review_status": link.review_status,
+                "concept": _concept_brief(link.concept),
+                "sources": _relation_sources(link),
+            }
+            for link in obj.concept_links.all()
+            if link.is_active and link.concept.is_active
+        ]
+
+    def get_therapies(self, obj):
+        return [
+            {
+                "relationship_type": link.relationship_type,
+                "relationship_label": link.get_relationship_type_display(),
+                "explanation_en": link.explanation_en,
+                "explanation_fa": link.explanation_fa,
+                "review_status": link.review_status,
+                "therapy": _therapy_brief(link.therapy),
+                "sources": _relation_sources(link),
+            }
+            for link in obj.therapy_links.all()
+            if link.is_active and link.therapy.is_active and link.therapy.family.is_active
+        ]
+
+    def get_related_psychologists(self, obj):
+        rows = []
+        for link in obj.outgoing_psychologist_links.all():
+            if link.is_active and link.related_psychologist.is_active:
+                rows.append({
+                    "direction": "outgoing",
+                    "relationship_type": link.relationship_type,
+                    "relationship_label": link.get_relationship_type_display(),
+                    "explanation_en": link.explanation_en,
+                    "explanation_fa": link.explanation_fa,
+                    "review_status": link.review_status,
+                    "psychologist": _psychologist_brief(link.related_psychologist),
+                    "sources": _relation_sources(link),
+                })
+        for link in obj.incoming_psychologist_links.all():
+            if link.is_active and link.psychologist.is_active:
+                rows.append({
+                    "direction": "incoming",
+                    "relationship_type": link.relationship_type,
+                    "relationship_label": link.get_relationship_type_display(),
+                    "explanation_en": link.explanation_en,
+                    "explanation_fa": link.explanation_fa,
+                    "review_status": link.review_status,
+                    "psychologist": _psychologist_brief(link.psychologist),
+                    "sources": _relation_sources(link),
+                })
+        return rows
+
+    def get_timeline_events(self, obj):
+        return [
+            {
+                "role": link.role,
+                "role_label": link.get_role_display(),
+                "review_status": link.review_status,
+                "event": _timeline_brief(link.event),
+                "sources": _relation_sources(link),
+            }
+            for link in obj.timeline_links.all()
+            if link.is_active and link.event.is_active
+        ]
+
+
+class TheoryListSerializer(serializers.ModelSerializer):
+    aliases = TheoryAliasV6Serializer(many=True, read_only=True)
+    psychologist_count = serializers.SerializerMethodField()
+    concept_count = serializers.SerializerMethodField()
+    therapy_count = serializers.SerializerMethodField()
+    technique_count = serializers.SerializerMethodField()
+    timeline_event_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = atlas_models.Theory
+        fields = (
+            "id", "slug", "name_en", "name_fa", "domain", "period_text",
+            "summary_en", "summary_fa", "modern_status", "review_status", "aliases",
+            "psychologist_count", "concept_count", "therapy_count", "technique_count",
+            "timeline_event_count",
+        )
+
+    def get_psychologist_count(self, obj):
+        return _annotated_or_prefetched_count(
+            obj, "psychologist_count", "psychologist_links",
+            lambda row: row.is_active and row.psychologist.is_active,
+        )
+
+    def get_concept_count(self, obj):
+        return _annotated_or_prefetched_count(
+            obj, "concept_count", "concept_links",
+            lambda row: row.is_active and row.concept.is_active,
+        )
+
+    def get_therapy_count(self, obj):
+        return _annotated_or_prefetched_count(
+            obj, "therapy_count", "therapy_links",
+            lambda row: row.is_active and row.therapy.is_active and row.therapy.family.is_active,
+        )
+
+    def get_technique_count(self, obj):
+        return _annotated_or_prefetched_count(
+            obj, "technique_count", "technique_links",
+            lambda row: row.is_active and row.technique.is_active,
+        )
+
+    def get_timeline_event_count(self, obj):
+        return _annotated_or_prefetched_count(
+            obj, "timeline_event_count", "timeline_links",
+            lambda row: row.is_active and row.event.is_active,
+        )
+
+
+class TheoryDetailSerializer(TheoryListSerializer):
+    sources = serializers.SerializerMethodField()
+    psychologists = serializers.SerializerMethodField()
+    concepts = serializers.SerializerMethodField()
+    therapies = serializers.SerializerMethodField()
+    techniques = serializers.SerializerMethodField()
+    related_theories = serializers.SerializerMethodField()
+    timeline_events = serializers.SerializerMethodField()
+
+    class Meta(TheoryListSerializer.Meta):
+        fields = TheoryListSerializer.Meta.fields + (
+            "core_proposition_en", "core_proposition_fa", "historical_context_en",
+            "historical_context_fa", "key_propositions_en", "key_propositions_fa",
+            "applications_en", "applications_fa", "criticisms_en", "criticisms_fa",
+            "limitations_en", "limitations_fa", "historical_importance_en",
+            "historical_importance_fa", "sources", "psychologists", "concepts",
+            "therapies", "techniques", "related_theories", "timeline_events",
+        )
+
+    def get_sources(self, obj):
+        return _entity_source_links(obj.source_links.all())
+
+    def get_psychologists(self, obj):
+        return [
+            {
+                "relationship_type": link.relationship_type,
+                "relationship_label": link.get_relationship_type_display(),
+                "explanation_en": link.explanation_en,
+                "explanation_fa": link.explanation_fa,
+                "review_status": link.review_status,
+                "psychologist": _psychologist_brief(link.psychologist),
+                "sources": _relation_sources(link),
+            }
+            for link in obj.psychologist_links.all()
+            if link.is_active and link.psychologist.is_active
+        ]
+
+    def get_concepts(self, obj):
+        return [
+            {
+                "relationship_type": link.relationship_type,
+                "relationship_label": link.get_relationship_type_display(),
+                "explanation_en": link.explanation_en,
+                "explanation_fa": link.explanation_fa,
+                "review_status": link.review_status,
+                "concept": _concept_brief(link.concept),
+                "sources": _relation_sources(link),
+            }
+            for link in obj.concept_links.all()
+            if link.is_active and link.concept.is_active
+        ]
+
+    def get_therapies(self, obj):
+        return [
+            {
+                "relationship_type": link.relationship_type,
+                "relationship_label": link.get_relationship_type_display(),
+                "explanation_en": link.explanation_en,
+                "explanation_fa": link.explanation_fa,
+                "review_status": link.review_status,
+                "therapy": _therapy_brief(link.therapy),
+                "sources": _relation_sources(link),
+            }
+            for link in obj.therapy_links.all()
+            if link.is_active and link.therapy.is_active and link.therapy.family.is_active
+        ]
+
+    def get_techniques(self, obj):
+        return [
+            {
+                "relationship_type": link.relationship_type,
+                "relationship_label": link.get_relationship_type_display(),
+                "explanation_en": link.explanation_en,
+                "explanation_fa": link.explanation_fa,
+                "review_status": link.review_status,
+                "technique": _technique_brief(link.technique),
+                "sources": _relation_sources(link),
+            }
+            for link in obj.technique_links.all()
+            if link.is_active and link.technique.is_active
+        ]
+
+    def get_related_theories(self, obj):
+        rows = []
+        for link in obj.outgoing_theory_links.all():
+            if link.is_active and link.related_theory.is_active:
+                rows.append({
+                    "direction": "outgoing",
+                    "relationship_type": link.relationship_type,
+                    "relationship_label": link.get_relationship_type_display(),
+                    "explanation_en": link.explanation_en,
+                    "explanation_fa": link.explanation_fa,
+                    "review_status": link.review_status,
+                    "theory": _theory_brief(link.related_theory),
+                    "sources": _relation_sources(link),
+                })
+        for link in obj.incoming_theory_links.all():
+            if link.is_active and link.theory.is_active:
+                rows.append({
+                    "direction": "incoming",
+                    "relationship_type": link.relationship_type,
+                    "relationship_label": link.get_relationship_type_display(),
+                    "explanation_en": link.explanation_en,
+                    "explanation_fa": link.explanation_fa,
+                    "review_status": link.review_status,
+                    "theory": _theory_brief(link.theory),
+                    "sources": _relation_sources(link),
+                })
+        return rows
+
+    def get_timeline_events(self, obj):
+        return [
+            {
+                "role": link.role,
+                "role_label": link.get_role_display(),
+                "review_status": link.review_status,
+                "event": _timeline_brief(link.event),
+                "sources": _relation_sources(link),
+            }
+            for link in obj.timeline_links.all()
+            if link.is_active and link.event.is_active
+        ]
+
+
+class TimelineEventListSerializer(serializers.ModelSerializer):
+    event_type_label = serializers.CharField(source="get_event_type_display", read_only=True)
+    date_precision_label = serializers.CharField(source="get_date_precision_display", read_only=True)
+    psychologist_count = serializers.SerializerMethodField()
+    theory_count = serializers.SerializerMethodField()
+    therapy_count = serializers.SerializerMethodField()
+    technique_count = serializers.SerializerMethodField()
+    concept_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = atlas_models.TimelineEvent
+        fields = (
+            "id", "slug", "title_en", "title_fa", "event_type", "event_type_label",
+            "category", "date_precision", "date_precision_label", "date_text", "year_start",
+            "year_end", "exact_date", "review_status", "psychologist_count", "theory_count",
+            "therapy_count", "technique_count", "concept_count",
+        )
+
+    def get_psychologist_count(self, obj):
+        return _annotated_or_prefetched_count(
+            obj, "psychologist_count", "psychologist_links",
+            lambda row: row.is_active and row.psychologist.is_active,
+        )
+
+    def get_theory_count(self, obj):
+        return _annotated_or_prefetched_count(
+            obj, "theory_count", "theory_links",
+            lambda row: row.is_active and row.theory.is_active,
+        )
+
+    def get_therapy_count(self, obj):
+        return _annotated_or_prefetched_count(
+            obj, "therapy_count", "therapy_links",
+            lambda row: row.is_active and row.therapy.is_active and row.therapy.family.is_active,
+        )
+
+    def get_technique_count(self, obj):
+        return _annotated_or_prefetched_count(
+            obj, "technique_count", "technique_links",
+            lambda row: row.is_active and row.technique.is_active,
+        )
+
+    def get_concept_count(self, obj):
+        return _annotated_or_prefetched_count(
+            obj, "concept_count", "concept_links",
+            lambda row: row.is_active and row.concept.is_active,
+        )
+
+
+class TimelineEventDetailSerializer(TimelineEventListSerializer):
+    sources = serializers.SerializerMethodField()
+    psychologists = serializers.SerializerMethodField()
+    theories = serializers.SerializerMethodField()
+    therapies = serializers.SerializerMethodField()
+    techniques = serializers.SerializerMethodField()
+    concepts = serializers.SerializerMethodField()
+
+    class Meta(TimelineEventListSerializer.Meta):
+        fields = TimelineEventListSerializer.Meta.fields + (
+            "description_en", "description_fa", "historical_importance_en",
+            "historical_importance_fa", "sources", "psychologists", "theories",
+            "therapies", "techniques", "concepts",
+        )
+
+    def get_sources(self, obj):
+        return _entity_source_links(obj.source_links.all())
+
+    def get_psychologists(self, obj):
+        return [
+            {
+                "role": link.role,
+                "role_label": link.get_role_display(),
+                "review_status": link.review_status,
+                "psychologist": _psychologist_brief(link.psychologist),
+                "sources": _relation_sources(link),
+            }
+            for link in obj.psychologist_links.all()
+            if link.is_active and link.psychologist.is_active
+        ]
+
+    def get_theories(self, obj):
+        return [
+            {
+                "role": link.role,
+                "role_label": link.get_role_display(),
+                "review_status": link.review_status,
+                "theory": _theory_brief(link.theory),
+                "sources": _relation_sources(link),
+            }
+            for link in obj.theory_links.all()
+            if link.is_active and link.theory.is_active
+        ]
+
+    def get_therapies(self, obj):
+        return [
+            {
+                "role": link.role,
+                "role_label": link.get_role_display(),
+                "review_status": link.review_status,
+                "therapy": _therapy_brief(link.therapy),
+                "sources": _relation_sources(link),
+            }
+            for link in obj.therapy_links.all()
+            if link.is_active and link.therapy.is_active and link.therapy.family.is_active
+        ]
+
+    def get_techniques(self, obj):
+        return [
+            {
+                "role": link.role,
+                "role_label": link.get_role_display(),
+                "review_status": link.review_status,
+                "technique": _technique_brief(link.technique),
+                "sources": _relation_sources(link),
+            }
+            for link in obj.technique_links.all()
+            if link.is_active and link.technique.is_active
+        ]
+
+    def get_concepts(self, obj):
+        return [
+            {
+                "role": link.role,
+                "role_label": link.get_role_display(),
+                "review_status": link.review_status,
+                "concept": _concept_brief(link.concept),
+                "sources": _relation_sources(link),
+            }
+            for link in obj.concept_links.all()
+            if link.is_active and link.concept.is_active
+        ]

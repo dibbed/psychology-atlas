@@ -62,6 +62,13 @@ urlpatterns = [
     path("techniques/", views.TechniqueListView.as_view()),
     path("techniques/<slug:slug>/", views.TechniqueDetailView.as_view()),
 
+    path("psychologists/", views.PsychologistListView.as_view()),
+    path("psychologists/<slug:slug>/", views.PsychologistDetailView.as_view()),
+    path("theories/", views.TheoryListView.as_view()),
+    path("theories/<slug:slug>/", views.TheoryDetailView.as_view()),
+    path("timeline/", views.TimelineEventListView.as_view()),
+    path("timeline/<slug:slug>/", views.TimelineEventDetailView.as_view()),
+
     path("dsm/overview/", dsm_views.dsm_overview),
     path("dsm/metadata/", dsm_views.dsm_metadata),
     path("dsm/study-kit/", dsm_views.dsm_study_kit),

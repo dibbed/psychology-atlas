@@ -2865,3 +2865,427 @@ class V062ResearchPromotionTests(APITestCase):
             ResearchRecord.objects.get(external_id="theory:beck-cognitive-model").canonical_key,
             before_theory_key,
         )
+
+
+class V063KnowledgeApiTests(APITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.source = SourceReference.objects.create(
+            title="v0.6.3 canonical source",
+            organization="Psychology Atlas Tests",
+            citation="Test citation",
+            url="https://example.org/v063-source",
+            publication_year=1980,
+            source_type="journal_article",
+            authors=["A. Researcher", "B. Researcher"],
+            doi="10.1234/v063",
+            pmid="12345678",
+            verification_status="verified",
+        )
+        cls.concept = Concept.objects.create(
+            slug="v063-learning-process",
+            name_en="v0.6.3 Learning Process",
+            name_fa="فرایند یادگیری نسخه ۰.۶.۳",
+            simple_definition="A test learning construct.",
+            kind=Concept.Kind.COGNITIVE,
+            domain=Concept.Domain.COGNITIVE_PSYCHOLOGY,
+        )
+        cls.family = TherapyFamily.objects.create(
+            slug="v063-family",
+            name_en="v0.6.3 Family",
+            name_fa="خانواده نسخه ۰.۶.۳",
+        )
+        cls.therapy = Therapy.objects.create(
+            family=cls.family,
+            slug="v063-therapy",
+            name_en="v0.6.3 Therapy",
+            name_fa="درمان نسخه ۰.۶.۳",
+            summary="Educational test therapy.",
+            review_status=ScientificReviewStatus.SOURCE_CHECKED,
+        )
+        cls.technique = Technique.objects.create(
+            slug="v063-technique",
+            name_en="v0.6.3 Technique",
+            name_fa="تکنیک نسخه ۰.۶.۳",
+            summary="Educational test technique.",
+            review_status=ScientificReviewStatus.SOURCE_CHECKED,
+        )
+        cls.psychologist = atlas_models.Psychologist.objects.create(
+            slug="jane-researcher",
+            name_en="Jane Q. Researcher",
+            name_fa="جین پژوهشگر",
+            summary_en="A source-checked test psychologist.",
+            summary_fa="روان‌شناس آزمایشی منبع‌دار.",
+            role_en="Research psychologist",
+            nationality_en="Testland",
+            birth_year=1940,
+            academic_disciplines=["cognitive psychology"],
+            contributions_en=["A test contribution"],
+            affiliations=["Test University"],
+            historical_context_en="Test historical context.",
+            review_status=ScientificReviewStatus.SOURCE_CHECKED,
+        )
+        cls.other_psychologist = atlas_models.Psychologist.objects.create(
+            slug="alex-researcher",
+            name_en="Alex Researcher",
+            name_fa="الکس پژوهشگر",
+            review_status=ScientificReviewStatus.SOURCE_CHECKED,
+        )
+        cls.inactive_psychologist = atlas_models.Psychologist.objects.create(
+            slug="inactive-researcher",
+            name_en="Inactive Researcher",
+            is_active=False,
+        )
+        atlas_models.PsychologistAlias.objects.create(
+            psychologist=cls.psychologist,
+            text="J. Researcher",
+            language=atlas_models.PsychologistAlias.Language.EN,
+            alias_type=atlas_models.PsychologistAlias.AliasType.INITIALS,
+        )
+        atlas_models.PsychologistSource.objects.create(
+            psychologist=cls.psychologist,
+            source=cls.source,
+            role=atlas_models.PsychologistSource.Role.BIOGRAPHY,
+            note="Biography source",
+        )
+
+        cls.theory = atlas_models.Theory.objects.create(
+            slug="v063-model",
+            name_en="v0.6.3 Model",
+            name_fa="مدل نسخه ۰.۶.۳",
+            domain="cognitive_psychology",
+            period_text="late_20th_century",
+            summary_en="A test theory summary.",
+            summary_fa="خلاصه نظریه آزمایشی.",
+            core_proposition_en="A source-backed test proposition.",
+            key_propositions_en=["Test proposition one"],
+            applications_en=["Education"],
+            criticisms_en=["Test criticism"],
+            limitations_en=["Test limitation"],
+            modern_status="active_empirical_framework",
+            review_status=ScientificReviewStatus.SOURCE_CHECKED,
+        )
+        cls.related_theory = atlas_models.Theory.objects.create(
+            slug="v063-related-model",
+            name_en="v0.6.3 Related Model",
+            name_fa="مدل مرتبط نسخه ۰.۶.۳",
+            domain="cognitive_psychology",
+            review_status=ScientificReviewStatus.SOURCE_CHECKED,
+        )
+        cls.inactive_theory = atlas_models.Theory.objects.create(
+            slug="inactive-theory-v063",
+            name_en="Inactive Theory v0.6.3",
+            is_active=False,
+        )
+        atlas_models.TheoryAlias.objects.create(
+            theory=cls.theory,
+            text="V63M",
+            language=atlas_models.TheoryAlias.Language.EN,
+            alias_type=atlas_models.TheoryAlias.AliasType.ABBREVIATION,
+        )
+        atlas_models.TheorySource.objects.create(
+            theory=cls.theory,
+            source=cls.source,
+            role=atlas_models.TheorySource.Role.PRIMARY_PUBLICATION,
+            note="Primary publication",
+        )
+
+        cls.event = atlas_models.TimelineEvent.objects.create(
+            slug="v063-event-1980",
+            title_en="v0.6.3 Event",
+            title_fa="رویداد نسخه ۰.۶.۳",
+            description_en="A source-backed event in 1980.",
+            description_fa="رویداد منبع‌دار در سال ۱۹۸۰.",
+            historical_importance_en="Test historical importance.",
+            event_type=atlas_models.TimelineEvent.EventType.THEORY_DEVELOPMENT,
+            category="theory_history",
+            date_precision=atlas_models.TimelineEvent.DatePrecision.YEAR,
+            date_text="1980",
+            year_start=1980,
+            review_status=ScientificReviewStatus.SOURCE_CHECKED,
+        )
+        cls.later_event = atlas_models.TimelineEvent.objects.create(
+            slug="v063-event-1995",
+            title_en="Later v0.6.3 Event",
+            title_fa="رویداد بعدی نسخه ۰.۶.۳",
+            event_type=atlas_models.TimelineEvent.EventType.RESEARCH_FINDING,
+            category="research_history",
+            date_precision=atlas_models.TimelineEvent.DatePrecision.YEAR,
+            date_text="1995",
+            year_start=1995,
+            review_status=ScientificReviewStatus.SOURCE_CHECKED,
+        )
+        cls.inactive_event = atlas_models.TimelineEvent.objects.create(
+            slug="inactive-event-v063",
+            title_en="Inactive Event v0.6.3",
+            date_precision=atlas_models.TimelineEvent.DatePrecision.YEAR,
+            date_text="1970",
+            year_start=1970,
+            is_active=False,
+        )
+        atlas_models.TimelineEventSource.objects.create(
+            event=cls.event,
+            source=cls.source,
+            role=atlas_models.TimelineEventSource.Role.HISTORICAL_REVIEW,
+        )
+
+        cls.person_theory = atlas_models.PsychologistTheory.objects.create(
+            psychologist=cls.psychologist,
+            theory=cls.theory,
+            relationship_type=atlas_models.PsychologistAttributionType.PROPOSED,
+            explanation_en="Proposed the test model.",
+            review_status=ScientificReviewStatus.SOURCE_CHECKED,
+        )
+        atlas_models.PsychologistTheorySource.objects.create(
+            relationship=cls.person_theory,
+            source=cls.source,
+        )
+        cls.person_concept = atlas_models.PsychologistConcept.objects.create(
+            psychologist=cls.psychologist,
+            concept=cls.concept,
+            relationship_type=atlas_models.PsychologistAttributionType.RESEARCHED,
+            review_status=ScientificReviewStatus.SOURCE_CHECKED,
+        )
+        atlas_models.PsychologistConceptSource.objects.create(
+            relationship=cls.person_concept,
+            source=cls.source,
+        )
+        cls.person_therapy = atlas_models.PsychologistTherapy.objects.create(
+            psychologist=cls.psychologist,
+            therapy=cls.therapy,
+            relationship_type=atlas_models.PsychologistAttributionType.DEVELOPED,
+            review_status=ScientificReviewStatus.SOURCE_CHECKED,
+        )
+        atlas_models.PsychologistTherapySource.objects.create(
+            relationship=cls.person_therapy,
+            source=cls.source,
+        )
+        cls.person_person = atlas_models.PsychologistPsychologist.objects.create(
+            psychologist=cls.psychologist,
+            related_psychologist=cls.other_psychologist,
+            relationship_type=atlas_models.PsychologistRelationshipType.INFLUENCED,
+            review_status=ScientificReviewStatus.SOURCE_CHECKED,
+        )
+        atlas_models.PsychologistPsychologistSource.objects.create(
+            relationship=cls.person_person,
+            source=cls.source,
+        )
+
+        cls.theory_concept = atlas_models.TheoryConcept.objects.create(
+            theory=cls.theory,
+            concept=cls.concept,
+            relationship_type=atlas_models.TheoryRelationType.INCLUDES_CONSTRUCT,
+            review_status=ScientificReviewStatus.SOURCE_CHECKED,
+        )
+        atlas_models.TheoryConceptSource.objects.create(
+            relationship=cls.theory_concept,
+            source=cls.source,
+        )
+        cls.theory_therapy = atlas_models.TheoryTherapy.objects.create(
+            theory=cls.theory,
+            therapy=cls.therapy,
+            relationship_type=atlas_models.TheoryRelationType.GROUNDS,
+            review_status=ScientificReviewStatus.SOURCE_CHECKED,
+        )
+        atlas_models.TheoryTherapySource.objects.create(
+            relationship=cls.theory_therapy,
+            source=cls.source,
+        )
+        cls.theory_technique = atlas_models.TheoryTechnique.objects.create(
+            theory=cls.theory,
+            technique=cls.technique,
+            relationship_type=atlas_models.TheoryRelationType.GROUNDS,
+            review_status=ScientificReviewStatus.SOURCE_CHECKED,
+        )
+        atlas_models.TheoryTechniqueSource.objects.create(
+            relationship=cls.theory_technique,
+            source=cls.source,
+        )
+        cls.theory_theory = atlas_models.TheoryTheory.objects.create(
+            theory=cls.theory,
+            related_theory=cls.related_theory,
+            relationship_type=atlas_models.TheoryRelationType.EXTENDS,
+            review_status=ScientificReviewStatus.SOURCE_CHECKED,
+        )
+        atlas_models.TheoryTheorySource.objects.create(
+            relationship=cls.theory_theory,
+            source=cls.source,
+        )
+
+        cls.timeline_person = atlas_models.TimelinePsychologist.objects.create(
+            event=cls.event,
+            psychologist=cls.psychologist,
+            role=atlas_models.TimelineLinkRole.INVOLVES_PERSON,
+            review_status=ScientificReviewStatus.SOURCE_CHECKED,
+        )
+        atlas_models.TimelinePsychologistSource.objects.create(
+            relationship=cls.timeline_person,
+            source=cls.source,
+        )
+        cls.timeline_theory = atlas_models.TimelineTheory.objects.create(
+            event=cls.event,
+            theory=cls.theory,
+            role=atlas_models.TimelineLinkRole.MARKS_THEORY_MILESTONE,
+            review_status=ScientificReviewStatus.SOURCE_CHECKED,
+        )
+        atlas_models.TimelineTheorySource.objects.create(
+            relationship=cls.timeline_theory,
+            source=cls.source,
+        )
+        cls.timeline_therapy = atlas_models.TimelineTherapy.objects.create(
+            event=cls.event,
+            therapy=cls.therapy,
+            role=atlas_models.TimelineLinkRole.MARKS_THERAPY_MILESTONE,
+            review_status=ScientificReviewStatus.SOURCE_CHECKED,
+        )
+        atlas_models.TimelineTherapySource.objects.create(
+            relationship=cls.timeline_therapy,
+            source=cls.source,
+        )
+        cls.timeline_technique = atlas_models.TimelineTechnique.objects.create(
+            event=cls.event,
+            technique=cls.technique,
+            role=atlas_models.TimelineLinkRole.MARKS_TECHNIQUE_EVIDENCE_MILESTONE,
+            review_status=ScientificReviewStatus.SOURCE_CHECKED,
+        )
+        atlas_models.TimelineTechniqueSource.objects.create(
+            relationship=cls.timeline_technique,
+            source=cls.source,
+        )
+        cls.timeline_concept = atlas_models.TimelineConcept.objects.create(
+            event=cls.event,
+            concept=cls.concept,
+            role=atlas_models.TimelineLinkRole.RELATED,
+            review_status=ScientificReviewStatus.SOURCE_CHECKED,
+        )
+        atlas_models.TimelineConceptSource.objects.create(
+            relationship=cls.timeline_concept,
+            source=cls.source,
+        )
+
+    def test_psychologist_catalog_search_filters_counts_and_inactive_boundary(self):
+        alias_search = self.client.get("/api/psychologists/?q=J.%20Researcher")
+        self.assertEqual(alias_search.status_code, 200)
+        payload = alias_search.json()
+        self.assertEqual(payload["count"], 1)
+        row = payload["results"][0]
+        self.assertEqual(row["slug"], "jane-researcher")
+        self.assertEqual(row["theory_count"], 1)
+        self.assertEqual(row["concept_count"], 1)
+        self.assertEqual(row["therapy_count"], 1)
+        self.assertEqual(row["timeline_event_count"], 1)
+        self.assertEqual(row["aliases"][0]["text"], "J. Researcher")
+
+        by_theory = self.client.get("/api/psychologists/?theory=v063-model")
+        self.assertEqual(by_theory.status_code, 200)
+        self.assertEqual([item["slug"] for item in by_theory.json()["results"]], ["jane-researcher"])
+        by_birth = self.client.get("/api/psychologists/?birth_from=1930&birth_to=1950")
+        self.assertEqual(by_birth.status_code, 200)
+        self.assertEqual([item["slug"] for item in by_birth.json()["results"]], ["jane-researcher"])
+        all_slugs = [item["slug"] for item in self.client.get("/api/psychologists/").json()["results"]]
+        self.assertNotIn("inactive-researcher", all_slugs)
+        self.assertEqual(self.client.get("/api/psychologists/?review_status=invalid").status_code, 400)
+        self.assertEqual(self.client.get("/api/psychologists/?birth_from=2000&birth_to=1900").status_code, 400)
+
+    def test_psychologist_detail_exposes_aliases_relations_and_rich_provenance(self):
+        response = self.client.get("/api/psychologists/jane-researcher/")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["academic_disciplines"], ["cognitive psychology"])
+        self.assertEqual(payload["sources"][0]["role"], "biography")
+        source = payload["sources"][0]["source"]
+        self.assertEqual(source["doi"], "10.1234/v063")
+        self.assertEqual(source["pmid"], "12345678")
+        self.assertEqual(source["verification_status"], "verified")
+        self.assertEqual(source["authors"], ["A. Researcher", "B. Researcher"])
+        self.assertEqual(payload["theories"][0]["relationship_type"], "proposed")
+        self.assertTrue(payload["theories"][0]["sources"])
+        self.assertEqual(payload["therapies"][0]["therapy"]["slug"], "v063-therapy")
+        self.assertEqual(payload["concepts"][0]["concept"]["slug"], "v063-learning-process")
+        self.assertEqual(payload["related_psychologists"][0]["psychologist"]["slug"], "alex-researcher")
+        self.assertEqual(payload["timeline_events"][0]["role"], "involves_person")
+        self.assertEqual(self.client.get("/api/psychologists/inactive-researcher/").status_code, 404)
+
+    def test_theory_catalog_filters_alias_search_and_detail_relations(self):
+        alias_search = self.client.get("/api/theories/?q=V63M")
+        self.assertEqual(alias_search.status_code, 200)
+        self.assertEqual(alias_search.json()["count"], 1)
+        row = alias_search.json()["results"][0]
+        self.assertEqual(row["slug"], "v063-model")
+        self.assertEqual(row["psychologist_count"], 1)
+        self.assertEqual(row["concept_count"], 1)
+        self.assertEqual(row["therapy_count"], 1)
+        self.assertEqual(row["technique_count"], 1)
+        self.assertEqual(row["timeline_event_count"], 1)
+        by_person = self.client.get("/api/theories/?psychologist=jane-researcher")
+        self.assertEqual([item["slug"] for item in by_person.json()["results"]], ["v063-model"])
+        by_domain = self.client.get("/api/theories/?domain=cognitive_psychology")
+        self.assertIn("v063-model", [item["slug"] for item in by_domain.json()["results"]])
+
+        detail = self.client.get("/api/theories/v063-model/")
+        self.assertEqual(detail.status_code, 200)
+        payload = detail.json()
+        self.assertEqual(payload["sources"][0]["role"], "primary_publication")
+        self.assertEqual(payload["psychologists"][0]["psychologist"]["slug"], "jane-researcher")
+        self.assertEqual(payload["concepts"][0]["relationship_type"], "includes_construct")
+        self.assertEqual(payload["therapies"][0]["relationship_type"], "grounds")
+        self.assertEqual(payload["techniques"][0]["technique"]["slug"], "v063-technique")
+        self.assertEqual(payload["related_theories"][0]["relationship_type"], "extends")
+        self.assertEqual(payload["timeline_events"][0]["role"], "marks_theory_milestone")
+        self.assertEqual(self.client.get("/api/theories/inactive-theory-v063/").status_code, 404)
+
+    def test_timeline_catalog_preserves_precision_and_supports_cross_domain_filters(self):
+        response = self.client.get("/api/timeline/?year_from=1979&year_to=1981")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["count"], 1)
+        row = payload["results"][0]
+        self.assertEqual(row["slug"], "v063-event-1980")
+        self.assertEqual(row["date_precision"], "year")
+        self.assertEqual(row["date_text"], "1980")
+        self.assertEqual(row["year_start"], 1980)
+        self.assertIsNone(row["exact_date"])
+        self.assertEqual(row["psychologist_count"], 1)
+        self.assertEqual(row["theory_count"], 1)
+        self.assertEqual(row["therapy_count"], 1)
+        self.assertEqual(row["technique_count"], 1)
+        self.assertEqual(row["concept_count"], 1)
+
+        by_technique = self.client.get("/api/timeline/?technique=v063-technique")
+        self.assertEqual([item["slug"] for item in by_technique.json()["results"]], ["v063-event-1980"])
+        by_type = self.client.get("/api/timeline/?event_type=theory_development")
+        self.assertEqual([item["slug"] for item in by_type.json()["results"]], ["v063-event-1980"])
+        self.assertEqual(self.client.get("/api/timeline/?event_type=invalid").status_code, 400)
+        self.assertEqual(self.client.get("/api/timeline/?year_from=2000&year_to=1900").status_code, 400)
+        self.assertEqual(self.client.get("/api/timeline/?year_from=not-a-year").status_code, 400)
+        all_slugs = [item["slug"] for item in self.client.get("/api/timeline/").json()["results"]]
+        self.assertNotIn("inactive-event-v063", all_slugs)
+
+    def test_timeline_detail_preserves_relation_semantics_and_provenance(self):
+        response = self.client.get("/api/timeline/v063-event-1980/")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["sources"][0]["source"]["doi"], "10.1234/v063")
+        self.assertEqual(payload["psychologists"][0]["role"], "involves_person")
+        self.assertEqual(payload["theories"][0]["role"], "marks_theory_milestone")
+        self.assertEqual(payload["therapies"][0]["role"], "marks_therapy_milestone")
+        self.assertEqual(payload["techniques"][0]["role"], "marks_technique_evidence_milestone")
+        self.assertEqual(payload["concepts"][0]["role"], "related")
+        for key in ("psychologists", "theories", "therapies", "techniques", "concepts"):
+            self.assertTrue(payload[key][0]["sources"])
+        self.assertEqual(self.client.get("/api/timeline/inactive-event-v063/").status_code, 404)
+
+    def test_v063_api_query_budgets_are_bounded(self):
+        checks = (
+            ("/api/psychologists/", 5),
+            ("/api/theories/", 5),
+            ("/api/timeline/", 4),
+            ("/api/psychologists/jane-researcher/", 18),
+            ("/api/theories/v063-model/", 20),
+            ("/api/timeline/v063-event-1980/", 14),
+        )
+        for url, budget in checks:
+            with self.subTest(url=url), CaptureQueriesContext(connection) as captured:
+                response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            self.assertLessEqual(len(captured), budget, f"{url} used {len(captured)} queries")

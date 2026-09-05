@@ -1,10 +1,44 @@
 # Psychology Atlas Product Spec
 
-## Current implemented version: v0.6.2 — Conservative Research Promotion + Dedupe + Aliases
+## Current implemented version: v0.6.3 — Psychologist + Theory + Timeline Read APIs
 
 Psychology Atlas is an interactive educational system for psychology students. It should behave as a connected learning system, not as a psychology blog and not as a diagnostic product.
 
-v0.6.2 turns the v0.6.1 schema foundation into a conservative source-backed runtime projection. It promotes only future-domain records with resolvable provenance, merges safe cross-corpus identity variants, preserves aliases and date uncertainty, and creates explicit sourced historical relations. Public Psychologist/Theory/Timeline APIs, frontend Atlas pages and Knowledge Graph integration are still separate later slices.
+v0.6.3 exposes the source-backed Psychologist/Theory/Timeline runtime from v0.6.2 through canonical, read-only Django REST Framework APIs. It preserves aliases, review metadata, historical/date granularity and entity/relation-level provenance. Frontend Atlas pages remain v0.6.4 work and Knowledge Graph/Global Search integration remains v0.6.5 work.
+
+### v0.6.3 API invariants
+
+- Public read-only endpoints exist for Psychologist, Theory and Timeline list/detail surfaces.
+- All list endpoints use the existing `AtlasPagination` contract and expose only active runtime rows.
+- Psychologist search covers canonical names, aliases, bilingual summaries/roles/nationality and supports theory/concept/therapy/birth-year filters.
+- Theory search covers canonical names, aliases, bilingual summary/core/historical text and supports domain/status/psychologist/concept/therapy/technique filters.
+- Timeline supports event type, date precision, category, cross-domain entity and year-window filters.
+- Invalid choice/year/range filters return HTTP 400 instead of silently falling back.
+- Inactive entities return 404 on detail and are excluded from relation payloads.
+- Timeline year-only events remain year-only; API serialization never fabricates `YYYY-01-01`.
+- Detail payloads expose entity-source roles plus rich `SourceReference` metadata including authors/DOI/PMID/verification status when present.
+- Scientific relations expose the sources attached to that exact relation; relation semantics are not collapsed to generic labels.
+- Real-database query budgets are 3/3/2 queries for complete Psychologist/Theory/Timeline lists and 13/13/9 for representative detail endpoints.
+- Full backend suite is 120/120 passing after the API slice.
+- No v0.6.3 migration is required.
+- Knowledge Graph remains intentionally unchanged at 478 nodes / 934 edges / 18 build queries.
+
+Public routes:
+
+```text
+GET /api/psychologists/
+GET /api/psychologists/<slug>/
+GET /api/theories/
+GET /api/theories/<slug>/
+GET /api/timeline/
+GET /api/timeline/<slug>/
+```
+
+Detailed v0.6.3 API record:
+
+```text
+docs/Psychology_Atlas_v0.6.3_Knowledge_APIs_2026-09-05.md
+```
 
 ### v0.6.2 promotion invariants
 

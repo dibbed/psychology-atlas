@@ -1,8 +1,60 @@
-# Psychology Atlas — v0.6.2 · Conservative Research Promotion + Dedupe + Aliases
+# Psychology Atlas — v0.6.3 · Psychologist + Theory + Timeline Read APIs
 
-یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.6.2 روی foundation نسخه v0.6.1، داده‌های source-backed مربوط به Psychologist/Theory/Timeline را به‌صورت محافظه‌کارانه وارد runtime می‌کند: identity resolution، alias preservation، shared `SourceReference` provenance، explicit historical-attribution semantics و promotion idempotency. رکوردهای بدون source یا endpoint قابل‌مدل‌سازی همچنان staging می‌مانند. API/Frontend و Knowledge Graph integration این دامنه‌ها هنوز عمداً برای sliceهای بعدی نگه داشته شده‌اند.
+یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.6.3 داده‌های source-backed و deduplicated نسخه v0.6.2 را از طریق APIهای read-only برای Psychologist، Theory و Timeline در دسترس می‌گذارد. خروجی‌ها aliases، review status، provenance سطح entity و relation، semantics تاریخی صریح و date precision واقعی Timeline را حفظ می‌کنند. Frontend این دامنه‌ها و Knowledge Graph/Global Search integration هنوز عمداً برای v0.6.4 و v0.6.5 نگه داشته شده‌اند.
 
 > این نرم‌افزار آموزشی است و ابزار تشخیص، درمان یا جایگزین ارزیابی حرفه‌ای نیست.
+
+## v0.6.3 Psychologist + Theory + Timeline APIs
+
+Endpointهای عمومی جدید:
+
+```text
+GET /api/psychologists/
+GET /api/psychologists/<slug>/
+GET /api/theories/
+GET /api/theories/<slug>/
+GET /api/timeline/
+GET /api/timeline/<slug>/
+```
+
+List APIها از pagination فعلی پروژه استفاده می‌کنند و search/filterهای دامنه‌ای دارند. نمونه فیلترها:
+
+```text
+psychologists: q, review_status, nationality, theory, concept, therapy, birth_from, birth_to
+theories:      q, review_status, domain, modern_status, psychologist, concept, therapy, technique
+timeline:      q, event_type, date_precision, review_status, category,
+               psychologist, theory, therapy, technique, concept, year_from, year_to
+```
+
+Detail APIها relationهای علمی را همراه sourceهای همان relation برمی‌گردانند؛ provenance شامل title/organization/citation/URL و در صورت موجود بودن `authors`, `doi`, `pmid`, `verification_status` است. API هیچ citation یا تاریخ جدیدی جعل نمی‌کند.
+
+Timeline granularity نیز عین DB حفظ می‌شود؛ رویداد year-only مثل `1980` همچنان `exact_date=null` دارد و به `1980-01-01` تبدیل نمی‌شود.
+
+Query budget واقعی روی دیتابیس فعلی:
+
+```text
+Psychologist list (76 rows)   3 queries
+Theory list (45 rows)         3 queries
+Timeline list (61 rows)       2 queries
+Psychologist detail          13 queries
+Theory detail                13 queries
+Timeline detail               9 queries
+```
+
+Validation این slice:
+
+```text
+6/6 targeted v0.6.3 API tests PASS
+120/120 full backend tests PASS
+Knowledge Graph unchanged: 478 nodes / 934 edges / 18 queries
+No migration required
+```
+
+سند عمیق v0.6.3:
+
+```text
+docs/Psychology_Atlas_v0.6.3_Knowledge_APIs_2026-09-05.md
+```
 
 ## v0.6.2 Conservative Research Promotion
 
