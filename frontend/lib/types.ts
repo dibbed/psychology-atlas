@@ -406,6 +406,10 @@ export type SourceReference = {
   url: string;
   publication_year?: number | null;
   source_type?: string;
+  authors?: string[];
+  doi?: string;
+  pmid?: string;
+  verification_status?: string;
 };
 
 export type TherapyFamily = {
@@ -543,6 +547,301 @@ export type TherapyTaxonomy = {
   clinical_roles: { value: string; label: string }[];
   evidence_bases: { value: string; label: string }[];
   note: string;
+};
+
+export type ScientificReviewStatus = "unreviewed" | "source_checked" | "reviewed" | string;
+
+export type ScientificEntitySourceLink = {
+  role: string;
+  role_label: string;
+  note: string;
+  source: SourceReference;
+};
+
+export type PsychologistAlias = {
+  text: string;
+  language: "fa" | "en" | "other";
+  alias_type: "alternative" | "initials" | "transliteration" | "historical" | string;
+};
+
+export type TheoryAlias = {
+  text: string;
+  language: "fa" | "en" | "other";
+  alias_type: "alternative" | "abbreviation" | "historical" | "transliteration" | string;
+};
+
+export type PsychologistBrief = {
+  slug: string;
+  name_en: string;
+  name_fa: string;
+  role_en: string;
+  role_fa: string;
+  review_status: ScientificReviewStatus;
+};
+
+export type TheoryBrief = {
+  slug: string;
+  name_en: string;
+  name_fa: string;
+  domain: string;
+  modern_status: string;
+  review_status: ScientificReviewStatus;
+};
+
+export type V6ConceptBrief = {
+  slug: string;
+  name_en: string;
+  name_fa: string;
+  kind: string;
+  domain: string;
+};
+
+export type V6TherapyBrief = {
+  slug: string;
+  name_en: string;
+  name_fa: string;
+  family: null | { slug: string; name_en: string; name_fa: string };
+  review_status: ScientificReviewStatus;
+};
+
+export type V6TechniqueBrief = {
+  slug: string;
+  name_en: string;
+  name_fa: string;
+  review_status: ScientificReviewStatus;
+};
+
+export type TimelineEventBrief = {
+  slug: string;
+  title_en: string;
+  title_fa: string;
+  event_type: string;
+  date_precision: "exact_date" | "year" | "year_range" | "approximate_year" | "unknown" | string;
+  date_text: string;
+  year_start: number | null;
+  year_end: number | null;
+  exact_date: string | null;
+  review_status: ScientificReviewStatus;
+};
+
+export type Psychologist = {
+  id: number;
+  slug: string;
+  name_en: string;
+  name_fa: string;
+  summary_en: string;
+  summary_fa: string;
+  role_en: string;
+  role_fa: string;
+  nationality_en: string;
+  nationality_fa: string;
+  birth_year: number | null;
+  death_year: number | null;
+  review_status: ScientificReviewStatus;
+  aliases: PsychologistAlias[];
+  theory_count: number;
+  concept_count: number;
+  therapy_count: number;
+  timeline_event_count: number;
+};
+
+export type PsychologistDetail = Psychologist & {
+  academic_disciplines: string[];
+  contributions_en: string[];
+  contributions_fa: string[];
+  affiliations: string[];
+  historical_context_en: string;
+  historical_context_fa: string;
+  sources: ScientificEntitySourceLink[];
+  theories: {
+    relationship_type: string;
+    relationship_label: string;
+    explanation_en: string;
+    explanation_fa: string;
+    review_status: ScientificReviewStatus;
+    theory: TheoryBrief;
+    sources: SourceReference[];
+  }[];
+  concepts: {
+    relationship_type: string;
+    relationship_label: string;
+    explanation_en: string;
+    explanation_fa: string;
+    review_status: ScientificReviewStatus;
+    concept: V6ConceptBrief;
+    sources: SourceReference[];
+  }[];
+  therapies: {
+    relationship_type: string;
+    relationship_label: string;
+    explanation_en: string;
+    explanation_fa: string;
+    review_status: ScientificReviewStatus;
+    therapy: V6TherapyBrief;
+    sources: SourceReference[];
+  }[];
+  related_psychologists: {
+    direction: "incoming" | "outgoing";
+    relationship_type: string;
+    relationship_label: string;
+    explanation_en: string;
+    explanation_fa: string;
+    review_status: ScientificReviewStatus;
+    psychologist: PsychologistBrief;
+    sources: SourceReference[];
+  }[];
+  timeline_events: {
+    role: string;
+    role_label: string;
+    review_status: ScientificReviewStatus;
+    event: TimelineEventBrief;
+    sources: SourceReference[];
+  }[];
+};
+
+export type Theory = {
+  id: number;
+  slug: string;
+  name_en: string;
+  name_fa: string;
+  domain: string;
+  period_text: string;
+  summary_en: string;
+  summary_fa: string;
+  modern_status: string;
+  review_status: ScientificReviewStatus;
+  aliases: TheoryAlias[];
+  psychologist_count: number;
+  concept_count: number;
+  therapy_count: number;
+  technique_count: number;
+  timeline_event_count: number;
+};
+
+export type TheoryDetail = Theory & {
+  core_proposition_en: string;
+  core_proposition_fa: string;
+  historical_context_en: string;
+  historical_context_fa: string;
+  key_propositions_en: string[];
+  key_propositions_fa: string[];
+  applications_en: string[];
+  applications_fa: string[];
+  criticisms_en: string[];
+  criticisms_fa: string[];
+  limitations_en: string[];
+  limitations_fa: string[];
+  historical_importance_en: string;
+  historical_importance_fa: string;
+  sources: ScientificEntitySourceLink[];
+  psychologists: {
+    relationship_type: string;
+    relationship_label: string;
+    explanation_en: string;
+    explanation_fa: string;
+    review_status: ScientificReviewStatus;
+    psychologist: PsychologistBrief;
+    sources: SourceReference[];
+  }[];
+  concepts: {
+    relationship_type: string;
+    relationship_label: string;
+    explanation_en: string;
+    explanation_fa: string;
+    review_status: ScientificReviewStatus;
+    concept: V6ConceptBrief;
+    sources: SourceReference[];
+  }[];
+  therapies: {
+    relationship_type: string;
+    relationship_label: string;
+    explanation_en: string;
+    explanation_fa: string;
+    review_status: ScientificReviewStatus;
+    therapy: V6TherapyBrief;
+    sources: SourceReference[];
+  }[];
+  techniques: {
+    relationship_type: string;
+    relationship_label: string;
+    explanation_en: string;
+    explanation_fa: string;
+    review_status: ScientificReviewStatus;
+    technique: V6TechniqueBrief;
+    sources: SourceReference[];
+  }[];
+  related_theories: {
+    direction: "incoming" | "outgoing";
+    relationship_type: string;
+    relationship_label: string;
+    explanation_en: string;
+    explanation_fa: string;
+    review_status: ScientificReviewStatus;
+    theory: TheoryBrief;
+    sources: SourceReference[];
+  }[];
+  timeline_events: {
+    role: string;
+    role_label: string;
+    review_status: ScientificReviewStatus;
+    event: TimelineEventBrief;
+    sources: SourceReference[];
+  }[];
+};
+
+export type TimelineEvent = TimelineEventBrief & {
+  id: number;
+  event_type_label: string;
+  category: string;
+  date_precision_label: string;
+  psychologist_count: number;
+  theory_count: number;
+  therapy_count: number;
+  technique_count: number;
+  concept_count: number;
+};
+
+export type TimelineEventDetail = TimelineEvent & {
+  description_en: string;
+  description_fa: string;
+  historical_importance_en: string;
+  historical_importance_fa: string;
+  sources: ScientificEntitySourceLink[];
+  psychologists: {
+    role: string;
+    role_label: string;
+    review_status: ScientificReviewStatus;
+    psychologist: PsychologistBrief;
+    sources: SourceReference[];
+  }[];
+  theories: {
+    role: string;
+    role_label: string;
+    review_status: ScientificReviewStatus;
+    theory: TheoryBrief;
+    sources: SourceReference[];
+  }[];
+  therapies: {
+    role: string;
+    role_label: string;
+    review_status: ScientificReviewStatus;
+    therapy: V6TherapyBrief;
+    sources: SourceReference[];
+  }[];
+  techniques: {
+    role: string;
+    role_label: string;
+    review_status: ScientificReviewStatus;
+    technique: V6TechniqueBrief;
+    sources: SourceReference[];
+  }[];
+  concepts: {
+    role: string;
+    role_label: string;
+    review_status: ScientificReviewStatus;
+    concept: V6ConceptBrief;
+    sources: SourceReference[];
+  }[];
 };
 
 export type Paginated<T> = {

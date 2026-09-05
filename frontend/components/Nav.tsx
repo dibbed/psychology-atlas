@@ -21,6 +21,9 @@ const navItems: NavItem[] = [
   { href: "/dsm", label: "DSM MASTER", en: "DSM Reference", group: "explore" },
   { href: "/concepts", label: "مفاهیم", en: "Concepts", group: "explore" },
   { href: "/therapies", label: "درمان‌ها", en: "Therapy Atlas", group: "explore" },
+  { href: "/psychologists", label: "روان‌شناسان", en: "Psychologists Atlas", group: "explore" },
+  { href: "/theories", label: "نظریه‌ها", en: "Theory Atlas", group: "explore" },
+  { href: "/timeline", label: "خط زمانی", en: "Psychology Timeline", group: "explore" },
   { href: "/cognitive-distortions", label: "تحریف‌های شناختی", en: "Cognitive Distortions", group: "explore" },
   { href: "/map", label: "نقشه دانش", en: "Knowledge Graph", group: "explore" },
   { href: "/compare", label: "مقایسه", en: "Compare", group: "explore" },
@@ -56,6 +59,9 @@ function detailKind(pathname: string) {
   if (/^\/concepts\/.+/.test(pathname)) return "صفحه مفهوم";
   if (/^\/therapies\/.+/.test(pathname)) return "پروفایل درمان";
   if (/^\/techniques\/.+/.test(pathname)) return "پروفایل تکنیک";
+  if (/^\/psychologists\/.+/.test(pathname)) return "پروفایل روان‌شناس";
+  if (/^\/theories\/.+/.test(pathname)) return "پروفایل نظریه";
+  if (/^\/timeline\/.+/.test(pathname)) return "رویداد تاریخی";
   if (/^\/quizzes\/.+/.test(pathname)) return "آزمون";
   if (/^\/cases\/.+/.test(pathname)) return "کیس بالینی";
   return "";
@@ -94,7 +100,7 @@ export default function Nav() {
   const contextItems = useMemo(() => {
     if (current.group === "home") return navItems.filter(item => ["/disorders", "/dsm", "/study", "/map"].includes(item.href));
     if (current.group === "account") return [];
-    return navItems.filter(item => item.group === current.group).slice(0, 7);
+    return navItems.filter(item => item.group === current.group).slice(0, 10);
   }, [current.group]);
 
   const moreActive = moreItems.some(item => isActive(pathname, item.href));

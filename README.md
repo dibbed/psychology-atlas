@@ -1,8 +1,66 @@
-# Psychology Atlas — v0.6.3 · Psychologist + Theory + Timeline Read APIs
+# Psychology Atlas — v0.6.4 · Psychologists + Theories + Timeline Frontend
 
-یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.6.3 داده‌های source-backed و deduplicated نسخه v0.6.2 را از طریق APIهای read-only برای Psychologist، Theory و Timeline در دسترس می‌گذارد. خروجی‌ها aliases، review status، provenance سطح entity و relation، semantics تاریخی صریح و date precision واقعی Timeline را حفظ می‌کنند. Frontend این دامنه‌ها و Knowledge Graph/Global Search integration هنوز عمداً برای v0.6.4 و v0.6.5 نگه داشته شده‌اند.
+یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.6.4 APIهای source-backed نسخه v0.6.3 را به سه تجربه عمومی کامل تبدیل می‌کند: Psychologists Atlas، Theory Atlas و Psychology Timeline. UI جدید identity/alias، attribution semantics، relation-level provenance، review metadata و date precision واقعی را حفظ می‌کند؛ ترجمه یا biography مفقود را جعل نمی‌کند و `source_checked` را بازبینی علمی نهایی معرفی نمی‌کند. Knowledge Graph و Global Search integration این سه دامنه عمداً برای v0.6.5 باقی مانده‌اند.
 
 > این نرم‌افزار آموزشی است و ابزار تشخیص، درمان یا جایگزین ارزیابی حرفه‌ای نیست.
+
+## v0.6.4 Frontend Psychologists + Theories + Timeline
+
+Routeهای عمومی جدید:
+
+```text
+/psychologists
+/psychologists/[slug]
+/theories
+/theories/[slug]
+/timeline
+/timeline/[slug]
+```
+
+Psychologists Atlas جست‌وجوی فارسی/انگلیسی/alias، فیلتر review state و قرن تولد، مرتب‌سازی بر اساس اتصال‌های صریح و پروفایل detail با Theory/Concept/Therapy/Timeline/Source را ارائه می‌کند. اگر summary یا biography مستقیمی در runtime موجود نباشد، UI آن را با متن تولیدشده پر نمی‌کند.
+
+Theory Atlas domain و `modern_status` واقعی corpus را برای discovery نمایش می‌دهد، اما status را امتیاز «درستی» یا «برتری» نظریه تفسیر نمی‌کند. پروفایل Theory شامل proposition، context، applications، criticisms، limitations، افراد، مفاهیم، Therapy/Technique، Theory↔Theory، Timeline و provenance است.
+
+Psychology Timeline یک stream زمانی واقعی است، نه card grid ساده. رویدادها بر اساس دهه گروه‌بندی می‌شوند و relation scopeهای server-side زیر را پشتیبانی می‌کنند:
+
+```text
+/timeline?psychologist=<slug>
+/timeline?theory=<slug>
+/timeline?therapy=<slug>
+/timeline?technique=<slug>
+/timeline?concept=<slug>
+```
+
+Date precision عین API حفظ می‌شود: سال تنها هیچ‌وقت به `YYYY-01-01` تبدیل نمی‌شود. Detail هر رویداد نیز مدل تاریخ، entityهای متصل، role رابطه و sourceهای همان relation را نشان می‌دهد.
+
+وضعیت فعلی catalog:
+
+```text
+Psychologist     76
+Theory           45
+TimelineEvent    61
+Timeline span    1879–2026
+```
+
+مرزهای علمی UI:
+
+```text
+unreviewed      = بازبینی‌نشده
+source_checked  = دارای منبع؛ بازبینی نهایی نشده
+reviewed        = بازبینی علمی ثبت‌شده
+```
+
+`citation_from_model_knowledge` نیز به‌صورت «ارجاع آرشیوی؛ نیازمند بازبینی مستقل» از sourceهای verified تفکیک می‌شود.
+
+Validation این slice شامل TypeScript/production build، SSR route smoke، relation-scoped Timeline smoke، backend regression، archive verification و Graph freeze است. Visual Playwright audit مستقیماً اجرا نشد چون optional Playwright support در محیط MCP نصب نیست؛ پروژه برای دور زدن این محدودیت دستکاری نشد.
+
+Knowledge Graph در v0.6.4 هنوز عمداً همان baseline قبلی است و domainهای جدید را وانمود به graph-visible بودن نمی‌کند.
+
+سند عمیق v0.6.4:
+
+```text
+docs/Psychology_Atlas_v0.6.4_Frontend_Atlas_Timeline_2026-09-05.md
+```
 
 ## v0.6.3 Psychologist + Theory + Timeline APIs
 

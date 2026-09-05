@@ -1,7 +1,7 @@
 {
   "project": "Psychology Atlas",
-  "version": "0.6.3",
-  "release_name": "Psychologist + Theory + Timeline Read APIs",
+  "version": "0.6.4",
+  "release_name": "Psychologists + Theories + Timeline Frontend",
   "stack": {
     "frontend": "Next.js 16.3.3 + React 19 + TypeScript",
     "backend": "Django 5.2 + Django REST Framework",
@@ -170,7 +170,21 @@
     "v063_relation_level_provenance_api",
     "v063_timeline_date_precision_api",
     "v063_query_budget_hardening",
-    "v063_inactive_content_boundary"
+    "v063_inactive_content_boundary",
+    "v064_psychologists_atlas_frontend",
+    "v064_psychologist_profile_frontend",
+    "v064_theory_atlas_frontend",
+    "v064_theory_profile_frontend",
+    "v064_psychology_timeline_frontend",
+    "v064_timeline_detail_frontend",
+    "v064_timeline_relation_scoped_views",
+    "v064_scientific_review_status_ui",
+    "v064_source_verification_semantics_ui",
+    "v064_bilingual_no_fabrication_fallback",
+    "v064_relation_provenance_ui",
+    "v064_timeline_date_precision_ui",
+    "v064_home_navigation_integration",
+    "v064_responsive_atlas_timeline_ui"
   ],
   "content": {
     "categories": 21,
@@ -239,7 +253,7 @@
       "live_techniques": 35,
       "promoted_research_relationships": 176,
       "staging_policy": "future-domain and unsupported/lower-confidence records remain lossless staging-only",
-      "version_boundary": "v0.6.3 source-backed future-domain read APIs live; frontend deferred to v0.6.4 and graph/search integration deferred to v0.6.5",
+      "version_boundary": "v0.6.4 source-backed Psychologist/Theory/Timeline APIs and public frontend are live; graph/search integration remains deferred to v0.6.5",
       "staged_psychologists": 130,
       "staged_theories": 53,
       "staged_timeline_events": 63,
@@ -300,10 +314,10 @@
     "pip_check": "pass",
     "migration_drift_check": "pass · no changes detected",
     "seed_idempotency": "pass · repeated seed runs preserve imported seed_managed=False entities and relations while seed-owned relations remain independently managed",
-    "typescript_typecheck": "pass · frontend 0.6.3",
-    "next_production_build": "pass · frontend 0.6.3 · existing route set preserved; no v0.6.3 public UI routes yet",
+    "typescript_typecheck": "pass · frontend 0.6.4",
+    "next_production_build": "pass · frontend 0.6.4 · Psychologists/Theories/Timeline list+detail routes included · 23 static-generation units",
     "npm_audit_low": "0 vulnerabilities",
-    "frontend_route_smoke_test": "pass",
+    "frontend_route_smoke_test": "pass · production Next start HTTP 200 + content checks on 8 v0.6.4 routes including Home and relation-scoped Timeline",
     "dsm_master_source_sha256": "9680d7b1e85ae4ef58efa58f7c76bfcc04c7b317f1fbd40cbb2e27be02542694",
     "dsm_master_import": "438 records / 243 formal diagnosis records / 241 canonical Disorder pages / 6 sources",
     "dsm_master_diagnosis_sync": "211 DSM-generated + 30 curated preserved / 2 duplicate diagnosis records collapsed",
@@ -318,9 +332,9 @@
     "temporary_audit_user_cleanup": "pass · both v0.5.5 runtime-audit users deleted; 0 remaining",
     "therapy_foundation_tests": "3 targeted schema/provenance tests included in full suite",
     "canonical_module_cleanup": "pass · versioned backend runtime modules consolidated into views.py / serializers.py / seed_mvp.py",
-    "current_release": "v0.6.3 Psychologist + Theory + Timeline Read APIs",
+    "current_release": "v0.6.4 Psychologists + Theories + Timeline Frontend",
     "ruff": "not run · ruff is not installed in backend venv",
-    "git_diff_check": "pass",
+    "git_diff_check": "pass · tracked + staged diff checks; 23 intended release files; no conflicts or whitespace errors",
     "therapy_seed_api_tests": "6 targeted seed/API/provenance/filter/idempotency tests included in full suite",
     "therapy_inventory": "6 therapies / 9 techniques / 9 therapy-disorder / 10 therapy-technique / 7 therapy-concept / 8 technique-concept links",
     "therapy_provenance": "pass · seeded Therapy/Technique content and all seeded cross-domain relations carry SourceReference provenance",
@@ -330,7 +344,7 @@
     "therapy_frontend_http_smoke": "pass · Therapy list + CBT detail + ERP detail SSR returned seeded content",
     "therapy_frontend_visual_audit": "not run · Playwright optional support is not installed on local MCP environment",
     "therapy_cross_domain_graph_tests": "4 targeted cross-domain/search/graph/cache tests included in full suite",
-    "atlas_graph_query_budget": "18 queries · 478 nodes / 934 edges · unchanged in v0.6.3",
+    "atlas_graph_query_budget": "18 queries · 478 nodes / 934 edges / 33 kinds · unchanged in v0.6.4",
     "global_search_cross_domain": "pass · CBT therapy exact alias / ERP technique exact alias",
     "cross_domain_detail_api": "pass · Disorder -> Therapy and Concept -> Therapy/Technique with relation-level provenance",
     "graph_node_types": "44 concept / 241 disorder / 30 symptom / 6 therapy / 9 technique",
@@ -351,7 +365,7 @@
     "research_future_domain_staging": "130 psychologist / 53 theory / 63 timeline event staged records retained losslessly; source-backed identities project to 76 Psychologist / 45 Theory / 61 TimelineEvent runtime rows; Claim/ResearchGap remain staging-only",
     "research_relationship_promotion": "176 source-resolved research relations promoted; unsupported/unmapped semantics retained losslessly in staging",
     "research_seed_preservation": "pass · two repeated seed_mvp runs preserve imported TherapyClassificationLink/TherapyTechnique/TherapyDisorder/TherapyConcept/TechniqueConcept ownership and active state",
-    "research_graph_runtime": "pass · 478 nodes / 934 edges / 18 build queries; v0.6.3 Psychologist/Theory/Timeline APIs are intentionally not graph-visible yet",
+    "research_graph_runtime": "pass · 478 nodes / 934 edges / 18 build queries; Psychologist/Theory/Timeline remain intentionally not graph-visible until v0.6.5",
     "research_api_http_smoke": "pass · working-memory Concept / ACT Therapy / cognitive-defusion Technique / CBT-vs-Schema Compare / Knowledge Graph returned HTTP 200 (final graph smoke refreshed after seed ownership fix)",
     "research_exact_source_archive": "pass · raw_text round-trip exact · 618107 bytes / sha256 753a7d3edf2239becdf2bb27073e8e56fcd24399a5a901bea98da89fbb660bc0 · 1281373 bytes / sha256 3bfa4fe8b465ff0b6b5b1aaf511372efb136c42ccb0db58a5468645aaf6b27e9",
     "research_bilingual_ingestion_audit": "pass · primary educational sections have complete EN/FA names and key content in both corpora; normalized Claim/Psychologist/Theory/Timeline indexes have no missing EN/FA values",
@@ -373,7 +387,17 @@
     "v063_real_api_query_budget": "pass · full lists 3/3/2 queries and representative details 13/13/9 queries for Psychologist/Theory/Timeline",
     "v063_timeline_precision_api": "pass · year-only events serialize exact_date=null; invalid date precision and year windows return 400",
     "v063_provenance_api": "pass · entity source roles plus relation-level SourceReference data expose authors/DOI/PMID/verification status when present",
-    "v063_migration": "pass · API-only slice; makemigrations --check --dry-run reports no changes detected"
+    "v063_migration": "pass · API-only slice; makemigrations --check --dry-run reports no changes detected",
+    "v064_frontend_routes": "pass · /psychologists, /psychologists/[slug], /theories, /theories/[slug], /timeline, /timeline/[slug]",
+    "v064_timeline_scope_smoke": "pass · full=61 events / Aaron T. Beck scope=5 / Beck Cognitive Model scope=2",
+    "v064_timeline_precision_ui": "pass · year precision is rendered without fabricated exact_date; current 61 events span 1879–2026",
+    "v064_scientific_status_ui": "pass · source_checked explicitly labeled as source-backed but not final review; citation_from_model_knowledge distinguished from verified sources",
+    "v064_bilingual_gap_policy": "pass · no generated translation/biography fallback; stored FA -> stored EN with explicit LTR -> neutral missing state",
+    "v064_graph_boundary": "pass · graph 478/934/18/33 and no psychologist/theory/timeline node types; source scan found no new-domain graph/global-search integration",
+    "v064_ssr_content_audit": "pass · no visible >undefined<, >NaN< or [object Object] markers across audited routes",
+    "v064_visual_browser_audit": "blocked by environment · browser tool reported playwright_not_installed; project dependencies were not modified to work around optional MCP support",
+    "v064_production_http_smoke": "pass · Home / Psychologists list+Aaron Beck / Theories list+Beck model / Timeline list+Pavlov 1897 / scoped Timeline",
+    "v064_release_diff": "23 files · frontend/docs/version metadata only · no backend runtime or migration changes"
   },
   "release_notes": {
     "graph_layers": [
@@ -401,7 +425,7 @@
       "0.6.1": "Psychologist/Theory/Timeline Architecture Foundation ✅",
       "0.6.2": "Conservative Research Promotion + Dedupe + Aliases ✅",
       "0.6.3": "Psychologist + Theory + Timeline APIs ✅",
-      "0.6.4": "Frontend Atlas pages + Timeline UX",
+      "0.6.4": "Frontend Atlas pages + Timeline UX ✅",
       "0.6.5": "Knowledge Graph + global search integration",
       "0.6.6": "Final hardening + performance + release freeze"
     },
@@ -416,9 +440,6 @@
       "claim-level citation graph",
       "Therapy user progress/mastery until learning evidence exists",
       "Personalized treatment recommendation",
-      "Psychologists Atlas frontend",
-      "Theories Atlas frontend",
-      "Psychology Timeline frontend",
       "Psychologist/Theory/Timeline Knowledge Graph + Global Search integration"
     ],
     "user_owned_data": [
@@ -553,6 +574,24 @@
       "real_query_budget": "lists 3/3/2 queries; representative details 13/13/9 queries",
       "tests": "6 targeted; 120 full backend tests",
       "graph": "intentionally unchanged at 478 nodes / 934 edges / 18 queries"
+    },
+    "v064_frontend_atlas_timeline": {
+      "routes": [
+        "/psychologists",
+        "/psychologists/[slug]",
+        "/theories",
+        "/theories/[slug]",
+        "/timeline",
+        "/timeline/[slug]"
+      ],
+      "catalog": "76 psychologists / 45 theories / 61 timeline events",
+      "scientific_ui": "source_checked is explicitly not final review; source verification statuses remain distinct",
+      "bilingual_policy": "stored Persian preferred; stored English shown explicitly when Persian is absent; no generated translation/biography fallback",
+      "timeline": "decade stream + explicit relation scopes + precision-aware dates + previous/next event navigation",
+      "navigation": "new domains added to Explore/context navigation and Home; graph remains explicitly current/pre-v0.6 integration",
+      "performance": "bounded catalog fetches + useDeferredValue filtering + parallel Timeline detail neighbor fetch + Promise.allSettled Home data",
+      "graph": "intentionally unchanged until v0.6.5",
+      "visual_audit": "Playwright attempt blocked by optional browser support not installed in MCP environment; SSR HTTP/content smoke used without altering project dependencies"
     }
   }
 }

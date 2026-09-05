@@ -1,10 +1,35 @@
 # Psychology Atlas Product Spec
 
-## Current implemented version: v0.6.3 — Psychologist + Theory + Timeline Read APIs
+## Current implemented version: v0.6.4 — Psychologists + Theories + Timeline Frontend
 
 Psychology Atlas is an interactive educational system for psychology students. It should behave as a connected learning system, not as a psychology blog and not as a diagnostic product.
 
-v0.6.3 exposes the source-backed Psychologist/Theory/Timeline runtime from v0.6.2 through canonical, read-only Django REST Framework APIs. It preserves aliases, review metadata, historical/date granularity and entity/relation-level provenance. Frontend Atlas pages remain v0.6.4 work and Knowledge Graph/Global Search integration remains v0.6.5 work.
+v0.6.4 turns the v0.6.3 public read APIs into first-class RTL frontend surfaces for Psychologists, Theories and the Psychology Timeline. It preserves source and relation semantics instead of generating missing biography/translation text, distinguishes source-check status from final scientific review, and preserves Timeline date precision. Knowledge Graph and Global Search integration for these new domains remains v0.6.5 work.
+
+### v0.6.4 frontend invariants
+
+- Public routes exist for `/psychologists`, `/psychologists/[slug]`, `/theories`, `/theories/[slug]`, `/timeline` and `/timeline/[slug]`.
+- Frontend domain types live in the canonical `frontend/lib/types.ts`; no versioned parallel type module exists.
+- Shared scientific display semantics live in `frontend/components/ScientificMeta.tsx` so review/source labels are consistent across all three domains.
+- `source_checked` is displayed as source-backed but not final scientific review; it is never labeled simply as “reviewed”.
+- `citation_from_model_knowledge` source metadata is visibly distinguished from verified/web-verified source records.
+- Missing Persian content is never filled with generated translation: Persian is preferred when stored, otherwise the stored English text is displayed explicitly as English, otherwise a neutral missing-data state is shown.
+- Psychologists Explorer supports bilingual/alias discovery, review-state and birth-century filtering, sorting and grid/compact layouts over the 76 active canonical identities.
+- Psychologist detail exposes explicit Theory/Concept/Therapy/Timeline/Person relations with relation-level provenance and does not infer creator relationships.
+- Theory Explorer exposes real runtime `domain` and `modern_status` metadata without turning status into a validity/efficacy score.
+- Theory detail exposes proposition/context/application/criticism/limitation fields when present and preserves explicit Person/Concept/Therapy/Technique/Theory/Timeline relation semantics.
+- Timeline renders a chronological decade stream, not a flat card catalog, and supports visible server-side relation scopes for Psychologist/Theory/Therapy/Technique/Concept.
+- Timeline date rendering mirrors API precision; year-only data is never converted to fabricated `YYYY-01-01` dates.
+- Timeline detail exposes raw date model fields, relation roles, relation provenance and chronological previous/next navigation.
+- Home and global navigation expose the three new domains. Home uses `Promise.allSettled` for independent overview/domain requests rather than sequential fallback waterfalls.
+- v0.6.4 does not add Psychologist/Theory/Timeline to Global Search or Knowledge Graph. The graph remains 478 nodes / 934 edges / 18 build queries until v0.6.5.
+- Direct browser automation was attempted, but optional Playwright support is not installed in the local MCP environment; SSR HTTP route/content smoke plus production build are used without modifying project dependencies to work around that tool limitation.
+
+Detailed v0.6.4 frontend record:
+
+```text
+docs/Psychology_Atlas_v0.6.4_Frontend_Atlas_Timeline_2026-09-05.md
+```
 
 ### v0.6.3 API invariants
 

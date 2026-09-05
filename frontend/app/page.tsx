@@ -1,24 +1,25 @@
 import Link from "next/link";
 import DailyChallengeCard from "@/components/DailyChallengeCard";
 import { publicFetch } from "@/lib/api";
-import type { AtlasOverview, DSMOverview } from "@/lib/types";
+import type { AtlasOverview, DSMOverview, Paginated, Psychologist, Theory, TimelineEvent } from "@/lib/types";
 
 function fa(value: number) {
   return value.toLocaleString("fa-IR");
 }
 
 export default async function Home() {
-  let overview: AtlasOverview | null = null;
-  let dsmOverview: DSMOverview | null = null;
-  try {
-    [overview, dsmOverview] = await Promise.all([
-      publicFetch<AtlasOverview>("/atlas-overview/"),
-      publicFetch<DSMOverview>("/dsm/overview/"),
-    ]);
-  } catch {
-    try { overview = await publicFetch<AtlasOverview>("/atlas-overview/"); } catch { overview = null; }
-    try { dsmOverview = await publicFetch<DSMOverview>("/dsm/overview/"); } catch { dsmOverview = null; }
-  }
+  const [overviewResult, dsmResult, psychologistResult, theoryResult, timelineResult] = await Promise.allSettled([
+    publicFetch<AtlasOverview>("/atlas-overview/"),
+    publicFetch<DSMOverview>("/dsm/overview/"),
+    publicFetch<Paginated<Psychologist>>("/psychologists/?page_size=1"),
+    publicFetch<Paginated<Theory>>("/theories/?page_size=1"),
+    publicFetch<Paginated<TimelineEvent>>("/timeline/?page_size=1"),
+  ]);
+  const overview = overviewResult.status === "fulfilled" ? overviewResult.value : null;
+  const dsmOverview = dsmResult.status === "fulfilled" ? dsmResult.value : null;
+  const psychologistCount = psychologistResult.status === "fulfilled" ? psychologistResult.value.count : null;
+  const theoryCount = theoryResult.status === "fulfilled" ? theoryResult.value.count : null;
+  const timelineCount = timelineResult.status === "fulfilled" ? timelineResult.value.count : null;
 
   const stats = overview ? [
     [overview.counts.disorders, "اختلال فعال"],
@@ -31,18 +32,19 @@ export default async function Home() {
     <main>
       <section className="shell hero hero-v3 atlas-hero">
         <div className="atlas-hero-copy">
-          <div className="meta">Psychology Atlas · v0.5.5</div>
-          <h1>روان‌شناسی را مثل یک شبکه یاد بگیر، نه یک فهرست پراکنده.</h1>
+          <div className="meta">Psychology Atlas · v0.6.4</div>
+          <h1>روان‌شناسی را مثل یک شبکه تاریخی و مفهومی یاد بگیر، نه یک فهرست پراکنده.</h1>
           <p>
-            اختلال، نشانه، مفهوم و رویکرد درمانی را در یک مدل واحد دنبال کن. بعد با Quiz، Clinical Case، فلش‌کارت،
-            مرور فاصله‌دار و چالش روزانه همان شبکه را به مسیر مطالعه شخصی تبدیل کن.
+            اختلال، نشانه، مفهوم و درمان را کنار روان‌شناسان، نظریه‌ها و رویدادهای تاریخی دنبال کن. بعد با Quiz، Clinical Case، فلش‌کارت،
+            مرور فاصله‌دار و چالش روزانه همان ساختار را به مسیر مطالعه شخصی تبدیل کن.
           </p>
           <div className="actions atlas-hero-actions">
-            <Link className="button primary" href="/map">کاوش نقشه دانش</Link>
-            <Link className="button" href="/dsm">DSM MASTER</Link>
+            <Link className="button primary" href="/timeline">کاوش خط زمانی</Link>
+            <Link className="button" href="/psychologists">روان‌شناسان</Link>
+            <Link className="button" href="/theories">نظریه‌ها</Link>
             <Link className="button" href="/therapies">اطلس درمان</Link>
-            <Link className="button" href="/study">مرکز مطالعه</Link>
-            <Link className="button ghost" href="/search">جست‌وجوی سراسری</Link>
+            <Link className="button" href="/map">نقشه دانش فعلی</Link>
+            <Link className="button ghost" href="/study">مرکز مطالعه</Link>
           </div>
         </div>
 
@@ -69,13 +71,21 @@ export default async function Home() {
         </section>
       )}
 
+      {(psychologistCount != null || theoryCount != null || timelineCount != null) && (
+        <section className="shell v6-home-domain-strip" aria-label="دامنه‌های تاریخی نسخه ۰.۶">
+          <Link href="/psychologists"><strong>{psychologistCount != null ? fa(psychologistCount) : "—"}</strong><span>روان‌شناس canonical</span><small>Psychologists Atlas</small></Link>
+          <Link href="/theories"><strong>{theoryCount != null ? fa(theoryCount) : "—"}</strong><span>نظریه canonical</span><small>Theory Atlas</small></Link>
+          <Link href="/timeline"><strong>{timelineCount != null ? fa(timelineCount) : "—"}</strong><span>رویداد تاریخی</span><small>Psychology Timeline</small></Link>
+        </section>
+      )}
+
       <section className="shell page stack home-v3-sections">
         <div className="section-heading-row">
           <div>
             <h2 className="section-title">از محتوا تا یادگیری فعال</h2>
-            <p className="section-copy">سه لایه محصول به هم متصل‌اند و هرکدام ورودی لایه بعدی است.</p>
+            <p className="section-copy">لایه‌های بالینی، مفهومی، درمانی و تاریخی کنار ابزارهای یادگیری یک مسیر پیوسته می‌سازند.</p>
           </div>
-          <Link className="button ghost" href="/map">مشاهده کل شبکه</Link>
+          <Link className="button ghost" href="/map">مشاهده Graph فعلی</Link>
         </div>
 
         <div className="learning-rail">
@@ -91,11 +101,20 @@ export default async function Home() {
           <Link href="/therapies" className="learning-rail-item">
             <span className="rail-index">۰۴</span><div><strong>Therapy Atlas</strong><p>رویکردها، تکنیک‌ها، زمینه‌های بالینی، شواهد و provenance ساختاریافته.</p></div>
           </Link>
+          <Link href="/psychologists" className="learning-rail-item">
+            <span className="rail-index">۰۵</span><div><strong>Psychologists Atlas</strong><p>{psychologistCount != null ? `${fa(psychologistCount)} identity canonical با alias، attribution و sourceهای مستقیم.` : "Identity، alias، attribution و provenance شخصیت‌های تاریخی."}</p></div>
+          </Link>
+          <Link href="/theories" className="learning-rail-item">
+            <span className="rail-index">۰۶</span><div><strong>Theory Atlas</strong><p>{theoryCount != null ? `${fa(theoryCount)} نظریه با domain، modern status و relationهای صریح.` : "نظریه‌ها با domain، status و relationهای source-backed."}</p></div>
+          </Link>
+          <Link href="/timeline" className="learning-rail-item">
+            <span className="rail-index">۰۷</span><div><strong>Psychology Timeline</strong><p>{timelineCount != null ? `${fa(timelineCount)} رویداد precision-aware با اتصال‌های تاریخی explicit.` : "رویدادهای تاریخی با date precision و provenance رابطه."}</p></div>
+          </Link>
           <Link href="/map" className="learning-rail-item">
-            <span className="rail-index">۰۵</span><div><strong>Knowledge Graph</strong><p>حرکت بین Concept، Disorder و Symptom بر اساس edge واقعی.</p></div>
+            <span className="rail-index">۰۸</span><div><strong>Knowledge Graph فعلی</strong><p>در v0.6.4 هنوز فقط دامنه‌های graph قبلی را با edge واقعی نمایش می‌دهد؛ اتصال دامنه‌های جدید در v0.6.5 است.</p></div>
           </Link>
           <Link href="/study" className="learning-rail-item">
-            <span className="rail-index">۰۶</span><div><strong>Study Engine</strong><p>SRS، streak، heatmap، challenge و پیشنهاد مرور.</p></div>
+            <span className="rail-index">۰۹</span><div><strong>Study Engine</strong><p>SRS، streak، heatmap، challenge و پیشنهاد مرور.</p></div>
           </Link>
         </div>
 
