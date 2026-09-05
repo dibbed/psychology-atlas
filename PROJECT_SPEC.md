@@ -1,10 +1,59 @@
 # Psychology Atlas Product Spec
 
-## Current implemented version: v0.5.5 — Compare + Personal Features + Final Hardening
+## Current implemented version: v0.6.2 — Conservative Research Promotion + Dedupe + Aliases
 
 Psychology Atlas is an interactive educational system for psychology students. It should behave as a connected learning system, not as a psychology blog and not as a diagnostic product.
 
-v0.5.5 completes the five-part Therapy Atlas series. It preserves the source-backed schema, frontend and five-layer Knowledge Graph while adding structured Therapy Compare, private Therapy bookmarks/notes, Saved/Notes/Dashboard integration and final compare/personal-data hardening. The same v0.5.5 baseline now also includes provenance-safe Research Dataset Ingestion for large external psychology corpora; this is data enrichment, not a version bump or partial v0.6 implementation. Therapy progress/mastery remains intentionally deferred because no real Therapy learning-evidence model exists yet.
+v0.6.2 turns the v0.6.1 schema foundation into a conservative source-backed runtime projection. It promotes only future-domain records with resolvable provenance, merges safe cross-corpus identity variants, preserves aliases and date uncertainty, and creates explicit sourced historical relations. Public Psychologist/Theory/Timeline APIs, frontend Atlas pages and Knowledge Graph integration are still separate later slices.
+
+### v0.6.2 promotion invariants
+
+- Runtime inventory after promotion: 76 Psychologists, 45 Theories and 61 TimelineEvents.
+- Remaining staging-only identities: 37 Psychologist identity groups, 2 Theory identities and 2 TimelineEvents without resolvable source support.
+- Promotion requires canonical `SourceReference` provenance. Unsourced entities and relations remain staging-only.
+- Identity resolution uses exact normalized identity plus narrowly bounded same-slug/core-name merging for harmless initials/English possessive variants. There is no general fuzzy person/theory merge.
+- Alternate Persian/English names are preserved as aliases instead of overwriting the canonical display name.
+- Source-checked biography fields are not backfilled from weaker legacy fields merely because another record names the same person. Unknown birth/death years remain unknown.
+- All promoted future-domain entities and relations have zero provenance gaps.
+- Explicit runtime relation inventory includes 48 PsychologistTheory, 74 PsychologistConcept, 19 PsychologistTherapy, 75 TheoryConcept, 3 TheoryTherapy, 3 TheoryTheory, 55 TimelinePsychologist, 27 TimelineTheory, 25 TimelineTherapy, 1 TimelineTechnique and 35 TimelineConcept rows.
+- Timeline semantics preserve `involves_person`, `marks_theory_milestone`, `marks_therapy_milestone` and `marks_technique_evidence_milestone` instead of collapsing them into a generic relation.
+- After supported promotion, fully resolved + source-backed future-domain staging relations left without a canonical model: 0.
+- `TheoryTechnique` remains empty because its current staging target Technique is not itself source-backed/runtime-mapped; it is not force-created.
+- Promotion is idempotent and has a transaction-backed `--dry-run` mode.
+- `seed_mvp` does not own or deactivate promoted v0.6 records/relations.
+- Existing Knowledge Graph remains 478 nodes / 934 edges / 18 build queries because v0.6.2 does not make these entities graph-visible yet.
+
+Promotion commands:
+
+```text
+python manage.py promote_research_staging
+python manage.py promote_research_staging --dry-run
+```
+
+Detailed v0.6.2 promotion record:
+
+```text
+docs/Psychology_Atlas_v0.6.2_Research_Promotion_2026-09-05.md
+```
+
+### v0.6.1 architecture invariants
+
+- v0.6.1 established `Psychologist`, `Theory`, and `TimelineEvent` as canonical runtime models; their initial empty-table boundary was intentionally ended by the explicit v0.6.2 promotion pipeline above.
+- Person and Theory aliases are separate rows; canonical names are not overloaded with initials/transliterations/historical spellings.
+- Person attribution uses explicit semantics such as `proposed`, `co_proposed`, `developed`, `co_developed`, `expanded`, `researched`, and `contributed_to` instead of a generic `creator` claim.
+- Theory relations support the actual staged vocabulary, including `grounds`, `complements`, `reformulated_as`, `challenged_by`, and `supports_interpretation_of`.
+- `TheoryTechnique` exists because the real staging corpus contains a theory-to-technique `grounds` relation.
+- Every new entity/relation provenance model reuses `SourceReference`; no second bibliography registry exists.
+- Timeline dates preserve granularity as exact date, year, year range, approximate year, or unknown. Year-only data must not be converted into fabricated January 1 dates.
+- `seed_managed=False` is the default for new entities and scientific relations so future research promotion remains independent from `seed_mvp` ownership.
+- New models are not graph-visible in this slice, so existing graph behavior/query budget/cache semantics remain unchanged.
+- v0.6.1 did not auto-promote new domains merely because models existed. v0.6.2 now invokes the explicit source-backed promoter only through the research-import promotion flow or `promote_research_staging` command.
+
+Detailed design record:
+
+```text
+docs/Psychology_Atlas_v0.6.1_Architecture_Foundation_2026-09-05.md
+```
 
 ## Architecture decisions
 
@@ -34,7 +83,7 @@ Current research-ingestion invariants:
 - `SourceReference` stores authors, DOI, PMID, verification status and extra bibliographic metadata; source dedupe priority is DOI → URL → title/year.
 - Complete/source-checked records may promote into the current Concept, Symptom, Therapy, Technique and explicit relation models when the v0.5.5 schema can represent the semantics faithfully.
 - Lower-confidence or unsupported records remain staging-only instead of being forced into a misleading runtime model.
-- Psychologist, Theory, Timeline Event and Claim records remain research-staging until the dedicated v0.6 domain is intentionally implemented, but their normalized English/Persian index fields are populated.
+- Psychologist, Theory and Timeline Event staging now have dedicated v0.6 runtime domains and promote only when identity/provenance requirements are satisfied. Unsourced records remain staging-only. Claim and ResearchGap records remain staging/review material.
 - Primary educational sections are audited for bilingual English/Persian names and key content. Official bibliographic titles, DOI/PMID and source-native metadata are preserved in their original form rather than receiving fabricated translations.
 - Imported runtime entities use `seed_managed=False`; Therapy classification/Technique/Disorder/Concept relation rows also have explicit seed ownership so repeated `seed_mvp` cannot deactivate externally imported relations.
 - Imported scientific relation promotion requires resolved source provenance.

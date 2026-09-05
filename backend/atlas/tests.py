@@ -1,5 +1,6 @@
 import hashlib
 import json
+from datetime import date
 from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -7,6 +8,7 @@ from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
@@ -14,6 +16,7 @@ from django.urls import reverse
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from . import models as atlas_models
 from .models import (
     Bookmark, CaseChoice, CaseQuestion, CaseStep, Category, ClinicalCase,
     Concept, ConceptAlias, ConceptBookmark, ConceptNote, ConceptRelationship, ConceptRelationshipSource,
@@ -2174,8 +2177,12 @@ class ResearchDatasetImportTests(APITestCase):
             self.assertEqual(relationship_record.promoted_pk, therapy_technique.pk)
             self.assertEqual(
                 ResearchRecord.objects.filter(section="psychologists", promoted_pk__isnull=True).count(),
-                1,
+                0,
             )
+            imported_psychologist = atlas_models.Psychologist.objects.get(slug="test-import-person")
+            self.assertEqual(imported_psychologist.name_en, "Import Test Researcher")
+            self.assertTrue(imported_psychologist.source_links.exists())
+            self.assertEqual(imported_psychologist.review_status, ScientificReviewStatus.UNREVIEWED)
 
             stable_counts = {
                 "datasets": ResearchDataset.objects.count(),
@@ -2185,6 +2192,7 @@ class ResearchDatasetImportTests(APITestCase):
                 "techniques": Technique.objects.count(),
                 "concepts": Concept.objects.count(),
                 "relations": TherapyTechnique.objects.count(),
+                "psychologists": atlas_models.Psychologist.objects.count(),
             }
             call_command(
                 "import_research_datasets",
@@ -2199,8 +2207,10 @@ class ResearchDatasetImportTests(APITestCase):
             self.assertEqual(stable_counts["techniques"], Technique.objects.count())
             self.assertEqual(stable_counts["concepts"], Concept.objects.count())
             self.assertEqual(stable_counts["relations"], TherapyTechnique.objects.count())
+            self.assertEqual(stable_counts["psychologists"], atlas_models.Psychologist.objects.count())
 
             call_command("seed_mvp", stdout=StringIO())
+            self.assertTrue(atlas_models.Psychologist.objects.filter(pk=imported_psychologist.pk, is_active=True).exists())
             self.assertTrue(Therapy.objects.filter(pk=imported_therapy.pk, is_active=True).exists())
             self.assertTrue(Technique.objects.filter(pk=imported_technique.pk, is_active=True).exists())
             self.assertTrue(Concept.objects.filter(pk=imported_concept.pk, is_active=True).exists())
@@ -2223,3 +2233,635 @@ class ResearchDatasetImportTests(APITestCase):
                 ).exists()
             )
             self.assertEqual(ResearchDataset.objects.count(), 2)
+
+
+class V061ArchitectureFoundationTests(APITestCase):
+    def setUp(self):
+        self.source = SourceReference.objects.create(
+            title="v0.6.1 architecture test source",
+            organization="Psychology Atlas Test",
+            verification_status="verified",
+        )
+        self.category = Category.objects.create(slug="v061-category", name_en="v0.6.1 Category")
+        self.concept = Concept.objects.create(
+            slug="v061-concept",
+            name_en="v0.6.1 Concept",
+            name_fa="مفهوم نسخه ۰.۶.۱",
+        )
+        self.family = TherapyFamily.objects.create(
+            slug="v061-family",
+            name_en="v0.6.1 Family",
+            name_fa="خانواده نسخه ۰.۶.۱",
+        )
+        self.therapy = Therapy.objects.create(
+            family=self.family,
+            slug="v061-therapy",
+            name_en="v0.6.1 Therapy",
+            name_fa="درمان نسخه ۰.۶.۱",
+        )
+        self.technique = Technique.objects.create(
+            slug="v061-technique",
+            name_en="v0.6.1 Technique",
+            name_fa="تکنیک نسخه ۰.۶.۱",
+        )
+        self.psychologist = atlas_models.Psychologist.objects.create(
+            slug="test-researcher",
+            name_en="Test Researcher",
+            name_fa="پژوهشگر آزمایشی",
+            birth_year=1900,
+            death_year=1980,
+        )
+        self.theory = atlas_models.Theory.objects.create(
+            slug="test-theory",
+            name_en="Test Theory",
+            name_fa="نظریه آزمایشی",
+            domain="cognitive_psychology",
+        )
+        self.event = atlas_models.TimelineEvent.objects.create(
+            slug="test-event-1960",
+            title_en="Test event",
+            title_fa="رویداد آزمایشی",
+            date_precision=atlas_models.TimelineEvent.DatePrecision.YEAR,
+            year_start=1960,
+            date_text="1960",
+        )
+
+    def test_canonical_entities_are_bilingual_review_safe_and_not_seed_owned(self):
+        self.assertEqual(self.psychologist.name_fa, "پژوهشگر آزمایشی")
+        self.assertEqual(self.theory.name_fa, "نظریه آزمایشی")
+        self.assertEqual(self.event.title_fa, "رویداد آزمایشی")
+        self.assertEqual(self.psychologist.review_status, ScientificReviewStatus.UNREVIEWED)
+        self.assertEqual(self.theory.review_status, ScientificReviewStatus.UNREVIEWED)
+        self.assertEqual(self.event.review_status, ScientificReviewStatus.UNREVIEWED)
+        self.assertFalse(self.psychologist.seed_managed)
+        self.assertFalse(self.theory.seed_managed)
+        self.assertFalse(self.event.seed_managed)
+
+    def test_aliases_are_explicit_and_deduplicated_per_language(self):
+        atlas_models.PsychologistAlias.objects.create(
+            psychologist=self.psychologist,
+            text="T. Researcher",
+            language=atlas_models.PsychologistAlias.Language.EN,
+            alias_type=atlas_models.PsychologistAlias.AliasType.INITIALS,
+        )
+        duplicate = atlas_models.PsychologistAlias(
+            psychologist=self.psychologist,
+            text="T. Researcher",
+            language=atlas_models.PsychologistAlias.Language.EN,
+        )
+        with self.assertRaises(ValidationError):
+            duplicate.full_clean()
+
+        atlas_models.TheoryAlias.objects.create(
+            theory=self.theory,
+            text="TT",
+            language=atlas_models.TheoryAlias.Language.EN,
+            alias_type=atlas_models.TheoryAlias.AliasType.ABBREVIATION,
+        )
+        self.assertEqual(self.theory.aliases.count(), 1)
+
+    def test_psychologist_life_year_order_is_validated(self):
+        invalid = atlas_models.Psychologist(
+            slug="invalid-life-years",
+            name_en="Invalid Life Years",
+            birth_year=2000,
+            death_year=1900,
+        )
+        with self.assertRaises(ValidationError):
+            invalid.full_clean()
+
+    def test_timeline_year_only_does_not_allow_fabricated_exact_date(self):
+        year_only = atlas_models.TimelineEvent(
+            slug="year-only-event",
+            title_en="Year only",
+            date_precision=atlas_models.TimelineEvent.DatePrecision.YEAR,
+            year_start=1879,
+            date_text="1879",
+        )
+        year_only.full_clean()
+
+        fabricated_precision = atlas_models.TimelineEvent(
+            slug="fabricated-exact-event",
+            title_en="Fabricated exact date",
+            date_precision=atlas_models.TimelineEvent.DatePrecision.YEAR,
+            year_start=1879,
+            exact_date=date(1879, 1, 1),
+        )
+        with self.assertRaises(ValidationError):
+            fabricated_precision.full_clean()
+
+    def test_timeline_range_and_exact_date_precision_are_explicit(self):
+        valid_range = atlas_models.TimelineEvent(
+            slug="valid-range",
+            title_en="Valid range",
+            date_precision=atlas_models.TimelineEvent.DatePrecision.YEAR_RANGE,
+            year_start=1963,
+            year_end=1979,
+            date_text="1963-1979",
+        )
+        valid_range.full_clean()
+
+        missing_range_end = atlas_models.TimelineEvent(
+            slug="missing-range-end",
+            title_en="Missing end",
+            date_precision=atlas_models.TimelineEvent.DatePrecision.YEAR_RANGE,
+            year_start=1963,
+        )
+        with self.assertRaises(ValidationError):
+            missing_range_end.full_clean()
+
+        exact = atlas_models.TimelineEvent(
+            slug="exact-event",
+            title_en="Exact event",
+            date_precision=atlas_models.TimelineEvent.DatePrecision.EXACT_DATE,
+            exact_date=date(2000, 1, 2),
+            date_text="2000-01-02",
+        )
+        exact.full_clean()
+
+    def test_entity_provenance_reuses_shared_source_reference_registry(self):
+        psychologist_source = atlas_models.PsychologistSource.objects.create(
+            psychologist=self.psychologist,
+            source=self.source,
+            role=atlas_models.PsychologistSource.Role.BIOGRAPHY,
+        )
+        theory_source = atlas_models.TheorySource.objects.create(
+            theory=self.theory,
+            source=self.source,
+            role=atlas_models.TheorySource.Role.PRIMARY_PUBLICATION,
+        )
+        event_source = atlas_models.TimelineEventSource.objects.create(
+            event=self.event,
+            source=self.source,
+            role=atlas_models.TimelineEventSource.Role.HISTORICAL_REVIEW,
+        )
+        self.assertEqual(psychologist_source.source_id, self.source.id)
+        self.assertEqual(theory_source.source_id, self.source.id)
+        self.assertEqual(event_source.source_id, self.source.id)
+        self.assertEqual(SourceReference.objects.count(), 1)
+
+    def test_psychologist_theory_attribution_is_explicit_and_source_aware(self):
+        relationship = atlas_models.PsychologistTheory.objects.create(
+            psychologist=self.psychologist,
+            theory=self.theory,
+            relationship_type=atlas_models.PsychologistAttributionType.PROPOSED,
+            review_status=ScientificReviewStatus.SOURCE_CHECKED,
+        )
+        atlas_models.PsychologistTheorySource.objects.create(
+            relationship=relationship,
+            source=self.source,
+        )
+        self.assertEqual(relationship.relationship_type, "proposed")
+        self.assertEqual(relationship.source_links.count(), 1)
+        self.assertNotEqual(relationship.review_status, ScientificReviewStatus.REVIEWED)
+
+    def test_real_staging_theory_to_technique_semantic_has_canonical_model(self):
+        relationship = atlas_models.TheoryTechnique.objects.create(
+            theory=self.theory,
+            technique=self.technique,
+            relationship_type=atlas_models.TheoryRelationType.GROUNDS,
+            review_status=ScientificReviewStatus.SOURCE_CHECKED,
+        )
+        atlas_models.TheoryTechniqueSource.objects.create(
+            relationship=relationship,
+            source=self.source,
+        )
+        self.assertEqual(relationship.relationship_type, "grounds")
+        self.assertTrue(relationship.source_links.filter(source=self.source).exists())
+
+    def test_self_relations_are_rejected(self):
+        self_person_relation = atlas_models.PsychologistPsychologist(
+            psychologist=self.psychologist,
+            related_psychologist=self.psychologist,
+            relationship_type=atlas_models.PsychologistRelationshipType.ASSOCIATED_WITH,
+        )
+        with self.assertRaises(ValidationError):
+            self_person_relation.full_clean()
+
+        self_theory_relation = atlas_models.TheoryTheory(
+            theory=self.theory,
+            related_theory=self.theory,
+            relationship_type=atlas_models.TheoryRelationType.ASSOCIATED_WITH,
+        )
+        with self.assertRaises(ValidationError):
+            self_theory_relation.full_clean()
+
+    def test_timeline_cross_domain_links_are_explicit(self):
+        psychologist_link = atlas_models.TimelinePsychologist.objects.create(
+            event=self.event,
+            psychologist=self.psychologist,
+            role=atlas_models.TimelineLinkRole.SUBJECT,
+        )
+        theory_link = atlas_models.TimelineTheory.objects.create(
+            event=self.event,
+            theory=self.theory,
+            role=atlas_models.TimelineLinkRole.RELATED,
+        )
+        therapy_link = atlas_models.TimelineTherapy.objects.create(
+            event=self.event,
+            therapy=self.therapy,
+            role=atlas_models.TimelineLinkRole.RELATED,
+        )
+        concept_link = atlas_models.TimelineConcept.objects.create(
+            event=self.event,
+            concept=self.concept,
+            role=atlas_models.TimelineLinkRole.RELATED,
+        )
+        for relationship, source_model in (
+            (psychologist_link, atlas_models.TimelinePsychologistSource),
+            (theory_link, atlas_models.TimelineTheorySource),
+            (therapy_link, atlas_models.TimelineTherapySource),
+            (concept_link, atlas_models.TimelineConceptSource),
+        ):
+            source_model.objects.create(relationship=relationship, source=self.source)
+            self.assertEqual(relationship.source_links.count(), 1)
+
+    def test_research_record_creation_does_not_blindly_promote_v061_entities(self):
+        dataset = ResearchDataset.objects.create(
+            key="v061-staging-only",
+            source_filename="v061-staging-only.json",
+            source_sha256="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            dataset_name="v0.6.1 Staging Only",
+        )
+        initial_count = atlas_models.Psychologist.objects.count()
+        ResearchRecord.objects.create(
+            dataset=dataset,
+            section="psychologists",
+            external_id="psychologist:staging-only",
+            canonical_key="psychologist:staging-only",
+            slug="staging-only",
+            name_en="Staging Only",
+            name_fa="فقط مرحله پژوهش",
+            payload={"id": "psychologist:staging-only", "name_en": "Staging Only"},
+        )
+        self.assertEqual(atlas_models.Psychologist.objects.count(), initial_count)
+        record = ResearchRecord.objects.get(dataset=dataset, external_id="psychologist:staging-only")
+        self.assertEqual(record.promoted_model, "")
+        self.assertIsNone(record.promoted_pk)
+
+
+class V062ResearchPromotionTests(APITestCase):
+    def setUp(self):
+        self.dataset = ResearchDataset.objects.create(
+            key="v062-promotion-fixture",
+            source_filename="v062-promotion-fixture.json",
+            source_sha256="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            dataset_name="v0.6.2 Promotion Fixture",
+            dataset_version="v0.6.2-test",
+        )
+        self.source = SourceReference.objects.create(
+            title="v0.6.2 promotion source",
+            verification_status="verified",
+        )
+        ResearchRecord.objects.create(
+            dataset=self.dataset,
+            section="sources",
+            external_id="source:v062-primary",
+            canonical_key="source:v062-primary",
+            name_en="v0.6.2 promotion source",
+            payload={"id": "source:v062-primary", "title": "v0.6.2 promotion source"},
+            promoted_model="atlas.sourcereference",
+            promoted_pk=self.source.pk,
+        )
+
+        self.concept = Concept.objects.create(
+            slug="v062-construct",
+            name_en="v0.6.2 Construct",
+            name_fa="سازه نسخه ۰.۶.۲",
+        )
+        self.family = TherapyFamily.objects.create(
+            slug="v062-family",
+            name_en="v0.6.2 Family",
+            name_fa="خانواده نسخه ۰.۶.۲",
+        )
+        self.therapy = Therapy.objects.create(
+            family=self.family,
+            slug="v062-therapy",
+            name_en="v0.6.2 Therapy",
+            name_fa="درمان نسخه ۰.۶.۲",
+        )
+        self.technique = Technique.objects.create(
+            slug="v062-technique",
+            name_en="v0.6.2 Technique",
+            name_fa="تکنیک نسخه ۰.۶.۲",
+        )
+        for section, external_id, obj in (
+            ("concepts", "concept:v062-construct", self.concept),
+            ("therapies", "therapy:v062-therapy", self.therapy),
+            ("techniques", "technique:v062-technique", self.technique),
+        ):
+            ResearchRecord.objects.create(
+                dataset=self.dataset,
+                section=section,
+                external_id=external_id,
+                canonical_key=external_id,
+                slug=obj.slug,
+                name_en=obj.name_en,
+                name_fa=obj.name_fa,
+                payload={"id": external_id, "slug": obj.slug, "name_en": obj.name_en},
+                promoted_model=obj._meta.label_lower,
+                promoted_pk=obj.pk,
+            )
+
+        ResearchRecord.objects.create(
+            dataset=self.dataset,
+            section="psychologists",
+            external_id="psychologist:ivan-pavlov",
+            canonical_key="psychologist:name:ivan p pavlov",
+            name_en="Ivan P. Pavlov",
+            name_fa="ایوان پاولف",
+            source_ids=["source:v062-primary"],
+            review_status=ScientificReviewStatus.SOURCE_CHECKED,
+            payload={
+                "id": "psychologist:ivan-pavlov",
+                "full_name": "Ivan P. Pavlov",
+                "name_fa": "ایوان پاولف",
+                "birth_year": None,
+                "death_year": None,
+                "nationality_background": "Russian",
+                "academic_disciplines": ["physiology"],
+                "major_contributions": ["Source-checked contribution"],
+                "historical_context": "Source-checked historical context.",
+                "source_ids": ["source:v062-primary"],
+                "review": {"status": "source_checked"},
+            },
+        )
+        ResearchRecord.objects.create(
+            dataset=self.dataset,
+            section="psychologists",
+            external_id="ps_pavlov_ivan",
+            canonical_key="psychologist:ivan-pavlov",
+            slug="ivan-pavlov",
+            name_en="Ivan Pavlov",
+            name_fa="ایوان پ. پاولف",
+            payload={
+                "psychologist_id": "ps_pavlov_ivan",
+                "slug": "ivan-pavlov",
+                "name_en": "Ivan Pavlov",
+                "name_fa": "ایوان پ. پاولف",
+                "born": 1849,
+                "died": 1936,
+                "key_works": ["source:v062-primary"],
+                "key_contributions": ["Legacy contribution must not create field-level reviewed biography."],
+            },
+        )
+        ResearchRecord.objects.create(
+            dataset=self.dataset,
+            section="psychologists",
+            external_id="psychologist:unsourced-person",
+            canonical_key="psychologist:unsourced-person",
+            name_en="Unsourced Person",
+            name_fa="فرد بدون منبع",
+            payload={"id": "psychologist:unsourced-person", "full_name": "Unsourced Person"},
+        )
+
+        ResearchRecord.objects.create(
+            dataset=self.dataset,
+            section="theories",
+            external_id="theory:beck-cognitive-model",
+            canonical_key="theorie:beck-cognitive-model",
+            name_en="Beck Cognitive Model",
+            name_fa="مدل شناختی بک",
+            source_ids=["source:v062-primary"],
+            review_status=ScientificReviewStatus.SOURCE_CHECKED,
+            payload={
+                "id": "theory:beck-cognitive-model",
+                "slug": "beck-cognitive-model",
+                "name_en": "Beck Cognitive Model",
+                "name_fa": "مدل شناختی بک",
+                "summary_en": "Source-checked model summary.",
+                "summary_fa": "خلاصه فارسی مدل.",
+                "theory_family_domain": "cognitive_psychology",
+                "source_ids": ["source:v062-primary"],
+                "review": {"status": "source_checked"},
+            },
+        )
+        ResearchRecord.objects.create(
+            dataset=self.dataset,
+            section="theories",
+            external_id="the_beck_cognitive_model",
+            canonical_key="theorie:beck-cognitive-model",
+            slug="beck-cognitive-model",
+            name_en="Beck's cognitive model",
+            name_fa="الگوی شناختی بک",
+            source_ids=["source:v062-primary"],
+            payload={
+                "theory_id": "the_beck_cognitive_model",
+                "slug": "beck-cognitive-model",
+                "name_en": "Beck's cognitive model",
+                "name_fa": "الگوی شناختی بک",
+                "domain": "cognitive_psychology",
+                "core_proposition_en": "Legacy source-linked proposition.",
+                "core_proposition_fa": "گزاره فارسی منبع‌دار.",
+                "sources": ["source:v062-primary"],
+            },
+        )
+        ResearchRecord.objects.create(
+            dataset=self.dataset,
+            section="theories",
+            external_id="theory:unsourced-theory",
+            canonical_key="theorie:unsourced-theory",
+            name_en="Unsourced Theory",
+            name_fa="نظریه بدون منبع",
+            payload={"id": "theory:unsourced-theory", "name_en": "Unsourced Theory"},
+        )
+
+        ResearchRecord.objects.create(
+            dataset=self.dataset,
+            section="timeline_events",
+            external_id="event:1879-v062-event",
+            canonical_key="timeline_event:name:v062 event",
+            name_en="v0.6.2 Event",
+            name_fa="رویداد نسخه ۰.۶.۲",
+            source_ids=["source:v062-primary"],
+            review_status=ScientificReviewStatus.SOURCE_CHECKED,
+            payload={
+                "id": "event:1879-v062-event",
+                "date": "1879",
+                "year": 1879,
+                "date_precision": "year",
+                "title_en": "v0.6.2 Event",
+                "title_fa": "رویداد نسخه ۰.۶.۲",
+                "description_en": "Source-backed historical event.",
+                "description_fa": "رویداد تاریخی منبع‌دار.",
+                "people_ids": ["psychologist:ivan-pavlov"],
+                "theory_ids": ["theory:beck-cognitive-model"],
+                "concept_ids": ["concept:v062-construct"],
+                "therapy_ids": ["therapy:v062-therapy"],
+                "source_ids": ["source:v062-primary"],
+                "review": {"status": "source_checked"},
+            },
+        )
+        ResearchRecord.objects.create(
+            dataset=self.dataset,
+            section="timeline_events",
+            external_id="event:unsourced-v062-event",
+            canonical_key="timeline_event:name:unsourced event",
+            name_en="Unsourced v0.6.2 Event",
+            name_fa="رویداد بدون منبع",
+            payload={
+                "id": "event:unsourced-v062-event",
+                "year": 1900,
+                "title_en": "Unsourced v0.6.2 Event",
+            },
+        )
+
+        relation_payloads = [
+            ("relation:v062-person-concept", "psychologist:ivan-pavlov", "concept:v062-construct", "researched_or_developed", ["source:v062-primary"]),
+            ("relation:v062-person-theory", "psychologist:ivan-pavlov", "theory:beck-cognitive-model", "developed_or_majorly_associated_with", ["source:v062-primary"]),
+            ("relation:v062-theory-concept", "theory:beck-cognitive-model", "concept:v062-construct", "includes_construct", ["source:v062-primary"]),
+            ("relation:v062-event-person", "event:1879-v062-event", "psychologist:ivan-pavlov", "involves_person", ["source:v062-primary"]),
+            ("relation:v062-event-theory", "event:1879-v062-event", "theory:beck-cognitive-model", "marks_theory_milestone", ["source:v062-primary"]),
+            ("relation:v062-event-therapy", "event:1879-v062-event", "therapy:v062-therapy", "marks_therapy_milestone", ["source:v062-primary"]),
+            ("relation:v062-event-technique", "event:1879-v062-event", "technique:v062-technique", "marks_technique_evidence_milestone", ["source:v062-primary"]),
+            ("relation:v062-unsourced", "psychologist:ivan-pavlov", "therapy:v062-therapy", "developed", []),
+        ]
+        for external_id, source_id, target_id, relation_type, source_ids in relation_payloads:
+            ResearchRecord.objects.create(
+                dataset=self.dataset,
+                section="relationships",
+                external_id=external_id,
+                canonical_key=external_id,
+                source_ids=source_ids,
+                payload={
+                    "id": external_id,
+                    "source_id": source_id,
+                    "target_id": target_id,
+                    "relation_type": relation_type,
+                    "source_ids": source_ids,
+                },
+            )
+
+    def test_source_backed_promotion_dedupes_aliases_and_preserves_uncertainty(self):
+        call_command("promote_research_staging", stdout=StringIO())
+        self.assertEqual(atlas_models.Psychologist.objects.count(), 1)
+        psychologist = atlas_models.Psychologist.objects.get(slug="ivan-pavlov")
+        self.assertEqual(psychologist.name_en, "Ivan P. Pavlov")
+        self.assertEqual(psychologist.nationality_en, "Russian")
+        self.assertIsNone(psychologist.birth_year)
+        self.assertIsNone(psychologist.death_year)
+        self.assertTrue(psychologist.source_links.exists())
+        self.assertTrue(psychologist.aliases.filter(text="Ivan Pavlov", language="en").exists())
+        self.assertTrue(psychologist.aliases.filter(text="ایوان پ. پاولف", language="fa").exists())
+        self.assertFalse(atlas_models.Psychologist.objects.filter(name_en="Unsourced Person").exists())
+
+        self.assertEqual(atlas_models.Theory.objects.count(), 1)
+        theory = atlas_models.Theory.objects.get(slug="beck-cognitive-model")
+        self.assertEqual(theory.name_en, "Beck Cognitive Model")
+        self.assertTrue(theory.aliases.filter(text="Beck's cognitive model", language="en").exists())
+        self.assertTrue(theory.source_links.exists())
+        self.assertFalse(atlas_models.Theory.objects.filter(name_en="Unsourced Theory").exists())
+
+        theory_records = ResearchRecord.objects.filter(section="theories", name_en__icontains="Beck")
+        self.assertEqual(set(theory_records.values_list("promoted_pk", flat=True)), {theory.pk})
+        self.assertTrue(all(key.startswith("theory:") for key in theory_records.values_list("canonical_key", flat=True)))
+        self.assertFalse(ResearchRecord.objects.filter(section="theories", canonical_key__startswith="theorie:").exists())
+
+        self.assertEqual(atlas_models.TimelineEvent.objects.count(), 1)
+        event = atlas_models.TimelineEvent.objects.get(slug="1879-v062-event")
+        self.assertEqual(event.date_precision, atlas_models.TimelineEvent.DatePrecision.YEAR)
+        self.assertEqual(event.year_start, 1879)
+        self.assertIsNone(event.exact_date)
+        self.assertFalse(atlas_models.TimelineEvent.objects.filter(title_en="Unsourced v0.6.2 Event").exists())
+        self.assertFalse(ResearchRecord.objects.filter(section="timeline_events", canonical_key__startswith="timeline_event:").exists())
+
+    def test_only_explicit_source_backed_relationships_are_promoted(self):
+        call_command("promote_research_staging", stdout=StringIO())
+        psychologist = atlas_models.Psychologist.objects.get(slug="ivan-pavlov")
+        theory = atlas_models.Theory.objects.get(slug="beck-cognitive-model")
+        person_concept = atlas_models.PsychologistConcept.objects.get(
+            psychologist=psychologist,
+            concept=self.concept,
+            relationship_type=atlas_models.PsychologistAttributionType.RESEARCHED_OR_DEVELOPED,
+        )
+        person_theory = atlas_models.PsychologistTheory.objects.get(
+            psychologist=psychologist,
+            theory=theory,
+            relationship_type=atlas_models.PsychologistAttributionType.DEVELOPED_OR_MAJORLY_ASSOCIATED_WITH,
+        )
+        theory_concept = atlas_models.TheoryConcept.objects.get(
+            theory=theory,
+            concept=self.concept,
+            relationship_type=atlas_models.TheoryRelationType.INCLUDES_CONSTRUCT,
+        )
+        for relationship in (person_concept, person_theory, theory_concept):
+            self.assertEqual(relationship.review_status, ScientificReviewStatus.SOURCE_CHECKED)
+            self.assertTrue(relationship.source_links.filter(source=self.source).exists())
+            self.assertFalse(relationship.seed_managed)
+        unsourced = ResearchRecord.objects.get(external_id="relation:v062-unsourced")
+        self.assertEqual(unsourced.promoted_model, "")
+        self.assertIsNone(unsourced.promoted_pk)
+        self.assertFalse(atlas_models.PsychologistTherapy.objects.filter(psychologist=psychologist, therapy=self.therapy).exists())
+
+    def test_timeline_links_are_cross_domain_and_source_backed(self):
+        call_command("promote_research_staging", stdout=StringIO())
+        event = atlas_models.TimelineEvent.objects.get(slug="1879-v062-event")
+        person_link = atlas_models.TimelinePsychologist.objects.get(event=event)
+        theory_link = atlas_models.TimelineTheory.objects.get(event=event)
+        therapy_link = atlas_models.TimelineTherapy.objects.get(event=event)
+        technique_link = atlas_models.TimelineTechnique.objects.get(event=event)
+        self.assertEqual(person_link.role, atlas_models.TimelineLinkRole.INVOLVES_PERSON)
+        self.assertEqual(theory_link.role, atlas_models.TimelineLinkRole.MARKS_THEORY_MILESTONE)
+        self.assertEqual(therapy_link.role, atlas_models.TimelineLinkRole.MARKS_THERAPY_MILESTONE)
+        self.assertEqual(
+            technique_link.role,
+            atlas_models.TimelineLinkRole.MARKS_TECHNIQUE_EVIDENCE_MILESTONE,
+        )
+        self.assertEqual(atlas_models.TimelinePsychologist.objects.filter(event=event).count(), 1)
+        self.assertEqual(atlas_models.TimelineTheory.objects.filter(event=event).count(), 1)
+        self.assertEqual(atlas_models.TimelineTherapy.objects.filter(event=event).count(), 1)
+        self.assertEqual(atlas_models.TimelineTechnique.objects.filter(event=event).count(), 1)
+        links = [
+            person_link,
+            theory_link,
+            therapy_link,
+            technique_link,
+            atlas_models.TimelineConcept.objects.get(event=event),
+        ]
+        for link in links:
+            self.assertEqual(link.review_status, ScientificReviewStatus.SOURCE_CHECKED)
+            self.assertTrue(link.source_links.filter(source=self.source).exists())
+            self.assertFalse(link.seed_managed)
+
+    def test_promotion_is_idempotent(self):
+        call_command("promote_research_staging", stdout=StringIO())
+        stable_counts = {
+            "psychologists": atlas_models.Psychologist.objects.count(),
+            "psychologist_aliases": atlas_models.PsychologistAlias.objects.count(),
+            "theories": atlas_models.Theory.objects.count(),
+            "theory_aliases": atlas_models.TheoryAlias.objects.count(),
+            "timeline": atlas_models.TimelineEvent.objects.count(),
+            "person_concepts": atlas_models.PsychologistConcept.objects.count(),
+            "person_theories": atlas_models.PsychologistTheory.objects.count(),
+            "theory_concepts": atlas_models.TheoryConcept.objects.count(),
+            "timeline_people": atlas_models.TimelinePsychologist.objects.count(),
+            "timeline_theories": atlas_models.TimelineTheory.objects.count(),
+            "timeline_concepts": atlas_models.TimelineConcept.objects.count(),
+            "timeline_therapies": atlas_models.TimelineTherapy.objects.count(),
+            "timeline_techniques": atlas_models.TimelineTechnique.objects.count(),
+        }
+        call_command("promote_research_staging", stdout=StringIO())
+        self.assertEqual(stable_counts["psychologists"], atlas_models.Psychologist.objects.count())
+        self.assertEqual(stable_counts["psychologist_aliases"], atlas_models.PsychologistAlias.objects.count())
+        self.assertEqual(stable_counts["theories"], atlas_models.Theory.objects.count())
+        self.assertEqual(stable_counts["theory_aliases"], atlas_models.TheoryAlias.objects.count())
+        self.assertEqual(stable_counts["timeline"], atlas_models.TimelineEvent.objects.count())
+        self.assertEqual(stable_counts["person_concepts"], atlas_models.PsychologistConcept.objects.count())
+        self.assertEqual(stable_counts["person_theories"], atlas_models.PsychologistTheory.objects.count())
+        self.assertEqual(stable_counts["theory_concepts"], atlas_models.TheoryConcept.objects.count())
+        self.assertEqual(stable_counts["timeline_people"], atlas_models.TimelinePsychologist.objects.count())
+        self.assertEqual(stable_counts["timeline_theories"], atlas_models.TimelineTheory.objects.count())
+        self.assertEqual(stable_counts["timeline_concepts"], atlas_models.TimelineConcept.objects.count())
+        self.assertEqual(stable_counts["timeline_therapies"], atlas_models.TimelineTherapy.objects.count())
+        self.assertEqual(stable_counts["timeline_techniques"], atlas_models.TimelineTechnique.objects.count())
+
+    def test_dry_run_rolls_back_every_runtime_and_staging_index_change(self):
+        before_theory_key = ResearchRecord.objects.get(external_id="theory:beck-cognitive-model").canonical_key
+        call_command("promote_research_staging", "--dry-run", stdout=StringIO())
+        self.assertEqual(atlas_models.Psychologist.objects.count(), 0)
+        self.assertEqual(atlas_models.Theory.objects.count(), 0)
+        self.assertEqual(atlas_models.TimelineEvent.objects.count(), 0)
+        self.assertEqual(
+            ResearchRecord.objects.get(external_id="theory:beck-cognitive-model").canonical_key,
+            before_theory_key,
+        )

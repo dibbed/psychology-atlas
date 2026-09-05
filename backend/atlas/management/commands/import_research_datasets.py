@@ -43,6 +43,7 @@ from atlas.models import (
     TherapyTechnique,
     TherapyTechniqueSource,
 )
+from atlas.research_promotion import promote_research_staging
 
 
 DEFAULT_FILENAMES = (
@@ -187,6 +188,7 @@ class Command(BaseCommand):
                 for ctx in contexts:
                     if ctx.is_complete:
                         self._promote_supported_relationships(ctx, report)
+                report.update(promote_research_staging())
                 cache.delete("atlas_graph")
 
             if dry_run:
@@ -349,7 +351,12 @@ class Command(BaseCommand):
             title = self._normalize_name(payload.get("title"))
             year = payload.get("publication_year") or payload.get("year") or ""
             return f"source:title:{title}:{year}"
-        entity_type = section.rstrip("s").replace("cognitive_distortion", "cognitive-distortion")
+        entity_type = {
+            "theories": "theory",
+            "psychologists": "psychologist",
+            "timeline_events": "timeline-event",
+            "cognitive_distortions": "cognitive-distortion",
+        }.get(section, section.rstrip("s"))
         if slug:
             return f"{entity_type}:{slug}"
         name_en, _ = self._names(section, payload)

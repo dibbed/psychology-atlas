@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import F, Q
@@ -1279,6 +1280,822 @@ class ResearchRecord(TimeStampedModel):
 
     def __str__(self):
         return f"{self.section}:{self.external_id}"
+
+
+class Psychologist(TimeStampedModel):
+    slug = models.SlugField(max_length=180, unique=True)
+    name_en = models.CharField(max_length=255)
+    name_fa = models.CharField(max_length=255, blank=True)
+    summary_en = models.TextField(blank=True)
+    summary_fa = models.TextField(blank=True)
+    role_en = models.CharField(max_length=180, blank=True)
+    role_fa = models.CharField(max_length=180, blank=True)
+    nationality_en = models.CharField(max_length=180, blank=True)
+    nationality_fa = models.CharField(max_length=180, blank=True)
+    birth_year = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(9999)],
+    )
+    death_year = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(9999)],
+    )
+    academic_disciplines = models.JSONField(default=list, blank=True)
+    contributions_en = models.JSONField(default=list, blank=True)
+    contributions_fa = models.JSONField(default=list, blank=True)
+    affiliations = models.JSONField(default=list, blank=True)
+    historical_context_en = models.TextField(blank=True)
+    historical_context_fa = models.TextField(blank=True)
+    review_status = models.CharField(
+        max_length=24,
+        choices=ScientificReviewStatus.choices,
+        default=ScientificReviewStatus.UNREVIEWED,
+        db_index=True,
+    )
+    is_active = models.BooleanField(default=True)
+    seed_managed = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ("name_en",)
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    Q(death_year__isnull=True)
+                    | Q(birth_year__isnull=True)
+                    | Q(death_year__gte=F("birth_year"))
+                ),
+                name="ck_psychologist_life_year_order",
+            )
+        ]
+        indexes = [
+            models.Index(fields=("review_status", "is_active")),
+            models.Index(fields=("name_en",)),
+            models.Index(fields=("name_fa",)),
+            models.Index(fields=("birth_year",)),
+        ]
+
+    def __str__(self):
+        return self.name_en
+
+
+class PsychologistAlias(models.Model):
+    class Language(models.TextChoices):
+        FA = "fa", "Persian"
+        EN = "en", "English"
+        OTHER = "other", "Other"
+
+    class AliasType(models.TextChoices):
+        ALTERNATIVE = "alternative", "Alternative"
+        INITIALS = "initials", "Initials"
+        TRANSLITERATION = "transliteration", "Transliteration"
+        HISTORICAL = "historical", "Historical"
+
+    psychologist = models.ForeignKey(Psychologist, on_delete=models.CASCADE, related_name="aliases")
+    text = models.CharField(max_length=255)
+    language = models.CharField(max_length=12, choices=Language.choices, default=Language.OTHER)
+    alias_type = models.CharField(max_length=24, choices=AliasType.choices, default=AliasType.ALTERNATIVE)
+
+    class Meta:
+        ordering = ("language", "text")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("psychologist", "text", "language"),
+                name="uq_psychologist_alias",
+            )
+        ]
+        indexes = [models.Index(fields=("text",))]
+
+
+class Theory(TimeStampedModel):
+    slug = models.SlugField(max_length=180, unique=True)
+    name_en = models.CharField(max_length=255)
+    name_fa = models.CharField(max_length=255, blank=True)
+    domain = models.CharField(max_length=160, blank=True, db_index=True)
+    period_text = models.CharField(max_length=180, blank=True)
+    summary_en = models.TextField(blank=True)
+    summary_fa = models.TextField(blank=True)
+    core_proposition_en = models.TextField(blank=True)
+    core_proposition_fa = models.TextField(blank=True)
+    historical_context_en = models.TextField(blank=True)
+    historical_context_fa = models.TextField(blank=True)
+    key_propositions_en = models.JSONField(default=list, blank=True)
+    key_propositions_fa = models.JSONField(default=list, blank=True)
+    applications_en = models.JSONField(default=list, blank=True)
+    applications_fa = models.JSONField(default=list, blank=True)
+    criticisms_en = models.JSONField(default=list, blank=True)
+    criticisms_fa = models.JSONField(default=list, blank=True)
+    limitations_en = models.JSONField(default=list, blank=True)
+    limitations_fa = models.JSONField(default=list, blank=True)
+    modern_status = models.CharField(max_length=180, blank=True, db_index=True)
+    historical_importance_en = models.TextField(blank=True)
+    historical_importance_fa = models.TextField(blank=True)
+    review_status = models.CharField(
+        max_length=24,
+        choices=ScientificReviewStatus.choices,
+        default=ScientificReviewStatus.UNREVIEWED,
+        db_index=True,
+    )
+    is_active = models.BooleanField(default=True)
+    seed_managed = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ("name_en",)
+        indexes = [
+            models.Index(fields=("domain", "is_active")),
+            models.Index(fields=("review_status", "is_active")),
+            models.Index(fields=("name_en",)),
+            models.Index(fields=("name_fa",)),
+        ]
+
+    def __str__(self):
+        return self.name_en
+
+
+class TheoryAlias(models.Model):
+    class Language(models.TextChoices):
+        FA = "fa", "Persian"
+        EN = "en", "English"
+        OTHER = "other", "Other"
+
+    class AliasType(models.TextChoices):
+        ALTERNATIVE = "alternative", "Alternative"
+        ABBREVIATION = "abbreviation", "Abbreviation"
+        HISTORICAL = "historical", "Historical"
+        TRANSLITERATION = "transliteration", "Transliteration"
+
+    theory = models.ForeignKey(Theory, on_delete=models.CASCADE, related_name="aliases")
+    text = models.CharField(max_length=255)
+    language = models.CharField(max_length=12, choices=Language.choices, default=Language.OTHER)
+    alias_type = models.CharField(max_length=24, choices=AliasType.choices, default=AliasType.ALTERNATIVE)
+
+    class Meta:
+        ordering = ("language", "text")
+        constraints = [
+            models.UniqueConstraint(fields=("theory", "text", "language"), name="uq_theory_alias")
+        ]
+        indexes = [models.Index(fields=("text",))]
+
+
+class TimelineEvent(TimeStampedModel):
+    class DatePrecision(models.TextChoices):
+        EXACT_DATE = "exact_date", "Exact date"
+        YEAR = "year", "Year only"
+        YEAR_RANGE = "year_range", "Year range"
+        APPROXIMATE_YEAR = "approximate_year", "Approximate year"
+        UNKNOWN = "unknown", "Unknown"
+
+    class EventType(models.TextChoices):
+        PUBLICATION = "publication", "Publication"
+        THEORY_DEVELOPMENT = "theory_development", "Theory development"
+        THERAPY_DEVELOPMENT = "therapy_development", "Therapy development"
+        RESEARCH_FINDING = "research_finding", "Research finding"
+        INSTITUTIONAL = "institutional", "Institutional milestone"
+        PROFESSIONAL = "professional", "Professional milestone"
+        CLASSIFICATION = "classification", "Classification / nosology"
+        GUIDELINE = "guideline", "Guideline"
+        OTHER = "other", "Other"
+        UNSPECIFIED = "unspecified", "Unspecified"
+
+    slug = models.SlugField(max_length=220, unique=True)
+    title_en = models.CharField(max_length=500)
+    title_fa = models.CharField(max_length=500, blank=True)
+    description_en = models.TextField(blank=True)
+    description_fa = models.TextField(blank=True)
+    historical_importance_en = models.TextField(blank=True)
+    historical_importance_fa = models.TextField(blank=True)
+    event_type = models.CharField(
+        max_length=32,
+        choices=EventType.choices,
+        default=EventType.UNSPECIFIED,
+        db_index=True,
+    )
+    category = models.CharField(max_length=160, blank=True, db_index=True)
+    date_precision = models.CharField(
+        max_length=24,
+        choices=DatePrecision.choices,
+        default=DatePrecision.UNKNOWN,
+        db_index=True,
+    )
+    date_text = models.CharField(max_length=180, blank=True)
+    year_start = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(9999)],
+        db_index=True,
+    )
+    year_end = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1), MaxValueValidator(9999)],
+    )
+    exact_date = models.DateField(null=True, blank=True)
+    review_status = models.CharField(
+        max_length=24,
+        choices=ScientificReviewStatus.choices,
+        default=ScientificReviewStatus.UNREVIEWED,
+        db_index=True,
+    )
+    is_active = models.BooleanField(default=True)
+    seed_managed = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ("year_start", "exact_date", "id")
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(year_end__isnull=True) | Q(year_start__isnull=False),
+                name="ck_timeline_end_requires_start",
+            ),
+            models.CheckConstraint(
+                condition=Q(year_end__isnull=True) | Q(year_end__gte=F("year_start")),
+                name="ck_timeline_year_order",
+            ),
+            models.CheckConstraint(
+                condition=~Q(date_precision="exact_date") | Q(exact_date__isnull=False),
+                name="ck_timeline_exact_requires_date",
+            ),
+            models.CheckConstraint(
+                condition=Q(date_precision="exact_date") | Q(exact_date__isnull=True),
+                name="ck_timeline_nonexact_has_no_date",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    ~Q(
+                        date_precision__in=("year", "year_range", "approximate_year")
+                    )
+                    | Q(year_start__isnull=False)
+                ),
+                name="ck_timeline_year_precision_start",
+            ),
+            models.CheckConstraint(
+                condition=~Q(date_precision="year_range") | Q(year_end__isnull=False),
+                name="ck_timeline_range_requires_end",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=("year_start", "is_active")),
+            models.Index(fields=("event_type", "is_active")),
+            models.Index(fields=("review_status", "is_active")),
+            models.Index(fields=("title_en",)),
+            models.Index(fields=("title_fa",)),
+        ]
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.date_precision == self.DatePrecision.EXACT_DATE and self.exact_date is None:
+            errors["exact_date"] = "Exact-date events require exact_date."
+        if self.date_precision != self.DatePrecision.EXACT_DATE and self.exact_date is not None:
+            errors["exact_date"] = "Non-exact events must not invent an exact date."
+        if self.date_precision in {
+            self.DatePrecision.YEAR,
+            self.DatePrecision.YEAR_RANGE,
+            self.DatePrecision.APPROXIMATE_YEAR,
+        } and self.year_start is None:
+            errors["year_start"] = "This date precision requires year_start."
+        if self.date_precision == self.DatePrecision.YEAR_RANGE and self.year_end is None:
+            errors["year_end"] = "Year-range events require year_end."
+        if self.year_start is not None and self.year_end is not None and self.year_end < self.year_start:
+            errors["year_end"] = "year_end cannot be earlier than year_start."
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self):
+        return self.title_en
+
+
+class PsychologistSource(models.Model):
+    class Role(models.TextChoices):
+        BIOGRAPHY = "biography", "Biography"
+        PRIMARY_WORK = "primary_work", "Primary work"
+        INSTITUTIONAL = "institutional", "Institutional biography/archive"
+        HISTORICAL_REVIEW = "historical_review", "Historical review"
+        OTHER = "other", "Other"
+
+    psychologist = models.ForeignKey(Psychologist, on_delete=models.CASCADE, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="psychologist_links")
+    role = models.CharField(max_length=32, choices=Role.choices, default=Role.OTHER)
+    note = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("psychologist", "source", "role"), name="uq_psychologist_source")
+        ]
+
+
+class TheorySource(models.Model):
+    class Role(models.TextChoices):
+        PRIMARY_PUBLICATION = "primary_publication", "Primary publication"
+        HISTORICAL_REVIEW = "historical_review", "Historical review"
+        EVIDENCE_REVIEW = "evidence_review", "Evidence review"
+        INSTITUTIONAL = "institutional", "Institutional source"
+        OTHER = "other", "Other"
+
+    theory = models.ForeignKey(Theory, on_delete=models.CASCADE, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="theory_links")
+    role = models.CharField(max_length=32, choices=Role.choices, default=Role.OTHER)
+    note = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("theory", "source", "role"), name="uq_theory_source")
+        ]
+
+
+class TimelineEventSource(models.Model):
+    class Role(models.TextChoices):
+        PRIMARY = "primary", "Primary source"
+        HISTORICAL_REVIEW = "historical_review", "Historical review"
+        INSTITUTIONAL = "institutional", "Institutional source"
+        OTHER = "other", "Other"
+
+    event = models.ForeignKey(TimelineEvent, on_delete=models.CASCADE, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="timeline_event_links")
+    role = models.CharField(max_length=32, choices=Role.choices, default=Role.OTHER)
+    note = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("event", "source", "role"), name="uq_timeline_event_source")
+        ]
+
+
+class ScientificRelationBase(TimeStampedModel):
+    explanation_en = models.TextField(blank=True)
+    explanation_fa = models.TextField(blank=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    review_status = models.CharField(
+        max_length=24,
+        choices=ScientificReviewStatus.choices,
+        default=ScientificReviewStatus.UNREVIEWED,
+        db_index=True,
+    )
+    is_active = models.BooleanField(default=True)
+    seed_managed = models.BooleanField(default=False)
+
+    class Meta:
+        abstract = True
+
+
+class PsychologistAttributionType(models.TextChoices):
+    ORIGINATED = "originated", "Originated"
+    PROPOSED = "proposed", "Proposed"
+    CO_PROPOSED = "co_proposed", "Co-proposed"
+    DEVELOPED = "developed", "Developed"
+    CO_DEVELOPED = "co_developed", "Co-developed"
+    DEVELOPED_OR_MAJORLY_ASSOCIATED_WITH = (
+        "developed_or_majorly_associated_with",
+        "Developed or majorly associated with",
+    )
+    EXPANDED = "expanded", "Expanded"
+    POPULARIZED = "popularized", "Popularized"
+    RESEARCHED = "researched", "Researched"
+    RESEARCHED_OR_DEVELOPED = "researched_or_developed", "Researched or developed"
+    APPLIED = "applied", "Applied"
+    CONTRIBUTED_TO = "contributed_to", "Contributed to"
+    CRITICIZED = "criticized", "Criticized"
+    CHALLENGED = "challenged", "Challenged"
+    ASSOCIATED_WITH = "associated_with", "Associated with"
+    MAJORLY_ASSOCIATED_WITH = "majorly_associated_with", "Majorly associated with"
+
+
+class TheoryRelationType(models.TextChoices):
+    GROUNDS = "grounds", "Grounds"
+    INCLUDES_CONSTRUCT = "includes_construct", "Includes construct"
+    INFORMS = "informs", "Informs"
+    SUPPORTS = "supports", "Supports"
+    COMPLEMENTS = "complements", "Complements"
+    CHALLENGES = "challenges", "Challenges"
+    CHALLENGED_BY = "challenged_by", "Challenged by"
+    REFORMULATED_AS = "reformulated_as", "Reformulated as"
+    SUPPORTS_INTERPRETATION_OF = "supports_interpretation_of", "Supports interpretation of"
+    EXTENDS = "extends", "Extends"
+    REFINES = "refines", "Refines"
+    ASSOCIATED_WITH = "associated_with", "Associated with"
+
+
+class PsychologistRelationshipType(models.TextChoices):
+    COLLABORATED_WITH = "collaborated_with", "Collaborated with"
+    INFLUENCED = "influenced", "Influenced"
+    MENTORED = "mentored", "Mentored"
+    CRITICIZED = "criticized", "Criticized"
+    ASSOCIATED_WITH = "associated_with", "Associated with"
+
+
+class TimelineLinkRole(models.TextChoices):
+    RELATED = "related", "Related"
+    INVOLVES_PERSON = "involves_person", "Involves person"
+    MARKS_THEORY_MILESTONE = "marks_theory_milestone", "Marks theory milestone"
+    MARKS_THERAPY_MILESTONE = "marks_therapy_milestone", "Marks therapy milestone"
+    MARKS_TECHNIQUE_EVIDENCE_MILESTONE = (
+        "marks_technique_evidence_milestone",
+        "Marks technique evidence milestone",
+    )
+    SUBJECT = "subject", "Subject"
+    AUTHOR = "author", "Author"
+    DEVELOPER = "developer", "Developer"
+    PUBLICATION = "publication", "Publication"
+    INSTITUTIONAL = "institutional", "Institutional"
+    CONTEXT = "context", "Context"
+
+
+class PsychologistTheory(ScientificRelationBase):
+    psychologist = models.ForeignKey(Psychologist, on_delete=models.CASCADE, related_name="theory_links")
+    theory = models.ForeignKey(Theory, on_delete=models.CASCADE, related_name="psychologist_links")
+    relationship_type = models.CharField(max_length=48, choices=PsychologistAttributionType.choices)
+
+    class Meta:
+        ordering = ("sort_order", "id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("psychologist", "theory", "relationship_type"),
+                name="uq_psychologist_theory_relation",
+            )
+        ]
+        indexes = [
+            models.Index(fields=("psychologist", "is_active")),
+            models.Index(fields=("theory", "is_active")),
+        ]
+
+
+class PsychologistTheorySource(models.Model):
+    relationship = models.ForeignKey(PsychologistTheory, on_delete=models.CASCADE, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="psychologist_theory_links")
+    note = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("relationship", "source"), name="uq_psychologist_theory_source")
+        ]
+
+
+class PsychologistConcept(ScientificRelationBase):
+    psychologist = models.ForeignKey(Psychologist, on_delete=models.CASCADE, related_name="concept_links")
+    concept = models.ForeignKey(Concept, on_delete=models.CASCADE, related_name="psychologist_links")
+    relationship_type = models.CharField(max_length=48, choices=PsychologistAttributionType.choices)
+
+    class Meta:
+        ordering = ("sort_order", "id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("psychologist", "concept", "relationship_type"),
+                name="uq_psychologist_concept_relation",
+            )
+        ]
+        indexes = [
+            models.Index(fields=("psychologist", "is_active")),
+            models.Index(fields=("concept", "is_active")),
+        ]
+
+
+class PsychologistConceptSource(models.Model):
+    relationship = models.ForeignKey(PsychologistConcept, on_delete=models.CASCADE, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="psychologist_concept_links")
+    note = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("relationship", "source"), name="uq_psychologist_concept_source")
+        ]
+
+
+class PsychologistTherapy(ScientificRelationBase):
+    psychologist = models.ForeignKey(Psychologist, on_delete=models.CASCADE, related_name="therapy_links")
+    therapy = models.ForeignKey(Therapy, on_delete=models.CASCADE, related_name="psychologist_links")
+    relationship_type = models.CharField(max_length=48, choices=PsychologistAttributionType.choices)
+
+    class Meta:
+        ordering = ("sort_order", "id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("psychologist", "therapy", "relationship_type"),
+                name="uq_psychologist_therapy_relation",
+            )
+        ]
+        indexes = [
+            models.Index(fields=("psychologist", "is_active")),
+            models.Index(fields=("therapy", "is_active")),
+        ]
+
+
+class PsychologistTherapySource(models.Model):
+    relationship = models.ForeignKey(PsychologistTherapy, on_delete=models.CASCADE, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="psychologist_therapy_links")
+    note = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("relationship", "source"), name="uq_psychologist_therapy_source")
+        ]
+
+
+class PsychologistPsychologist(ScientificRelationBase):
+    psychologist = models.ForeignKey(Psychologist, on_delete=models.CASCADE, related_name="outgoing_psychologist_links")
+    related_psychologist = models.ForeignKey(
+        Psychologist,
+        on_delete=models.CASCADE,
+        related_name="incoming_psychologist_links",
+    )
+    relationship_type = models.CharField(max_length=32, choices=PsychologistRelationshipType.choices)
+
+    class Meta:
+        ordering = ("sort_order", "id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("psychologist", "related_psychologist", "relationship_type"),
+                name="uq_psychologist_psychologist_relation",
+            ),
+            models.CheckConstraint(
+                condition=~Q(psychologist=F("related_psychologist")),
+                name="ck_psychologist_relation_not_self",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=("psychologist", "is_active")),
+            models.Index(fields=("related_psychologist", "is_active")),
+        ]
+
+
+class PsychologistPsychologistSource(models.Model):
+    relationship = models.ForeignKey(
+        PsychologistPsychologist,
+        on_delete=models.CASCADE,
+        related_name="source_links",
+    )
+    source = models.ForeignKey(
+        SourceReference,
+        on_delete=models.PROTECT,
+        related_name="psychologist_psychologist_links",
+    )
+    note = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("relationship", "source"),
+                name="uq_psychologist_psychologist_source",
+            )
+        ]
+
+
+class TheoryConcept(ScientificRelationBase):
+    theory = models.ForeignKey(Theory, on_delete=models.CASCADE, related_name="concept_links")
+    concept = models.ForeignKey(Concept, on_delete=models.CASCADE, related_name="theory_links")
+    relationship_type = models.CharField(max_length=40, choices=TheoryRelationType.choices)
+
+    class Meta:
+        ordering = ("sort_order", "id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("theory", "concept", "relationship_type"),
+                name="uq_theory_concept_relation",
+            )
+        ]
+        indexes = [
+            models.Index(fields=("theory", "is_active")),
+            models.Index(fields=("concept", "is_active")),
+        ]
+
+
+class TheoryConceptSource(models.Model):
+    relationship = models.ForeignKey(TheoryConcept, on_delete=models.CASCADE, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="theory_concept_links")
+    note = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("relationship", "source"), name="uq_theory_concept_source")
+        ]
+
+
+class TheoryTherapy(ScientificRelationBase):
+    theory = models.ForeignKey(Theory, on_delete=models.CASCADE, related_name="therapy_links")
+    therapy = models.ForeignKey(Therapy, on_delete=models.CASCADE, related_name="theory_links")
+    relationship_type = models.CharField(max_length=40, choices=TheoryRelationType.choices)
+
+    class Meta:
+        ordering = ("sort_order", "id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("theory", "therapy", "relationship_type"),
+                name="uq_theory_therapy_relation",
+            )
+        ]
+        indexes = [
+            models.Index(fields=("theory", "is_active")),
+            models.Index(fields=("therapy", "is_active")),
+        ]
+
+
+class TheoryTherapySource(models.Model):
+    relationship = models.ForeignKey(TheoryTherapy, on_delete=models.CASCADE, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="theory_therapy_links")
+    note = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("relationship", "source"), name="uq_theory_therapy_source")
+        ]
+
+
+class TheoryTechnique(ScientificRelationBase):
+    theory = models.ForeignKey(Theory, on_delete=models.CASCADE, related_name="technique_links")
+    technique = models.ForeignKey(Technique, on_delete=models.CASCADE, related_name="theory_links")
+    relationship_type = models.CharField(max_length=40, choices=TheoryRelationType.choices)
+
+    class Meta:
+        ordering = ("sort_order", "id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("theory", "technique", "relationship_type"),
+                name="uq_theory_technique_relation",
+            )
+        ]
+        indexes = [
+            models.Index(fields=("theory", "is_active")),
+            models.Index(fields=("technique", "is_active")),
+        ]
+
+
+class TheoryTechniqueSource(models.Model):
+    relationship = models.ForeignKey(TheoryTechnique, on_delete=models.CASCADE, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="theory_technique_links")
+    note = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("relationship", "source"), name="uq_theory_technique_source")
+        ]
+
+
+class TheoryTheory(ScientificRelationBase):
+    theory = models.ForeignKey(Theory, on_delete=models.CASCADE, related_name="outgoing_theory_links")
+    related_theory = models.ForeignKey(Theory, on_delete=models.CASCADE, related_name="incoming_theory_links")
+    relationship_type = models.CharField(max_length=40, choices=TheoryRelationType.choices)
+
+    class Meta:
+        ordering = ("sort_order", "id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("theory", "related_theory", "relationship_type"),
+                name="uq_theory_theory_relation",
+            ),
+            models.CheckConstraint(
+                condition=~Q(theory=F("related_theory")),
+                name="ck_theory_relation_not_self",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=("theory", "is_active")),
+            models.Index(fields=("related_theory", "is_active")),
+        ]
+
+
+class TheoryTheorySource(models.Model):
+    relationship = models.ForeignKey(TheoryTheory, on_delete=models.CASCADE, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="theory_theory_links")
+    note = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("relationship", "source"), name="uq_theory_theory_source")
+        ]
+
+
+class TimelinePsychologist(ScientificRelationBase):
+    event = models.ForeignKey(TimelineEvent, on_delete=models.CASCADE, related_name="psychologist_links")
+    psychologist = models.ForeignKey(Psychologist, on_delete=models.CASCADE, related_name="timeline_links")
+    role = models.CharField(max_length=48, choices=TimelineLinkRole.choices, default=TimelineLinkRole.RELATED)
+
+    class Meta:
+        ordering = ("sort_order", "id")
+        constraints = [
+            models.UniqueConstraint(fields=("event", "psychologist", "role"), name="uq_timeline_psychologist")
+        ]
+        indexes = [
+            models.Index(fields=("event", "is_active")),
+            models.Index(fields=("psychologist", "is_active")),
+        ]
+
+
+class TimelinePsychologistSource(models.Model):
+    relationship = models.ForeignKey(TimelinePsychologist, on_delete=models.CASCADE, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="timeline_psychologist_links")
+    note = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("relationship", "source"), name="uq_timeline_psychologist_source")
+        ]
+
+
+class TimelineTheory(ScientificRelationBase):
+    event = models.ForeignKey(TimelineEvent, on_delete=models.CASCADE, related_name="theory_links")
+    theory = models.ForeignKey(Theory, on_delete=models.CASCADE, related_name="timeline_links")
+    role = models.CharField(max_length=48, choices=TimelineLinkRole.choices, default=TimelineLinkRole.RELATED)
+
+    class Meta:
+        ordering = ("sort_order", "id")
+        constraints = [
+            models.UniqueConstraint(fields=("event", "theory", "role"), name="uq_timeline_theory")
+        ]
+        indexes = [
+            models.Index(fields=("event", "is_active")),
+            models.Index(fields=("theory", "is_active")),
+        ]
+
+
+class TimelineTheorySource(models.Model):
+    relationship = models.ForeignKey(TimelineTheory, on_delete=models.CASCADE, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="timeline_theory_links")
+    note = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("relationship", "source"), name="uq_timeline_theory_source")
+        ]
+
+
+class TimelineTherapy(ScientificRelationBase):
+    event = models.ForeignKey(TimelineEvent, on_delete=models.CASCADE, related_name="therapy_links")
+    therapy = models.ForeignKey(Therapy, on_delete=models.CASCADE, related_name="timeline_links")
+    role = models.CharField(max_length=48, choices=TimelineLinkRole.choices, default=TimelineLinkRole.RELATED)
+
+    class Meta:
+        ordering = ("sort_order", "id")
+        constraints = [
+            models.UniqueConstraint(fields=("event", "therapy", "role"), name="uq_timeline_therapy")
+        ]
+        indexes = [
+            models.Index(fields=("event", "is_active")),
+            models.Index(fields=("therapy", "is_active")),
+        ]
+
+
+class TimelineTherapySource(models.Model):
+    relationship = models.ForeignKey(TimelineTherapy, on_delete=models.CASCADE, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="timeline_therapy_links")
+    note = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("relationship", "source"), name="uq_timeline_therapy_source")
+        ]
+
+
+class TimelineTechnique(ScientificRelationBase):
+    event = models.ForeignKey(TimelineEvent, on_delete=models.CASCADE, related_name="technique_links")
+    technique = models.ForeignKey(Technique, on_delete=models.CASCADE, related_name="timeline_links")
+    role = models.CharField(max_length=48, choices=TimelineLinkRole.choices, default=TimelineLinkRole.RELATED)
+
+    class Meta:
+        ordering = ("sort_order", "id")
+        constraints = [
+            models.UniqueConstraint(fields=("event", "technique", "role"), name="uq_timeline_technique")
+        ]
+        indexes = [
+            models.Index(fields=("event", "is_active")),
+            models.Index(fields=("technique", "is_active")),
+        ]
+
+
+class TimelineTechniqueSource(models.Model):
+    relationship = models.ForeignKey(TimelineTechnique, on_delete=models.CASCADE, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="timeline_technique_links")
+    note = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("relationship", "source"), name="uq_timeline_technique_source")
+        ]
+
+
+class TimelineConcept(ScientificRelationBase):
+    event = models.ForeignKey(TimelineEvent, on_delete=models.CASCADE, related_name="concept_links")
+    concept = models.ForeignKey(Concept, on_delete=models.CASCADE, related_name="timeline_links")
+    role = models.CharField(max_length=48, choices=TimelineLinkRole.choices, default=TimelineLinkRole.RELATED)
+
+    class Meta:
+        ordering = ("sort_order", "id")
+        constraints = [
+            models.UniqueConstraint(fields=("event", "concept", "role"), name="uq_timeline_concept")
+        ]
+        indexes = [
+            models.Index(fields=("event", "is_active")),
+            models.Index(fields=("concept", "is_active")),
+        ]
+
+
+class TimelineConceptSource(models.Model):
+    relationship = models.ForeignKey(TimelineConcept, on_delete=models.CASCADE, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="timeline_concept_links")
+    note = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("relationship", "source"), name="uq_timeline_concept_source")
+        ]
 
 
 class DSMCorpus(TimeStampedModel):

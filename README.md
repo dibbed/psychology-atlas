@@ -1,8 +1,153 @@
-# Psychology Atlas — v0.5.5 · Compare + Personal Features + Final Hardening
+# Psychology Atlas — v0.6.2 · Conservative Research Promotion + Dedupe + Aliases
 
-یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. نسخه فعلی v0.5.5 بخش نهایی Therapy Atlas در سری v0.5.x است: Therapy Compare ساختاریافته، Bookmark/Note خصوصی، ادغام Saved/Notes/Dashboard و hardening نهایی Compare/API را به لایه علمی و Graph نسخه‌های قبل اضافه می‌کند؛ بدون treatment ranking، effectiveness percentage یا recommendation شخصی. در همین baseline، یک لایه Research Dataset Ingestion نیز اضافه شده تا corpusهای پژوهشی بزرگ به‌صورت lossless، provenance-aware و non-destructive وارد DB شوند، بدون اینکه roadmap به v0.6 جلو برده شود.
+یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.6.2 روی foundation نسخه v0.6.1، داده‌های source-backed مربوط به Psychologist/Theory/Timeline را به‌صورت محافظه‌کارانه وارد runtime می‌کند: identity resolution، alias preservation، shared `SourceReference` provenance، explicit historical-attribution semantics و promotion idempotency. رکوردهای بدون source یا endpoint قابل‌مدل‌سازی همچنان staging می‌مانند. API/Frontend و Knowledge Graph integration این دامنه‌ها هنوز عمداً برای sliceهای بعدی نگه داشته شده‌اند.
 
 > این نرم‌افزار آموزشی است و ابزار تشخیص، درمان یا جایگزین ارزیابی حرفه‌ای نیست.
+
+## v0.6.2 Conservative Research Promotion
+
+وضعیت runtime بعد از promotion واقعی:
+
+```text
+Psychologist       76
+Theory              45
+TimelineEvent       61
+PsychologistAlias    7
+TheoryAlias           2
+```
+
+Stagingهایی که عمداً promote نشدند:
+
+```text
+Psychologist        37 identity group بدون source قابل‌حل
+Theory               2 identity بدون source قابل‌حل
+TimelineEvent         2 event بدون source قابل‌حل
+```
+
+Promotion روی نام خام یا `external_id` کورکورانه انجام نمی‌شود. duplicateهای بین دو corpus با identity resolution محافظه‌کارانه merge شدند؛ fuzzy person matching عمومی وجود ندارد. نمونه‌های واقعی merge‌شده شامل `Ivan Pavlov` / `Ivan P. Pavlov` و `Beck Cognitive Model` / `Beck's cognitive model` هستند و spellingهای جایگزین به alias منتقل می‌شوند.
+
+Relationهای source-backed v0.6 که اکنون canonical شده‌اند شامل:
+
+```text
+PsychologistTheory       48
+PsychologistConcept      74
+PsychologistTherapy      19
+TheoryConcept            75
+TheoryTherapy             3
+TheoryTheory              3
+TimelinePsychologist     55
+TimelineTheory           27
+TimelineTherapy          25
+TimelineTechnique         1
+TimelineConcept          35
+```
+
+تمام entityها و relationهای promoted بالا provenance صریح `SourceReference` دارند. پس از تکمیل semanticsهای Timeline، تعداد relationهای آینده‌ای که endpointهایشان resolve و sourceشان معتبر است ولی هنوز بدون مدل canonical مانده‌اند:
+
+```text
+0
+```
+
+Timeline semantics واقعی staging بدون collapse شدن به `related` عمومی حفظ می‌شوند، از جمله:
+
+```text
+involves_person
+marks_theory_milestone
+marks_therapy_milestone
+marks_technique_evidence_milestone
+```
+
+`TimelineTechnique` در همین slice اضافه شد چون corpus واقعی یک milestone شواهد برای Technique دارد. در مقابل `TheoryTechnique` فعلاً صفر است، چون relation staging موجود به Techniqueای اشاره می‌کند که خودش هنوز source-backed/runtime-mapped نیست؛ بنابراین force-promotion انجام نشده است.
+
+فرمان مستقل promotion:
+
+```text
+python manage.py promote_research_staging
+python manage.py promote_research_staging --dry-run
+```
+
+`import_research_datasets` نیز در حالت promotion، بعد از ingestion و promotionهای قبلی همین pipeline را اجرا می‌کند. `--no-promote` همچنان staging-only باقی می‌ماند.
+
+Migrationهای v0.6.2:
+
+```text
+0019_v062_research_promotion_semantics.py
+0020_v062_timeline_relation_semantics.py
+0021_v062_timeline_therapy_technique_semantics.py
+```
+
+سند عمیق v0.6.2:
+
+```text
+docs/Psychology_Atlas_v0.6.2_Research_Promotion_2026-09-05.md
+```
+
+## v0.6.1 Architecture Foundation
+
+مدل‌های canonical جدید:
+
+```text
+Psychologist
+PsychologistAlias
+Theory
+TheoryAlias
+TimelineEvent
+```
+
+Provenance مستقیم entityها از همان registry مشترک `SourceReference` استفاده می‌کند:
+
+```text
+PsychologistSource
+TheorySource
+TimelineEventSource
+```
+
+Relationهای صریح foundation:
+
+```text
+PsychologistTheory
+PsychologistConcept
+PsychologistTherapy
+PsychologistPsychologist
+
+TheoryConcept
+TheoryTherapy
+TheoryTechnique
+TheoryTheory
+
+TimelinePsychologist
+TimelineTheory
+TimelineTherapy
+TimelineConcept
+```
+
+برای تمام relationهای بالا مدل `...Source` اختصاصی وجود دارد. `TheoryTechnique` عمداً اضافه شد چون در staging واقعی relation از نوع `theory -> technique / grounds` وجود دارد. Attributionهای شخصی دیگر به یک `creator` مبهم collapse نمی‌شوند و vocabularyهایی مثل `proposed`, `co_proposed`, `developed`, `co_developed`, `expanded`, `researched`, `contributed_to` و `associated_with` صریح‌اند.
+
+`TimelineEvent` precision تاریخی را صریح نگه می‌دارد:
+
+```text
+exact_date
+year
+year_range
+approximate_year
+unknown
+```
+
+در نتیجه اگر source فقط سالی مثل `1879` داشته باشد، schema اجازه نمی‌دهد آن سال به تاریخ ساختگی `1879-01-01` تبدیل شود.
+
+Migration این slice:
+
+```text
+0018_v061_psychologists_theories_timeline_foundation.py
+```
+
+در خود v0.6.1 Research promotion عمداً غیرفعال بود تا schema قبل از ورود داده تثبیت شود. این مرز تاریخی اکنون در v0.6.2 با pipeline محافظه‌کارانه و source-backed بالا تکمیل شده است.
+
+سند عمیق طراحی:
+
+```text
+docs/Psychology_Atlas_v0.6.1_Architecture_Foundation_2026-09-05.md
+```
 
 ## Therapy Atlas
 
