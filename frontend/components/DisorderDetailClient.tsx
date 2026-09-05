@@ -265,12 +265,18 @@ export default function DisorderDetailClient({ disorder: d, dsmMaster = null }: 
               <h2 className="section-title">منابع آموزشی</h2>
               <p className="section-copy">در این نسخه منابع نهادی سطح بالا به داده‌ها متصل شده‌اند؛ در نسخه‌های بعدی می‌توان منبع اختصاصی هر ادعا را ریزتر ثبت کرد.</p>
             </div>
-            {d.sources.map(s => (
-              <a className="card resource-link" key={s.id} href={s.url} target="_blank" rel="noreferrer">
-                <strong>{s.organization === "National Institute of Mental Health" ? "مؤسسه ملی سلامت روان آمریکا" : s.organization === "World Health Organization" ? "سازمان جهانی بهداشت" : s.organization || s.title}</strong>
-                <span>مشاهده منبع ↗</span>
-              </a>
-            ))}
+            {d.sources.map(s => {
+              const label = s.organization === "National Institute of Mental Health" ? "مؤسسه ملی سلامت روان آمریکا" : s.organization === "World Health Organization" ? "سازمان جهانی بهداشت" : s.organization || s.title;
+              return s.url ? (
+                <a className="card resource-link" key={s.id} href={s.url} target="_blank" rel="noreferrer">
+                  <strong>{label}</strong><span>مشاهده منبع ↗</span>
+                </a>
+              ) : (
+                <article className="card resource-link" key={s.id}>
+                  <strong>{label}</strong><span className="muted">URL مستقیم ثبت نشده</span>
+                </article>
+              );
+            })}
           </div>
         )}
       </section>

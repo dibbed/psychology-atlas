@@ -104,17 +104,24 @@ export default function TechniqueDetailView({ technique }: { technique: Techniqu
 
       <section className="stack therapy-source-list">
         <div><h2 className="section-title">منابع مستقیم تکنیک</h2><p className="section-copy">منابع relationها در کارت همان رابطه نمایش داده می‌شوند.</p></div>
-        {technique.sources.length ? technique.sources.map(source => (
-          <a className="card therapy-source-card" key={source.id} href={source.url} target="_blank" rel="noreferrer">
-            <div>
-              <div className="meta">{source.source_type || "source"}{source.publication_year ? ` · ${source.publication_year}` : ""}</div>
-              <strong>{source.title}</strong>
-              <span>{source.organization}</span>
-              {source.citation && <p>{source.citation}</p>}
-            </div>
-            <b>مشاهده منبع ↗</b>
-          </a>
-        )) : <div className="card therapy-empty-state"><p>منبع مستقیمی ثبت نشده است.</p></div>}
+        {technique.sources.length ? technique.sources.map(source => {
+          const content = (
+            <>
+              <div>
+                <div className="meta">{source.source_type || "source"}{source.publication_year ? ` · ${source.publication_year}` : ""}</div>
+                <strong>{source.title}</strong>
+                <span>{source.organization}</span>
+                {source.citation && <p>{source.citation}</p>}
+              </div>
+              {source.url ? <b>مشاهده منبع ↗</b> : <small className="muted">URL مستقیم ثبت نشده</small>}
+            </>
+          );
+          return source.url ? (
+            <a className="card therapy-source-card" key={source.id} href={source.url} target="_blank" rel="noreferrer">{content}</a>
+          ) : (
+            <article className="card therapy-source-card" key={source.id}>{content}</article>
+          );
+        }) : <div className="card therapy-empty-state"><p>منبع مستقیمی ثبت نشده است.</p></div>}
       </section>
     </div>
   );

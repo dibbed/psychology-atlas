@@ -225,10 +225,14 @@ export default function ConceptDetailClient({ concept }: { concept: ConceptDetai
         {active === "sources" && (
           <div className="stack">
             <p className="section-copy">منابع این نسخه در سطح نهادی به مفهوم متصل شده‌اند و در نسخه‌های بعدی می‌توان citation را تا سطح ادعا ریزتر کرد.</p>
-            {concept.sources.map(source => (
+            {concept.sources.map(source => source.url ? (
               <a className="card resource-link" key={source.id} href={source.url} target="_blank" rel="noreferrer">
                 <strong>{source.organization || source.title}</strong><span>مشاهده منبع ↗</span>
               </a>
+            ) : (
+              <article className="card resource-link" key={source.id}>
+                <strong>{source.organization || source.title}</strong><span className="muted">URL مستقیم ثبت نشده</span>
+              </article>
             ))}
           </div>
         )}

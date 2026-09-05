@@ -62,6 +62,12 @@ Knowledge Graph در v0.6.4 هنوز عمداً همان baseline قبلی اس�
 docs/Psychology_Atlas_v0.6.4_Frontend_Atlas_Timeline_2026-09-05.md
 ```
 
+Deep audit پس از release:
+
+```text
+docs/Psychology_Atlas_v0.6.4_Deep_Audit_2026-09-05.md
+```
+
 ## v0.6.3 Psychologist + Theory + Timeline APIs
 
 Endpointهای عمومی جدید:
@@ -333,8 +339,8 @@ python manage.py import_research_datasets <paths...> --no-promote
 - `ResearchDataset` علاوه بر JSON parsed، metadata، statistics، quality-control و SHA-256، حالا `raw_text` دقیق فایل اصلی و `ingestion_audit` را هم نگه می‌دارد؛ بنابراین source file بعد از import قابل بازسازی byte-for-byte است.
 - `ResearchRecord` هر entity/relation/claim را با external ID، canonical key، source IDs، `name_en/name_fa` و وضعیت promotion ایندکس می‌کند.
 - Sourceها با اولویت DOI → URL → title/year dedupe می‌شوند و author/DOI/PMID/verification metadata حفظ می‌شود.
-- داده‌های schema-compatible و source-backed به Concept/Symptom/Therapy/Technique و relationهای موجود promote می‌شوند؛ داده‌های ضعیف‌تر یا ناسازگار staging-only می‌مانند.
-- Psychologist/Theory/Timeline/Claim در این مرحله research-staging هستند و به معنی شروع v0.6 نیستند، اما normalized bilingual index آن‌ها کامل است.
+- داده‌های schema-compatible و source-backed به runtime canonical promote می‌شوند؛ v0.5.5 این مسیر را برای Concept/Symptom/Therapy/Technique آغاز کرد و v0.6.2 آن را به Psychologist/Theory/Timeline و relationهای صریح آن‌ها گسترش داد. داده‌های ضعیف‌تر، بدون source یا ناسازگار staging-only می‌مانند.
+- ResearchRecordهای Psychologist/Theory/Timeline همچنان losslessly در staging archive حفظ می‌شوند، اما اکنون 93/51/61 staging row به‌ترتیب روی 76 Psychologist، 45 Theory و 61 TimelineEvent canonical map شده‌اند. Claim و ResearchGap همچنان staging/review material هستند.
 - existing curated content overwrite نمی‌شود؛ importer فقط رکورد جدید می‌سازد یا فیلدهای خالی را محافظه‌کارانه تکمیل می‌کند.
 - relationهای imported دارای `seed_managed=False` هستند؛ `seed_mvp` فقط relationهای متعلق به خودش را مدیریت می‌کند و research relationها را deactivate نمی‌کند.
 - bilingual audit روی بخش‌های آموزشی اصلی رکوردبه‌رکورد انجام می‌شود. عنوان رسمی مقالات، DOI/PMID و bibliographic metadata عمداً به ترجمه ساختگی تبدیل نمی‌شوند و به زبان اصلی منبع حفظ می‌شوند.
@@ -352,7 +358,7 @@ python manage.py import_research_datasets <paths...> --no-promote
 16 TherapyClassification
 20 Therapy
 35 Technique
-176 research relationships promoted with resolved provenance
+479 ResearchRecord relationship rows promoted (176 pre-v0.6 + 303 v0.6 future-domain)
 478 Knowledge Graph nodes / 934 edges / 18 build queries
 ```
 
@@ -368,7 +374,7 @@ psychology_atlas_research_dataset_complete___1.json
 SHA-256 3bfa4fe8b465ff0b6b5b1aaf511372efb136c42ccb0db58a5468645aaf6b27e9
 ```
 
-داده‌های آینده که losslessly در staging محفوظ‌اند شامل 130 Psychologist record، 53 Theory record، 63 Timeline event، 82 Claim، 25 Research Gap و audit/correction metadata هستند.
+آرشیو staging همچنان losslessly شامل 130 Psychologist record، 53 Theory record، 63 Timeline event، 82 Claim، 25 Research Gap و audit/correction metadata است. از سه دامنه اول، رکوردهای source-backed مطابق pipeline محافظه‌کارانه v0.6.2 به runtime canonical map شده‌اند؛ Claim/ResearchGap هنوز promote نشده‌اند.
 
 ### Scientific Therapy Seed
 
@@ -474,28 +480,40 @@ GET /api/techniques/<slug>/
 - Atlas/DSM graph queryها سبک‌تر شده‌اند و Atlas graph cache با model signals invalidation می‌شود.
 - ورودی‌های عددی oversized به 400 تبدیل می‌شوند، نه 500.
 - timezone اپ از env قابل تنظیم است و پیش‌فرض `Asia/Tehran` است.
-- production بدون `SECRET_KEY` بالا نمی‌آید؛ secure cookie/HSTS/HTTPS defaults، GZip، DRF throttling، CSP/security headers و JWT refresh blacklist/logout اضافه شده‌اند.
+- با `DEBUG=0` backend بدون `SECRET_KEY` بالا نمی‌آید و HTTPS redirect، secure cookies و `SECURE_HSTS_SECONDS` به‌صورت امن پیش‌فرض فعال می‌شوند؛ `SECURE_HSTS_INCLUDE_SUBDOMAINS` و `SECURE_HSTS_PRELOAD` عمداً opt-in هستند چون فعال‌سازی کورکورانه آن‌ها می‌تواند deployment را قفل کند. GZip، DRF throttling، CSP/security headers و JWT refresh blacklist/logout نیز فعال‌اند.
 - Frontend raceهای Practice/Neighborhood/Path، stale Compare و DSM Graph URL/count state اصلاح شده‌اند.
 
 ## Current content inventory
 
-- **241 canonical disorder pages** across 20 DSM chapters + 1 supplemental medication/adverse-effects section
-- **30 structured symptoms**
-- **44 psychology concepts**
-- **12 Cognitive Distortions** grounded in the Beck Institute educational worksheet taxonomy
-- **8 searchable Concept aliases**
+موجودی زیر **runtime live فعلی در v0.6.4** است، نه فقط seed baseline اولیه:
+
+- **241 canonical Disorder pages** across 20 DSM chapters + 1 supplemental medication/adverse-effects section
+- **107 active Symptoms**
+- **148 active Concepts**, including **20 Cognitive Distortions**
+- **31 Concept aliases**
 - **65 Disorder ↔ Concept links**
-- **23 Concept ↔ Concept relationships**
-- **15 Concept ↔ Symptom links**
+- **40 Concept ↔ Concept relationships**
+- **19 Concept ↔ Symptom links**
 - **50 flashcards**
-- **6 source-backed therapies**
-- **9 source-backed techniques**
-- **9 Therapy ↔ Disorder evidence links**
+- **10 Therapy families + 16 Therapy classifications**
+- **20 active Therapies + 35 active Techniques**
+- **28 Therapy ↔ Disorder links**
+- **43 Therapy ↔ Concept links**
+- **50 Therapy ↔ Technique links**
+- **54 Technique ↔ Concept links**
+- **76 canonical Psychologists + 7 Psychologist aliases**
+- **45 canonical Theories + 2 Theory aliases**
+- **61 canonical Timeline events** spanning **1879–2026** in the currently promoted corpus
+- v0.6 explicit relations: **48 PsychologistTheory**, **74 PsychologistConcept**, **19 PsychologistTherapy**, **75 TheoryConcept**, **3 TheoryTherapy**, **3 TheoryTheory**, **55 TimelinePsychologist**, **27 TimelineTheory**, **25 TimelineTherapy**, **1 TimelineTechnique**, **35 TimelineConcept**
 - **18 Cognitive Distortion recognition practice items × 4 choices = 72 choices**
 - **12 daily challenges × 4 choices**
 - **5 quizzes × 8 questions = 40 questions**
 - **6 staged clinical cases × 3 stages = 18 case stages**
-- Institutional source metadata attached to every seeded concept and disorder
+- **189 canonical SourceReference** rows shared across research/runtime provenance
+- **2 ResearchDataset + 1,918 ResearchRecord** rows retained losslessly
+- **479 promoted ResearchRecord relationship rows** = 176 pre-v0.6 + 303 v0.6 future-domain; 326 relationship rows remain staging-only
+- Current Knowledge Graph: **478 nodes / 934 edges / 18 build queries / 33 edge kinds**; Psychologist/Theory/Timeline intentionally remain outside Graph until v0.6.5
+- Institutional/source metadata remains attached to seeded content, while imported scientific entities/relations preserve their own explicit `SourceReference` provenance
 - **DSM-5-TR Persian MASTER reference layer:** 438 addressable educational/structural records imported from the audited 2026-08-29 bundle without flattening non-diagnosis records into disorders
 - **243 formal-diagnosis MASTER records → 241 canonical Atlas disorder pages**; 2 duplicate structural occurrences remain independently addressable in DSM MASTER but collapse to one Disorder page each
 - **30 curated disorder pages preserved + 211 DSM-generated disorder pages**
