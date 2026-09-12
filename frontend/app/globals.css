@@ -1917,3 +1917,22 @@ a.scientific-source-card:hover { border-color: rgba(128,225,193,.36); background
   .timeline-detail-date { font-size: 55px; }
   .v6-definition-list > div { grid-template-columns: 90px 1fr; }
 }
+
+/* v0.6.5 · Psychologist / Theory / Timeline graph integration */
+.node-type-dot.psychologist { background: #e5a86b; box-shadow: 0 0 0 6px rgba(229,168,107,.07); }
+.node-type-dot.theory { background: #9f9bea; box-shadow: 0 0 0 6px rgba(159,155,234,.07); }
+.node-type-dot.timeline { background: #df7f9c; box-shadow: 0 0 0 6px rgba(223,127,156,.07); }
+.map-core-v2.psychologist { border-color: rgba(229,168,107,.48); }
+.map-core-v2.theory { border-color: rgba(159,155,234,.48); }
+.map-core-v2.timeline { border-color: rgba(223,127,156,.48); }
+.map-neighbor-v2.psychologist { border-color: rgba(229,168,107,.26); }
+.map-neighbor-v2.theory { border-color: rgba(159,155,234,.26); }
+.map-neighbor-v2.timeline { border-color: rgba(223,127,156,.26); }
+.v065-node-context { display: flex; flex-wrap: wrap; gap: 7px; }
+.v065-node-context span { border: 1px solid var(--border); border-radius: 999px; padding: 5px 9px; color: var(--muted); font-size: 10px; }
+.search-v6-card-meta { display: flex; flex-wrap: wrap; gap: 9px 12px; align-items: center; margin-top: 12px; }
+.search-v6-card-meta small { color: var(--muted); }
+@media (max-width: 700px) {
+  .graph-overview { grid-template-columns: repeat(3, 1fr); }
+  .v065-node-context { gap: 5px; }
+}

@@ -1,8 +1,84 @@
-# Psychology Atlas — v0.6.4 · Psychologists + Theories + Timeline Frontend
+# Psychology Atlas — v0.6.5 · Knowledge Graph + Global Search Integration
 
-یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.6.4 APIهای source-backed نسخه v0.6.3 را به سه تجربه عمومی کامل تبدیل می‌کند: Psychologists Atlas، Theory Atlas و Psychology Timeline. UI جدید identity/alias، attribution semantics، relation-level provenance، review metadata و date precision واقعی را حفظ می‌کند؛ ترجمه یا biography مفقود را جعل نمی‌کند و `source_checked` را بازبینی علمی نهایی معرفی نمی‌کند. Knowledge Graph و Global Search integration این سه دامنه عمداً برای v0.6.5 باقی مانده‌اند.
+یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.6.5 سه دامنه canonical روان‌شناسان، نظریه‌ها و Timeline را به Global Search و Knowledge Graph یکپارچه می‌کند. Graph فقط از relationهای صریح runtime استفاده می‌کند، semantics attribution و role تاریخی را در edge kind نگه می‌دارد و provenance همان relation را همراه edge برمی‌گرداند؛ similarity/association ساختگی یا confidence حدسی تولید نمی‌شود.
 
 > این نرم‌افزار آموزشی است و ابزار تشخیص، درمان یا جایگزین ارزیابی حرفه‌ای نیست.
+
+## v0.6.5 Knowledge Graph + Global Search Integration
+
+Global Search اکنون علاوه بر Disorder/Concept/Symptom/Therapy/Technique، سه خانواده نتیجه جدید دارد:
+
+```text
+psychologists
+theories
+timeline_events
+```
+
+جست‌وجوی Psychologist و Theory alias-aware و exact-first است؛ Timeline نیز title/slug/date exact-first دارد و در صورت نبود match دقیق به جست‌وجوی محتوایی fallback می‌کند. inactive runtime rowها وارد نتیجه نمی‌شوند.
+
+Knowledge Graph اکنون هشت node type دارد:
+
+```text
+Concept       148
+Disorder      241
+Symptom        34
+Therapy        20
+Technique      35
+Psychologist   76
+Theory         45
+Timeline       61
+```
+
+Graph runtime فعلی:
+
+```text
+660 nodes
+1299 edges
+54 edge kinds
+45 build queries
+365 explicit v0.6 edges
+0 provenance gaps on v0.6 graph edges
+```
+
+تمام 13 خانواده relation جدید با semantic code واقعی خود وارد Graph می‌شوند؛ نمونه‌ها:
+
+```text
+psychologist_theory_developed_or_majorly_associated_with
+theory_concept_includes_construct
+theory_theory_extends
+timeline_theory_marks_theory_milestone
+timeline_technique_marks_technique_evidence_milestone
+```
+
+Path Finder بدون الگوریتم حدسی از همین edgeها عبور می‌کند. روی دیتابیس واقعی مسیر زیر 2 hop است:
+
+```text
+Aaron T. Beck
+  -> Automatic Thoughts
+  -> Cognitive Restructuring
+```
+
+Graph cache برای Psychologist/Theory/Timeline، همه relationهای v0.6 و relation-sourceهایشان invalidate می‌شود. Concept neighborhood نیز اکنون می‌تواند Theory و Timeline را از relationهای صریح نشان دهد.
+
+Final freeze validation در 2026-09-12:
+
+```text
+126/126 backend tests PASS on backend/.venv
+frontend typecheck PASS
+Next.js 16.3.3 production build PASS · 23/23 static-generation units
+npm audit: 0 vulnerabilities
+production HTTP crawl: 635/635 PASS
+Chromium headless Map runtime smoke: PASS
+SQLite integrity_check: ok · foreign_key_check: 0
+research archive verifier: 2 datasets / 1918 records / exact hashes PASS
+makemigrations --check --dry-run: No changes detected
+```
+
+سند عمیق v0.6.5:
+
+```text
+docs/Psychology_Atlas_v0.6.5_Graph_Search_Integration_2026-09-05.md
+```
 
 ## v0.6.4 Frontend Psychologists + Theories + Timeline
 
@@ -359,7 +435,7 @@ python manage.py import_research_datasets <paths...> --no-promote
 20 Therapy
 35 Technique
 479 ResearchRecord relationship rows promoted (176 pre-v0.6 + 303 v0.6 future-domain)
-478 Knowledge Graph nodes / 934 edges / 18 build queries
+660 Knowledge Graph nodes / 1,299 edges / 45 build queries / 54 edge kinds
 ```
 
 آرشیو دقیق فایل‌های حذف‌شده داخل DB:
@@ -485,7 +561,7 @@ GET /api/techniques/<slug>/
 
 ## Current content inventory
 
-موجودی زیر **runtime live فعلی در v0.6.4** است، نه فقط seed baseline اولیه:
+موجودی زیر **runtime live فعلی در v0.6.5** است، نه فقط seed baseline اولیه:
 
 - **241 canonical Disorder pages** across 20 DSM chapters + 1 supplemental medication/adverse-effects section
 - **107 active Symptoms**
@@ -512,7 +588,7 @@ GET /api/techniques/<slug>/
 - **189 canonical SourceReference** rows shared across research/runtime provenance
 - **2 ResearchDataset + 1,918 ResearchRecord** rows retained losslessly
 - **479 promoted ResearchRecord relationship rows** = 176 pre-v0.6 + 303 v0.6 future-domain; 326 relationship rows remain staging-only
-- Current Knowledge Graph: **478 nodes / 934 edges / 18 build queries / 33 edge kinds**; Psychologist/Theory/Timeline intentionally remain outside Graph until v0.6.5
+- Current Knowledge Graph: **660 nodes / 1,299 edges / 45 build queries / 54 edge kinds**; Psychologist/Theory/Timeline are integrated through **365 explicit v0.6 relations** with relation-level provenance
 - Institutional/source metadata remains attached to seeded content, while imported scientific entities/relations preserve their own explicit `SourceReference` provenance
 - **DSM-5-TR Persian MASTER reference layer:** 438 addressable educational/structural records imported from the audited 2026-08-29 bundle without flattening non-diagnosis records into disorders
 - **243 formal-diagnosis MASTER records → 241 canonical Atlas disorder pages**; 2 duplicate structural occurrences remain independently addressable in DSM MASTER but collapse to one Disorder page each
@@ -1012,7 +1088,7 @@ Research raw-file round-trip              PASS · exact byte size + SHA-256 repr
 Research bilingual ingestion audit        PASS · all primary educational sections have complete EN/FA names + key content; normalized Claim/Psychologist/Theory/Timeline indexes complete
 Research archive verifier                 PASS · 2 datasets / 1,918 records verified without original JSON files
 Research corpus live inventory            PASS · 2 datasets / 1,918 records / 189 sources / 148 concepts / 107 symptoms / 20 therapies / 35 techniques
-Research-enriched Knowledge Graph         PASS · 478 nodes / 934 edges / 18 build queries after repeated seed runs
+v0.6.5 integrated Knowledge Graph        PASS · 660 nodes / 1,299 edges / 45 build queries / 54 kinds · 365 explicit v0.6 edges
 Disorders Explorer hydrated E2E       PASS · 241 catalog / chapter rail / recent Autism persistence
 DSM API + route smoke test            PASS
 Concept inventory                PASS · 44 concepts / 12 distortions / 8 aliases

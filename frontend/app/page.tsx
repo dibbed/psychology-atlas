@@ -32,7 +32,7 @@ export default async function Home() {
     <main>
       <section className="shell hero hero-v3 atlas-hero">
         <div className="atlas-hero-copy">
-          <div className="meta">Psychology Atlas · v0.6.4</div>
+          <div className="meta">Psychology Atlas · v0.6.5</div>
           <h1>روان‌شناسی را مثل یک شبکه تاریخی و مفهومی یاد بگیر، نه یک فهرست پراکنده.</h1>
           <p>
             اختلال، نشانه، مفهوم و درمان را کنار روان‌شناسان، نظریه‌ها و رویدادهای تاریخی دنبال کن. بعد با Quiz، Clinical Case، فلش‌کارت،
@@ -111,7 +111,7 @@ export default async function Home() {
             <span className="rail-index">۰۷</span><div><strong>Psychology Timeline</strong><p>{timelineCount != null ? `${fa(timelineCount)} رویداد precision-aware با اتصال‌های تاریخی explicit.` : "رویدادهای تاریخی با date precision و provenance رابطه."}</p></div>
           </Link>
           <Link href="/map" className="learning-rail-item">
-            <span className="rail-index">۰۸</span><div><strong>Knowledge Graph فعلی</strong><p>در v0.6.4 هنوز فقط دامنه‌های graph قبلی را با edge واقعی نمایش می‌دهد؛ اتصال دامنه‌های جدید در v0.6.5 است.</p></div>
+            <span className="rail-index">۰۸</span><div><strong>Knowledge Graph یکپارچه</strong><p>Psychologist، Theory و Timeline اکنون کنار دامنه‌های قبلی با edgeهای صریح، provenance و pathfinding واقعی وارد Graph شده‌اند.</p></div>
           </Link>
           <Link href="/study" className="learning-rail-item">
             <span className="rail-index">۰۹</span><div><strong>Study Engine</strong><p>SRS، streak، heatmap، challenge و پیشنهاد مرور.</p></div>

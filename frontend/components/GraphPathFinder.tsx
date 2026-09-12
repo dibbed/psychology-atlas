@@ -57,6 +57,30 @@ const edgeLabels: Record<string, string> = {
   technique_concept_applied_to: "تکنیک → مفهوم · کاربرد",
 };
 
+const v6PathPrefixes: [string, string][] = [
+  ["psychologist_theory_", "روان‌شناس → نظریه"],
+  ["psychologist_concept_", "روان‌شناس → مفهوم"],
+  ["psychologist_therapy_", "روان‌شناس → درمان"],
+  ["psychologist_psychologist_", "شخص → شخص"],
+  ["theory_concept_", "نظریه → مفهوم"],
+  ["theory_therapy_", "نظریه → درمان"],
+  ["theory_technique_", "نظریه → تکنیک"],
+  ["theory_theory_", "نظریه → نظریه"],
+  ["timeline_psychologist_", "رویداد → روان‌شناس"],
+  ["timeline_theory_", "رویداد → نظریه"],
+  ["timeline_therapy_", "رویداد → درمان"],
+  ["timeline_technique_", "رویداد → تکنیک"],
+  ["timeline_concept_", "رویداد → مفهوم"],
+];
+
+function pathEdgeLabel(kind: string) {
+  if (edgeLabels[kind]) return edgeLabels[kind];
+  for (const [prefix, label] of v6PathPrefixes) {
+    if (kind.startsWith(prefix)) return `${label} · ${kind.slice(prefix.length).replaceAll("_", " ")}`;
+  }
+  return kind.replaceAll("_", " ");
+}
+
 export default function GraphPathFinder({ nodes, initialFrom }: { nodes: KnowledgeGraphNode[]; initialFrom?: string }) {
   const options = useMemo(() => [...nodes].sort((a, b) => a.label.localeCompare(b.label, "fa")), [nodes]);
   const [from, setFrom] = useState(initialFrom && nodes.some(node => node.id === initialFrom) ? initialFrom : nodes[0]?.id || "");
@@ -106,7 +130,7 @@ export default function GraphPathFinder({ nodes, initialFrom }: { nodes: Knowled
       <div>
         <div className="meta">Structured Path Finder</div>
         <h3>دو گره را انتخاب کن و کوتاه‌ترین مسیر واقعی را پیدا کن.</h3>
-        <p className="muted">مسیر فقط از edgeهای ثبت‌شده در Atlas ساخته می‌شود؛ Therapy و Technique نیز از relationهای واقعی DB وارد مسیر می‌شوند. اتصال ساختاری «عنوان نزدیک DSM» به‌طور پیش‌فرض shortcut مسیر مفهومی نیست.</p>
+        <p className="muted">مسیر فقط از edgeهای ثبت‌شده در Atlas ساخته می‌شود؛ Psychologist، Theory و Timeline نیز همراه Therapy و Technique فقط از relationهای واقعی DB وارد مسیر می‌شوند. اتصال ساختاری «عنوان نزدیک DSM» به‌طور پیش‌فرض shortcut مسیر مفهومی نیست.</p>
       </div>
       <div className="graph-path-controls">
         <label>
@@ -135,8 +159,8 @@ export default function GraphPathFinder({ nodes, initialFrom }: { nodes: Knowled
                 {index < result.edges.length && (
                   <div className="graph-path-edge">
                     {result.edges[index].traversal_direction === "reverse"
-                      ? `حرکت معکوس روی رابطه: ${edgeLabels[result.edges[index].kind] || result.edges[index].kind}`
-                      : edgeLabels[result.edges[index].kind] || result.edges[index].kind}
+                      ? `حرکت معکوس روی رابطه: ${pathEdgeLabel(result.edges[index].kind)}`
+                      : pathEdgeLabel(result.edges[index].kind)}
                   </div>
                 )}
               </div>

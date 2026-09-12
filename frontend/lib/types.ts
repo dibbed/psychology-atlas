@@ -268,6 +268,9 @@ export type SearchResults = {
   concepts: Concept[];
   therapies: Therapy[];
   techniques: Technique[];
+  psychologists: Psychologist[];
+  theories: Theory[];
+  timeline_events: TimelineEvent[];
   symptoms: {
     slug: string;
     name_en: string;
@@ -286,6 +289,9 @@ export type AtlasOverview = {
     symptoms: number;
     therapies: number;
     techniques: number;
+    psychologists: number;
+    theories: number;
+    timeline_events: number;
     flashcards: number;
     daily_challenges: number;
     quizzes: number;
@@ -300,7 +306,7 @@ export type AtlasOverview = {
 
 export type KnowledgeGraphNode = {
   id: string;
-  type: "concept" | "disorder" | "symptom" | "therapy" | "technique";
+  type: "concept" | "disorder" | "symptom" | "therapy" | "technique" | "psychologist" | "theory" | "timeline";
   slug: string;
   label: string;
   name_en: string;
@@ -320,6 +326,18 @@ export type KnowledgeGraphNode = {
   family?: string;
   classifications?: string[];
   review_status?: string;
+  role?: string;
+  nationality?: string;
+  birth_year?: number | null;
+  death_year?: number | null;
+  period_text?: string;
+  modern_status?: string;
+  event_type?: string;
+  date_precision?: string;
+  date_text?: string;
+  year_start?: number | null;
+  year_end?: number | null;
+  exact_date?: string | null;
   distance?: number;
   filtered_degree?: number;
 };
@@ -332,7 +350,19 @@ export type KnowledgeGraphEdge = {
   traversal_direction?: "forward" | "reverse";
   traversed_from?: string;
   traversed_to?: string;
-  sources?: { title: string; organization: string; url: string }[];
+  review_status?: string;
+  sources?: {
+    id?: number;
+    title: string;
+    organization: string;
+    citation?: string;
+    url: string;
+    publication_year?: number | null;
+    source_type?: string;
+    verification_status?: string;
+    doi?: string;
+    pmid?: string;
+  }[];
 };
 
 export type ConceptNeighborhood = {
@@ -390,7 +420,16 @@ export type KnowledgeGraphData = {
   meta: {
     node_count: number;
     edge_count: number;
-    node_types: { concept: number; disorder: number; symptom: number; therapy: number; technique: number };
+    node_types: {
+      concept: number;
+      disorder: number;
+      symptom: number;
+      therapy: number;
+      technique: number;
+      psychologist: number;
+      theory: number;
+      timeline: number;
+    };
     edge_kinds: Record<string, number>;
     available_edge_kinds?: Record<string, number>;
   };

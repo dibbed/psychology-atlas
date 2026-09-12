@@ -1,10 +1,37 @@
 # Psychology Atlas Product Spec
 
-## Current implemented version: v0.6.4 — Psychologists + Theories + Timeline Frontend
+## Current implemented version: v0.6.5 — Knowledge Graph + Global Search Integration
 
 Psychology Atlas is an interactive educational system for psychology students. It should behave as a connected learning system, not as a psychology blog and not as a diagnostic product.
 
-v0.6.4 turns the v0.6.3 public read APIs into first-class RTL frontend surfaces for Psychologists, Theories and the Psychology Timeline. It preserves source and relation semantics instead of generating missing biography/translation text, distinguishes source-check status from final scientific review, and preserves Timeline date precision. Knowledge Graph and Global Search integration for these new domains remains v0.6.5 work.
+v0.6.5 integrates the canonical Psychologist, Theory and Timeline runtime into Global Search and the existing Knowledge Graph. The integration is explicit-relation-only: no inferred similarity edge, fabricated historical attribution, generated confidence score or invented date precision is introduced. Relation semantics and relation-level provenance remain visible in Graph payloads and mixed-domain pathfinding.
+
+### v0.6.5 integration invariants
+
+- Global Search returns Psychologist, Theory and TimelineEvent result families in addition to the existing Disorder/Concept/Symptom/Therapy/Technique results.
+- Psychologist and Theory search are alias-aware and exact-first; Timeline title/slug/date search is exact-first with bounded partial fallback.
+- Inactive v0.6 entities are excluded from Search and Graph.
+- Knowledge Graph now contains 660 nodes and 1,299 edges across eight node types: 148 Concept, 241 Disorder, 34 Symptom, 20 Therapy, 35 Technique, 76 Psychologist, 45 Theory and 61 Timeline.
+- Exactly 365 active explicit v0.6 scientific relations are Graph-visible. No staging-only or inferred relation is materialized as an edge.
+- v0.6 scientific edge kinds preserve relation family plus original semantic code, e.g. `psychologist_theory_developed_or_majorly_associated_with` and `timeline_theory_marks_theory_milestone`.
+- All 365 v0.6 Graph edges have relation-level provenance; source gaps are zero.
+- Graph edge source metadata preserves stored verification status/DOI/PMID/citation/URL fields. `citation_from_model_knowledge` is not promoted to verified by Graph visibility.
+- Timeline Graph nodes preserve `date_precision`; year-only events do not gain fabricated exact dates.
+- Graph filters accept Psychologist/Theory/Timeline node types plus Theory domain, Timeline category/event type and scientific review status.
+- Concept neighborhood traversal can include Theory and Timeline through explicit relations.
+- Path Finder can traverse mixed old/new domains. The verified real-data Aaron T. Beck → Automatic Thoughts → Cognitive Restructuring path is 2 hops.
+- `dsm_nearby` remains structural and excluded from default conceptual shortest paths.
+- Graph cache invalidation covers v0.6 entities, every v0.6 relation model, every v0.6 relation-source model and shared SourceReference updates.
+- Full-data Graph build budget is frozen at <=45 queries; the no-v0.6 Concept scaling fixture remains <=13 queries.
+- Representative integrated Global Search is bounded at <=18 queries; Aaron T. Beck search measured 14 on the current database.
+- v0.6.5 requires no schema migration.
+- Final freeze on 2026-09-12 passed 126/126 backend tests on `backend/.venv`, frontend typecheck, Next.js 16.3.3 production build (23/23 static-generation units), npm audit with 0 vulnerabilities, production HTTP crawl 635/635, Chromium headless Map runtime smoke, SQLite integrity/foreign-key checks, exact research archive verification and final Graph runtime verification at 660 nodes / 1,299 edges / 54 kinds / 45 build queries / 365 explicit v0.6 edges / 0 v0.6 source gaps.
+
+Detailed v0.6.5 integration record:
+
+```text
+docs/Psychology_Atlas_v0.6.5_Graph_Search_Integration_2026-09-05.md
+```
 
 ### v0.6.4 frontend invariants
 
@@ -147,7 +174,7 @@ Current research-ingestion invariants:
 - Imported runtime entities use `seed_managed=False`; Therapy classification/Technique/Disorder/Concept relation rows also have explicit seed ownership so repeated `seed_mvp` cannot deactivate externally imported relations.
 - Imported scientific relation promotion requires resolved source provenance.
 - Current enriched live inventory is 148 Concepts, 107 Symptoms, 241 canonical Disorders, 20 Therapies, 35 Techniques and 189 canonical sources.
-- Current Knowledge Graph after repeated seed runs is 478 nodes / 934 edges with an 18-query build budget.
+- Current integrated Knowledge Graph is 660 nodes / 1,299 edges / 54 edge kinds with a 45-query full-data build budget; 365 edges come from explicit v0.6 Psychologist/Theory/Timeline relations.
 
 Operational commands:
 

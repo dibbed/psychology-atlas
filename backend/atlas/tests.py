@@ -631,7 +631,9 @@ class AtlasApiTests(APITestCase):
         with CaptureQueriesContext(connection) as captured:
             response = self.client.get("/api/concept-map/")
         self.assertEqual(response.status_code, 200)
-        self.assertLessEqual(len(captured), 10)
+        # v0.6.5 adds three constant node-table reads (Psychologist/Theory/Timeline)
+        # while preserving the original non-scaling guarantee for Concept count.
+        self.assertLessEqual(len(captured), 13)
 
     def test_daily_challenge_rolls_back_attempt_if_side_effect_fails(self):
         challenge = DailyChallenge.objects.create(
@@ -3289,3 +3291,163 @@ class V063KnowledgeApiTests(APITestCase):
                 response = self.client.get(url)
             self.assertEqual(response.status_code, 200)
             self.assertLessEqual(len(captured), budget, f"{url} used {len(captured)} queries")
+    def test_v065_global_search_integrates_people_theories_and_timeline(self):
+        with CaptureQueriesContext(connection) as captured:
+            person = self.client.get("/api/search/?q=J.%20Researcher")
+        self.assertEqual(person.status_code, 200)
+        self.assertLessEqual(len(captured), 18, f"v0.6.5 global search used {len(captured)} queries")
+        payload = person.json()
+        self.assertEqual([row["slug"] for row in payload["psychologists"]], ["jane-researcher"])
+        self.assertIn("psychologists", payload)
+        self.assertIn("theories", payload)
+        self.assertIn("timeline_events", payload)
+
+        theory = self.client.get("/api/search/?q=V63M")
+        self.assertEqual([row["slug"] for row in theory.json()["theories"]], ["v063-model"])
+
+        timeline = self.client.get("/api/search/?q=v0.6.3%20Event")
+        self.assertEqual([row["slug"] for row in timeline.json()["timeline_events"]], ["v063-event-1980"])
+        self.assertNotIn("inactive-researcher", {row["slug"] for row in payload["psychologists"]})
+
+        short = self.client.get("/api/search/?q=x").json()
+        self.assertEqual(short["psychologists"], [])
+        self.assertEqual(short["theories"], [])
+        self.assertEqual(short["timeline_events"], [])
+
+    def test_v065_graph_contains_v06_nodes_explicit_edges_and_provenance(self):
+        cache.clear()
+        response = self.client.get("/api/concept-map/")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["meta"]["node_types"]["psychologist"], 2)
+        self.assertEqual(payload["meta"]["node_types"]["theory"], 2)
+        self.assertEqual(payload["meta"]["node_types"]["timeline"], 2)
+        node_ids = {row["id"] for row in payload["nodes"]}
+        self.assertIn("psychologist:jane-researcher", node_ids)
+        self.assertIn("theory:v063-model", node_ids)
+        self.assertIn("timeline:v063-event-1980", node_ids)
+        self.assertNotIn("psychologist:inactive-researcher", node_ids)
+        self.assertNotIn("theory:inactive-theory-v063", node_ids)
+        self.assertNotIn("timeline:inactive-event-v063", node_ids)
+
+        edge_by_kind = {row["kind"]: row for row in payload["edges"]}
+        expected = {
+            "psychologist_theory_proposed",
+            "psychologist_concept_researched",
+            "psychologist_therapy_developed",
+            "psychologist_psychologist_influenced",
+            "theory_concept_includes_construct",
+            "theory_therapy_grounds",
+            "theory_technique_grounds",
+            "theory_theory_extends",
+            "timeline_psychologist_involves_person",
+            "timeline_theory_marks_theory_milestone",
+            "timeline_therapy_marks_therapy_milestone",
+            "timeline_technique_marks_technique_evidence_milestone",
+            "timeline_concept_related",
+        }
+        self.assertTrue(expected.issubset(edge_by_kind))
+        for kind in expected:
+            self.assertTrue(edge_by_kind[kind]["sources"], kind)
+            self.assertEqual(edge_by_kind[kind]["review_status"], "source_checked")
+            self.assertEqual(edge_by_kind[kind]["sources"][0]["verification_status"], "verified")
+            self.assertEqual(edge_by_kind[kind]["sources"][0]["doi"], "10.1234/v063")
+
+    def test_v065_graph_filters_and_pathfinding_cross_new_domains(self):
+        cache.clear()
+        psychologist_only = self.client.get("/api/concept-map/?node_type=psychologist")
+        self.assertEqual(psychologist_only.status_code, 200)
+        self.assertEqual(psychologist_only.json()["meta"]["node_count"], 2)
+        self.assertTrue(all(row["type"] == "psychologist" for row in psychologist_only.json()["nodes"]))
+
+        theory_filter = self.client.get("/api/concept-map/?node_type=theory&theory_domain=cognitive_psychology")
+        self.assertEqual(theory_filter.status_code, 200)
+        self.assertEqual(theory_filter.json()["meta"]["node_count"], 2)
+
+        timeline_filter = self.client.get("/api/concept-map/?node_type=timeline&event_type=theory_development")
+        self.assertEqual(timeline_filter.status_code, 200)
+        self.assertEqual([row["id"] for row in timeline_filter.json()["nodes"]], ["timeline:v063-event-1980"])
+        self.assertEqual(self.client.get("/api/concept-map/?node_type=person").status_code, 400)
+        self.assertEqual(self.client.get("/api/concept-map/?event_type=bad").status_code, 400)
+        self.assertEqual(self.client.get("/api/concept-map/?review_status=bad").status_code, 400)
+
+        path = self.client.get(
+            "/api/concept-map/path/?from=psychologist:jane-researcher&to=technique:v063-technique"
+        )
+        self.assertEqual(path.status_code, 200)
+        path_payload = path.json()
+        self.assertTrue(path_payload["found"])
+        self.assertEqual(path_payload["hops"], 2)
+        self.assertEqual(
+            [row["id"] for row in path_payload["nodes"]],
+            ["psychologist:jane-researcher", "theory:v063-model", "technique:v063-technique"],
+        )
+        self.assertTrue(all(row.get("sources") for row in path_payload["edges"]))
+
+    def test_v065_graph_cache_invalidates_on_v06_relation_source_changes(self):
+        cache.clear()
+        first = self.client.get("/api/concept-map/").json()
+        edge = next(row for row in first["edges"] if row["kind"] == "psychologist_theory_proposed")
+        self.assertEqual(len(edge["sources"]), 1)
+
+        second_source = SourceReference.objects.create(
+            title="Second graph provenance source",
+            organization="v0.6.5 cache test",
+            url="https://example.org/v065-cache-source",
+            verification_status="verified",
+        )
+        atlas_models.PsychologistTheorySource.objects.create(
+            relationship=self.person_theory,
+            source=second_source,
+        )
+        refreshed = self.client.get("/api/concept-map/").json()
+        edge = next(row for row in refreshed["edges"] if row["kind"] == "psychologist_theory_proposed")
+        self.assertEqual(len(edge["sources"]), 2)
+        self.assertIn("v0.6.5 cache test", {source["organization"] for source in edge["sources"]})
+
+        self.psychologist.summary_fa = "خلاصه تازه برای invalidation گراف"
+        self.psychologist.save(update_fields=("summary_fa", "updated_at"))
+        refreshed_node = next(
+            row for row in self.client.get("/api/concept-map/").json()["nodes"]
+            if row["id"] == "psychologist:jane-researcher"
+        )
+        self.assertEqual(refreshed_node["summary"], "خلاصه تازه برای invalidation گراف")
+
+    def test_v065_atlas_overview_and_graph_build_query_budget(self):
+        cache.clear()
+        overview = self.client.get("/api/atlas-overview/")
+        self.assertEqual(overview.status_code, 200)
+        payload = overview.json()
+        self.assertEqual(payload["counts"]["psychologists"], 2)
+        self.assertEqual(payload["counts"]["theories"], 2)
+        self.assertEqual(payload["counts"]["timeline_events"], 2)
+        self.assertGreaterEqual(payload["graph"]["nodes"], 9)
+        self.assertGreaterEqual(payload["graph"]["edges"], 13)
+
+        from atlas.views import _build_atlas_graph
+        with CaptureQueriesContext(connection) as captured:
+            nodes, edges, edge_kinds = _build_atlas_graph()
+        self.assertLessEqual(len(captured), 45, f"v0.6.5 graph build used {len(captured)} queries")
+        self.assertEqual(sum(1 for row in nodes if row["type"] == "psychologist"), 2)
+        self.assertEqual(sum(1 for row in nodes if row["type"] == "theory"), 2)
+        self.assertEqual(sum(1 for row in nodes if row["type"] == "timeline"), 2)
+        self.assertIn("psychologist_theory_proposed", edge_kinds)
+        self.assertTrue(all(
+            row.get("sources")
+            for row in edges
+            if row["kind"].startswith(("psychologist_", "theory_", "timeline_"))
+        ))
+
+    def test_v065_concept_neighborhood_can_traverse_theory_and_timeline_edges(self):
+        cache.clear()
+        theory = self.client.get(
+            "/api/concepts/v063-learning-process/neighborhood/?depth=1&node_type=theory"
+        )
+        self.assertEqual(theory.status_code, 200)
+        self.assertIn("theory:v063-model", {row["id"] for row in theory.json()["nodes"]})
+
+        timeline = self.client.get(
+            "/api/concepts/v063-learning-process/neighborhood/?depth=1&node_type=timeline"
+        )
+        self.assertEqual(timeline.status_code, 200)
+        self.assertIn("timeline:v063-event-1980", {row["id"] for row in timeline.json()["nodes"]})

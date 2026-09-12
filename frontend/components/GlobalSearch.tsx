@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { dsmTypeLabel } from "@/lib/dsm";
 import type { DSMPaginatedRecords, SearchResults } from "@/lib/types";
 import ConceptCard from "./ConceptCard";
+import { ReviewStatus, humanizeCode } from "./ScientificMeta";
 
 export default function GlobalSearch({ initialQuery = "" }: { initialQuery?: string }) {
   const [query, setQuery] = useState(initialQuery);
@@ -48,7 +49,14 @@ export default function GlobalSearch({ initialQuery = "" }: { initialQuery?: str
   }, [query]);
 
   const atlasTotal = data
-    ? data.disorders.length + data.concepts.length + data.symptoms.length + data.therapies.length + data.techniques.length
+    ? data.disorders.length
+      + data.concepts.length
+      + data.symptoms.length
+      + data.therapies.length
+      + data.techniques.length
+      + data.psychologists.length
+      + data.theories.length
+      + data.timeline_events.length
     : 0;
   const total = atlasTotal + (dsmData?.count || 0);
 
@@ -59,7 +67,7 @@ export default function GlobalSearch({ initialQuery = "" }: { initialQuery?: str
         className="search global-search-input"
         value={query}
         onChange={event => setQuery(event.target.value)}
-        placeholder="اختلال، DSM MASTER، مفهوم، درمان، تکنیک یا نشانه را جست‌وجو کن..."
+        placeholder="اختلال، مفهوم، درمان، روان‌شناس، نظریه، رویداد تاریخی یا DSM MASTER..."
         aria-label="جست‌وجوی سراسری اطلس"
       />
       {query.trim().length < 2 && <div className="card"><p>حداقل دو حرف بنویس. جست‌وجو همزمان Atlas و رکوردهای DSM MASTER را بررسی می‌کند.</p></div>}
@@ -107,6 +115,62 @@ export default function GlobalSearch({ initialQuery = "" }: { initialQuery?: str
             <div className="grid">
               {data.concepts.map(item => <ConceptCard concept={item} key={item.slug} />)}
               {!data.concepts.length && <div className="card muted">نتیجه‌ای در مفاهیم نیست.</div>}
+            </div>
+          </section>
+
+          <section className="search-section">
+            <div className="search-section-head"><div><div className="meta">Psychologists</div><h2>روان‌شناسان و پژوهشگران</h2></div><span>{data.psychologists.length.toLocaleString("fa-IR")}</span></div>
+            <div className="grid">
+              {data.psychologists.map(item => (
+                <Link className="card" href={`/psychologists/${item.slug}`} key={item.slug}>
+                  <div className="meta">{item.role_fa || item.role_en || "Psychologist"}</div>
+                  <h3>{item.name_fa || item.name_en}</h3>
+                  {item.name_fa && <div className="latin-label">{item.name_en}</div>}
+                  {item.summary_fa || item.summary_en ? <p>{item.summary_fa || item.summary_en}</p> : <p className="muted">خلاصه مستقیمی ثبت نشده است.</p>}
+                  <div className="search-v6-card-meta">
+                    <ReviewStatus status={item.review_status} compact />
+                    <small>{item.theory_count.toLocaleString("fa-IR")} نظریه · {item.timeline_event_count.toLocaleString("fa-IR")} رویداد</small>
+                  </div>
+                </Link>
+              ))}
+              {!data.psychologists.length && <div className="card muted">نتیجه‌ای در روان‌شناسان نیست.</div>}
+            </div>
+          </section>
+
+          <section className="search-section">
+            <div className="search-section-head"><div><div className="meta">Theories</div><h2>نظریه‌ها و مدل‌ها</h2></div><span>{data.theories.length.toLocaleString("fa-IR")}</span></div>
+            <div className="grid">
+              {data.theories.map(item => (
+                <Link className="card" href={`/theories/${item.slug}`} key={item.slug}>
+                  <div className="meta">{humanizeCode(item.domain || "theory")}</div>
+                  <h3>{item.name_fa || item.name_en}</h3>
+                  {item.name_fa && <div className="latin-label">{item.name_en}</div>}
+                  {item.summary_fa || item.summary_en ? <p>{item.summary_fa || item.summary_en}</p> : <p className="muted">خلاصه مستقیمی ثبت نشده است.</p>}
+                  <div className="search-v6-card-meta">
+                    <ReviewStatus status={item.review_status} compact />
+                    <small>{item.psychologist_count.toLocaleString("fa-IR")} شخص · {item.concept_count.toLocaleString("fa-IR")} مفهوم</small>
+                  </div>
+                </Link>
+              ))}
+              {!data.theories.length && <div className="card muted">نتیجه‌ای در نظریه‌ها نیست.</div>}
+            </div>
+          </section>
+
+          <section className="search-section">
+            <div className="search-section-head"><div><div className="meta">Timeline</div><h2>رویدادهای تاریخی</h2></div><span>{data.timeline_events.length.toLocaleString("fa-IR")}</span></div>
+            <div className="grid">
+              {data.timeline_events.map(item => (
+                <Link className="card" href={`/timeline/${item.slug}`} key={item.slug}>
+                  <div className="meta">{item.date_text || (item.year_start ? item.year_start.toLocaleString("fa-IR") : "تاریخ نامشخص")}</div>
+                  <h3>{item.title_fa || item.title_en}</h3>
+                  {item.title_fa && <div className="latin-label">{item.title_en}</div>}
+                  <div className="search-v6-card-meta">
+                    <ReviewStatus status={item.review_status} compact />
+                    <small>{humanizeCode(item.event_type)} · {item.psychologist_count + item.theory_count + item.therapy_count + item.technique_count + item.concept_count} اتصال</small>
+                  </div>
+                </Link>
+              ))}
+              {!data.timeline_events.length && <div className="card muted">نتیجه‌ای در Timeline نیست.</div>}
             </div>
           </section>
 

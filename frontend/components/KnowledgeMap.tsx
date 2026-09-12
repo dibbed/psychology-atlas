@@ -18,7 +18,10 @@ function nodeTypeLabel(type: KnowledgeGraphNode["type"]) {
   if (type === "disorder") return "اختلال";
   if (type === "symptom") return "نشانه";
   if (type === "therapy") return "درمان";
-  return "تکنیک";
+  if (type === "technique") return "تکنیک";
+  if (type === "psychologist") return "روان‌شناس";
+  if (type === "theory") return "نظریه";
+  return "رویداد تاریخی";
 }
 
 const edgeLabels: Record<string, string> = {
@@ -73,8 +76,74 @@ const edgeLabels: Record<string, string> = {
   technique_concept_applied_to: "تکنیک → مفهوم · کاربرد",
 };
 
+const v6SemanticLabels: Record<string, string> = {
+  originated: "بنیان‌گذاری / صورت‌بندی اولیه",
+  proposed: "پیشنهاد کرد",
+  co_proposed: "هم‌پیشنهاد کرد",
+  developed: "توسعه داد",
+  co_developed: "هم‌توسعه داد",
+  developed_or_majorly_associated_with: "توسعه / ارتباط تاریخی عمده",
+  expanded: "گسترش داد",
+  popularized: "رواج داد",
+  researched: "پژوهش کرد",
+  researched_or_developed: "پژوهش / توسعه",
+  applied: "به‌کار برد",
+  contributed_to: "مشارکت داشت",
+  criticized: "نقد کرد",
+  challenged: "به چالش کشید",
+  associated_with: "مرتبط با",
+  majorly_associated_with: "ارتباط تاریخی عمده",
+  collaborated_with: "همکاری کرد",
+  influenced: "اثر گذاشت",
+  mentored: "راهنمایی / mentorship",
+  grounds: "مبنای نظری",
+  includes_construct: "شامل سازه",
+  informs: "اطلاع‌رسان / جهت‌دهنده",
+  supports: "پشتیبانی می‌کند",
+  complements: "مکمل",
+  challenges: "به چالش می‌کشد",
+  challenged_by: "به چالش کشیده‌شده توسط",
+  reformulated_as: "بازصورت‌بندی‌شده به",
+  supports_interpretation_of: "پشتیبان تفسیر",
+  extends: "گسترش می‌دهد",
+  refines: "دقیق‌تر می‌کند",
+  related: "مرتبط",
+  involves_person: "شامل شخص",
+  marks_theory_milestone: "نقطه عطف نظریه",
+  marks_therapy_milestone: "نقطه عطف درمان",
+  marks_technique_evidence_milestone: "نقطه عطف شواهد تکنیک",
+  subject: "موضوع",
+  author: "نویسنده",
+  developer: "توسعه‌دهنده",
+  publication: "انتشار",
+  institutional: "نهادی",
+  context: "زمینه تاریخی",
+};
+
+const v6RelationPrefixes: [string, string][] = [
+  ["psychologist_theory_", "روان‌شناس → نظریه"],
+  ["psychologist_concept_", "روان‌شناس → مفهوم"],
+  ["psychologist_therapy_", "روان‌شناس → درمان"],
+  ["psychologist_psychologist_", "شخص → شخص"],
+  ["theory_concept_", "نظریه → مفهوم"],
+  ["theory_therapy_", "نظریه → درمان"],
+  ["theory_technique_", "نظریه → تکنیک"],
+  ["theory_theory_", "نظریه → نظریه"],
+  ["timeline_psychologist_", "رویداد → روان‌شناس"],
+  ["timeline_theory_", "رویداد → نظریه"],
+  ["timeline_therapy_", "رویداد → درمان"],
+  ["timeline_technique_", "رویداد → تکنیک"],
+  ["timeline_concept_", "رویداد → مفهوم"],
+];
+
 function relationLabel(kind: string) {
-  return edgeLabels[kind] || kind.replaceAll("_", " ");
+  if (edgeLabels[kind]) return edgeLabels[kind];
+  for (const [prefix, label] of v6RelationPrefixes) {
+    if (!kind.startsWith(prefix)) continue;
+    const semantic = kind.slice(prefix.length);
+    return `${label} · ${v6SemanticLabels[semantic] || semantic.replaceAll("_", " ")}`;
+  }
+  return kind.replaceAll("_", " ");
 }
 
 export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeGraphData; initialNodeId?: string }) {
@@ -85,9 +154,12 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
 
   const [selectedId, setSelectedId] = useState(preferred?.id || "");
   const [query, setQuery] = useState("");
-  const [type, setType] = useState<"all" | "concept" | "disorder" | "symptom" | "therapy" | "technique">("all");
+  const [type, setType] = useState<"all" | "concept" | "disorder" | "symptom" | "therapy" | "technique" | "psychologist" | "theory" | "timeline">("all");
   const [domain, setDomain] = useState("");
   const [subtype, setSubtype] = useState("");
+  const [theoryDomain, setTheoryDomain] = useState("");
+  const [timelineCategory, setTimelineCategory] = useState("");
+  const [reviewStatus, setReviewStatus] = useState("");
   const [minDegree, setMinDegree] = useState(0);
   const [edgeKind, setEdgeKind] = useState("all");
   const [history, setHistory] = useState<string[]>(preferred ? [preferred.id] : []);
@@ -128,16 +200,32 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
         if (type !== "all" && node.type !== type) return false;
         if (domain && (node.type !== "concept" || node.domain !== domain)) return false;
         if (subtype && (node.type !== "concept" || node.subtype !== subtype)) return false;
+        if (theoryDomain && (node.type !== "theory" || node.domain !== theoryDomain)) return false;
+        if (timelineCategory && (node.type !== "timeline" || node.category !== timelineCategory)) return false;
+        if (reviewStatus && node.review_status !== reviewStatus) return false;
         if (node.degree < minDegree) return false;
-        return !q || normalizePersianSearch(`${node.label} ${node.name_en} ${node.slug} ${node.group} ${node.summary}`).includes(q);
+        const haystack = `${node.label} ${node.name_en} ${node.slug} ${node.group} ${node.summary} ${node.role || ""} ${node.nationality || ""} ${node.modern_status || ""} ${node.date_text || ""}`;
+        return !q || normalizePersianSearch(haystack).includes(q);
       })
       .sort((a, b) => b.degree - a.degree || a.label.localeCompare(b.label, "fa"));
-  }, [data.nodes, query, type, domain, subtype, minDegree]);
+  }, [data.nodes, query, type, domain, subtype, theoryDomain, timelineCategory, reviewStatus, minDegree]);
 
   const conceptDomains = useMemo(() => {
     const rows = new Map<string, string>();
     data.nodes.filter(node => node.type === "concept" && node.domain).forEach(node => rows.set(node.domain!, node.domain_label || node.domain!));
     return [...rows.entries()].sort((a, b) => a[1].localeCompare(b[1], "fa"));
+  }, [data.nodes]);
+
+  const theoryDomains = useMemo(() => {
+    const rows = new Set<string>();
+    data.nodes.filter(node => node.type === "theory" && node.domain).forEach(node => rows.add(node.domain!));
+    return [...rows].sort((a, b) => a.localeCompare(b));
+  }, [data.nodes]);
+
+  const timelineCategories = useMemo(() => {
+    const rows = new Set<string>();
+    data.nodes.filter(node => node.type === "timeline" && node.category).forEach(node => rows.add(node.category!));
+    return [...rows].sort((a, b) => a.localeCompare(b));
   }, [data.nodes]);
 
   const topConnected = useMemo(
@@ -151,6 +239,9 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
     symptom: neighbors.filter(row => row.node.type === "symptom").length,
     therapy: neighbors.filter(row => row.node.type === "therapy").length,
     technique: neighbors.filter(row => row.node.type === "technique").length,
+    psychologist: neighbors.filter(row => row.node.type === "psychologist").length,
+    theory: neighbors.filter(row => row.node.type === "theory").length,
+    timeline: neighbors.filter(row => row.node.type === "timeline").length,
   }), [neighbors]);
 
   function selectNode(id: string) {
@@ -180,6 +271,9 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
         <div><strong>{data.meta.node_types.symptom.toLocaleString("fa-IR")}</strong><span>نشانه</span></div>
         <div><strong>{data.meta.node_types.therapy.toLocaleString("fa-IR")}</strong><span>درمان</span></div>
         <div><strong>{data.meta.node_types.technique.toLocaleString("fa-IR")}</strong><span>تکنیک</span></div>
+        <div><strong>{data.meta.node_types.psychologist.toLocaleString("fa-IR")}</strong><span>روان‌شناس</span></div>
+        <div><strong>{data.meta.node_types.theory.toLocaleString("fa-IR")}</strong><span>نظریه</span></div>
+        <div><strong>{data.meta.node_types.timeline.toLocaleString("fa-IR")}</strong><span>رویداد</span></div>
       </section>
 
       <GraphPathFinder nodes={data.nodes} initialFrom={selected?.id} />
@@ -198,8 +292,17 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
             aria-label="جست‌وجوی گره‌های نقشه"
           />
           <div className="category-chips compact-chips">
-            {(["all", "concept", "disorder", "symptom", "therapy", "technique"] as const).map(value => (
-              <button className={`chip ${type === value ? "active" : ""}`} onClick={() => setType(value)} key={value}>
+            {(["all", "concept", "disorder", "symptom", "therapy", "technique", "psychologist", "theory", "timeline"] as const).map(value => (
+              <button
+                className={`chip ${type === value ? "active" : ""}`}
+                onClick={() => {
+                  setType(value);
+                  if (value !== "concept") { setDomain(""); setSubtype(""); }
+                  if (value !== "theory") setTheoryDomain("");
+                  if (value !== "timeline") setTimelineCategory("");
+                }}
+                key={value}
+              >
                 {value === "all" ? "همه" : nodeTypeLabel(value)}
               </button>
             ))}
@@ -213,6 +316,20 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
               <option value="">همه زیرنوع‌ها</option>
               <option value="cognitive_distortion">تحریف شناختی</option>
               <option value="general">مفهوم عمومی</option>
+            </select>
+            <select className="filter-select" value={theoryDomain} onChange={event => { setTheoryDomain(event.target.value); if (event.target.value) setType("theory"); }} aria-label="دامنه نظریه">
+              <option value="">همه domainهای Theory</option>
+              {theoryDomains.map(value => <option value={value} key={value}>{value.replaceAll("_", " ")}</option>)}
+            </select>
+            <select className="filter-select" value={timelineCategory} onChange={event => { setTimelineCategory(event.target.value); if (event.target.value) setType("timeline"); }} aria-label="دسته Timeline">
+              <option value="">همه دسته‌های Timeline</option>
+              {timelineCategories.map(value => <option value={value} key={value}>{value.replaceAll("_", " ")}</option>)}
+            </select>
+            <select className="filter-select" value={reviewStatus} onChange={event => setReviewStatus(event.target.value)} aria-label="وضعیت بازبینی علمی گره">
+              <option value="">همه وضعیت‌های review</option>
+              <option value="source_checked">دارای منبع؛ بازبینی نهایی نشده</option>
+              <option value="reviewed">بازبینی علمی ثبت‌شده</option>
+              <option value="unreviewed">بازبینی‌نشده</option>
             </select>
             <label className="degree-filter">
               <span>حداقل اتصال: {minDegree.toLocaleString("fa-IR")}</span>
@@ -281,6 +398,19 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
               </div>
               <div className="node-profile-copy">
                 <p>{selected.summary || "برای این گره هنوز توضیح کوتاه ثبت نشده است."}</p>
+                {(selected.type === "psychologist" || selected.type === "theory" || selected.type === "timeline") && (
+                  <div className="v065-node-context">
+                    {selected.type === "psychologist" && (selected.birth_year || selected.death_year) && (
+                      <span>{selected.birth_year?.toLocaleString("fa-IR") || "؟"} — {selected.death_year?.toLocaleString("fa-IR") || "نامشخص"}</span>
+                    )}
+                    {selected.type === "psychologist" && selected.nationality && <span>{selected.nationality}</span>}
+                    {selected.type === "theory" && selected.period_text && <span>{selected.period_text.replaceAll("_", " ")}</span>}
+                    {selected.type === "theory" && selected.modern_status && <span>{selected.modern_status.replaceAll("_", " ")}</span>}
+                    {selected.type === "timeline" && <span>{selected.date_text || selected.year_start?.toLocaleString("fa-IR") || "تاریخ نامشخص"}</span>}
+                    {selected.type === "timeline" && selected.date_precision && <span>{selected.date_precision.replaceAll("_", " ")}</span>}
+                    {selected.review_status && <span>{selected.review_status.replaceAll("_", " ")}</span>}
+                  </div>
+                )}
                 {selected.dsm_master_id && (
                   <div className="map-dsm-context">
                     <span>DSM MASTER · {selected.dsm_master_id}</span>
@@ -295,6 +425,9 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
                   <div><strong>{neighborTypeCounts.symptom.toLocaleString("fa-IR")}</strong><span>Symptom</span></div>
                   <div><strong>{neighborTypeCounts.therapy.toLocaleString("fa-IR")}</strong><span>Therapy</span></div>
                   <div><strong>{neighborTypeCounts.technique.toLocaleString("fa-IR")}</strong><span>Technique</span></div>
+                  <div><strong>{neighborTypeCounts.psychologist.toLocaleString("fa-IR")}</strong><span>Psychologist</span></div>
+                  <div><strong>{neighborTypeCounts.theory.toLocaleString("fa-IR")}</strong><span>Theory</span></div>
+                  <div><strong>{neighborTypeCounts.timeline.toLocaleString("fa-IR")}</strong><span>Timeline</span></div>
                 </div>
               </div>
             </div>

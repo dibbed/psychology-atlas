@@ -729,15 +729,19 @@ def concept_view(request, slug):
 @api_view(["GET"])
 def global_search(request):
     q = request.query_params.get("q", "").strip()
+    empty_payload = {
+        "query": q,
+        "disorders": [],
+        "concepts": [],
+        "symptoms": [],
+        "therapies": [],
+        "techniques": [],
+        "psychologists": [],
+        "theories": [],
+        "timeline_events": [],
+    }
     if len(q) < 2:
-        return Response({
-            "query": q,
-            "disorders": [],
-            "concepts": [],
-            "symptoms": [],
-            "therapies": [],
-            "techniques": [],
-        })
+        return Response(empty_payload)
 
     disorders = (
         Disorder.objects.filter(is_active=True)
@@ -831,6 +835,68 @@ def global_search(request):
         "concept_links__concept",
     ).distinct()[:10]
 
+    psychologist_base = atlas_models.Psychologist.objects.filter(is_active=True)
+    psychologist_exact = (
+        Q(name_en__iexact=q)
+        | Q(name_fa__iexact=q)
+        | Q(slug__iexact=q)
+        | Q(aliases__text__iexact=q)
+    )
+    psychologists = psychologist_base.filter(psychologist_exact)
+    if not psychologists.exists():
+        psychologists = psychologist_base.filter(icontains_any(
+            (
+                "slug", "name_en", "name_fa", "summary_en", "summary_fa", "role_en", "role_fa",
+                "nationality_en", "nationality_fa", "historical_context_en", "historical_context_fa",
+                "aliases__text",
+            ),
+            q,
+        ))
+    psychologists = _v063_psychologist_counts(
+        psychologists.prefetch_related("aliases").distinct()
+    ).order_by("name_en", "id")[:10]
+
+    theory_base = atlas_models.Theory.objects.filter(is_active=True)
+    theory_exact = (
+        Q(name_en__iexact=q)
+        | Q(name_fa__iexact=q)
+        | Q(slug__iexact=q)
+        | Q(aliases__text__iexact=q)
+    )
+    theories = theory_base.filter(theory_exact)
+    if not theories.exists():
+        theories = theory_base.filter(icontains_any(
+            (
+                "slug", "name_en", "name_fa", "summary_en", "summary_fa", "core_proposition_en",
+                "core_proposition_fa", "historical_context_en", "historical_context_fa", "domain",
+                "period_text", "modern_status", "aliases__text",
+            ),
+            q,
+        ))
+    theories = _v063_theory_counts(
+        theories.prefetch_related("aliases").distinct()
+    ).order_by("name_en", "id")[:10]
+
+    timeline_base = atlas_models.TimelineEvent.objects.filter(is_active=True)
+    timeline_exact = (
+        Q(title_en__iexact=q)
+        | Q(title_fa__iexact=q)
+        | Q(slug__iexact=q)
+        | Q(date_text__iexact=q)
+    )
+    timeline_events = timeline_base.filter(timeline_exact)
+    if not timeline_events.exists():
+        timeline_events = timeline_base.filter(icontains_any(
+            (
+                "slug", "title_en", "title_fa", "description_en", "description_fa",
+                "historical_importance_en", "historical_importance_fa", "category", "date_text",
+            ),
+            q,
+        ))
+    timeline_events = _v063_timeline_counts(
+        timeline_events.distinct()
+    ).order_by("year_start", "exact_date", "title_en", "id")[:10]
+
     return Response({
         "query": q,
         "disorders": DisorderListSerializer(disorders, many=True).data,
@@ -855,6 +921,9 @@ def global_search(request):
         ],
         "therapies": TherapyListSerializer(therapies, many=True).data,
         "techniques": TechniqueListSerializer(techniques, many=True).data,
+        "psychologists": PsychologistListSerializer(psychologists, many=True).data,
+        "theories": TheoryListSerializer(theories, many=True).data,
+        "timeline_events": TimelineEventListSerializer(timeline_events, many=True).data,
     })
 
 
@@ -935,6 +1004,9 @@ def atlas_overview(request):
     )
     therapy_count = Therapy.objects.filter(is_active=True, family__is_active=True).count()
     technique_count = Technique.objects.filter(is_active=True).count()
+    psychologist_count = atlas_models.Psychologist.objects.filter(is_active=True).count()
+    theory_count = atlas_models.Theory.objects.filter(is_active=True).count()
+    timeline_event_count = atlas_models.TimelineEvent.objects.filter(is_active=True).count()
     dsm_nearby_edges = _linked_dsm_nearby_edges()
     graph_edge_count = (
         ConceptRelationship.objects.filter(
@@ -970,6 +1042,45 @@ def atlas_overview(request):
             technique__is_active=True,
             concept__is_active=True,
         ).count()
+        + atlas_models.PsychologistTheory.objects.filter(
+            is_active=True, psychologist__is_active=True, theory__is_active=True,
+        ).count()
+        + atlas_models.PsychologistConcept.objects.filter(
+            is_active=True, psychologist__is_active=True, concept__is_active=True,
+        ).count()
+        + atlas_models.PsychologistTherapy.objects.filter(
+            is_active=True, psychologist__is_active=True, therapy__is_active=True, therapy__family__is_active=True,
+        ).count()
+        + atlas_models.PsychologistPsychologist.objects.filter(
+            is_active=True, psychologist__is_active=True, related_psychologist__is_active=True,
+        ).count()
+        + atlas_models.TheoryConcept.objects.filter(
+            is_active=True, theory__is_active=True, concept__is_active=True,
+        ).count()
+        + atlas_models.TheoryTherapy.objects.filter(
+            is_active=True, theory__is_active=True, therapy__is_active=True, therapy__family__is_active=True,
+        ).count()
+        + atlas_models.TheoryTechnique.objects.filter(
+            is_active=True, theory__is_active=True, technique__is_active=True,
+        ).count()
+        + atlas_models.TheoryTheory.objects.filter(
+            is_active=True, theory__is_active=True, related_theory__is_active=True,
+        ).count()
+        + atlas_models.TimelinePsychologist.objects.filter(
+            is_active=True, event__is_active=True, psychologist__is_active=True,
+        ).count()
+        + atlas_models.TimelineTheory.objects.filter(
+            is_active=True, event__is_active=True, theory__is_active=True,
+        ).count()
+        + atlas_models.TimelineTherapy.objects.filter(
+            is_active=True, event__is_active=True, therapy__is_active=True, therapy__family__is_active=True,
+        ).count()
+        + atlas_models.TimelineTechnique.objects.filter(
+            is_active=True, event__is_active=True, technique__is_active=True,
+        ).count()
+        + atlas_models.TimelineConcept.objects.filter(
+            is_active=True, event__is_active=True, concept__is_active=True,
+        ).count()
         + len(dsm_nearby_edges)
     )
 
@@ -981,6 +1092,9 @@ def atlas_overview(request):
             "symptoms": symptom_count,
             "therapies": therapy_count,
             "techniques": technique_count,
+            "psychologists": psychologist_count,
+            "theories": theory_count,
+            "timeline_events": timeline_event_count,
             "flashcards": available_flashcards().count(),
             "daily_challenges": valid_challenges.count(),
             "quizzes": valid_quizzes.count(),
@@ -993,6 +1107,9 @@ def atlas_overview(request):
                 + symptom_count
                 + therapy_count
                 + technique_count
+                + psychologist_count
+                + theory_count
+                + timeline_event_count
             ),
             "edges": graph_edge_count,
         },
@@ -1326,10 +1443,19 @@ def _build_atlas_graph():
         .order_by("name_en")
     )
     techniques = list(Technique.objects.filter(is_active=True).order_by("name_en"))
+    psychologists = list(atlas_models.Psychologist.objects.filter(is_active=True).order_by("name_en"))
+    theories = list(atlas_models.Theory.objects.filter(is_active=True).order_by("name_en"))
+    timeline_events = list(
+        atlas_models.TimelineEvent.objects.filter(is_active=True)
+        .order_by("year_start", "exact_date", "title_en", "id")
+    )
     concept_ids = {concept.id for concept in concepts}
     disorder_ids = {disorder.id for disorder in disorders}
     therapy_ids = {therapy.id for therapy in therapies}
     technique_ids = {technique.id for technique in techniques}
+    psychologist_ids = {psychologist.id for psychologist in psychologists}
+    theory_ids = {theory.id for theory in theories}
+    timeline_event_ids = {event.id for event in timeline_events}
     disorder_id_by_slug = {disorder.slug: disorder.id for disorder in disorders}
 
     nodes = [
@@ -1355,12 +1481,29 @@ def _build_atlas_graph():
     def edge_sources(link):
         return [
             {
+                "id": source_link.source.id,
                 "title": source_link.source.title,
                 "organization": source_link.source.organization,
+                "citation": source_link.source.citation,
                 "url": source_link.source.url,
+                "publication_year": source_link.source.publication_year,
+                "source_type": source_link.source.source_type,
+                "verification_status": source_link.source.verification_status,
+                "doi": source_link.source.doi,
+                "pmid": source_link.source.pmid,
             }
             for source_link in link.source_links.all()
         ]
+
+    def scientific_edge(source, target, kind, link):
+        return {
+            "source": source,
+            "target": target,
+            "kind": kind,
+            "explanation": link.explanation_fa or link.explanation_en,
+            "review_status": link.review_status,
+            "sources": edge_sources(link),
+        }
 
     for relation in (
         ConceptRelationship.objects.filter(
@@ -1488,6 +1631,269 @@ def _build_atlas_graph():
             "sources": edge_sources(link),
         })
 
+    for link in (
+        atlas_models.PsychologistTheory.objects.filter(
+            is_active=True,
+            psychologist_id__in=psychologist_ids,
+            theory_id__in=theory_ids,
+        )
+        .select_related("psychologist", "theory")
+        .prefetch_related(Prefetch(
+            "source_links",
+            queryset=atlas_models.PsychologistTheorySource.objects.select_related("source"),
+        ))
+        .order_by("psychologist_id", "sort_order", "id")
+    ):
+        edges.append(scientific_edge(
+            f"psychologist:{link.psychologist.slug}",
+            f"theory:{link.theory.slug}",
+            f"psychologist_theory_{link.relationship_type}",
+            link,
+        ))
+
+    for link in (
+        atlas_models.PsychologistConcept.objects.filter(
+            is_active=True,
+            psychologist_id__in=psychologist_ids,
+            concept_id__in=concept_ids,
+        )
+        .select_related("psychologist", "concept")
+        .prefetch_related(Prefetch(
+            "source_links",
+            queryset=atlas_models.PsychologistConceptSource.objects.select_related("source"),
+        ))
+        .order_by("psychologist_id", "sort_order", "id")
+    ):
+        edges.append(scientific_edge(
+            f"psychologist:{link.psychologist.slug}",
+            f"concept:{link.concept.slug}",
+            f"psychologist_concept_{link.relationship_type}",
+            link,
+        ))
+
+    for link in (
+        atlas_models.PsychologistTherapy.objects.filter(
+            is_active=True,
+            psychologist_id__in=psychologist_ids,
+            therapy_id__in=therapy_ids,
+            therapy__family__is_active=True,
+        )
+        .select_related("psychologist", "therapy")
+        .prefetch_related(Prefetch(
+            "source_links",
+            queryset=atlas_models.PsychologistTherapySource.objects.select_related("source"),
+        ))
+        .order_by("psychologist_id", "sort_order", "id")
+    ):
+        edges.append(scientific_edge(
+            f"psychologist:{link.psychologist.slug}",
+            f"therapy:{link.therapy.slug}",
+            f"psychologist_therapy_{link.relationship_type}",
+            link,
+        ))
+
+    for link in (
+        atlas_models.PsychologistPsychologist.objects.filter(
+            is_active=True,
+            psychologist_id__in=psychologist_ids,
+            related_psychologist_id__in=psychologist_ids,
+        )
+        .select_related("psychologist", "related_psychologist")
+        .prefetch_related(Prefetch(
+            "source_links",
+            queryset=atlas_models.PsychologistPsychologistSource.objects.select_related("source"),
+        ))
+        .order_by("psychologist_id", "sort_order", "id")
+    ):
+        edges.append(scientific_edge(
+            f"psychologist:{link.psychologist.slug}",
+            f"psychologist:{link.related_psychologist.slug}",
+            f"psychologist_psychologist_{link.relationship_type}",
+            link,
+        ))
+
+    for link in (
+        atlas_models.TheoryConcept.objects.filter(
+            is_active=True,
+            theory_id__in=theory_ids,
+            concept_id__in=concept_ids,
+        )
+        .select_related("theory", "concept")
+        .prefetch_related(Prefetch(
+            "source_links",
+            queryset=atlas_models.TheoryConceptSource.objects.select_related("source"),
+        ))
+        .order_by("theory_id", "sort_order", "id")
+    ):
+        edges.append(scientific_edge(
+            f"theory:{link.theory.slug}",
+            f"concept:{link.concept.slug}",
+            f"theory_concept_{link.relationship_type}",
+            link,
+        ))
+
+    for link in (
+        atlas_models.TheoryTherapy.objects.filter(
+            is_active=True,
+            theory_id__in=theory_ids,
+            therapy_id__in=therapy_ids,
+            therapy__family__is_active=True,
+        )
+        .select_related("theory", "therapy")
+        .prefetch_related(Prefetch(
+            "source_links",
+            queryset=atlas_models.TheoryTherapySource.objects.select_related("source"),
+        ))
+        .order_by("theory_id", "sort_order", "id")
+    ):
+        edges.append(scientific_edge(
+            f"theory:{link.theory.slug}",
+            f"therapy:{link.therapy.slug}",
+            f"theory_therapy_{link.relationship_type}",
+            link,
+        ))
+
+    for link in (
+        atlas_models.TheoryTechnique.objects.filter(
+            is_active=True,
+            theory_id__in=theory_ids,
+            technique_id__in=technique_ids,
+        )
+        .select_related("theory", "technique")
+        .prefetch_related(Prefetch(
+            "source_links",
+            queryset=atlas_models.TheoryTechniqueSource.objects.select_related("source"),
+        ))
+        .order_by("theory_id", "sort_order", "id")
+    ):
+        edges.append(scientific_edge(
+            f"theory:{link.theory.slug}",
+            f"technique:{link.technique.slug}",
+            f"theory_technique_{link.relationship_type}",
+            link,
+        ))
+
+    for link in (
+        atlas_models.TheoryTheory.objects.filter(
+            is_active=True,
+            theory_id__in=theory_ids,
+            related_theory_id__in=theory_ids,
+        )
+        .select_related("theory", "related_theory")
+        .prefetch_related(Prefetch(
+            "source_links",
+            queryset=atlas_models.TheoryTheorySource.objects.select_related("source"),
+        ))
+        .order_by("theory_id", "sort_order", "id")
+    ):
+        edges.append(scientific_edge(
+            f"theory:{link.theory.slug}",
+            f"theory:{link.related_theory.slug}",
+            f"theory_theory_{link.relationship_type}",
+            link,
+        ))
+
+    for link in (
+        atlas_models.TimelinePsychologist.objects.filter(
+            is_active=True,
+            event_id__in=timeline_event_ids,
+            psychologist_id__in=psychologist_ids,
+        )
+        .select_related("event", "psychologist")
+        .prefetch_related(Prefetch(
+            "source_links",
+            queryset=atlas_models.TimelinePsychologistSource.objects.select_related("source"),
+        ))
+        .order_by("event_id", "sort_order", "id")
+    ):
+        edges.append(scientific_edge(
+            f"timeline:{link.event.slug}",
+            f"psychologist:{link.psychologist.slug}",
+            f"timeline_psychologist_{link.role}",
+            link,
+        ))
+
+    for link in (
+        atlas_models.TimelineTheory.objects.filter(
+            is_active=True,
+            event_id__in=timeline_event_ids,
+            theory_id__in=theory_ids,
+        )
+        .select_related("event", "theory")
+        .prefetch_related(Prefetch(
+            "source_links",
+            queryset=atlas_models.TimelineTheorySource.objects.select_related("source"),
+        ))
+        .order_by("event_id", "sort_order", "id")
+    ):
+        edges.append(scientific_edge(
+            f"timeline:{link.event.slug}",
+            f"theory:{link.theory.slug}",
+            f"timeline_theory_{link.role}",
+            link,
+        ))
+
+    for link in (
+        atlas_models.TimelineTherapy.objects.filter(
+            is_active=True,
+            event_id__in=timeline_event_ids,
+            therapy_id__in=therapy_ids,
+            therapy__family__is_active=True,
+        )
+        .select_related("event", "therapy")
+        .prefetch_related(Prefetch(
+            "source_links",
+            queryset=atlas_models.TimelineTherapySource.objects.select_related("source"),
+        ))
+        .order_by("event_id", "sort_order", "id")
+    ):
+        edges.append(scientific_edge(
+            f"timeline:{link.event.slug}",
+            f"therapy:{link.therapy.slug}",
+            f"timeline_therapy_{link.role}",
+            link,
+        ))
+
+    for link in (
+        atlas_models.TimelineTechnique.objects.filter(
+            is_active=True,
+            event_id__in=timeline_event_ids,
+            technique_id__in=technique_ids,
+        )
+        .select_related("event", "technique")
+        .prefetch_related(Prefetch(
+            "source_links",
+            queryset=atlas_models.TimelineTechniqueSource.objects.select_related("source"),
+        ))
+        .order_by("event_id", "sort_order", "id")
+    ):
+        edges.append(scientific_edge(
+            f"timeline:{link.event.slug}",
+            f"technique:{link.technique.slug}",
+            f"timeline_technique_{link.role}",
+            link,
+        ))
+
+    for link in (
+        atlas_models.TimelineConcept.objects.filter(
+            is_active=True,
+            event_id__in=timeline_event_ids,
+            concept_id__in=concept_ids,
+        )
+        .select_related("event", "concept")
+        .prefetch_related(Prefetch(
+            "source_links",
+            queryset=atlas_models.TimelineConceptSource.objects.select_related("source"),
+        ))
+        .order_by("event_id", "sort_order", "id")
+    ):
+        edges.append(scientific_edge(
+            f"timeline:{link.event.slug}",
+            f"concept:{link.concept.slug}",
+            f"timeline_concept_{link.role}",
+            link,
+        ))
+
     for source_id, source_slug, target_id, target_slug in _linked_dsm_nearby_edges():
         if source_id not in disorder_ids or target_id not in disorder_ids:
             continue
@@ -1540,6 +1946,62 @@ def _build_atlas_graph():
         "summary": technique.summary,
         "href": f"/techniques/{technique.slug}",
     } for technique in techniques)
+
+    nodes.extend({
+        "id": f"psychologist:{psychologist.slug}",
+        "type": "psychologist",
+        "slug": psychologist.slug,
+        "label": psychologist.name_fa or psychologist.name_en,
+        "name_en": psychologist.name_en,
+        "name_fa": psychologist.name_fa,
+        "kind": "psychologist",
+        "group": psychologist.role_fa or psychologist.role_en or "روان‌شناس",
+        "review_status": psychologist.review_status,
+        "summary": psychologist.summary_fa or psychologist.summary_en,
+        "role": psychologist.role_fa or psychologist.role_en,
+        "nationality": psychologist.nationality_fa or psychologist.nationality_en,
+        "birth_year": psychologist.birth_year,
+        "death_year": psychologist.death_year,
+        "href": f"/psychologists/{psychologist.slug}",
+    } for psychologist in psychologists)
+
+    nodes.extend({
+        "id": f"theory:{theory.slug}",
+        "type": "theory",
+        "slug": theory.slug,
+        "label": theory.name_fa or theory.name_en,
+        "name_en": theory.name_en,
+        "name_fa": theory.name_fa,
+        "kind": theory.domain or "theory",
+        "group": theory.domain or "نظریه",
+        "domain": theory.domain,
+        "review_status": theory.review_status,
+        "summary": theory.summary_fa or theory.summary_en or theory.core_proposition_fa or theory.core_proposition_en,
+        "period_text": theory.period_text,
+        "modern_status": theory.modern_status,
+        "href": f"/theories/{theory.slug}",
+    } for theory in theories)
+
+    nodes.extend({
+        "id": f"timeline:{event.slug}",
+        "type": "timeline",
+        "slug": event.slug,
+        "label": event.title_fa or event.title_en,
+        "name_en": event.title_en,
+        "name_fa": event.title_fa,
+        "kind": event.event_type,
+        "group": event.category or event.get_event_type_display(),
+        "category": event.category,
+        "review_status": event.review_status,
+        "summary": event.description_fa or event.description_en or event.historical_importance_fa or event.historical_importance_en,
+        "event_type": event.event_type,
+        "date_precision": event.date_precision,
+        "date_text": event.date_text,
+        "year_start": event.year_start,
+        "year_end": event.year_end,
+        "exact_date": event.exact_date.isoformat() if event.exact_date else None,
+        "href": f"/timeline/{event.slug}",
+    } for event in timeline_events)
 
     dsm_by_disorder = {
         row.linked_disorder_id: row
@@ -1603,11 +2065,23 @@ def _filter_graph(nodes, edges, request):
     subtype = request.query_params.get("subtype", "").strip()
     category = request.query_params.get("category", "").strip()
     family = request.query_params.get("family", "").strip()
+    theory_domain = request.query_params.get("theory_domain", "").strip()
+    timeline_category = request.query_params.get("timeline_category", "").strip()
+    event_type = request.query_params.get("event_type", "").strip()
+    review_status = request.query_params.get("review_status", "").strip()
     relation = request.query_params.get("relation", "").strip()
     raw_degree = request.query_params.get("min_degree", "").strip()
 
-    if node_type and node_type not in {"all", "concept", "disorder", "symptom", "therapy", "technique"}:
+    valid_node_types = {
+        "all", "concept", "disorder", "symptom", "therapy", "technique",
+        "psychologist", "theory", "timeline",
+    }
+    if node_type and node_type not in valid_node_types:
         raise ValidationError({"node_type": "نوع گره معتبر نیست."})
+    if review_status and review_status not in atlas_models.ScientificReviewStatus.values:
+        raise ValidationError({"review_status": "وضعیت بازبینی معتبر نیست."})
+    if event_type and event_type not in atlas_models.TimelineEvent.EventType.values:
+        raise ValidationError({"event_type": "نوع رویداد معتبر نیست."})
 
     min_degree = 0
     if raw_degree:
@@ -1628,6 +2102,14 @@ def _filter_graph(nodes, edges, request):
         if category and (node["type"] != "disorder" or node.get("category") != category):
             continue
         if family and (node["type"] != "therapy" or node.get("family") != family):
+            continue
+        if theory_domain and (node["type"] != "theory" or node.get("domain") != theory_domain):
+            continue
+        if timeline_category and (node["type"] != "timeline" or node.get("category") != timeline_category):
+            continue
+        if event_type and (node["type"] != "timeline" or node.get("event_type") != event_type):
+            continue
+        if review_status and node.get("review_status") != review_status:
             continue
         filtered.append(node)
 
@@ -1676,6 +2158,9 @@ def concept_map(request):
         "symptom": sum(1 for node in filtered_nodes if node["type"] == "symptom"),
         "therapy": sum(1 for node in filtered_nodes if node["type"] == "therapy"),
         "technique": sum(1 for node in filtered_nodes if node["type"] == "technique"),
+        "psychologist": sum(1 for node in filtered_nodes if node["type"] == "psychologist"),
+        "theory": sum(1 for node in filtered_nodes if node["type"] == "theory"),
+        "timeline": sum(1 for node in filtered_nodes if node["type"] == "timeline"),
     }
     edge_kinds = {}
     for edge in filtered_edges:
@@ -1702,7 +2187,10 @@ def concept_neighborhood(request, slug):
     depth = int(raw_depth)
     relation = request.query_params.get("relation", "").strip()
     node_type = request.query_params.get("node_type", "").strip()
-    if node_type and node_type not in {"all", "concept", "disorder", "symptom", "therapy", "technique"}:
+    if node_type and node_type not in {
+        "all", "concept", "disorder", "symptom", "therapy", "technique",
+        "psychologist", "theory", "timeline",
+    }:
         raise ValidationError({"node_type": "نوع گره معتبر نیست."})
 
     nodes, edges, all_edge_kinds = _get_atlas_graph()
