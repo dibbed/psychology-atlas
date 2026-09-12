@@ -1,7 +1,7 @@
 {
   "project": "Psychology Atlas",
-  "version": "0.6.5",
-  "release_name": "Knowledge Graph + Global Search Integration",
+  "version": "0.6.6",
+  "release_name": "Final Hardening + Performance + v0.6 Freeze",
   "stack": {
     "frontend": "Next.js 16.3.3 + React 19 + TypeScript",
     "backend": "Django 5.2 + Django REST Framework",
@@ -196,7 +196,18 @@
     "v065_graph_future_domain_filters",
     "v065_concept_neighborhood_theory_timeline",
     "v065_graph_cache_invalidation_future_domains",
-    "v065_graph_query_budget_freeze"
+    "v065_graph_query_budget_freeze",
+    "v066_repeatable_scientific_release_audit",
+    "v066_weak_review_guard",
+    "v066_global_search_single_pass_exact_first",
+    "v066_global_search_stale_result_hardening",
+    "v066_relation_verification_visibility",
+    "v066_graph_review_status_visibility",
+    "v066_browser_interaction_audit",
+    "v066_final_v06_release_freeze",
+    "v066_weak_provenance_visibility",
+    "v066_global_search_query_hardening",
+    "v066_v06_final_release_freeze"
   ],
   "content": {
     "categories": 21,
@@ -264,7 +275,7 @@
       "live_techniques": 35,
       "promoted_research_relationships": 479,
       "staging_policy": "future-domain and unsupported/lower-confidence records remain lossless staging-only",
-      "version_boundary": "v0.6.5 Psychologist/Theory/Timeline are live in APIs, frontend, Global Search and explicit-relation Knowledge Graph; v0.6.6 is final hardening/release freeze",
+      "version_boundary": "v0.6.6 finalizes and freezes the Psychologist/Theory/Timeline series after API, frontend, Graph and Search integration; v0.7 is the next feature release",
       "staged_psychologists": 130,
       "staged_theories": 53,
       "staged_timeline_events": 63,
@@ -329,13 +340,13 @@
   ],
   "validation": {
     "django_check": "pass",
-    "backend_tests": "126/126 passed · v0.6.5 final freeze on backend/.venv",
+    "backend_tests": "128/128 passed · v0.6.6 final v0.6 freeze on backend/.venv",
     "python_compileall": "pass",
     "pip_check": "pass · backend/.venv has no broken requirements; system-global Python conflicts are unrelated to the project release environment",
     "migration_drift_check": "pass · no changes detected",
     "seed_idempotency": "pass · repeated seed runs preserve imported seed_managed=False entities and relations while seed-owned relations remain independently managed",
-    "typescript_typecheck": "pass · frontend 0.6.5",
-    "next_production_build": "pass · frontend 0.6.5 · Next.js 16.3.3 Turbopack · 23/23 static-generation units",
+    "typescript_typecheck": "pass · frontend 0.6.6",
+    "next_production_build": "pass · frontend 0.6.6 · Next.js 16.3.3 Turbopack · 23/23 static-generation units",
     "npm_audit_low": "0 vulnerabilities",
     "frontend_route_smoke_test": "pass · production Next start · 635/635 audited frontend routes returned HTTP 200 with no Application error/Internal Server Error/[object Object]/visible undefined-or-NaN markers",
     "dsm_master_source_sha256": "9680d7b1e85ae4ef58efa58f7c76bfcc04c7b317f1fbd40cbb2e27be02542694",
@@ -352,9 +363,9 @@
     "temporary_audit_user_cleanup": "pass · both v0.5.5 runtime-audit users deleted; 0 remaining",
     "therapy_foundation_tests": "3 targeted schema/provenance tests included in full suite",
     "canonical_module_cleanup": "pass · versioned backend runtime modules consolidated into views.py / serializers.py / seed_mvp.py",
-    "current_release": "v0.6.5 Knowledge Graph + Global Search Integration",
+    "current_release": "v0.6.6 Final Hardening + Performance + v0.6 Freeze",
     "ruff": "not run · ruff is not installed in backend venv",
-    "git_diff_check": "pass · 17 intended v0.6.5 release files before commit; generated frontend/next-env.d.ts churn restored; no conflicts or whitespace errors",
+    "git_diff_check": "pass · 14 intended v0.6.6 release files before commit · generated frontend/next-env.d.ts build churn restored/excluded · no conflicts or whitespace errors",
     "therapy_seed_api_tests": "6 targeted seed/API/provenance/filter/idempotency tests included in full suite",
     "therapy_inventory": "6 therapies / 9 techniques / 9 therapy-disorder / 10 therapy-technique / 7 therapy-concept / 8 technique-concept links",
     "therapy_provenance": "pass · seeded Therapy/Technique content and all seeded cross-domain relations carry SourceReference provenance",
@@ -442,7 +453,32 @@
     "v065_database_integrity": "pass · SQLite integrity_check=ok · foreign_key_check=0 issues",
     "v065_archive_integrity": "pass · 2 research datasets / 1918 records / exact frozen SHA-256 hashes preserved",
     "v065_promotion_dry_run": "pass · 76 Psychologists / 45 Theories / 61 Timeline events / 303 v0.6 relations matched; unsupported or unsourced staging remains unpromoted",
-    "v065_final_runtime_freeze": "pass · 660 nodes / 1299 edges / 54 kinds / 45 graph-build queries / 365 explicit v0.6 edges / 0 v0.6 source gaps"
+    "v065_final_runtime_freeze": "pass · 660 nodes / 1299 edges / 54 kinds / 45 graph-build queries / 365 explicit v0.6 edges / 0 v0.6 source gaps",
+    "v066_scientific_release_audit": "pass · 0 entity/relation provenance gaps · 59 weak-only entities · 52 weak-only relations · 0 weak-only rows marked reviewed · 0 Timeline precision issues",
+    "v066_release_audit_tests": "pass · weak-only source_checked remains allowed; weak-only reviewed relation fails the audit guard",
+    "v066_search_performance": "pass · Aaron T. Beck 14->9 queries · Beck Cognitive Model 14->9 · 1897 13->8 · CBT multi-domain 28->23",
+    "v066_search_query_budget": "pass · focused exact-first regression budget tightened to <=13 queries",
+    "v066_search_stale_result_guard": "pass · query changes and non-abort failures clear stale Atlas/DSM result payloads",
+    "v066_graph_performance": "pass · five cold builds all 45 queries · local SQLite median about 253 ms · warmed cache 0 DB queries",
+    "v066_provenance_visibility": "pass · weak-only relation cards and Graph neighbors expose ارجاع آرشیوی؛ نیازمند بازبینی مستقل; Graph node review status uses canonical labels",
+    "v066_full_backend_suite": "pass · 128/128 on backend/.venv",
+    "v066_frontend_typecheck": "pass · psychology-atlas-frontend@0.6.6",
+    "v066_production_build": "pass · Next.js 16.3.3 Turbopack · 23/23 generation units",
+    "v066_npm_audit": "pass · 0 vulnerabilities",
+    "v066_production_http_crawl": "pass · 635/635 routes with 0 HTTP/content marker failures",
+    "v066_browser_interaction_audit": "pass · Chromium headless Search interaction + Map traversal + weak-only provenance warning visibility on Map and Psychologist relation tab",
+    "v066_database_integrity": "pass · SQLite integrity_check=ok · foreign_key_check=0 issues · promoted target mappings 1271/1271 valid",
+    "v066_archive_integrity": "pass · 2 datasets / 1918 records / exact frozen SHA-256 hashes preserved",
+    "v066_promotion_dry_run": "pass · 76 Psychologists / 45 Theories / 61 Timeline events / 303 v0.6 relations matched; unsupported or unsourced staging remains unpromoted",
+    "v066_source_registry_sanity": "pass · 189 sources · 67 archival model-knowledge sources · 0 duplicate DOI/URL/title-year keys · 0 malformed DOI/PMID/HTTP(S) values under release checks",
+    "v066_graph_runtime_freeze": "pass · 660 nodes / 1299 edges / 54 kinds / 45 cold queries / 365 explicit v0.6 edges / 0 v0.6 source gaps",
+    "v066_deployment_security": "audited · DEBUG=0 deploy check reports only HSTS include-subdomains/preload warnings; both remain intentional deployment opt-ins",
+    "v066_migration": "pass · no schema change; makemigrations --check --dry-run reports no changes detected",
+    "v066_global_search_performance": "pass · Aaron T. Beck 9 queries · Beck Cognitive Model 9 · 1897 8 · CBT broad multi-domain 23; focused exact-search regression budget <=13",
+    "v066_api_query_budgets": "pass · Psychologist/Theory/Timeline lists 3/3/2 · representative details 13/13/9",
+    "v066_deploy_check": "audited · DEBUG=0 production check reports only intentional HSTS include-subdomains/preload opt-in warnings",
+    "v066_schema_boundary": "pass · no migration required",
+    "v066_git_transport": "local repository has no configured remote; push is impossible until a real remote URL is configured"
   },
   "release_notes": {
     "graph_layers": [
@@ -472,7 +508,7 @@
       "0.6.3": "Psychologist + Theory + Timeline APIs ✅",
       "0.6.4": "Frontend Atlas pages + Timeline UX ✅",
       "0.6.5": "Knowledge Graph + global search integration ✅",
-      "0.6.6": "Final hardening + performance + release freeze"
+      "0.6.6": "Final hardening + performance + release freeze ✅"
     },
     "deliberately_deferred": [
       "Brain Atlas",
@@ -645,7 +681,27 @@
       "provenance": "all v0.6 Graph edges preserve relation-level sources and review_status",
       "pathfinding": "mixed-domain shortest paths use existing explicit-edge BFS; dsm_nearby remains structural/excluded by default",
       "cache": "Psychologist/Theory/Timeline entities, relations and relation-source models invalidate atlas_graph",
-      "next": "v0.6.6 final hardening + performance + scientific-review queue visibility + release freeze"
+      "next": "historical boundary: v0.6.6 final hardening/freeze followed this integration slice"
+    },
+    "v066_final_hardening": {
+      "scope": "final v0.6 hardening/freeze; no broad new product domain or schema migration",
+      "scientific_audit": "repeatable audit_v06_release guard; 0 provenance gaps, 59 weak-only entities, 52 weak-only relations, 0 weak-only reviewed rows, 0 Timeline precision issues",
+      "search": "single-pass exact-first queries + stale-result UI hardening; Aaron/Beck/1897 measured at 9/9/8 queries and broad CBT at 23",
+      "graph": "660 nodes / 1299 edges / 54 kinds / 45 cold queries; warm cache 0 DB queries",
+      "provenance_ui": "weak-only archival relation sources are explicitly labeled as needing independent review in detail relations and Knowledge Map",
+      "regression": "128/128 backend tests · frontend typecheck/build · npm audit 0 · production crawl 635/635 · Chromium interaction audit",
+      "integrity": "SQLite integrity/FK clean · exact research archive hashes preserved · conservative promotion dry-run unchanged",
+      "next": "v0.7 Advanced Branching Clinical Cases + Analytics"
+    },
+    "v066_final_hardening_freeze": {
+      "scope": "no broad new domain; final v0.6 correctness, performance, scientific-debt visibility and release freeze",
+      "scientific_audit": "repeatable audit_v06_release command; 0 gaps, 59 weak-only entities, 52 weak-only relations, 0 weak-reviewed, 0 Timeline precision issues",
+      "search": "exact-first behavior preserved while redundant existence queries are removed; stale result UI is cleared on query changes/failures",
+      "provenance_ui": "weak-only citation_from_model_knowledge relations explicitly show independent-review warning in compact relation and Map surfaces",
+      "graph": "frozen at 660 nodes / 1299 edges / 54 kinds / 45 cold queries / 365 explicit v0.6 edges",
+      "regression": "128/128 backend tests · 635/635 production route crawl · Chromium interaction audit · frontend 0.6.6 build/typecheck/audit pass",
+      "schema": "no migration; exact research archive hashes preserved",
+      "next": "v0.7 Advanced Branching Clinical Cases + Analytics"
     }
   }
 }

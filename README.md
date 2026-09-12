@@ -1,8 +1,55 @@
-# Psychology Atlas — v0.6.5 · Knowledge Graph + Global Search Integration
+# Psychology Atlas — v0.6.6 · Final Hardening + Performance + v0.6 Freeze
 
-یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.6.5 سه دامنه canonical روان‌شناسان، نظریه‌ها و Timeline را به Global Search و Knowledge Graph یکپارچه می‌کند. Graph فقط از relationهای صریح runtime استفاده می‌کند، semantics attribution و role تاریخی را در edge kind نگه می‌دارد و provenance همان relation را همراه edge برمی‌گرداند؛ similarity/association ساختگی یا confidence حدسی تولید نمی‌شود.
+یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.6.6 سری v0.6 روان‌شناسان، نظریه‌ها و Timeline را بعد از Graph/Search integration نهایی می‌کند: release audit علمی تکرارپذیر، performance hardening جست‌وجو، جلوگیری از stale Search UI، visibility دقیق‌تر provenance ضعیف و production/browser regression کامل.
 
 > این نرم‌افزار آموزشی است و ابزار تشخیص، درمان یا جایگزین ارزیابی حرفه‌ای نیست.
+
+## v0.6.6 Final Hardening + Performance + Release Freeze
+
+این slice feature domain جدیدی اضافه نمی‌کند؛ هدفش بستن امن v0.6 است.
+
+```text
+128/128 backend tests PASS
+frontend 0.6.6 typecheck PASS
+Next.js 16.3.3 production build PASS · 23/23 generation units
+npm audit: 0 vulnerabilities
+production HTTP crawl: 635/635 PASS
+Chromium interaction audit: PASS
+SQLite integrity_check: ok · foreign_key_check: 0
+research archive verifier: exact hashes PASS
+makemigrations --check --dry-run: No changes detected
+```
+
+Scientific release audit جدید با `python manage.py audit_v06_release` روی تمام entity/relationهای v0.6 اجرا می‌شود. نتیجه runtime فعلی:
+
+```text
+0 active provenance gaps
+59 weak-only v0.6 entities
+52 weak-only v0.6 relations
+0 weak-only rows incorrectly marked reviewed
+0 Timeline precision issues
+```
+
+`source_checked` همچنان فقط «دارای منبع؛ بازبینی نهایی نشده» است. اگر relation فقط به `citation_from_model_knowledge` تکیه داشته باشد، UI اکنون در relation card و Knowledge Map صریحاً «ارجاع آرشیوی؛ نیازمند بازبینی مستقل» نمایش می‌دهد؛ هیچ source ضعیفی به verified ارتقا داده نشده است.
+
+Global Search بدون تغییر semantics exact-first سبک‌تر شد:
+
+```text
+Aaron T. Beck          14 -> 9 queries
+Beck Cognitive Model   14 -> 9 queries
+1897                    13 -> 8 queries
+CBT multi-domain        28 -> 23 queries
+```
+
+Graph freeze همچنان `660 nodes / 1299 edges / 54 kinds / 45 cold queries` است و cache hit به 0 DB query می‌رسد.
+
+سند عمیق v0.6.6:
+
+```text
+docs/Psychology_Atlas_v0.6.6_Final_Hardening_Freeze_2026-09-12.md
+```
+
+مرحله feature بعدی پروژه: **v0.7 Advanced Branching Clinical Cases + Analytics**.
 
 ## v0.6.5 Knowledge Graph + Global Search Integration
 
@@ -561,7 +608,7 @@ GET /api/techniques/<slug>/
 
 ## Current content inventory
 
-موجودی زیر **runtime live فعلی در v0.6.5** است، نه فقط seed baseline اولیه:
+موجودی زیر **runtime live فعلی در v0.6.6** است، نه فقط seed baseline اولیه:
 
 - **241 canonical Disorder pages** across 20 DSM chapters + 1 supplemental medication/adverse-effects section
 - **107 active Symptoms**

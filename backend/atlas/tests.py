@@ -10,6 +10,7 @@ from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
@@ -3295,7 +3296,7 @@ class V063KnowledgeApiTests(APITestCase):
         with CaptureQueriesContext(connection) as captured:
             person = self.client.get("/api/search/?q=J.%20Researcher")
         self.assertEqual(person.status_code, 200)
-        self.assertLessEqual(len(captured), 18, f"v0.6.5 global search used {len(captured)} queries")
+        self.assertLessEqual(len(captured), 13, f"v0.6.6 optimized global search used {len(captured)} queries")
         payload = person.json()
         self.assertEqual([row["slug"] for row in payload["psychologists"]], ["jane-researcher"])
         self.assertIn("psychologists", payload)
@@ -3451,3 +3452,54 @@ class V063KnowledgeApiTests(APITestCase):
         )
         self.assertEqual(timeline.status_code, 200)
         self.assertIn("timeline:v063-event-1980", {row["id"] for row in timeline.json()["nodes"]})
+
+
+class V066ReleaseAuditTests(APITestCase):
+    def setUp(self):
+        cache.clear()
+        self.weak_source = SourceReference.objects.create(
+            title="Archival model-knowledge citation",
+            verification_status="citation_from_model_knowledge",
+        )
+        self.psychologist = atlas_models.Psychologist.objects.create(
+            slug="v066-person",
+            name_en="v0.6.6 Person",
+            name_fa="شخص v0.6.6",
+        )
+        self.theory = atlas_models.Theory.objects.create(
+            slug="v066-theory",
+            name_en="v0.6.6 Theory",
+            name_fa="نظریه v0.6.6",
+        )
+        atlas_models.PsychologistSource.objects.create(
+            psychologist=self.psychologist,
+            source=self.weak_source,
+        )
+        atlas_models.TheorySource.objects.create(
+            theory=self.theory,
+            source=self.weak_source,
+        )
+        self.relation = atlas_models.PsychologistTheory.objects.create(
+            psychologist=self.psychologist,
+            theory=self.theory,
+            relationship_type=atlas_models.PsychologistAttributionType.PROPOSED,
+            review_status=ScientificReviewStatus.SOURCE_CHECKED,
+        )
+        atlas_models.PsychologistTheorySource.objects.create(
+            relationship=self.relation,
+            source=self.weak_source,
+        )
+
+    def test_v066_release_audit_reports_weak_only_debt_without_failing_source_checked(self):
+        stdout = StringIO()
+        call_command("audit_v06_release", stdout=stdout)
+        output = stdout.getvalue()
+        self.assertIn("v0.6 release audit PASS", output)
+        self.assertIn("weak_relations=1", output)
+        self.assertIn("weak_reviewed=0", output)
+
+    def test_v066_release_audit_rejects_weak_only_relation_marked_reviewed(self):
+        self.relation.review_status = ScientificReviewStatus.REVIEWED
+        self.relation.save(update_fields=("review_status", "updated_at"))
+        with self.assertRaises(CommandError):
+            call_command("audit_v06_release", stdout=StringIO(), stderr=StringIO())

@@ -642,7 +642,8 @@ a.card:hover { transform: translateY(-2px); }
 .map-neighbors-v2 { grid-template-columns: repeat(2,1fr); }
 .map-neighbor-v2 { min-height: 150px; align-content: start; gap: 7px; padding: 15px; }
 .map-neighbor-v2 p { margin: 5px 0 0; color: var(--muted); line-height: 1.7; font-size: 11px; }
-.map-edge-sources { display: block; margin-top: 4px; color: var(--accent); line-height: 1.6; }
+.map-edge-source-stack { display: grid; gap: 5px; margin-top: 4px; }
+.map-edge-sources { display: block; color: var(--accent); line-height: 1.6; }
 .map-neighbor-v2.therapy { border-color: rgba(118,184,232,.24); }
 .map-neighbor-v2.technique { border-color: rgba(208,141,232,.24); }
 .therapy-crossdomain-card { display: grid; gap: 12px; }
@@ -1717,6 +1718,7 @@ a.card:hover { transform: translateY(-2px); }
 .scientific-relation-sources { display: grid; gap: 3px; margin-top: auto; padding-top: 10px; border-top: 1px solid var(--border); }
 .scientific-relation-sources > span { color: var(--accent); font-size: 8px; }
 .scientific-relation-sources > small { color: var(--muted); font-size: 8px; line-height: 1.6; overflow-wrap: anywhere; }
+.scientific-source-warning { display: inline-flex; width: fit-content; padding: 4px 6px; border: 1px solid rgba(255,255,255,.12); border-radius: 6px; background: rgba(255,255,255,.018); color: #aeb7c2 !important; line-height: 1.55; }
 .scientific-empty { min-height: 180px; display: grid; place-items: center; align-content: center; text-align: center; }
 .scientific-empty h3 { margin: 0 0 5px; }
 .scientific-empty p { margin: 0; color: var(--muted); font-size: 11px; }

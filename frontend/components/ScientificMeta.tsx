@@ -26,6 +26,10 @@ const verificationLabels: Record<string, string> = {
   citation_from_model_knowledge: "ارجاع آرشیوی؛ نیازمند بازبینی مستقل",
 };
 
+export function verificationStatusLabel(status: string) {
+  return verificationLabels[status] || humanizeCode(status);
+}
+
 export function faNumber(value: number) {
   return value.toLocaleString("fa-IR");
 }
@@ -86,12 +90,25 @@ export function BilingualList({
   );
 }
 
+export function SourceVerificationSummary({ sources }: { sources: { verification_status?: string }[] }) {
+  const weakOnly = sources.length > 0 && sources.every(
+    source => source.verification_status === "citation_from_model_knowledge"
+  );
+  if (!weakOnly) return null;
+  return (
+    <small className="scientific-source-warning">
+      {verificationStatusLabel("citation_from_model_knowledge")}
+    </small>
+  );
+}
+
 export function RelationSourceLine({ sources }: { sources: SourceReference[] }) {
   if (!sources.length) return null;
   return (
     <div className="scientific-relation-sources">
       <span>{faNumber(sources.length)} منبع رابطه</span>
       <small>{sources.slice(0, 3).map(source => source.organization || source.title).filter(Boolean).join(" · ")}</small>
+      <SourceVerificationSummary sources={sources} />
     </div>
   );
 }
@@ -140,7 +157,7 @@ export function ScientificSourceList({
               <div className="scientific-source-audit">
                 {source.verification_status && (
                   <span className={`source-verification verification-${source.verification_status}`}>
-                    {verificationLabels[source.verification_status] || humanizeCode(source.verification_status)}
+                    {verificationStatusLabel(source.verification_status)}
                   </span>
                 )}
                 {source.doi && <code>DOI {source.doi}</code>}

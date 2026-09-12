@@ -17,16 +17,16 @@ export default function GlobalSearch({ initialQuery = "" }: { initialQuery?: str
 
   useEffect(() => {
     const q = query.trim();
+    setData(null);
+    setDsmData(null);
+    setError("");
     if (q.length < 2) {
-      setData(null);
-      setDsmData(null);
       setLoading(false);
       return;
     }
+    setLoading(true);
     const controller = new AbortController();
     const timer = setTimeout(() => {
-      setLoading(true);
-      setError("");
       Promise.all([
         api<SearchResults>(`/search/?q=${encodeURIComponent(q)}`, { signal: controller.signal }),
         api<DSMPaginatedRecords>(`/dsm/records/?q=${encodeURIComponent(q)}&page_size=6`, { signal: controller.signal }),
@@ -36,7 +36,11 @@ export default function GlobalSearch({ initialQuery = "" }: { initialQuery?: str
           setDsmData(dsm);
         })
         .catch((e: any) => {
-          if (e?.name !== "AbortError") setError(e.message || "جست‌وجو انجام نشد.");
+          if (e?.name !== "AbortError") {
+            setData(null);
+            setDsmData(null);
+            setError(e.message || "جست‌وجو انجام نشد.");
+          }
         })
         .finally(() => {
           if (!controller.signal.aborted) setLoading(false);

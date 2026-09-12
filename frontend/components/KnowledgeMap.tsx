@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { normalizePersianSearch } from "@/lib/text";
 import type { KnowledgeGraphData, KnowledgeGraphEdge, KnowledgeGraphNode } from "@/lib/types";
 import GraphPathFinder from "./GraphPathFinder";
+import { ReviewStatus, SourceVerificationSummary } from "./ScientificMeta";
 
 type MapNeighbor = {
   node: KnowledgeGraphNode;
@@ -408,7 +409,7 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
                     {selected.type === "theory" && selected.modern_status && <span>{selected.modern_status.replaceAll("_", " ")}</span>}
                     {selected.type === "timeline" && <span>{selected.date_text || selected.year_start?.toLocaleString("fa-IR") || "تاریخ نامشخص"}</span>}
                     {selected.type === "timeline" && selected.date_precision && <span>{selected.date_precision.replaceAll("_", " ")}</span>}
-                    {selected.review_status && <span>{selected.review_status.replaceAll("_", " ")}</span>}
+                    {selected.review_status && <ReviewStatus status={selected.review_status} compact />}
                   </div>
                 )}
                 {selected.dsm_master_id && (
@@ -454,7 +455,12 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
                   <strong>{node.label}</strong>
                   <small>{nodeTypeLabel(node.type)} · {node.group}</small>
                   {edge.explanation && <p>{edge.explanation}</p>}
-                  {!!edge.sources?.length && <small className="map-edge-sources">منبع: {edge.sources.map(source => source.organization || source.title).join(" · ")}</small>}
+                  {!!edge.sources?.length && (
+                    <div className="map-edge-source-stack">
+                      <small className="map-edge-sources">منبع: {edge.sources.map(source => source.organization || source.title).join(" · ")}</small>
+                      <SourceVerificationSummary sources={edge.sources} />
+                    </div>
+                  )}
                 </button>
               ))}
               {!visibleNeighbors.length && <div className="empty-relation">برای این فیلتر رابطه‌ای ثبت نشده است.</div>}

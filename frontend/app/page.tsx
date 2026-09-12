@@ -32,7 +32,7 @@ export default async function Home() {
     <main>
       <section className="shell hero hero-v3 atlas-hero">
         <div className="atlas-hero-copy">
-          <div className="meta">Psychology Atlas · v0.6.5</div>
+          <div className="meta">Psychology Atlas · v0.6.6</div>
           <h1>روان‌شناسی را مثل یک شبکه تاریخی و مفهومی یاد بگیر، نه یک فهرست پراکنده.</h1>
           <p>
             اختلال، نشانه، مفهوم و درمان را کنار روان‌شناسان، نظریه‌ها و رویدادهای تاریخی دنبال کن. بعد با Quiz، Clinical Case، فلش‌کارت،

@@ -792,6 +792,12 @@ def global_search(request):
         .distinct()[:10]
     )
 
+    def exact_first_rows(queryset):
+        rows = list(queryset)
+        if rows and getattr(rows[0], "_search_exact", 1) == 0:
+            return [row for row in rows if row._search_exact == 0]
+        return rows
+
     therapy_base = Therapy.objects.filter(is_active=True, family__is_active=True).select_related("family")
     therapy_exact = (
         Q(name_en__iexact=q)
@@ -799,22 +805,32 @@ def global_search(request):
         | Q(slug__iexact=q)
         | Q(aliases__text__iexact=q)
     )
-    therapies = therapy_base.filter(therapy_exact)
-    if not therapies.exists():
-        therapies = therapy_base.filter(icontains_any(
-            (
-                "slug", "name_en", "name_fa", "summary", "academic_definition",
-                "core_principles", "aliases__text", "family__name_en", "family__name_fa",
-            ),
-            q,
-        ))
-    therapies = therapies.prefetch_related(
-        "aliases",
-        "classification_links__classification",
-        "technique_links__technique",
-        "disorder_links__disorder",
-        "concept_links__concept",
-    ).distinct()[:10]
+    therapy_partial = icontains_any(
+        (
+            "slug", "name_en", "name_fa", "summary", "academic_definition",
+            "core_principles", "aliases__text", "family__name_en", "family__name_fa",
+        ),
+        q,
+    )
+    therapies = exact_first_rows(
+        therapy_base.filter(therapy_exact | therapy_partial)
+        .annotate(
+            _search_exact=Case(
+                When(therapy_exact, then=Value(0)),
+                default=Value(1),
+                output_field=IntegerField(),
+            )
+        )
+        .prefetch_related(
+            "aliases",
+            "classification_links__classification",
+            "technique_links__technique",
+            "disorder_links__disorder",
+            "concept_links__concept",
+        )
+        .distinct()
+        .order_by("_search_exact", "name_en", "id")[:10]
+    )
 
     technique_base = Technique.objects.filter(is_active=True)
     technique_exact = (
@@ -823,17 +839,27 @@ def global_search(request):
         | Q(slug__iexact=q)
         | Q(aliases__text__iexact=q)
     )
-    techniques = technique_base.filter(technique_exact)
-    if not techniques.exists():
-        techniques = technique_base.filter(icontains_any(
-            ("slug", "name_en", "name_fa", "summary", "academic_definition", "aliases__text"),
-            q,
-        ))
-    techniques = techniques.prefetch_related(
-        "aliases",
-        "therapy_links__therapy__family",
-        "concept_links__concept",
-    ).distinct()[:10]
+    technique_partial = icontains_any(
+        ("slug", "name_en", "name_fa", "summary", "academic_definition", "aliases__text"),
+        q,
+    )
+    techniques = exact_first_rows(
+        technique_base.filter(technique_exact | technique_partial)
+        .annotate(
+            _search_exact=Case(
+                When(technique_exact, then=Value(0)),
+                default=Value(1),
+                output_field=IntegerField(),
+            )
+        )
+        .prefetch_related(
+            "aliases",
+            "therapy_links__therapy__family",
+            "concept_links__concept",
+        )
+        .distinct()
+        .order_by("_search_exact", "name_en", "id")[:10]
+    )
 
     psychologist_base = atlas_models.Psychologist.objects.filter(is_active=True)
     psychologist_exact = (
@@ -842,19 +868,28 @@ def global_search(request):
         | Q(slug__iexact=q)
         | Q(aliases__text__iexact=q)
     )
-    psychologists = psychologist_base.filter(psychologist_exact)
-    if not psychologists.exists():
-        psychologists = psychologist_base.filter(icontains_any(
-            (
-                "slug", "name_en", "name_fa", "summary_en", "summary_fa", "role_en", "role_fa",
-                "nationality_en", "nationality_fa", "historical_context_en", "historical_context_fa",
-                "aliases__text",
-            ),
-            q,
-        ))
-    psychologists = _v063_psychologist_counts(
-        psychologists.prefetch_related("aliases").distinct()
-    ).order_by("name_en", "id")[:10]
+    psychologist_partial = icontains_any(
+        (
+            "slug", "name_en", "name_fa", "summary_en", "summary_fa", "role_en", "role_fa",
+            "nationality_en", "nationality_fa", "historical_context_en", "historical_context_fa",
+            "aliases__text",
+        ),
+        q,
+    )
+    psychologists = exact_first_rows(
+        _v063_psychologist_counts(
+            psychologist_base.filter(psychologist_exact | psychologist_partial)
+            .annotate(
+                _search_exact=Case(
+                    When(psychologist_exact, then=Value(0)),
+                    default=Value(1),
+                    output_field=IntegerField(),
+                )
+            )
+            .prefetch_related("aliases")
+            .distinct()
+        ).order_by("_search_exact", "name_en", "id")[:10]
+    )
 
     theory_base = atlas_models.Theory.objects.filter(is_active=True)
     theory_exact = (
@@ -863,19 +898,28 @@ def global_search(request):
         | Q(slug__iexact=q)
         | Q(aliases__text__iexact=q)
     )
-    theories = theory_base.filter(theory_exact)
-    if not theories.exists():
-        theories = theory_base.filter(icontains_any(
-            (
-                "slug", "name_en", "name_fa", "summary_en", "summary_fa", "core_proposition_en",
-                "core_proposition_fa", "historical_context_en", "historical_context_fa", "domain",
-                "period_text", "modern_status", "aliases__text",
-            ),
-            q,
-        ))
-    theories = _v063_theory_counts(
-        theories.prefetch_related("aliases").distinct()
-    ).order_by("name_en", "id")[:10]
+    theory_partial = icontains_any(
+        (
+            "slug", "name_en", "name_fa", "summary_en", "summary_fa", "core_proposition_en",
+            "core_proposition_fa", "historical_context_en", "historical_context_fa", "domain",
+            "period_text", "modern_status", "aliases__text",
+        ),
+        q,
+    )
+    theories = exact_first_rows(
+        _v063_theory_counts(
+            theory_base.filter(theory_exact | theory_partial)
+            .annotate(
+                _search_exact=Case(
+                    When(theory_exact, then=Value(0)),
+                    default=Value(1),
+                    output_field=IntegerField(),
+                )
+            )
+            .prefetch_related("aliases")
+            .distinct()
+        ).order_by("_search_exact", "name_en", "id")[:10]
+    )
 
     timeline_base = atlas_models.TimelineEvent.objects.filter(is_active=True)
     timeline_exact = (
@@ -884,18 +928,26 @@ def global_search(request):
         | Q(slug__iexact=q)
         | Q(date_text__iexact=q)
     )
-    timeline_events = timeline_base.filter(timeline_exact)
-    if not timeline_events.exists():
-        timeline_events = timeline_base.filter(icontains_any(
-            (
-                "slug", "title_en", "title_fa", "description_en", "description_fa",
-                "historical_importance_en", "historical_importance_fa", "category", "date_text",
-            ),
-            q,
-        ))
-    timeline_events = _v063_timeline_counts(
-        timeline_events.distinct()
-    ).order_by("year_start", "exact_date", "title_en", "id")[:10]
+    timeline_partial = icontains_any(
+        (
+            "slug", "title_en", "title_fa", "description_en", "description_fa",
+            "historical_importance_en", "historical_importance_fa", "category", "date_text",
+        ),
+        q,
+    )
+    timeline_events = exact_first_rows(
+        _v063_timeline_counts(
+            timeline_base.filter(timeline_exact | timeline_partial)
+            .annotate(
+                _search_exact=Case(
+                    When(timeline_exact, then=Value(0)),
+                    default=Value(1),
+                    output_field=IntegerField(),
+                )
+            )
+            .distinct()
+        ).order_by("_search_exact", "year_start", "exact_date", "title_en", "id")[:10]
+    )
 
     return Response({
         "query": q,

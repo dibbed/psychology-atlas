@@ -1,10 +1,38 @@
 # Psychology Atlas Product Spec
 
-## Current implemented version: v0.6.5 — Knowledge Graph + Global Search Integration
+## Current implemented version: v0.6.6 — Final Hardening + Performance + v0.6 Freeze
 
 Psychology Atlas is an interactive educational system for psychology students. It should behave as a connected learning system, not as a psychology blog and not as a diagnostic product.
 
-v0.6.5 integrates the canonical Psychologist, Theory and Timeline runtime into Global Search and the existing Knowledge Graph. The integration is explicit-relation-only: no inferred similarity edge, fabricated historical attribution, generated confidence score or invented date precision is introduced. Relation semantics and relation-level provenance remain visible in Graph payloads and mixed-domain pathfinding.
+v0.6.6 closes the Psychologists + Theories + Timeline release series after v0.6.5 Graph/Search integration. This slice adds repeatable scientific-release auditing, hardens exact-first search performance and stale-result behavior, makes weak archival provenance more visible, reconfirms Graph/cache/API budgets, and freezes the complete v0.6 runtime without inventing new scientific claims or date precision.
+
+### v0.6.6 final-freeze invariants
+
+- `python manage.py audit_v06_release` is a read-only release guard over active Psychologist/Theory/Timeline entities and all thirteen v0.6 scientific relation families.
+- Active v0.6 provenance gaps are zero. Current scientific-review debt is 59 weak-only entities and 52 weak-only relations whose supporting source set is only `citation_from_model_knowledge`.
+- Weak-only rows are allowed to remain `source_checked`, because that status means source-backed rather than independently verified; a weak-only row marked `reviewed` fails the release audit. Current weak-only `reviewed` count is zero.
+- Timeline precision audit reports zero invalid combinations. Non-exact events still do not gain fabricated exact dates.
+- Compact relation cards and Knowledge Map neighbor cards explicitly surface `citation_from_model_knowledge` as “ارجاع آرشیوی؛ نیازمند بازبینی مستقل” when every source for that relation has that verification status.
+- Knowledge Map uses canonical scientific review labels instead of exposing raw review-status codes for v0.6 nodes.
+- Global Search clears stale Atlas/DSM results immediately when a new query starts and clears stale results on non-abort request failure.
+- Therapy/Technique/Psychologist/Theory/Timeline exact-first search no longer performs a redundant `.exists()` round trip. Exact ranking is computed in the same candidate query and exact-only semantics are preserved when exact candidates exist.
+- Real current Global Search measurements are 9 queries for `Aaron T. Beck`, 9 for `Beck Cognitive Model`, 8 for `1897`, and 23 for the broad multi-domain query `CBT`. The focused exact-search regression budget is now <=13 queries.
+- Knowledge Graph remains frozen at 660 nodes / 1,299 edges / 54 edge kinds / 365 explicit v0.6 edges with 0 v0.6 relation-level source gaps and 45 cold build queries.
+- Five repeated cold Graph builds all used exactly 45 queries; the measured median build time was about 253 ms on the local SQLite release environment. A warmed Graph cache required 0 DB queries.
+- Public v0.6 list/detail query budgets remain 3/3/2 for complete Psychologist/Theory/Timeline lists and 13/13/9 for representative details.
+- Production HTTP regression is 635/635 PASS across every active Disorder/Concept/Therapy/Technique/Psychologist/Theory/Timeline detail page plus core list/search/map routes.
+- Chromium headless interaction audit verifies Global Search result interaction, Knowledge Map traversal and weak-source warning visibility on a real weak-only relation.
+- Full backend suite is 128/128 PASS on `backend/.venv`; project-local `pip check`, Python compileall, Django check, research archive verifier and promotion dry-run all pass.
+- Frontend 0.6.6 TypeScript check and Next.js 16.3.3 production build pass; 23/23 generation units complete and `npm audit --audit-level=low` reports 0 vulnerabilities.
+- Production-oriented `check --deploy` with `DEBUG=0` reports only HSTS include-subdomains/preload warnings, which remain intentional deployment opt-ins rather than application defaults.
+- v0.6.6 requires no schema migration and does not alter the exact research archive hashes.
+- v0.6 is feature-complete/frozen after v0.6.6. The next feature release is v0.7 Advanced Branching Clinical Cases + Analytics.
+
+Detailed v0.6.6 final-freeze record:
+
+```text
+docs/Psychology_Atlas_v0.6.6_Final_Hardening_Freeze_2026-09-12.md
+```
 
 ### v0.6.5 integration invariants
 
