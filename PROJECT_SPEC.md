@@ -1,10 +1,30 @@
 # Psychology Atlas Product Spec
 
-## Current implemented version: v0.6.6 — Final Hardening + Performance + v0.6 Freeze
+## Current implemented version: v0.7.1 — Branching Clinical Case Architecture + Revision Safety
 
 Psychology Atlas is an interactive educational system for psychology students. It should behave as a connected learning system, not as a psychology blog and not as a diagnostic product.
 
-v0.6.6 closes the Psychologists + Theories + Timeline release series after v0.6.5 Graph/Search integration. This slice adds repeatable scientific-release auditing, hardens exact-first search performance and stale-result behavior, makes weak archival provenance more visible, reconfirms Graph/cache/API budgets, and freezes the complete v0.6 runtime without inventing new scientific claims or date precision.
+v0.7.1 starts the Advanced Branching Clinical Cases release series by replacing the implicit linear-only case structure with an additive revisioned graph foundation while preserving the current linear runner and historical user data.
+
+### v0.7.1 branching-case foundation invariants
+
+- `ClinicalCase.current_revision` identifies the authoritative published structure for new reads/attempts.
+- `CaseRevision` snapshots case title, patient summary, educational objective, difficulty and primary disorder in addition to structural graph ownership.
+- Every `CaseStep` belongs to exactly one revision and has a stable node key plus explicit `decision`, `information` or `terminal` node kind.
+- `CaseTransition` models branch flow explicitly. Choice transitions can continue to another node or complete the case; information-node automatic transitions are supported by schema.
+- v0.7.1 deliberately uses DAG semantics. Cycles are rejected by the case graph audit rather than silently permitted.
+- `CaseAttempt.revision` is non-null and protected, so historical attempts remain tied to the exact structural revision they used.
+- The legacy linear submit service reads questions only from `current_revision`, stores the revision on the attempt, and rejects branching-mode cases until the stateful v0.7.2 engine is implemented.
+- `seed_mvp` hashes canonical case content. Re-running unchanged seed content creates no revisions; changed content publishes a new revision and retires the prior published revision instead of mutating historical structure.
+- Migrated v0.6.6 cases become revision 1 with explicit transitions. Current seed inventory is 6 active cases / 6 current revisions / 18 active case nodes / 54 explicit transitions.
+- `python manage.py audit_case_graphs` is a read-only structural release guard for missing entry points, cross-revision transitions, invalid/inactive choice ownership, unreachable nodes, cycles, missing completion paths, attempt/revision mismatches and historical answer/revision mismatches.
+- Active cases without a published current revision and valid entry step are excluded from public Case APIs.
+- `CaseAttemptAnswer` validates both choice→question ownership and question→attempt-revision ownership.
+- Case list/detail API adds `structure_mode` and `revision_number`; current step payloads expose `stable_key` and `node_kind` while preserving existing linear fields.
+- Public Case list/detail query budgets are <=3 / <=4 queries on the current seeded fixture.
+- Full backend suite is 136/136 PASS; Django check, migration drift, Python compileall, project-local `pip check`, SQLite integrity and foreign-key audit all pass.
+- Frontend package 0.7.1 typecheck and Next.js 16.3.3 production build pass with 23/23 generation units; npm audit reports 0 vulnerabilities; production `/cases` and representative Case detail smoke return HTTP 200 in Chromium.
+- v0.7.1 does not yet implement start/resume/current-node decision APIs, server-side in-progress attempt state, multidimensional scoring, advanced runner UX or analytics. Those remain v0.7.2+.
 
 ### v0.6.6 final-freeze invariants
 

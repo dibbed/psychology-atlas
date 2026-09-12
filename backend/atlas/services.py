@@ -109,8 +109,14 @@ def submit_quiz(*, user, quiz, answers):
 
 @transaction.atomic
 def submit_case(*, user, clinical_case, answers):
+    revision = clinical_case.current_revision
+    if revision is None:
+        raise ValidationError("این کیس بالینی revision فعال ندارد.")
+    if clinical_case.structure_mode != "linear":
+        raise ValidationError("این endpoint فقط برای کیس‌های خطی سازگار با نسخه قبلی است.")
+
     questions = {}
-    for step in clinical_case.steps.filter(is_active=True).prefetch_related("questions__choices").all():
+    for step in revision.steps.filter(is_active=True).prefetch_related("questions__choices").all():
         for q in step.questions.all():
             if q.is_active:
                 questions[q.id] = q
@@ -126,6 +132,7 @@ def submit_case(*, user, clinical_case, answers):
     attempt = CaseAttempt.objects.create(
         user=user,
         case=clinical_case,
+        revision=revision,
         max_score=max_score,
     )
 
@@ -177,6 +184,10 @@ def submit_case(*, user, clinical_case, answers):
         StudyActivity.Kind.CASE_COMPLETED,
         clinical_case=clinical_case,
         disorder=clinical_case.primary_disorder,
-        metadata={"score": attempt.score, "max_score": attempt.max_score},
+        metadata={
+            "score": attempt.score,
+            "max_score": attempt.max_score,
+            "case_revision": revision.version,
+        },
     )
     return attempt, feedback

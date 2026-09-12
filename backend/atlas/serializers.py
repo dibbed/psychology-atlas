@@ -261,7 +261,9 @@ class CaseQuestionSerializer(serializers.ModelSerializer):
         fields = ("id", "prompt", "sort_order", "choices")
 
     def get_choices(self, obj):
-        return CaseChoiceSerializer(obj.choices.filter(is_active=True).order_by("sort_order", "id"), many=True).data
+        choices = [choice for choice in obj.choices.all() if choice.is_active]
+        choices.sort(key=lambda choice: (choice.sort_order, choice.id))
+        return CaseChoiceSerializer(choices, many=True).data
 
 
 class CaseStepSerializer(serializers.ModelSerializer):
@@ -269,22 +271,40 @@ class CaseStepSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CaseStep
-        fields = ("id", "title", "narrative", "sort_order", "questions")
+        fields = ("id", "stable_key", "node_kind", "title", "narrative", "sort_order", "questions")
 
     def get_questions(self, obj):
-        return CaseQuestionSerializer(obj.questions.filter(is_active=True).order_by("sort_order", "id"), many=True).data
+        questions = [question for question in obj.questions.all() if question.is_active]
+        questions.sort(key=lambda question: (question.sort_order, question.id))
+        return CaseQuestionSerializer(questions, many=True).data
 
 
 class ClinicalCaseListSerializer(serializers.ModelSerializer):
     primary_disorder = DisorderListSerializer(read_only=True)
     step_count = serializers.SerializerMethodField()
+    revision_number = serializers.SerializerMethodField()
 
     class Meta:
         model = ClinicalCase
-        fields = ("id", "slug", "title", "patient_summary", "difficulty", "primary_disorder", "step_count")
+        fields = (
+            "id",
+            "slug",
+            "title",
+            "patient_summary",
+            "difficulty",
+            "structure_mode",
+            "revision_number",
+            "primary_disorder",
+            "step_count",
+        )
 
     def get_step_count(self, obj):
-        return obj.steps.filter(is_active=True).count()
+        if not obj.current_revision_id:
+            return 0
+        return sum(1 for step in obj.current_revision.steps.all() if step.is_active)
+
+    def get_revision_number(self, obj):
+        return obj.current_revision.version if obj.current_revision_id else None
 
 
 class ClinicalCaseDetailSerializer(ClinicalCaseListSerializer):
@@ -294,7 +314,10 @@ class ClinicalCaseDetailSerializer(ClinicalCaseListSerializer):
         fields = ClinicalCaseListSerializer.Meta.fields + ("educational_objective", "steps")
 
     def get_steps(self, obj):
-        return CaseStepSerializer(obj.steps.filter(is_active=True).order_by("sort_order", "id"), many=True).data
+        if not obj.current_revision_id:
+            return []
+        steps = [step for step in obj.current_revision.steps.all() if step.is_active]
+        return CaseStepSerializer(steps, many=True).data
 
 
 class BookmarkSerializer(serializers.ModelSerializer):

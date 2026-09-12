@@ -225,18 +225,95 @@ class ClinicalCase(TimeStampedModel):
         INTERMEDIATE = "intermediate", "Intermediate"
         ADVANCED = "advanced", "Advanced"
 
+    class StructureMode(models.TextChoices):
+        LINEAR = "linear", "Linear"
+        BRANCHING = "branching", "Branching"
+
     slug = models.SlugField(max_length=160, unique=True)
     title = models.CharField(max_length=255)
     patient_summary = models.TextField()
     educational_objective = models.TextField(blank=True)
     primary_disorder = models.ForeignKey(Disorder, on_delete=models.SET_NULL, null=True, blank=True, related_name="clinical_cases")
     difficulty = models.CharField(max_length=24, choices=Difficulty.choices, default=Difficulty.INTRODUCTORY)
+    structure_mode = models.CharField(max_length=24, choices=StructureMode.choices, default=StructureMode.LINEAR, db_index=True)
+    current_revision = models.ForeignKey(
+        "CaseRevision",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="current_for_cases",
+    )
     is_active = models.BooleanField(default=True)
     seed_managed = models.BooleanField(default=False)
 
+    def clean(self):
+        super().clean()
+        if self.current_revision_id:
+            if self.current_revision.case_id != self.id:
+                raise ValidationError({"current_revision": "Current revision must belong to this clinical case."})
+            if self.current_revision.status != CaseRevision.Status.PUBLISHED:
+                raise ValidationError({"current_revision": "Current revision must be published."})
+
+
+class CaseRevision(TimeStampedModel):
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        PUBLISHED = "published", "Published"
+        RETIRED = "retired", "Retired"
+
+    case = models.ForeignKey(ClinicalCase, on_delete=models.CASCADE, related_name="revisions")
+    version = models.PositiveIntegerField()
+    title = models.CharField(max_length=255, blank=True)
+    patient_summary = models.TextField(blank=True)
+    educational_objective = models.TextField(blank=True)
+    difficulty = models.CharField(max_length=24, choices=ClinicalCase.Difficulty.choices, default=ClinicalCase.Difficulty.INTRODUCTORY)
+    primary_disorder = models.ForeignKey(
+        Disorder,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="clinical_case_revisions",
+    )
+    status = models.CharField(max_length=24, choices=Status.choices, default=Status.PUBLISHED, db_index=True)
+    content_hash = models.CharField(max_length=64, blank=True, db_index=True)
+    entry_step = models.ForeignKey(
+        "CaseStep",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="entry_for_revisions",
+    )
+    published_at = models.DateTimeField(null=True, blank=True)
+    seed_managed = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ("case_id", "version")
+        constraints = [
+            models.UniqueConstraint(fields=("case", "version"), name="uq_case_revision_version"),
+        ]
+        indexes = [
+            models.Index(fields=("case", "status")),
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.entry_step_id:
+            if self.entry_step.case_id != self.case_id:
+                raise ValidationError({"entry_step": "Entry step must belong to the same clinical case."})
+            if self.entry_step.revision_id != self.id:
+                raise ValidationError({"entry_step": "Entry step must belong to this case revision."})
+
 
 class CaseStep(models.Model):
+    class NodeKind(models.TextChoices):
+        DECISION = "decision", "Decision"
+        INFORMATION = "information", "Information"
+        TERMINAL = "terminal", "Terminal"
+
     case = models.ForeignKey(ClinicalCase, on_delete=models.CASCADE, related_name="steps")
+    revision = models.ForeignKey(CaseRevision, on_delete=models.PROTECT, related_name="steps")
+    stable_key = models.SlugField(max_length=120)
+    node_kind = models.CharField(max_length=24, choices=NodeKind.choices, default=NodeKind.DECISION)
     title = models.CharField(max_length=255, blank=True)
     narrative = models.TextField()
     sort_order = models.PositiveIntegerField()
@@ -245,8 +322,17 @@ class CaseStep(models.Model):
     class Meta:
         ordering = ("sort_order", "id")
         constraints = [
-            models.UniqueConstraint(fields=("case", "sort_order"), name="uq_case_step_order")
+            models.UniqueConstraint(fields=("revision", "stable_key"), name="uq_case_revision_step_key"),
+            models.UniqueConstraint(fields=("revision", "sort_order"), name="uq_case_revision_step_order"),
         ]
+        indexes = [
+            models.Index(fields=("case", "revision", "is_active")),
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.revision_id and self.case_id and self.revision.case_id != self.case_id:
+            raise ValidationError({"revision": "Step revision must belong to the same clinical case."})
 
 
 class CaseQuestion(TimeStampedModel):
@@ -272,6 +358,69 @@ class CaseChoice(models.Model):
         ordering = ("sort_order", "id")
 
 
+class CaseTransition(models.Model):
+    class Outcome(models.TextChoices):
+        CONTINUE = "continue", "Continue"
+        COMPLETE = "complete", "Complete"
+
+    revision = models.ForeignKey(CaseRevision, on_delete=models.CASCADE, related_name="transitions")
+    source_step = models.ForeignKey(CaseStep, on_delete=models.CASCADE, related_name="outgoing_transitions")
+    choice = models.OneToOneField(
+        CaseChoice,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="branch_transition",
+    )
+    target_step = models.ForeignKey(
+        CaseStep,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="incoming_transitions",
+    )
+    outcome = models.CharField(max_length=24, choices=Outcome.choices, default=Outcome.CONTINUE)
+    sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    seed_managed = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ("source_step__sort_order", "sort_order", "id")
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    Q(outcome="continue", target_step__isnull=False)
+                    | Q(outcome="complete", target_step__isnull=True)
+                ),
+                name="ck_case_transition_target_by_outcome",
+            ),
+            models.UniqueConstraint(
+                fields=("revision", "source_step"),
+                condition=Q(choice__isnull=True, is_active=True),
+                name="uq_active_case_auto_transition",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=("revision", "source_step", "is_active")),
+        ]
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.source_step_id and self.source_step.revision_id != self.revision_id:
+            errors["source_step"] = "Source step must belong to this revision."
+        if self.target_step_id and self.target_step.revision_id != self.revision_id:
+            errors["target_step"] = "Target step must belong to this revision."
+        if self.choice_id and self.source_step_id and self.choice.question.step_id != self.source_step_id:
+            errors["choice"] = "Transition choice must belong to the source step."
+        if self.outcome == self.Outcome.CONTINUE and not self.target_step_id:
+            errors["target_step"] = "Continue transitions require a target step."
+        if self.outcome == self.Outcome.COMPLETE and self.target_step_id:
+            errors["target_step"] = "Complete transitions cannot target another step."
+        if errors:
+            raise ValidationError(errors)
+
+
 class CaseAttempt(TimeStampedModel):
     class Status(models.TextChoices):
         IN_PROGRESS = "in_progress", "In progress"
@@ -279,6 +428,7 @@ class CaseAttempt(TimeStampedModel):
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="case_attempts")
     case = models.ForeignKey(ClinicalCase, on_delete=models.PROTECT, related_name="attempts")
+    revision = models.ForeignKey(CaseRevision, on_delete=models.PROTECT, related_name="attempts")
     status = models.CharField(max_length=24, choices=Status.choices, default=Status.IN_PROGRESS)
     score = models.IntegerField(default=0)
     max_score = models.IntegerField(default=0)
@@ -288,7 +438,13 @@ class CaseAttempt(TimeStampedModel):
         indexes = [
             models.Index(fields=("user", "status")),
             models.Index(fields=("user", "-created_at")),
+            models.Index(fields=("case", "revision", "status")),
         ]
+
+    def clean(self):
+        super().clean()
+        if self.revision_id and self.case_id and self.revision.case_id != self.case_id:
+            raise ValidationError({"revision": "Attempt revision must belong to the selected clinical case."})
 
 
 class CaseAttemptAnswer(models.Model):
@@ -302,6 +458,16 @@ class CaseAttemptAnswer(models.Model):
         constraints = [
             models.UniqueConstraint(fields=("attempt", "question"), name="uq_case_attempt_question")
         ]
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.selected_choice_id and self.question_id and self.selected_choice.question_id != self.question_id:
+            errors["selected_choice"] = "Selected choice must belong to the selected question."
+        if self.attempt_id and self.question_id and self.question.step.revision_id != self.attempt.revision_id:
+            errors["question"] = "Question must belong to the same case revision as the attempt."
+        if errors:
+            raise ValidationError(errors)
 
 
 class Bookmark(models.Model):

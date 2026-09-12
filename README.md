@@ -1,8 +1,44 @@
-# Psychology Atlas — v0.6.6 · Final Hardening + Performance + v0.6 Freeze
+# Psychology Atlas — v0.7.1 · Branching Clinical Case Architecture + Revision Safety
 
-یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.6.6 سری v0.6 روان‌شناسان، نظریه‌ها و Timeline را بعد از Graph/Search integration نهایی می‌کند: release audit علمی تکرارپذیر، performance hardening جست‌وجو، جلوگیری از stale Search UI، visibility دقیق‌تر provenance ضعیف و production/browser regression کامل.
+یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.7.1 پایه معماری کیس‌های شاخه‌ای را به‌صورت additive و history-safe اضافه می‌کند: Case Revision، node identity، transitionهای صریح، version-bound attempts، graph integrity audit و seed versioning بدون شکستن runner خطی فعلی.
 
 > این نرم‌افزار آموزشی است و ابزار تشخیص، درمان یا جایگزین ارزیابی حرفه‌ای نیست.
+
+## v0.7.1 Branching Case Architecture + Revision Safety
+
+این slice هنوز runner تعاملی stateful یا analytics نهایی v0.7 را فعال نمی‌کند؛ هدف آن ساخت foundation درست برای v0.7.2+ است.
+
+```text
+CaseRevision                         ✅
+CaseStep stable_key + node_kind      ✅
+Explicit CaseTransition graph        ✅
+CaseAttempt -> immutable revision    ✅
+Legacy linear submit compatibility   ✅
+Seed revision immutability           ✅
+DAG/cycle/reachability audit         ✅
+Current seed: 6 cases / 6 revisions / 18 nodes / 54 transitions
+Backend tests: 136/136 PASS
+Case API query budget: list <= 3 / detail <= 4
+SQLite integrity_check: ok / foreign_key_check: 0
+Frontend 0.7.1: typecheck PASS / build 23/23 / npm audit 0
+Production case smoke: /cases + representative detail HTTP 200
+```
+
+قواعد اصلی v0.7.1:
+
+- هر Case فعال یک `current_revision` دارد و هر Attempt به revision مشخص bind می‌شود.
+- تغییر ساختار seed، revision قبلی را mutate نمی‌کند؛ revision جدید ساخته و قبلی `retired` می‌شود.
+- nodeهای Case دارای `stable_key` و `node_kind` از نوع `decision`, `information`, `terminal` هستند.
+- branchها از `CaseTransition` صریح می‌آیند؛ transition حدسی یا AI-inferred وجود ندارد.
+- در v0.7.1 graph کیس DAG است و cycle در `python manage.py audit_case_graphs` failure محسوب می‌شود.
+- validator همچنین entry point، unreachable node، transition خراب، choice متعلق به node دیگر، inactive transition content و نبود completion path را بررسی می‌کند.
+- Case فعال بدون `published current_revision` و entry point معتبر از public API پنهان می‌ماند.
+- `CaseAttemptAnswer` اجازه اتصال choice به question دیگر یا question به revision متفاوت Attempt را نمی‌دهد؛ audit موجودی تاریخی را هم بررسی می‌کند.
+- API فعلی Case فقط `current_revision` را serialize می‌کند و `revision_number`, `structure_mode`, `stable_key`, `node_kind` را در contract قرار می‌دهد.
+- endpoint قدیمی submit فقط برای Caseهای `linear` نگه داشته شده تا v0.7.2 runner stateful جایگزین آن شود.
+- `seed_mvp` روی اجرای تکراری revision اضافه نمی‌سازد؛ فقط وقتی content hash تغییر کند revision جدید ایجاد می‌شود.
+
+مرحله بعدی: **v0.7.2 Server-authoritative Attempt State + Start/Resume/Decision APIs**.
 
 ## v0.6.6 Final Hardening + Performance + Release Freeze
 

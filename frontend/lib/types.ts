@@ -178,11 +178,15 @@ export type ClinicalCase = {
   title: string;
   patient_summary: string;
   difficulty: string;
+  structure_mode: "linear" | "branching";
+  revision_number: number | null;
   step_count?: number;
   educational_objective?: string;
   primary_disorder: Disorder | null;
   steps?: {
     id: number;
+    stable_key: string;
+    node_kind: "decision" | "information" | "terminal";
     title: string;
     narrative: string;
     sort_order: number;

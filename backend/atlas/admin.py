@@ -46,6 +46,8 @@ for model in [
     CaseChoice,
     CaseQuestion,
     CaseStep,
+    atlas_models.CaseRevision,
+    atlas_models.CaseTransition,
     Category,
     ClinicalCase,
     DifferentialRelationship,

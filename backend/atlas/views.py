@@ -93,7 +93,13 @@ def available_quizzes():
 
 
 def available_clinical_cases():
-    return ClinicalCase.objects.filter(is_active=True).filter(
+    queryset = ClinicalCase.objects.filter(is_active=True)
+    queryset = queryset.filter(
+        current_revision__isnull=False,
+        current_revision__status=atlas_models.CaseRevision.Status.PUBLISHED,
+        current_revision__entry_step__isnull=False,
+    )
+    return queryset.filter(
         Q(primary_disorder__isnull=True) | Q(primary_disorder__is_active=True)
     )
 
@@ -268,8 +274,8 @@ class ClinicalCaseListView(generics.ListAPIView):
     serializer_class = ClinicalCaseListSerializer
     queryset = (
         available_clinical_cases()
-        .select_related("primary_disorder", "primary_disorder__category")
-        .prefetch_related("steps")
+        .select_related("primary_disorder", "primary_disorder__category", "current_revision")
+        .prefetch_related("current_revision__steps")
         .annotate(
             difficulty_order=Case(
                 When(difficulty=ClinicalCase.Difficulty.INTRODUCTORY, then=Value(0)),
@@ -286,7 +292,11 @@ class ClinicalCaseListView(generics.ListAPIView):
 class ClinicalCaseDetailView(generics.RetrieveAPIView):
     serializer_class = ClinicalCaseDetailSerializer
     lookup_field = "slug"
-    queryset = available_clinical_cases().select_related("primary_disorder", "primary_disorder__category").prefetch_related("steps__questions__choices")
+    queryset = (
+        available_clinical_cases()
+        .select_related("primary_disorder", "primary_disorder__category", "current_revision")
+        .prefetch_related("current_revision__steps__questions__choices")
+    )
 
 
 @api_view(["POST"])
