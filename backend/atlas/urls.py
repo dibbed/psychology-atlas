@@ -22,6 +22,10 @@ urlpatterns = [
     path("cases/", views.ClinicalCaseListView.as_view()),
     path("cases/<slug:slug>/", views.ClinicalCaseDetailView.as_view()),
     path("cases/<slug:slug>/submit/", views.case_submit),
+    path("cases/<slug:slug>/attempts/", views.case_attempt_start),
+    path("cases/<slug:slug>/attempts/current/", views.case_attempt_current),
+    path("case-attempts/<int:attempt_id>/", views.case_attempt_detail),
+    path("case-attempts/<int:attempt_id>/decisions/", views.case_attempt_decision),
 
     path("bookmarks/", views.bookmarks),
     path("bookmarks/<slug:slug>/", views.bookmark_delete),

@@ -22,6 +22,7 @@ from .learning import (
 )
 from .models import (
     Bookmark,
+    CaseAttempt,
     Category,
     ClinicalCase,
     ConceptBookmark,
@@ -53,6 +54,7 @@ from .models import (
 from .search_utils import icontains_any
 from .serializers import (
     BookmarkSerializer,
+    CaseAttemptStateSerializer,
     ClinicalCaseDetailSerializer,
     ClinicalCaseListSerializer,
     DisorderDetailSerializer,
@@ -77,7 +79,8 @@ from .serializers import (
     UserNoteSerializer,
     UserSerializer,
 )
-from .services import submit_case, submit_quiz
+from .services import advance_case_attempt, start_or_resume_case_attempt, submit_case, submit_quiz
+from .validation import positive_int
 
 
 def _object_payload(request):
@@ -102,6 +105,34 @@ def available_clinical_cases():
     return queryset.filter(
         Q(primary_disorder__isnull=True) | Q(primary_disorder__is_active=True)
     )
+
+
+def case_attempt_state_queryset():
+    return (
+        CaseAttempt.objects.select_related(
+            "case",
+            "revision",
+            "revision__primary_disorder",
+            "current_step",
+        )
+        .prefetch_related(
+            "current_step__questions__choices",
+            "events",
+        )
+    )
+
+
+def _non_negative_state_version(value):
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        raise ValidationError({"state_version": "state_version باید یک عدد صحیح نامنفی باشد."})
+    if isinstance(value, str):
+        value = value.strip()
+        if not value or not value.isascii() or not value.isdigit() or len(value) > 12:
+            raise ValidationError({"state_version": "state_version معتبر نیست."})
+    parsed = int(value)
+    if parsed < 0:
+        raise ValidationError({"state_version": "state_version نمی‌تواند منفی باشد."})
+    return parsed
 
 
 class RegisterView(generics.CreateAPIView):
@@ -311,6 +342,66 @@ def case_submit(request, slug):
         "max_score": attempt.max_score,
         "feedback": feedback,
     })
+
+
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def case_attempt_start(request, slug):
+    clinical_case = get_object_or_404(
+        available_clinical_cases().select_related("current_revision__entry_step"),
+        slug=slug,
+    )
+    attempt, created = start_or_resume_case_attempt(user=request.user, clinical_case=clinical_case)
+    state = get_object_or_404(case_attempt_state_queryset(), pk=attempt.pk, user=request.user)
+    data = dict(CaseAttemptStateSerializer(state).data)
+    data["resumed"] = not created
+    return Response(data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+
+@api_view(["GET"])
+@permission_classes([permissions.IsAuthenticated])
+def case_attempt_current(request, slug):
+    clinical_case = get_object_or_404(ClinicalCase, slug=slug)
+    state = (
+        case_attempt_state_queryset()
+        .filter(user=request.user, case=clinical_case, status=CaseAttempt.Status.IN_PROGRESS)
+        .order_by("-created_at", "-id")
+        .first()
+    )
+    if state is None:
+        return Response({"detail": "attempt در حال اجرا برای این کیس وجود ندارد."}, status=status.HTTP_404_NOT_FOUND)
+    return Response(CaseAttemptStateSerializer(state).data)
+
+
+@api_view(["GET"])
+@permission_classes([permissions.IsAuthenticated])
+def case_attempt_detail(request, attempt_id):
+    state = get_object_or_404(case_attempt_state_queryset(), pk=attempt_id, user=request.user)
+    return Response(CaseAttemptStateSerializer(state).data)
+
+
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def case_attempt_decision(request, attempt_id):
+    payload = _object_payload(request)
+    step_id = positive_int(payload.get("step_id"), field="step_id")
+    state_version = _non_negative_state_version(payload.get("state_version"))
+    raw_choice_id = payload.get("choice_id")
+    choice_id = None if raw_choice_id is None else positive_int(raw_choice_id, field="choice_id")
+
+    owned_attempt = get_object_or_404(CaseAttempt, pk=attempt_id, user=request.user)
+    attempt, event, idempotent = advance_case_attempt(
+        user=request.user,
+        attempt=owned_attempt,
+        step_id=step_id,
+        choice_id=choice_id,
+        state_version=state_version,
+    )
+    state = get_object_or_404(case_attempt_state_queryset(), pk=attempt.pk, user=request.user)
+    data = dict(CaseAttemptStateSerializer(state).data)
+    data["event_id"] = event.id
+    data["idempotent"] = idempotent
+    return Response(data)
 
 
 @api_view(["GET", "POST"])

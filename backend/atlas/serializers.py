@@ -7,6 +7,8 @@ from rest_framework import serializers
 from . import models as atlas_models
 from .models import (
     Bookmark,
+    CaseAttempt,
+    CaseAttemptEvent,
     CaseChoice,
     CaseQuestion,
     CaseStep,
@@ -318,6 +320,65 @@ class ClinicalCaseDetailSerializer(ClinicalCaseListSerializer):
             return []
         steps = [step for step in obj.current_revision.steps.all() if step.is_active]
         return CaseStepSerializer(steps, many=True).data
+
+
+class CaseAttemptEventSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CaseAttemptEvent
+        fields = (
+            "id",
+            "event_type",
+            "step_id",
+            "question_id",
+            "selected_choice_id",
+            "next_step_id",
+            "outcome",
+            "awarded_score",
+            "max_score",
+            "state_version_before",
+            "state_version_after",
+            "snapshot",
+            "created_at",
+        )
+
+
+class CaseAttemptStateSerializer(serializers.ModelSerializer):
+    case = serializers.SerializerMethodField()
+    current_step = serializers.SerializerMethodField()
+    history = CaseAttemptEventSerializer(source="events", many=True, read_only=True)
+
+    class Meta:
+        model = CaseAttempt
+        fields = (
+            "id",
+            "case",
+            "status",
+            "state_version",
+            "score",
+            "max_score",
+            "current_step",
+            "history",
+            "created_at",
+            "updated_at",
+            "completed_at",
+        )
+
+    def get_case(self, obj):
+        return {
+            "id": obj.case_id,
+            "slug": obj.case.slug,
+            "title": obj.revision.title or obj.case.title,
+            "patient_summary": obj.revision.patient_summary,
+            "educational_objective": obj.revision.educational_objective,
+            "difficulty": obj.revision.difficulty,
+            "structure_mode": obj.case.structure_mode,
+            "revision_number": obj.revision.version,
+        }
+
+    def get_current_step(self, obj):
+        if obj.current_step_id is None:
+            return None
+        return CaseStepSerializer(obj.current_step).data
 
 
 class BookmarkSerializer(serializers.ModelSerializer):

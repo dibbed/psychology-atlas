@@ -429,7 +429,15 @@ class CaseAttempt(TimeStampedModel):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="case_attempts")
     case = models.ForeignKey(ClinicalCase, on_delete=models.PROTECT, related_name="attempts")
     revision = models.ForeignKey(CaseRevision, on_delete=models.PROTECT, related_name="attempts")
+    current_step = models.ForeignKey(
+        CaseStep,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="current_attempts",
+    )
     status = models.CharField(max_length=24, choices=Status.choices, default=Status.IN_PROGRESS)
+    state_version = models.PositiveIntegerField(default=0)
     score = models.IntegerField(default=0)
     max_score = models.IntegerField(default=0)
     completed_at = models.DateTimeField(null=True, blank=True)
@@ -437,14 +445,104 @@ class CaseAttempt(TimeStampedModel):
     class Meta:
         indexes = [
             models.Index(fields=("user", "status")),
+            models.Index(fields=("user", "case", "status")),
             models.Index(fields=("user", "-created_at")),
             models.Index(fields=("case", "revision", "status")),
         ]
 
     def clean(self):
         super().clean()
+        errors = {}
         if self.revision_id and self.case_id and self.revision.case_id != self.case_id:
-            raise ValidationError({"revision": "Attempt revision must belong to the selected clinical case."})
+            errors["revision"] = "Attempt revision must belong to the selected clinical case."
+        if self.current_step_id:
+            if self.current_step.case_id != self.case_id:
+                errors["current_step"] = "Current step must belong to the selected clinical case."
+            if self.current_step.revision_id != self.revision_id:
+                errors["current_step"] = "Current step must belong to the attempt revision."
+        if self.status == self.Status.IN_PROGRESS and not self.current_step_id:
+            errors["current_step"] = "In-progress attempts require a current step."
+        if errors:
+            raise ValidationError(errors)
+
+
+class CaseAttemptEvent(models.Model):
+    class EventType(models.TextChoices):
+        DECISION = "decision", "Decision"
+        ADVANCE = "advance", "Advance"
+        TERMINAL_COMPLETE = "terminal_complete", "Terminal complete"
+
+    attempt = models.ForeignKey(CaseAttempt, on_delete=models.CASCADE, related_name="events")
+    step = models.ForeignKey(CaseStep, on_delete=models.PROTECT, related_name="attempt_events")
+    event_type = models.CharField(max_length=32, choices=EventType.choices)
+    question = models.ForeignKey(CaseQuestion, on_delete=models.PROTECT, null=True, blank=True)
+    selected_choice = models.ForeignKey(CaseChoice, on_delete=models.PROTECT, null=True, blank=True)
+    transition = models.ForeignKey(CaseTransition, on_delete=models.PROTECT, null=True, blank=True)
+    next_step = models.ForeignKey(
+        CaseStep,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="incoming_attempt_events",
+    )
+    outcome = models.CharField(max_length=24, choices=CaseTransition.Outcome.choices)
+    awarded_score = models.IntegerField(default=0)
+    max_score = models.IntegerField(default=0)
+    state_version_before = models.PositiveIntegerField()
+    state_version_after = models.PositiveIntegerField()
+    snapshot = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("created_at", "id")
+        constraints = [
+            models.UniqueConstraint(fields=("attempt", "step"), name="uq_case_attempt_event_step"),
+            models.UniqueConstraint(fields=("attempt", "state_version_before"), name="uq_case_attempt_event_version"),
+        ]
+        indexes = [
+            models.Index(fields=("attempt", "created_at")),
+        ]
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.step_id and self.attempt_id and self.step.revision_id != self.attempt.revision_id:
+            errors["step"] = "Event step must belong to the attempt revision."
+        if self.state_version_after != self.state_version_before + 1:
+            errors["state_version_after"] = "Event state version must advance exactly once."
+        if self.event_type == self.EventType.DECISION:
+            if not self.question_id or not self.selected_choice_id or not self.transition_id:
+                errors["event_type"] = "Decision events require question, choice, and transition."
+            else:
+                if self.question.step_id != self.step_id:
+                    errors["question"] = "Decision question must belong to the event step."
+                if self.selected_choice.question_id != self.question_id:
+                    errors["selected_choice"] = "Decision choice must belong to the event question."
+                if self.transition.source_step_id != self.step_id or self.transition.choice_id != self.selected_choice_id:
+                    errors["transition"] = "Decision transition must match the event step and selected choice."
+        elif self.event_type == self.EventType.ADVANCE:
+            if self.question_id or self.selected_choice_id or not self.transition_id:
+                errors["event_type"] = "Advance events require an automatic transition and no question or choice."
+            elif self.transition.source_step_id != self.step_id or self.transition.choice_id is not None:
+                errors["transition"] = "Advance transition must be automatic and belong to the event step."
+        elif self.event_type == self.EventType.TERMINAL_COMPLETE:
+            if self.question_id or self.selected_choice_id or self.transition_id or self.next_step_id:
+                errors["event_type"] = "Terminal completion cannot include question, choice, transition, or next step."
+            if self.step.node_kind != CaseStep.NodeKind.TERMINAL:
+                errors["step"] = "Terminal completion requires a terminal step."
+        if self.transition_id:
+            if self.transition.revision_id != self.attempt.revision_id:
+                errors["transition"] = "Event transition must belong to the attempt revision."
+            if self.outcome != self.transition.outcome:
+                errors["outcome"] = "Event outcome must match the selected transition."
+            if self.next_step_id != self.transition.target_step_id:
+                errors["next_step"] = "Event next step must match the selected transition."
+        elif self.event_type == self.EventType.TERMINAL_COMPLETE and self.outcome != CaseTransition.Outcome.COMPLETE:
+            errors["outcome"] = "Terminal completion must use a complete outcome."
+        if self.next_step_id and self.next_step.revision_id != self.attempt.revision_id:
+            errors["next_step"] = "Event next step must belong to the attempt revision."
+        if errors:
+            raise ValidationError(errors)
 
 
 class CaseAttemptAnswer(models.Model):

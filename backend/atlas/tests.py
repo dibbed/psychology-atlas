@@ -21,7 +21,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from . import models as atlas_models
 from .case_graph import validate_case_revision_graph
 from .models import (
-    Bookmark, CaseAttempt, CaseAttemptAnswer, CaseChoice, CaseQuestion, CaseRevision, CaseStep, CaseTransition, Category, ClinicalCase,
+    Bookmark, CaseAttempt, CaseAttemptAnswer, CaseAttemptEvent, CaseChoice, CaseQuestion, CaseRevision, CaseStep, CaseTransition, Category, ClinicalCase,
     Concept, ConceptAlias, ConceptBookmark, ConceptNote, ConceptRelationship, ConceptRelationshipSource,
     ConceptSymptom, CognitiveDistortionPracticeAttempt, CognitiveDistortionPracticeChoice,
     CognitiveDistortionPracticeItem, DailyChallenge, DailyChallengeAttempt, DailyChallengeChoice, Disorder, DisorderConcept,
@@ -65,6 +65,111 @@ class AtlasApiTests(APITestCase):
         case.current_revision = revision
         case.save(update_fields=("current_revision", "updated_at"))
         return revision
+
+    def create_branching_case_fixture(self, slug="stateful-branch-case"):
+        case = ClinicalCase.objects.create(
+            slug=slug,
+            title="Stateful Branch Case",
+            patient_summary="Educational summary",
+            educational_objective="Practice server-authoritative branching",
+            primary_disorder=self.disorder,
+            structure_mode=ClinicalCase.StructureMode.BRANCHING,
+            is_active=True,
+        )
+        revision = self.create_case_revision(case)
+        entry = CaseStep.objects.create(
+            case=case,
+            revision=revision,
+            stable_key="entry",
+            node_kind=CaseStep.NodeKind.DECISION,
+            title="Entry",
+            narrative="Choose the next educational path.",
+            sort_order=1,
+        )
+        left = CaseStep.objects.create(
+            case=case,
+            revision=revision,
+            stable_key="left-path",
+            node_kind=CaseStep.NodeKind.INFORMATION,
+            title="Left path",
+            narrative="Left educational branch.",
+            sort_order=2,
+        )
+        right = CaseStep.objects.create(
+            case=case,
+            revision=revision,
+            stable_key="right-path",
+            node_kind=CaseStep.NodeKind.INFORMATION,
+            title="Right path",
+            narrative="Right educational branch.",
+            sort_order=3,
+        )
+        question = CaseQuestion.objects.create(
+            step=entry,
+            prompt="Which path should be followed?",
+            explanation="This is an educational branching decision.",
+            sort_order=1,
+        )
+        left_choice = CaseChoice.objects.create(
+            question=question,
+            text="Take the left path",
+            score_value=3,
+            feedback="Left path feedback",
+            sort_order=1,
+        )
+        right_choice = CaseChoice.objects.create(
+            question=question,
+            text="Take the right path",
+            score_value=1,
+            feedback="Right path feedback",
+            sort_order=2,
+        )
+        left_transition = CaseTransition.objects.create(
+            revision=revision,
+            source_step=entry,
+            choice=left_choice,
+            target_step=left,
+            outcome=CaseTransition.Outcome.CONTINUE,
+            sort_order=1,
+        )
+        right_transition = CaseTransition.objects.create(
+            revision=revision,
+            source_step=entry,
+            choice=right_choice,
+            target_step=right,
+            outcome=CaseTransition.Outcome.CONTINUE,
+            sort_order=2,
+        )
+        left_complete = CaseTransition.objects.create(
+            revision=revision,
+            source_step=left,
+            choice=None,
+            target_step=None,
+            outcome=CaseTransition.Outcome.COMPLETE,
+        )
+        right_complete = CaseTransition.objects.create(
+            revision=revision,
+            source_step=right,
+            choice=None,
+            target_step=None,
+            outcome=CaseTransition.Outcome.COMPLETE,
+        )
+        revision.entry_step = entry
+        revision.save(update_fields=("entry_step", "updated_at"))
+        return {
+            "case": case,
+            "revision": revision,
+            "entry": entry,
+            "left": left,
+            "right": right,
+            "question": question,
+            "left_choice": left_choice,
+            "right_choice": right_choice,
+            "left_transition": left_transition,
+            "right_transition": right_transition,
+            "left_complete": left_complete,
+            "right_complete": right_complete,
+        }
 
     def test_public_disorder_list(self):
         response = self.client.get("/api/disorders/")
@@ -459,6 +564,365 @@ class AtlasApiTests(APITestCase):
         audit_output = StringIO()
         call_command("audit_case_graphs", stdout=audit_output)
         self.assertIn("Clinical case graph audit PASS", audit_output.getvalue())
+
+    def test_v072_start_and_resume_returns_same_in_progress_attempt(self):
+        fixture = self.create_branching_case_fixture()
+        self.auth(self.user_a)
+
+        started = self.client.post(f"/api/cases/{fixture['case'].slug}/attempts/", {}, format="json")
+        self.assertEqual(started.status_code, 201)
+        self.assertFalse(started.json()["resumed"])
+        self.assertEqual(started.json()["status"], CaseAttempt.Status.IN_PROGRESS)
+        self.assertEqual(started.json()["state_version"], 0)
+        self.assertEqual(started.json()["current_step"]["id"], fixture["entry"].id)
+        self.assertEqual(started.json()["history"], [])
+        attempt_id = started.json()["id"]
+
+        resumed = self.client.post(f"/api/cases/{fixture['case'].slug}/attempts/", {}, format="json")
+        self.assertEqual(resumed.status_code, 200)
+        self.assertTrue(resumed.json()["resumed"])
+        self.assertEqual(resumed.json()["id"], attempt_id)
+        self.assertEqual(CaseAttempt.objects.filter(user=self.user_a, case=fixture["case"]).count(), 1)
+
+        current = self.client.get(f"/api/cases/{fixture['case'].slug}/attempts/current/")
+        self.assertEqual(current.status_code, 200)
+        self.assertEqual(current.json()["id"], attempt_id)
+
+    def test_v072_start_rejects_duplicate_in_progress_integrity_violation(self):
+        fixture = self.create_branching_case_fixture()
+        CaseAttempt.objects.create(
+            user=self.user_a,
+            case=fixture["case"],
+            revision=fixture["revision"],
+            current_step=fixture["entry"],
+        )
+        CaseAttempt.objects.create(
+            user=self.user_a,
+            case=fixture["case"],
+            revision=fixture["revision"],
+            current_step=fixture["entry"],
+        )
+        self.auth(self.user_a)
+        response = self.client.post(f"/api/cases/{fixture['case'].slug}/attempts/", {}, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(CaseAttempt.objects.filter(user=self.user_a, case=fixture["case"]).count(), 2)
+
+    def test_v072_server_selects_next_branch_and_records_event_history(self):
+        fixture = self.create_branching_case_fixture()
+        self.auth(self.user_a)
+        started = self.client.post(f"/api/cases/{fixture['case'].slug}/attempts/", {}, format="json")
+        attempt_id = started.json()["id"]
+
+        response = self.client.post(
+            f"/api/case-attempts/{attempt_id}/decisions/",
+            {
+                "step_id": fixture["entry"].id,
+                "choice_id": fixture["left_choice"].id,
+                "state_version": 0,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertFalse(data["idempotent"])
+        self.assertEqual(data["state_version"], 1)
+        self.assertEqual(data["score"], 3)
+        self.assertEqual(data["max_score"], 3)
+        self.assertEqual(data["current_step"]["id"], fixture["left"].id)
+        self.assertEqual(len(data["history"]), 1)
+        self.assertEqual(data["history"][0]["event_type"], CaseAttemptEvent.EventType.DECISION)
+        self.assertEqual(data["history"][0]["next_step_id"], fixture["left"].id)
+        self.assertEqual(data["history"][0]["snapshot"]["target_step_key"], "left-path")
+        self.assertEqual(CaseAttemptAnswer.objects.filter(attempt_id=attempt_id).count(), 1)
+
+    def test_v072_rejects_skip_foreign_choice_and_stale_state(self):
+        fixture = self.create_branching_case_fixture()
+        foreign = self.create_branching_case_fixture(slug="stateful-foreign-case")
+        self.auth(self.user_a)
+        started = self.client.post(f"/api/cases/{fixture['case'].slug}/attempts/", {}, format="json")
+        attempt_id = started.json()["id"]
+
+        skipped = self.client.post(
+            f"/api/case-attempts/{attempt_id}/decisions/",
+            {"step_id": fixture["left"].id, "choice_id": None, "state_version": 0},
+            format="json",
+        )
+        self.assertEqual(skipped.status_code, 400)
+        self.assertEqual(CaseAttemptEvent.objects.filter(attempt_id=attempt_id).count(), 0)
+
+        foreign_choice = self.client.post(
+            f"/api/case-attempts/{attempt_id}/decisions/",
+            {
+                "step_id": fixture["entry"].id,
+                "choice_id": foreign["left_choice"].id,
+                "state_version": 0,
+            },
+            format="json",
+        )
+        self.assertEqual(foreign_choice.status_code, 400)
+        self.assertEqual(CaseAttemptEvent.objects.filter(attempt_id=attempt_id).count(), 0)
+
+        accepted = self.client.post(
+            f"/api/case-attempts/{attempt_id}/decisions/",
+            {
+                "step_id": fixture["entry"].id,
+                "choice_id": fixture["left_choice"].id,
+                "state_version": 0,
+            },
+            format="json",
+        )
+        self.assertEqual(accepted.status_code, 200)
+
+        stale = self.client.post(
+            f"/api/case-attempts/{attempt_id}/decisions/",
+            {"step_id": fixture["left"].id, "choice_id": None, "state_version": 0},
+            format="json",
+        )
+        self.assertEqual(stale.status_code, 400)
+        self.assertEqual(CaseAttemptEvent.objects.filter(attempt_id=attempt_id).count(), 1)
+
+    def test_v072_duplicate_decision_is_idempotent_and_conflict_is_rejected(self):
+        fixture = self.create_branching_case_fixture()
+        self.auth(self.user_a)
+        started = self.client.post(f"/api/cases/{fixture['case'].slug}/attempts/", {}, format="json")
+        attempt_id = started.json()["id"]
+        payload = {
+            "step_id": fixture["entry"].id,
+            "choice_id": fixture["left_choice"].id,
+            "state_version": 0,
+        }
+
+        first = self.client.post(f"/api/case-attempts/{attempt_id}/decisions/", payload, format="json")
+        second = self.client.post(f"/api/case-attempts/{attempt_id}/decisions/", payload, format="json")
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertFalse(first.json()["idempotent"])
+        self.assertTrue(second.json()["idempotent"])
+        self.assertEqual(first.json()["event_id"], second.json()["event_id"])
+        self.assertEqual(second.json()["state_version"], 1)
+        self.assertEqual(second.json()["score"], 3)
+        self.assertEqual(CaseAttemptEvent.objects.filter(attempt_id=attempt_id).count(), 1)
+        self.assertEqual(CaseAttemptAnswer.objects.filter(attempt_id=attempt_id).count(), 1)
+
+        conflict = self.client.post(
+            f"/api/case-attempts/{attempt_id}/decisions/",
+            {
+                "step_id": fixture["entry"].id,
+                "choice_id": fixture["right_choice"].id,
+                "state_version": 0,
+            },
+            format="json",
+        )
+        self.assertEqual(conflict.status_code, 400)
+        self.assertEqual(CaseAttemptEvent.objects.filter(attempt_id=attempt_id).count(), 1)
+
+    def test_v072_information_advance_completes_once_and_completion_is_immutable(self):
+        fixture = self.create_branching_case_fixture()
+        self.auth(self.user_a)
+        started = self.client.post(f"/api/cases/{fixture['case'].slug}/attempts/", {}, format="json")
+        attempt_id = started.json()["id"]
+        first = self.client.post(
+            f"/api/case-attempts/{attempt_id}/decisions/",
+            {
+                "step_id": fixture["entry"].id,
+                "choice_id": fixture["left_choice"].id,
+                "state_version": 0,
+            },
+            format="json",
+        )
+        self.assertEqual(first.status_code, 200)
+
+        complete_payload = {"step_id": fixture["left"].id, "choice_id": None, "state_version": 1}
+        completed = self.client.post(
+            f"/api/case-attempts/{attempt_id}/decisions/",
+            complete_payload,
+            format="json",
+        )
+        self.assertEqual(completed.status_code, 200)
+        self.assertEqual(completed.json()["status"], CaseAttempt.Status.COMPLETED)
+        self.assertIsNone(completed.json()["current_step"])
+        self.assertEqual(completed.json()["state_version"], 2)
+        self.assertEqual(len(completed.json()["history"]), 2)
+        self.assertEqual(completed.json()["history"][1]["event_type"], CaseAttemptEvent.EventType.ADVANCE)
+        self.assertEqual(
+            StudyActivity.objects.filter(
+                user=self.user_a,
+                clinical_case=fixture["case"],
+                activity_type=StudyActivity.Kind.CASE_COMPLETED,
+            ).count(),
+            1,
+        )
+
+        duplicate = self.client.post(
+            f"/api/case-attempts/{attempt_id}/decisions/",
+            complete_payload,
+            format="json",
+        )
+        self.assertEqual(duplicate.status_code, 200)
+        self.assertTrue(duplicate.json()["idempotent"])
+        self.assertEqual(CaseAttemptEvent.objects.filter(attempt_id=attempt_id).count(), 2)
+        self.assertEqual(
+            StudyActivity.objects.filter(
+                user=self.user_a,
+                clinical_case=fixture["case"],
+                activity_type=StudyActivity.Kind.CASE_COMPLETED,
+            ).count(),
+            1,
+        )
+        self.assertEqual(
+            self.client.get(f"/api/cases/{fixture['case'].slug}/attempts/current/").status_code,
+            404,
+        )
+        detail = self.client.get(f"/api/case-attempts/{attempt_id}/")
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.json()["status"], CaseAttempt.Status.COMPLETED)
+
+        mutation = self.client.post(
+            f"/api/case-attempts/{attempt_id}/decisions/",
+            {"step_id": fixture["right"].id, "choice_id": None, "state_version": 2},
+            format="json",
+        )
+        self.assertEqual(mutation.status_code, 400)
+
+    def test_v072_attempt_endpoints_are_user_scoped(self):
+        fixture = self.create_branching_case_fixture()
+        self.auth(self.user_a)
+        started = self.client.post(f"/api/cases/{fixture['case'].slug}/attempts/", {}, format="json")
+        attempt_id = started.json()["id"]
+
+        self.auth(self.user_b)
+        self.assertEqual(self.client.get(f"/api/case-attempts/{attempt_id}/").status_code, 404)
+        decision = self.client.post(
+            f"/api/case-attempts/{attempt_id}/decisions/",
+            {
+                "step_id": fixture["entry"].id,
+                "choice_id": fixture["left_choice"].id,
+                "state_version": 0,
+            },
+            format="json",
+        )
+        self.assertEqual(decision.status_code, 404)
+        current = self.client.get(f"/api/cases/{fixture['case'].slug}/attempts/current/")
+        self.assertEqual(current.status_code, 404)
+
+    def test_v072_resume_preserves_original_revision_after_case_revision_changes(self):
+        fixture = self.create_branching_case_fixture()
+        self.auth(self.user_a)
+        started = self.client.post(f"/api/cases/{fixture['case'].slug}/attempts/", {}, format="json")
+        attempt_id = started.json()["id"]
+        self.assertEqual(started.json()["case"]["revision_number"], 1)
+
+        fixture["revision"].status = CaseRevision.Status.RETIRED
+        fixture["revision"].save(update_fields=("status", "updated_at"))
+        revision_two = CaseRevision.objects.create(
+            case=fixture["case"],
+            version=2,
+            title="Stateful Branch Case v2",
+            patient_summary="Updated summary",
+            educational_objective="Updated objective",
+            difficulty=fixture["case"].difficulty,
+            primary_disorder=self.disorder,
+            status=CaseRevision.Status.PUBLISHED,
+        )
+        entry_two = CaseStep.objects.create(
+            case=fixture["case"],
+            revision=revision_two,
+            stable_key="entry-v2",
+            node_kind=CaseStep.NodeKind.TERMINAL,
+            title="New entry",
+            narrative="New revision entry",
+            sort_order=1,
+        )
+        revision_two.entry_step = entry_two
+        revision_two.save(update_fields=("entry_step", "updated_at"))
+        fixture["case"].current_revision = revision_two
+        fixture["case"].save(update_fields=("current_revision", "updated_at"))
+
+        resumed = self.client.post(f"/api/cases/{fixture['case'].slug}/attempts/", {}, format="json")
+        self.assertEqual(resumed.status_code, 200)
+        self.assertTrue(resumed.json()["resumed"])
+        self.assertEqual(resumed.json()["id"], attempt_id)
+        self.assertEqual(resumed.json()["case"]["revision_number"], 1)
+        self.assertEqual(resumed.json()["current_step"]["id"], fixture["entry"].id)
+
+    def test_v072_terminal_node_requires_explicit_completion_ack(self):
+        case = ClinicalCase.objects.create(
+            slug="terminal-entry-case",
+            title="Terminal Entry",
+            patient_summary="summary",
+            primary_disorder=self.disorder,
+            structure_mode=ClinicalCase.StructureMode.BRANCHING,
+            is_active=True,
+        )
+        revision = self.create_case_revision(case)
+        terminal = CaseStep.objects.create(
+            case=case,
+            revision=revision,
+            stable_key="terminal",
+            node_kind=CaseStep.NodeKind.TERMINAL,
+            title="Terminal",
+            narrative="Final educational state",
+            sort_order=1,
+        )
+        revision.entry_step = terminal
+        revision.save(update_fields=("entry_step", "updated_at"))
+        self.auth(self.user_a)
+
+        started = self.client.post(f"/api/cases/{case.slug}/attempts/", {}, format="json")
+        self.assertEqual(started.status_code, 201)
+        self.assertEqual(started.json()["current_step"]["id"], terminal.id)
+        attempt_id = started.json()["id"]
+        completed = self.client.post(
+            f"/api/case-attempts/{attempt_id}/decisions/",
+            {"step_id": terminal.id, "choice_id": None, "state_version": 0},
+            format="json",
+        )
+        self.assertEqual(completed.status_code, 200)
+        self.assertEqual(completed.json()["status"], CaseAttempt.Status.COMPLETED)
+        self.assertEqual(completed.json()["history"][0]["event_type"], CaseAttemptEvent.EventType.TERMINAL_COMPLETE)
+
+    def test_v072_rejects_malformed_state_version(self):
+        fixture = self.create_branching_case_fixture()
+        self.auth(self.user_a)
+        started = self.client.post(f"/api/cases/{fixture['case'].slug}/attempts/", {}, format="json")
+        attempt_id = started.json()["id"]
+        for value in (-1, True, 1.5, "-1", "abc"):
+            with self.subTest(value=value):
+                response = self.client.post(
+                    f"/api/case-attempts/{attempt_id}/decisions/",
+                    {
+                        "step_id": fixture["entry"].id,
+                        "choice_id": fixture["left_choice"].id,
+                        "state_version": value,
+                    },
+                    format="json",
+                )
+                self.assertEqual(response.status_code, 400)
+        self.assertEqual(CaseAttemptEvent.objects.filter(attempt_id=attempt_id).count(), 0)
+
+    def test_v072_case_graph_audit_accepts_stateful_attempt_history(self):
+        fixture = self.create_branching_case_fixture()
+        self.auth(self.user_a)
+        started = self.client.post(f"/api/cases/{fixture['case'].slug}/attempts/", {}, format="json")
+        attempt_id = started.json()["id"]
+        self.client.post(
+            f"/api/case-attempts/{attempt_id}/decisions/",
+            {
+                "step_id": fixture["entry"].id,
+                "choice_id": fixture["right_choice"].id,
+                "state_version": 0,
+            },
+            format="json",
+        )
+        self.client.post(
+            f"/api/case-attempts/{attempt_id}/decisions/",
+            {"step_id": fixture["right"].id, "choice_id": None, "state_version": 1},
+            format="json",
+        )
+        output = StringIO()
+        call_command("audit_case_graphs", stdout=output)
+        self.assertIn("Clinical case graph audit PASS", output.getvalue())
+        self.assertIn("events=2", output.getvalue())
 
     def test_disorder_search_matches_symptom_name(self):
         symptom = Symptom.objects.create(slug="special-symptom", name_en="Special Symptom", name_fa="نشانه ویژه")

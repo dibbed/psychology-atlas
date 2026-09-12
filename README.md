@@ -4,6 +4,35 @@
 
 > این نرم‌افزار آموزشی است و ابزار تشخیص، درمان یا جایگزین ارزیابی حرفه‌ای نیست.
 
+## v0.7.2 در حال توسعه — Part 1/2 Server Attempt State Engine
+
+نسخه رسمی هنوز **v0.7.1** است. نیمه اول v0.7.2 در backend پیاده شده و frontend runner در پیام بعدی مهاجرت می‌کند.
+
+```text
+start/resume attempt                 ✅
+server-owned current_step            ✅
+state_version replay protection      ✅
+CaseAttemptEvent audit history       ✅
+server-resolved transitions          ✅
+idempotent exact retry               ✅
+skip / foreign choice rejection      ✅
+user ownership isolation             ✅
+completed attempt immutability       ✅
+migration 0025 applied               ✅
+focused v0.7.2 tests: 11/11 PASS
+```
+
+APIهای جدید احراز هویت‌شده:
+
+```text
+POST /api/cases/<slug>/attempts/
+GET  /api/cases/<slug>/attempts/current/
+GET  /api/case-attempts/<id>/
+POST /api/case-attempts/<id>/decisions/
+```
+
+کلاینت فقط `step_id`, `choice_id` و `state_version` را ارسال می‌کند؛ `next_step` همیشه توسط backend از `CaseTransition` معتبر resolve می‌شود. جزئیات کامل این نیمه در `docs/Psychology_Atlas_v0.7.2_Part1_Server_Attempt_Engine_2026-09-12.md` ثبت شده است.
+
 ## v0.7.1 Branching Case Architecture + Revision Safety
 
 این slice هنوز runner تعاملی stateful یا analytics نهایی v0.7 را فعال نمی‌کند؛ هدف آن ساخت foundation درست برای v0.7.2+ است.

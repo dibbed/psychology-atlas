@@ -1,11 +1,12 @@
 from django.core.management.base import BaseCommand, CommandError
+from django.db.models import Count
 
 from atlas.case_graph import validate_case_revision_graph
-from atlas.models import CaseAttempt, CaseAttemptAnswer, CaseRevision, ClinicalCase
+from atlas.models import CaseAttempt, CaseAttemptAnswer, CaseAttemptEvent, CaseRevision, ClinicalCase
 
 
 class Command(BaseCommand):
-    help = "Audit branching Clinical Case revision graphs without mutating data."
+    help = "Audit branching Clinical Case revision graphs and attempt-state integrity without mutating data."
 
     def handle(self, *args, **options):
         failures = []
@@ -30,9 +31,71 @@ class Command(BaseCommand):
             if issues:
                 failures.extend(f"revision:{revision.case.slug}:v{revision.version}:{issue}" for issue in issues)
 
-        for attempt in CaseAttempt.objects.select_related("case", "revision"):
+        duplicate_active = (
+            CaseAttempt.objects.filter(status=CaseAttempt.Status.IN_PROGRESS)
+            .values("user_id", "case_id")
+            .annotate(total=Count("id"))
+            .filter(total__gt=1)
+        )
+        for row in duplicate_active:
+            failures.append(
+                f"attempts:user={row['user_id']}:case={row['case_id']}:in_progress_count={row['total']}"
+            )
+
+        attempts = CaseAttempt.objects.select_related("case", "revision", "current_step")
+        for attempt in attempts:
             if attempt.revision.case_id != attempt.case_id:
                 failures.append(f"attempt:{attempt.id}:revision_case_mismatch")
+            if attempt.status == CaseAttempt.Status.IN_PROGRESS and attempt.current_step_id is None:
+                failures.append(f"attempt:{attempt.id}:current_step_missing")
+            if attempt.current_step_id:
+                if attempt.current_step.case_id != attempt.case_id:
+                    failures.append(f"attempt:{attempt.id}:current_step_case_mismatch")
+                if attempt.current_step.revision_id != attempt.revision_id:
+                    failures.append(f"attempt:{attempt.id}:current_step_revision_mismatch")
+            if attempt.status == CaseAttempt.Status.COMPLETED and attempt.current_step_id is not None:
+                failures.append(f"attempt:{attempt.id}:completed_has_current_step")
+
+            events = list(attempt.events.order_by("state_version_before", "id"))
+            for expected_before, event in enumerate(events):
+                if event.state_version_before != expected_before:
+                    failures.append(
+                        f"attempt:{attempt.id}:event:{event.id}:state_before={event.state_version_before}:expected={expected_before}"
+                    )
+                if event.state_version_after != event.state_version_before + 1:
+                    failures.append(f"attempt:{attempt.id}:event:{event.id}:state_version_jump")
+            expected_state_version = events[-1].state_version_after if events else 0
+            if attempt.state_version != expected_state_version:
+                failures.append(
+                    f"attempt:{attempt.id}:state_version={attempt.state_version}:expected={expected_state_version}"
+                )
+
+        for event in CaseAttemptEvent.objects.select_related(
+            "attempt__revision",
+            "step__revision",
+            "question__step",
+            "selected_choice__question",
+            "transition__revision",
+            "transition__source_step",
+            "next_step__revision",
+        ):
+            if event.step.revision_id != event.attempt.revision_id:
+                failures.append(f"event:{event.id}:step_revision_mismatch")
+            if event.question_id and event.question.step_id != event.step_id:
+                failures.append(f"event:{event.id}:question_step_mismatch")
+            if event.selected_choice_id and event.selected_choice.question_id != event.question_id:
+                failures.append(f"event:{event.id}:choice_question_mismatch")
+            if event.transition_id:
+                if event.transition.revision_id != event.attempt.revision_id:
+                    failures.append(f"event:{event.id}:transition_revision_mismatch")
+                if event.transition.source_step_id != event.step_id:
+                    failures.append(f"event:{event.id}:transition_source_mismatch")
+                if event.outcome != event.transition.outcome:
+                    failures.append(f"event:{event.id}:transition_outcome_mismatch")
+                if event.next_step_id != event.transition.target_step_id:
+                    failures.append(f"event:{event.id}:transition_target_mismatch")
+            if event.next_step_id and event.next_step.revision_id != event.attempt.revision_id:
+                failures.append(f"event:{event.id}:next_step_revision_mismatch")
 
         for answer in CaseAttemptAnswer.objects.select_related(
             "attempt__revision",
@@ -47,7 +110,8 @@ class Command(BaseCommand):
         self.stdout.write(
             f"Clinical case graph audit: cases={ClinicalCase.objects.count()} "
             f"revisions={revisions.count()} attempts={CaseAttempt.objects.count()} "
-            f"answers={CaseAttemptAnswer.objects.count()} failures={len(failures)}"
+            f"events={CaseAttemptEvent.objects.count()} answers={CaseAttemptAnswer.objects.count()} "
+            f"failures={len(failures)}"
         )
         if failures:
             raise CommandError("Clinical case graph audit FAILED\n- " + "\n- ".join(failures[:50]))

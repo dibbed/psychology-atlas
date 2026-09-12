@@ -4,6 +4,21 @@
 
 Psychology Atlas is an interactive educational system for psychology students. It should behave as a connected learning system, not as a psychology blog and not as a diagnostic product.
 
+### Development in progress: v0.7.2 Part 1/2 — Server Attempt State Engine
+
+The official released version remains v0.7.1 until Part 2 completes. Part 1 adds the server-authoritative CaseAttempt state engine without migrating the frontend runner yet.
+
+- `CaseAttempt.current_step` is the only step the client may mutate; `state_version` provides stale-state/replay protection.
+- `CaseAttemptEvent` stores decision/advance/terminal-complete history with before/after state versions and server-generated audit snapshots.
+- New authenticated APIs support start/resume, current attempt, owned attempt detail and one-step decision/advance submission.
+- Exact duplicate requests are idempotent; conflicting replay, future-step skipping, foreign choices, stale versions and completed-attempt mutation are rejected.
+- Resume remains bound to the original CaseRevision even when a newer revision becomes current.
+- Completion side effects are applied once and continue to use the existing scalar educational score until v0.7.3 scoring work.
+- Migration `0025_v072_attempt_state_engine.py` is applied and backfills existing in-progress attempts to their revision entry step when possible.
+- Focused v0.7.2 Part 1 tests are 11/11 PASS and the full backend suite is 147/147 PASS at the Part 1 commit boundary.
+- Detailed development record: `docs/Psychology_Atlas_v0.7.2_Part1_Server_Attempt_Engine_2026-09-12.md`.
+- Part 2 will migrate the frontend CaseRunner, implement resume/history UX and perform final v0.7.2 release validation/version sync.
+
 v0.7.1 starts the Advanced Branching Clinical Cases release series by replacing the implicit linear-only case structure with an additive revisioned graph foundation while preserving the current linear runner and historical user data.
 
 ### v0.7.1 branching-case foundation invariants
