@@ -29,8 +29,8 @@ legacy rubric_version=0 compatibility            ✅
 revision-safe seed upgrade + idempotency         ✅
 Persian/RTL dimension result cards               ✅
 migration 0026 applied                            ✅
-focused v0.7.3 tests: 9/9 PASS                    ✅
-full backend suite: 157/157 PASS                  ✅
+focused v0.7.3 tests: 10/10 PASS                    ✅
+full backend suite: 158/158 PASS                  ✅
 ```
 
 قواعد اصلی v0.7.3:
@@ -39,7 +39,7 @@ full backend suite: 157/157 PASS                  ✅
 - هر سؤال تصمیم حداکثر یک بُعد آموزشی اصلی دارد. score همان `score_value` موجود است و عدد علمی یا psychometric جدیدی جعل نشده است.
 - breakdown از eventهای immutable همان attempt ساخته می‌شود و فقط decisionهایی را جمع می‌کند که کاربر واقعاً در مسیر خود طی کرده است؛ branchهای بازدیدنشده در denominator وارد نمی‌شوند.
 - `CaseAttemptEvent` علاوه بر FK بُعد، key/label/description/order را داخل snapshot نگه می‌دارد تا history قدیمی در برابر تغییرات بعدی قابل بازسازی بماند.
-- attemptهای v0.7.2 و قدیمی‌تر با `rubric_version=0` همچنان معتبرند؛ API در آن‌ها breakdown خالی و توضیح compatibility برمی‌گرداند، بدون backfill ساختگی.
+- attemptهای v0.7.2 و قدیمی‌تر با `rubric_version=0` همچنان معتبرند؛ API در آن‌ها breakdown خالی و توضیح compatibility برمی‌گرداند، بدون backfill ساختگی. revisionهای rubric v0 اجازه mapping فعال scoring dimension ندارند و aggregation نیز به‌صورت defensive چنین داده‌ای را نادیده می‌گیرد.
 - UI فقط بعد از ثبت تصمیم، بُعد مربوط به آن event را در history نشان می‌دهد؛ current decision از rubric برای cue دادن به پاسخ استفاده نمی‌کند.
 - detail عمومی Caseهای branching دیگر step/question/choiceهای branchهای آینده را برنمی‌گرداند؛ محتوای مسیر فقط از stateful attempt API و current step واقعی می‌آید.
 - endpoint مربوط به current attempt در وضعیت corruption با بیش از یک attempt درحال‌اجرا خطا می‌دهد و یکی را به‌صورت تصادفی انتخاب نمی‌کند.

@@ -238,8 +238,8 @@ Frontend production route `/cases/case-high-energy-04` returned HTTP 200 from th
 Verified on the final implementation snapshot before release metadata closeout:
 
 ```text
-Focused v0.7.3 backend tests:  9/9 PASS
-Full backend suite:             157/157 PASS
+Focused v0.7.3 backend tests:  10/10 PASS
+Full backend suite:             158/158 PASS
 Django system check:            PASS
 Migration drift check:          PASS
 Python compileall:              PASS
@@ -283,9 +283,9 @@ The breakdown is a transparent educational summary of choices made inside one si
 - v0.7.2 state machine semantics remain authoritative.
 - existing scalar score/max score are unchanged.
 - exact retry idempotency and stale/skip/foreign-choice guards are unchanged.
-- v0.7.2 attempts with rubric version 0 remain readable.
-- the legacy linear submit endpoint remains available for compatibility and preserves dimension ownership on new answers, but the current CaseRunner continues to use only the stateful attempt engine.
-- public Case detail still preserves the existing structure contract; dimension metadata is not exposed pre-decision as an answer cue.
+- v0.7.2 attempts with rubric version 0 remain readable, but rubric v0 revisions cannot assign active scoring dimensions and feedback aggregation defensively suppresses anomalous legacy dimension snapshots.
+- the legacy linear submit endpoint remains available for compatibility and preserves dimension ownership on new rubric-enabled answers, but the current CaseRunner continues to use only the stateful attempt engine.
+- public linear Case detail preserves the legacy structure contract; public branching detail redacts unreached steps/questions/choices, and dimension metadata is not exposed pre-decision as an answer cue.
 
 ## Deliberate boundaries for the next release
 

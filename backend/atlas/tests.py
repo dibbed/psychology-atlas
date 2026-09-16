@@ -1041,6 +1041,57 @@ class AtlasApiTests(APITestCase):
         call_command("audit_case_graphs", stdout=audit_output)
         self.assertIn("Clinical case graph audit PASS", audit_output.getvalue())
 
+    def test_v073_rubric_zero_suppresses_accidental_dimension_feedback(self):
+        fixture = self.create_branching_case_fixture(slug="v073-rubric-zero-guard", scored=True)
+        fixture["revision"].rubric_version = 0
+        fixture["revision"].save(update_fields=("rubric_version", "updated_at"))
+
+        with self.assertRaises(ValidationError):
+            fixture["question"].full_clean()
+        issues = validate_case_revision_graph(fixture["revision"])
+        self.assertIn("legacy_rubric_has_active_dimensions", issues)
+        self.assertTrue(any(issue.endswith(":legacy_scoring_dimension_not_allowed") for issue in issues))
+
+        attempt = CaseAttempt.objects.create(
+            user=self.user_a,
+            case=fixture["case"],
+            revision=fixture["revision"],
+            current_step=fixture["right"],
+            state_version=1,
+        )
+        CaseAttemptEvent.objects.create(
+            attempt=attempt,
+            step=fixture["entry"],
+            event_type=CaseAttemptEvent.EventType.DECISION,
+            question=fixture["question"],
+            scoring_dimension=fixture["scoring_dimension"],
+            selected_choice=fixture["right_choice"],
+            transition=fixture["right_transition"],
+            next_step=fixture["right"],
+            outcome=CaseTransition.Outcome.CONTINUE,
+            awarded_score=1,
+            max_score=3,
+            state_version_before=0,
+            state_version_after=1,
+            snapshot={
+                "scoring_dimension": {
+                    "key": "differential_reasoning",
+                    "label": "استدلال افتراقی",
+                    "description": "legacy anomaly",
+                    "sort_order": 1,
+                }
+            },
+        )
+        self.auth(self.user_a)
+        response = self.client.get(f"/api/case-attempts/{attempt.id}/")
+        self.assertEqual(response.status_code, 200)
+        feedback = response.json()["dimension_feedback"]
+        self.assertEqual(feedback["rubric_version"], 0)
+        self.assertFalse(feedback["available"])
+        self.assertEqual(feedback["dimensions"], [])
+        self.assertEqual(feedback["decision_count"], 1)
+        self.assertEqual(feedback["unscored_decisions"], 1)
+
     def test_v073_legacy_attempt_remains_compatible_without_dimension_breakdown(self):
         fixture = self.create_branching_case_fixture(slug="v073-legacy-branch")
         self.auth(self.user_a)

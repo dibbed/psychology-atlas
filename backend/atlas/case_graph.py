@@ -41,6 +41,8 @@ def validate_case_revision_graph(revision: CaseRevision):
     active_dimension_ids = {dimension.id for dimension in active_dimensions}
     if revision.rubric_version >= 1 and not active_dimensions:
         issues.append("rubric_has_no_active_dimensions")
+    if revision.rubric_version == 0 and active_dimensions:
+        issues.append("legacy_rubric_has_active_dimensions")
     for dimension in active_dimensions:
         if not dimension.stable_key:
             issues.append(f"dimension:{dimension.id}:stable_key_missing")
@@ -99,6 +101,8 @@ def validate_case_revision_graph(revision: CaseRevision):
             question = active_questions[0]
             if question.scoring_dimension_id:
                 used_dimension_ids.add(question.scoring_dimension_id)
+                if revision.rubric_version == 0:
+                    issues.append(f"question:{question.id}:legacy_scoring_dimension_not_allowed")
                 if question.scoring_dimension_id not in active_dimension_ids:
                     issues.append(f"question:{question.id}:scoring_dimension_inactive_or_foreign")
                 elif question.scoring_dimension.revision_id != revision.id:

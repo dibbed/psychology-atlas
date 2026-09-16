@@ -377,8 +377,11 @@ class CaseQuestion(TimeStampedModel):
 
     def clean(self):
         super().clean()
-        if self.scoring_dimension_id and self.step_id and self.scoring_dimension.revision_id != self.step.revision_id:
-            raise ValidationError({"scoring_dimension": "Question scoring dimension must belong to the same case revision."})
+        if self.scoring_dimension_id and self.step_id:
+            if self.scoring_dimension.revision_id != self.step.revision_id:
+                raise ValidationError({"scoring_dimension": "Question scoring dimension must belong to the same case revision."})
+            if self.step.revision.rubric_version < 1:
+                raise ValidationError({"scoring_dimension": "Legacy rubric_version=0 revisions cannot assign scoring dimensions."})
 
 
 class CaseChoice(models.Model):
@@ -553,6 +556,8 @@ class CaseAttemptEvent(models.Model):
         if self.scoring_dimension_id:
             if self.event_type != self.EventType.DECISION:
                 errors["scoring_dimension"] = "Only decision events may carry a scoring dimension."
+            if self.attempt_id and self.attempt.revision.rubric_version < 1:
+                errors["scoring_dimension"] = "Legacy rubric_version=0 attempts cannot record scoring dimensions."
             if self.attempt_id and self.scoring_dimension.revision_id != self.attempt.revision_id:
                 errors["scoring_dimension"] = "Event scoring dimension must belong to the attempt revision."
             if self.question_id and self.question.scoring_dimension_id != self.scoring_dimension_id:
@@ -623,6 +628,8 @@ class CaseAttemptAnswer(models.Model):
         if self.attempt_id and self.question_id and self.question.step.revision_id != self.attempt.revision_id:
             errors["question"] = "Question must belong to the same case revision as the attempt."
         if self.scoring_dimension_id:
+            if self.attempt_id and self.attempt.revision.rubric_version < 1:
+                errors["scoring_dimension"] = "Legacy rubric_version=0 attempts cannot record scoring dimensions."
             if self.attempt_id and self.scoring_dimension.revision_id != self.attempt.revision_id:
                 errors["scoring_dimension"] = "Answer scoring dimension must belong to the attempt revision."
             if self.question_id and self.question.scoring_dimension_id != self.scoring_dimension_id:

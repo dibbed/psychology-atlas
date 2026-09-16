@@ -327,6 +327,9 @@ def build_case_attempt_dimension_feedback(attempt):
         if event.event_type != CaseAttemptEvent.EventType.DECISION:
             continue
         decision_count += 1
+        if attempt.revision.rubric_version == 0:
+            unscored_decisions += 1
+            continue
         dimension_snapshot = event.snapshot.get("scoring_dimension") if isinstance(event.snapshot, dict) else None
         if not isinstance(dimension_snapshot, dict):
             unscored_decisions += 1
