@@ -1,8 +1,20 @@
 # Psychology Atlas — v0.7.2 · Server-Authoritative Case Attempts + Stateful Runner
 
+[![CI](https://github.com/dibbed/psychology-atlas/actions/workflows/ci.yml/badge.svg)](https://github.com/dibbed/psychology-atlas/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/dibbed/psychology-atlas/actions/workflows/codeql.yml/badge.svg)](https://github.com/dibbed/psychology-atlas/actions/workflows/codeql.yml)
+[![Latest release](https://img.shields.io/github/v/release/dibbed/psychology-atlas?display_name=tag)](https://github.com/dibbed/psychology-atlas/releases)
+
 یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.7.2 معماری revision-safe نسخه قبل را به یک موتور اجرای واقعی و server-authoritative تبدیل می‌کند: start/resume، current node، state versioning، event history، transitionهای معتبر از سمت backend، idempotent replay protection و یک CaseRunner جدید که فقط مسیر واقعاً طی‌شده را نمایش می‌دهد.
 
 > این نرم‌افزار آموزشی است و ابزار تشخیص، درمان، ارزیابی صلاحیت بالینی یا جایگزین ارزیابی حرفه‌ای نیست.
+
+## Usage and licensing
+
+این repository برای **نمایش عمومی، portfolio و بررسی فنی** منتشر شده است و انتشار عمومی آن به معنی open-source بودن پروژه نیست.
+
+**No open-source license is granted.** مگر با اجازه کتبی جداگانه از صاحب حقوق، مجوز عمومی برای استفاده، کپی، تغییر، بازتوزیع، sublicense یا ساخت derivative work از کد اعطا نشده است؛ به‌جز دسترسی‌ها و قابلیت‌هایی که Terms of Service خود GitHub برای میزبانی، مشاهده و قابلیت‌های پلتفرم مانند fork الزاماً فراهم می‌کند.
+
+اگر برای استفاده‌ای خارج از این محدوده به مجوز نیاز داری، ابتدا باید اجازه صریح صاحب repository را دریافت کنی.
 
 ## v0.7.2 Server Attempt State + Stateful Branching Runner
 
