@@ -202,6 +202,7 @@ export type ClinicalCase = {
   difficulty: string;
   structure_mode: "linear" | "branching";
   revision_number: number | null;
+  rubric_version?: number;
   step_count?: number;
   educational_objective?: string;
   primary_disorder: Disorder | null;
@@ -213,6 +214,7 @@ export type CaseAttemptEvent = {
   event_type: "decision" | "advance" | "terminal_complete";
   step_id: number;
   question_id: number | null;
+  scoring_dimension_id: number | null;
   selected_choice_id: number | null;
   next_step_id: number | null;
   outcome: "continue" | "complete";
@@ -226,12 +228,42 @@ export type CaseAttemptEvent = {
     node_kind?: CaseStep["node_kind"];
     question_prompt?: string;
     question_explanation?: string;
+    scoring_dimension?: {
+      key: string;
+      label: string;
+      description: string;
+      sort_order: number;
+    };
     choice_text?: string;
     choice_feedback?: string;
     outcome?: "continue" | "complete";
     target_step_key?: string | null;
   };
   created_at: string;
+};
+
+export type CaseDimensionScore = {
+  key: string;
+  label: string;
+  description: string;
+  sort_order: number;
+  score: number;
+  max_score: number;
+  percent: number | null;
+  decision_count: number;
+  needs_review: boolean;
+  feedback: string;
+};
+
+export type CaseDimensionFeedback = {
+  rubric_version: number;
+  available: boolean;
+  decision_count: number;
+  unscored_decisions: number;
+  dimensions: CaseDimensionScore[];
+  review_dimensions: string[];
+  message: string;
+  disclaimer: string;
 };
 
 export type CaseAttemptState = {
@@ -245,6 +277,7 @@ export type CaseAttemptState = {
     difficulty: string;
     structure_mode: "linear" | "branching";
     revision_number: number;
+    rubric_version: number;
   };
   status: "in_progress" | "completed";
   state_version: number;
@@ -252,6 +285,7 @@ export type CaseAttemptState = {
   max_score: number;
   current_step: CaseStep | null;
   history: CaseAttemptEvent[];
+  dimension_feedback: CaseDimensionFeedback;
   created_at: string;
   updated_at: string;
   completed_at: string | null;

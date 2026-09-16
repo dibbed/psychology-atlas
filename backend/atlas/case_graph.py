@@ -12,6 +12,10 @@ def case_seed_hash(case_data):
         "objective": case_data["objective"],
         "disorder": case_data["disorder"],
         "difficulty": case_data["difficulty"],
+        "rubric_version": case_data.get("rubric_version", 0),
+        "dimensions": case_data.get("dimensions", []),
+        "dimension_definitions": case_data.get("dimension_definitions", []),
+        "step_dimensions": case_data.get("step_dimensions", []),
         "steps": case_data["steps"],
     }
     raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=list)
@@ -20,7 +24,11 @@ def case_seed_hash(case_data):
 
 def validate_case_revision_graph(revision: CaseRevision):
     issues = []
-    steps = list(revision.steps.filter(is_active=True).prefetch_related("questions__choices").order_by("sort_order", "id"))
+    steps = list(
+        revision.steps.filter(is_active=True)
+        .prefetch_related("questions__choices", "questions__scoring_dimension")
+        .order_by("sort_order", "id")
+    )
     step_by_id = {step.id: step for step in steps}
     if not steps:
         return ["revision_has_no_active_steps"]
@@ -29,6 +37,17 @@ def validate_case_revision_graph(revision: CaseRevision):
     elif revision.entry_step_id not in step_by_id:
         issues.append("entry_step_not_active_or_foreign")
 
+    active_dimensions = list(revision.scoring_dimensions.filter(is_active=True).order_by("sort_order", "id"))
+    active_dimension_ids = {dimension.id for dimension in active_dimensions}
+    if revision.rubric_version >= 1 and not active_dimensions:
+        issues.append("rubric_has_no_active_dimensions")
+    for dimension in active_dimensions:
+        if not dimension.stable_key:
+            issues.append(f"dimension:{dimension.id}:stable_key_missing")
+        if not dimension.label.strip():
+            issues.append(f"dimension:{dimension.id}:label_missing")
+
+    used_dimension_ids = set()
     for step in steps:
         if step.case_id != revision.case_id:
             issues.append(f"step:{step.id}:case_mismatch")
@@ -77,7 +96,16 @@ def validate_case_revision_graph(revision: CaseRevision):
             if len(active_questions) != 1:
                 issues.append(f"step:{step.id}:decision_requires_one_question")
                 continue
-            active_choices = [c for c in active_questions[0].choices.all() if c.is_active]
+            question = active_questions[0]
+            if question.scoring_dimension_id:
+                used_dimension_ids.add(question.scoring_dimension_id)
+                if question.scoring_dimension_id not in active_dimension_ids:
+                    issues.append(f"question:{question.id}:scoring_dimension_inactive_or_foreign")
+                elif question.scoring_dimension.revision_id != revision.id:
+                    issues.append(f"question:{question.id}:scoring_dimension_revision_mismatch")
+            elif revision.rubric_version >= 1:
+                issues.append(f"question:{question.id}:scoring_dimension_missing")
+            active_choices = [c for c in question.choices.all() if c.is_active]
             if not active_choices:
                 issues.append(f"step:{step.id}:decision_has_no_choices")
             if any(t.choice_id is None for t in source_transitions):
@@ -97,6 +125,11 @@ def validate_case_revision_graph(revision: CaseRevision):
                 issues.append(f"step:{step.id}:terminal_has_questions")
             if source_transitions:
                 issues.append(f"step:{step.id}:terminal_has_outgoing_transition")
+
+    if revision.rubric_version >= 1:
+        for dimension in active_dimensions:
+            if dimension.id not in used_dimension_ids:
+                issues.append(f"dimension:{dimension.id}:unused")
 
     if not revision.entry_step_id or revision.entry_step_id not in step_by_id:
         return issues

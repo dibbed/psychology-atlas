@@ -276,6 +276,7 @@ class CaseRevision(TimeStampedModel):
     )
     status = models.CharField(max_length=24, choices=Status.choices, default=Status.PUBLISHED, db_index=True)
     content_hash = models.CharField(max_length=64, blank=True, db_index=True)
+    rubric_version = models.PositiveSmallIntegerField(default=0)
     entry_step = models.ForeignKey(
         "CaseStep",
         on_delete=models.SET_NULL,
@@ -302,6 +303,28 @@ class CaseRevision(TimeStampedModel):
                 raise ValidationError({"entry_step": "Entry step must belong to the same clinical case."})
             if self.entry_step.revision_id != self.id:
                 raise ValidationError({"entry_step": "Entry step must belong to this case revision."})
+
+
+class CaseScoringDimension(models.Model):
+    revision = models.ForeignKey(CaseRevision, on_delete=models.CASCADE, related_name="scoring_dimensions")
+    stable_key = models.SlugField(max_length=120)
+    label = models.CharField(max_length=160)
+    description = models.TextField(blank=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+    seed_managed = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ("sort_order", "id")
+        constraints = [
+            models.UniqueConstraint(fields=("revision", "stable_key"), name="uq_case_revision_scoring_dimension_key"),
+        ]
+        indexes = [
+            models.Index(fields=("revision", "is_active")),
+        ]
+
+    def __str__(self):
+        return f"{self.revision.case.slug}:v{self.revision.version}:{self.stable_key}"
 
 
 class CaseStep(models.Model):
@@ -337,6 +360,13 @@ class CaseStep(models.Model):
 
 class CaseQuestion(TimeStampedModel):
     step = models.ForeignKey(CaseStep, on_delete=models.CASCADE, related_name="questions")
+    scoring_dimension = models.ForeignKey(
+        CaseScoringDimension,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="questions",
+    )
     prompt = models.TextField()
     explanation = models.TextField(blank=True)
     sort_order = models.PositiveIntegerField(default=0)
@@ -344,6 +374,11 @@ class CaseQuestion(TimeStampedModel):
 
     class Meta:
         ordering = ("sort_order", "id")
+
+    def clean(self):
+        super().clean()
+        if self.scoring_dimension_id and self.step_id and self.scoring_dimension.revision_id != self.step.revision_id:
+            raise ValidationError({"scoring_dimension": "Question scoring dimension must belong to the same case revision."})
 
 
 class CaseChoice(models.Model):
@@ -476,6 +511,13 @@ class CaseAttemptEvent(models.Model):
     step = models.ForeignKey(CaseStep, on_delete=models.PROTECT, related_name="attempt_events")
     event_type = models.CharField(max_length=32, choices=EventType.choices)
     question = models.ForeignKey(CaseQuestion, on_delete=models.PROTECT, null=True, blank=True)
+    scoring_dimension = models.ForeignKey(
+        CaseScoringDimension,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="attempt_events",
+    )
     selected_choice = models.ForeignKey(CaseChoice, on_delete=models.PROTECT, null=True, blank=True)
     transition = models.ForeignKey(CaseTransition, on_delete=models.PROTECT, null=True, blank=True)
     next_step = models.ForeignKey(
@@ -508,6 +550,15 @@ class CaseAttemptEvent(models.Model):
         errors = {}
         if self.step_id and self.attempt_id and self.step.revision_id != self.attempt.revision_id:
             errors["step"] = "Event step must belong to the attempt revision."
+        if self.scoring_dimension_id:
+            if self.event_type != self.EventType.DECISION:
+                errors["scoring_dimension"] = "Only decision events may carry a scoring dimension."
+            if self.attempt_id and self.scoring_dimension.revision_id != self.attempt.revision_id:
+                errors["scoring_dimension"] = "Event scoring dimension must belong to the attempt revision."
+            if self.question_id and self.question.scoring_dimension_id != self.scoring_dimension_id:
+                errors["scoring_dimension"] = "Event scoring dimension must match the decision question."
+        elif self.question_id and self.question.scoring_dimension_id:
+            errors["scoring_dimension"] = "Scored decision events must preserve the question scoring dimension."
         if self.state_version_after != self.state_version_before + 1:
             errors["state_version_after"] = "Event state version must advance exactly once."
         if self.event_type == self.EventType.DECISION:
@@ -548,6 +599,13 @@ class CaseAttemptEvent(models.Model):
 class CaseAttemptAnswer(models.Model):
     attempt = models.ForeignKey(CaseAttempt, on_delete=models.CASCADE, related_name="answers")
     question = models.ForeignKey(CaseQuestion, on_delete=models.PROTECT)
+    scoring_dimension = models.ForeignKey(
+        CaseScoringDimension,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="attempt_answers",
+    )
     selected_choice = models.ForeignKey(CaseChoice, on_delete=models.PROTECT)
     awarded_score = models.IntegerField(default=0)
     answered_at = models.DateTimeField(auto_now_add=True)
@@ -564,6 +622,13 @@ class CaseAttemptAnswer(models.Model):
             errors["selected_choice"] = "Selected choice must belong to the selected question."
         if self.attempt_id and self.question_id and self.question.step.revision_id != self.attempt.revision_id:
             errors["question"] = "Question must belong to the same case revision as the attempt."
+        if self.scoring_dimension_id:
+            if self.attempt_id and self.scoring_dimension.revision_id != self.attempt.revision_id:
+                errors["scoring_dimension"] = "Answer scoring dimension must belong to the attempt revision."
+            if self.question_id and self.question.scoring_dimension_id != self.scoring_dimension_id:
+                errors["scoring_dimension"] = "Answer scoring dimension must match the question."
+        elif self.question_id and self.question.scoring_dimension_id:
+            errors["scoring_dimension"] = "Scored answers must preserve the question scoring dimension."
         if errors:
             raise ValidationError(errors)
 

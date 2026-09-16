@@ -1,10 +1,10 @@
-# Psychology Atlas — v0.7.2 · Server-Authoritative Case Attempts + Stateful Runner
+# Psychology Atlas — v0.7.3 · Revision-Pinned Multi-dimensional Educational Scoring
 
 [![CI](https://github.com/dibbed/psychology-atlas/actions/workflows/ci.yml/badge.svg)](https://github.com/dibbed/psychology-atlas/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/dibbed/psychology-atlas/actions/workflows/codeql.yml/badge.svg)](https://github.com/dibbed/psychology-atlas/actions/workflows/codeql.yml)
 [![Latest release](https://img.shields.io/github/v/release/dibbed/psychology-atlas?display_name=tag)](https://github.com/dibbed/psychology-atlas/releases)
 
-یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.7.2 معماری revision-safe نسخه قبل را به یک موتور اجرای واقعی و server-authoritative تبدیل می‌کند: start/resume، current node، state versioning، event history، transitionهای معتبر از سمت backend، idempotent replay protection و یک CaseRunner جدید که فقط مسیر واقعاً طی‌شده را نمایش می‌دهد.
+یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.7.3 روی موتور server-authoritative نسخه قبل یک rubric آموزشی چندبعدی و revision-pinned اضافه می‌کند: هر تصمیم می‌تواند به یک بُعد آموزشی مشخص تعلق داشته باشد، event/answer همان بُعد را به‌صورت history-safe حفظ می‌کنند و نتیجه فقط از تصمیم‌های واقعاً طی‌شده همان مسیر ساخته می‌شود؛ امتیاز کلی v0.7.2 و سازگاری attemptهای قدیمی حفظ شده‌اند.
 
 > این نرم‌افزار آموزشی است و ابزار تشخیص، درمان، ارزیابی صلاحیت بالینی یا جایگزین ارزیابی حرفه‌ای نیست.
 
@@ -15,6 +15,55 @@
 **No open-source license is granted.** مگر با اجازه کتبی جداگانه از صاحب حقوق، مجوز عمومی برای استفاده، کپی، تغییر، بازتوزیع، sublicense یا ساخت derivative work از کد اعطا نشده است؛ به‌جز دسترسی‌ها و قابلیت‌هایی که Terms of Service خود GitHub برای میزبانی، مشاهده و قابلیت‌های پلتفرم مانند fork الزاماً فراهم می‌کند.
 
 اگر برای استفاده‌ای خارج از این محدوده به مجوز نیاز داری، ابتدا باید اجازه صریح صاحب repository را دریافت کنی.
+
+## v0.7.3 Multi-dimensional Educational Scoring + Feedback
+
+```text
+CaseRevision.rubric_version                     ✅
+revision-owned CaseScoringDimension              ✅
+CaseQuestion -> primary scoring dimension        ✅
+CaseAttemptEvent dimension snapshot + FK         ✅
+CaseAttemptAnswer dimension preservation          ✅
+path-scoped dimension aggregation                ✅
+legacy rubric_version=0 compatibility            ✅
+revision-safe seed upgrade + idempotency         ✅
+Persian/RTL dimension result cards               ✅
+migration 0026 applied                            ✅
+focused v0.7.3 tests: 9/9 PASS                    ✅
+full backend suite: 156/156 PASS                  ✅
+```
+
+قواعد اصلی v0.7.3:
+
+- rubric به `CaseRevision` تعلق دارد؛ تغییر محتوای scoring برای seedهای رسمی revision جدید منتشر می‌کند و revision تاریخی را mutate نمی‌کند.
+- هر سؤال تصمیم حداکثر یک بُعد آموزشی اصلی دارد. score همان `score_value` موجود است و عدد علمی یا psychometric جدیدی جعل نشده است.
+- breakdown از eventهای immutable همان attempt ساخته می‌شود و فقط decisionهایی را جمع می‌کند که کاربر واقعاً در مسیر خود طی کرده است؛ branchهای بازدیدنشده در denominator وارد نمی‌شوند.
+- `CaseAttemptEvent` علاوه بر FK بُعد، key/label/description/order را داخل snapshot نگه می‌دارد تا history قدیمی در برابر تغییرات بعدی قابل بازسازی بماند.
+- attemptهای v0.7.2 و قدیمی‌تر با `rubric_version=0` همچنان معتبرند؛ API در آن‌ها breakdown خالی و توضیح compatibility برمی‌گرداند، بدون backfill ساختگی.
+- UI فقط بعد از ثبت تصمیم، بُعد مربوط به آن event را در history نشان می‌دهد؛ current decision از rubric برای cue دادن به پاسخ استفاده نمی‌کند.
+- نتیجه نهایی score/max_score کلی قبلی را حفظ می‌کند و در کنار آن کارت‌های dimension، درصد مسیر، تعداد تصمیم و feedback مرور را نشان می‌دهد.
+- این breakdown یک **rubric آموزشی محصول** است، نه ابزار سنجش psychometric، تشخیص، درمان یا معیار صلاحیت بالینی.
+
+موجودی runtime فعلی پس از seed v0.7.3:
+
+```text
+6 current Clinical Cases
+12 total CaseRevisions (6 historical v1 + 6 current v2)
+17 CaseScoringDimensions
+36 total CaseSteps / 108 total CaseTransitions
+18 current rubric-mapped decision questions
+0 runtime test attempts/events/answers after cleanup
+```
+
+Runtime HTTP smoke روی `case-high-energy-04` سه تصمیم واقعی را از سرور عبور داد و breakdown نهایی را به‌صورت `information_gathering = 6/6` و `differential_reasoning = 3/3` برگرداند؛ user و attempt موقت در پایان حذف شدند.
+
+سند release:
+
+```text
+docs/Psychology_Atlas_v0.7.3_Multidimensional_Educational_Scoring_2026-09-16.md
+```
+
+مرحله بعدی roadmap: **v0.7.4 Advanced Case Analytics**.
 
 ## v0.7.2 Server Attempt State + Stateful Branching Runner
 

@@ -1,8 +1,26 @@
 # Psychology Atlas Product Spec
 
-## Current implemented version: v0.7.2 — Server-Authoritative Case Attempts + Stateful Runner
+## Current implemented version: v0.7.3 — Revision-Pinned Multi-dimensional Educational Scoring + Feedback
 
 Psychology Atlas is an interactive educational system for psychology students. It should behave as a connected learning system, not as a psychology blog and not as a diagnostic product.
+
+### v0.7.3 multidimensional educational scoring invariants
+
+- `CaseRevision.rubric_version` declares the scoring-contract generation for that immutable Case revision; `0` means no multidimensional rubric and `1` is the first v0.7.3 rubric contract.
+- `CaseScoringDimension` belongs to one `CaseRevision` and uses a revision-scoped stable key, label, description and sort order. Dimensions are educational product metadata, not psychometric constructs or validated competency scales.
+- A decision `CaseQuestion` may reference one primary scoring dimension from the same revision. The existing `CaseChoice.score_value` remains the authoritative numeric score; v0.7.3 does not fabricate a new scientific score scale.
+- `CaseAttemptEvent.scoring_dimension` and `CaseAttemptAnswer.scoring_dimension` preserve the dimension used at decision time. Event snapshots also copy dimension key/label/description/order so reached-path history remains reconstructible and auditable.
+- The API computes `dimension_feedback` from immutable decision events in the exact path the learner actually traversed. Unvisited branches never inflate a denominator or appear as missed performance.
+- Old attempts/revisions remain valid with `rubric_version=0`. Missing dimension data is represented explicitly as legacy/unscored rather than backfilled from later content.
+- The stateful runner does not expose scoring dimensions before a decision. After a decision, reached history can show the dimension label; after completion, Persian/RTL cards show score/max, path-scoped percentage, decision count and review feedback.
+- Dimension feedback is deliberately educational and includes an explicit non-diagnostic/non-competency disclaimer. It must never be presented as therapist fitness, clinical competence, diagnosis or treatment guidance.
+- Seeded v0.7.3 content maps 18 current Case decision questions onto 17 revision-owned dimension records across the 6 current Case revisions. Re-seeding identical content is idempotent; rubric changes publish a new CaseRevision instead of mutating historical structure.
+- Migration `0026_v073_multidimensional_case_scoring.py` is additive and preserves all prior attempts/revisions. The current local runtime has 12 total revisions: 6 historical v1 revisions and 6 current v2 rubric revisions.
+- `audit_case_graphs` now validates rubric existence, question→dimension ownership, unused dimensions, attempt event/answer ownership, and event snapshot key/label consistency in addition to the v0.7.1/v0.7.2 graph/state invariants.
+- Focused v0.7.3 tests are 9/9 PASS and the full backend suite is 156/156 PASS. Frontend 0.7.3 typecheck/build and npm audit are green; scientific/research archive regressions remain unchanged.
+- Runtime HTTP smoke on `case-high-energy-04` completed three real server decisions and produced path-scoped totals of `information_gathering=6/6` and `differential_reasoning=3/3`; the temporary user/attempt was deleted afterward.
+- Detailed release validation is recorded in `BUILD_MANIFEST.json` and `docs/Psychology_Atlas_v0.7.3_Multidimensional_Educational_Scoring_2026-09-16.md`.
+- The next Clinical Case slice is v0.7.4 Advanced Case Analytics; it should consume these immutable event/dimension primitives rather than invent parallel scoring state.
 
 ### v0.7.2 server attempt engine + runner invariants
 

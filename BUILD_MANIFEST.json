@@ -1,7 +1,7 @@
 {
   "project": "Psychology Atlas",
-  "version": "0.7.2",
-  "release_name": "Server-Authoritative Case Attempts + Stateful Runner",
+  "version": "0.7.3",
+  "release_name": "Revision-Pinned Multi-dimensional Educational Scoring + Feedback",
   "stack": {
     "frontend": "Next.js 16.3.3 + React 19 + TypeScript",
     "backend": "Django 5.2 + Django REST Framework",
@@ -230,7 +230,19 @@
     "v072_stateful_case_runner",
     "v072_reached_path_history_ui",
     "v072_refresh_resume_ui",
-    "v072_safe_login_return_to_case"
+    "v072_safe_login_return_to_case",
+    "v073_case_revision_rubric_version",
+    "v073_revision_scoped_scoring_dimensions",
+    "v073_question_scoring_dimension_mapping",
+    "v073_event_dimension_snapshot",
+    "v073_answer_dimension_preservation",
+    "v073_path_scoped_dimension_feedback",
+    "v073_legacy_scoring_compatibility",
+    "v073_revision_safe_rubric_seed",
+    "v073_dimension_integrity_audit",
+    "v073_multidimensional_case_runner_ui",
+    "v073_educational_scoring_disclaimer",
+    "v073_runtime_http_scoring_smoke"
   ],
   "content": {
     "categories": 21,
@@ -248,9 +260,9 @@
     "quizzes": 5,
     "quiz_questions": 40,
     "clinical_cases": 6,
-    "case_revisions": 6,
-    "case_steps": 18,
-    "case_transitions": 54,
+    "case_revisions": 12,
+    "case_steps": 36,
+    "case_transitions": 108,
     "knowledge_graph_nodes": 660,
     "knowledge_graph_base_edges": 729,
     "knowledge_graph_dsm_nearby_edges": 570,
@@ -300,7 +312,7 @@
       "live_techniques": 35,
       "promoted_research_relationships": 479,
       "staging_policy": "future-domain and unsupported/lower-confidence records remain lossless staging-only",
-      "version_boundary": "v0.6 remains frozen; v0.7.1 added revision-safe branching architecture and v0.7.2 adds the server-authoritative attempt engine plus stateful runner without changing the protected research archive",
+      "version_boundary": "v0.6 remains frozen; v0.7.1 added revision-safe branching architecture, v0.7.2 added the server-authoritative attempt engine/stateful runner, and v0.7.3 adds revision-pinned multidimensional educational scoring without changing the protected research archive",
       "staged_psychologists": 130,
       "staged_theories": 53,
       "staged_timeline_events": 63,
@@ -340,7 +352,12 @@
     "therapy_source_links": 75,
     "technique_source_links": 58,
     "knowledge_graph_edge_kinds": 54,
-    "v065_graph_explicit_edges": 365
+    "v065_graph_explicit_edges": 365,
+    "current_case_revisions": 6,
+    "case_scoring_dimensions": 17,
+    "current_case_steps": 18,
+    "current_case_transitions": 54,
+    "case_rubric_questions": 18
   },
   "migrations": [
     "0003_concept_dailychallenge_dailychallengechoice_and_more.py",
@@ -365,17 +382,18 @@
     "0022_v071_branching_case_foundation.py",
     "0023_v071_case_revision_snapshots.py",
     "0024_v071_case_revision_integrity.py",
-    "0025_v072_attempt_state_engine.py"
+    "0025_v072_attempt_state_engine.py",
+    "0026_v073_multidimensional_case_scoring.py"
   ],
   "validation": {
     "django_check": "pass",
-    "backend_tests": "147/147 passed · v0.7.2 server-authoritative Clinical Case attempt engine + stateful runner on backend/.venv",
+    "backend_tests": "156/156 passed · v0.7.3 revision-pinned multidimensional educational Case scoring on backend/.venv",
     "python_compileall": "pass",
     "pip_check": "pass · backend/.venv has no broken requirements; system-global Python conflicts are unrelated to the project release environment",
     "migration_drift_check": "pass · no changes detected",
     "seed_idempotency": "pass · repeated seed runs preserve imported seed_managed=False entities and relations while seed-owned relations remain independently managed",
-    "typescript_typecheck": "pass · frontend 0.7.2",
-    "next_production_build": "pass · frontend 0.7.2 · Next.js 16.3.3 Turbopack · 23/23 static-generation units",
+    "typescript_typecheck": "pass · frontend 0.7.3",
+    "next_production_build": "pass · frontend 0.7.3 · Next.js 16.3.3 Turbopack · 23/23 static-generation units",
     "npm_audit_low": "0 vulnerabilities",
     "frontend_route_smoke_test": "pass · v0.7.2 production Chromium E2E covered register, Case start, branch decision, refresh/resume, immutable reached-path history, terminal completion, new attempt, and safe login return-to-case",
     "dsm_master_source_sha256": "9680d7b1e85ae4ef58efa58f7c76bfcc04c7b317f1fbd40cbb2e27be02542694",
@@ -392,7 +410,7 @@
     "temporary_audit_user_cleanup": "pass · both v0.5.5 runtime-audit users deleted; 0 remaining",
     "therapy_foundation_tests": "3 targeted schema/provenance tests included in full suite",
     "canonical_module_cleanup": "pass · versioned backend runtime modules consolidated into views.py / serializers.py / seed_mvp.py",
-    "current_release": "v0.7.2 Server-Authoritative Case Attempts + Stateful Runner",
+    "current_release": "v0.7.3 Revision-Pinned Multi-dimensional Educational Scoring + Feedback",
     "v071_case_graph_audit": "pass · 6 current cases / 6 revisions / 18 nodes / 54 explicit transitions / 0 structural failures",
     "v071_case_seed_revision_idempotency": "pass · unchanged repeated seed remains 6 revisions / 18 nodes / 54 transitions; changed content publishes a new revision without mutating historical attempts",
     "v071_attempt_history_binding": "pass · legacy submit stores CaseAttempt.revision and prior attempts remain pinned after later case revisions",
@@ -409,7 +427,7 @@
     "v072_scientific_regression": "pass · v0.6 audit unchanged: 0 active provenance gaps · 59 weak-only entities · 52 weak-only relations · 0 timeline precision issues",
     "v072_research_archive": "pass · 2 datasets / 1918 records / exact stored hashes verified",
     "ruff": "not run · ruff is not installed in backend venv",
-    "git_diff_check": "pass · 12 intended v0.7.2 release files before commit · generated frontend/next-env.d.ts build churn restored/excluded · no conflicts or whitespace errors",
+    "git_diff_check": "pass · v0.7.3 release diff checked with git diff --check; generated frontend/next-env.d.ts build churn restored/excluded; no conflicts or whitespace errors",
     "therapy_seed_api_tests": "6 targeted seed/API/provenance/filter/idempotency tests included in full suite",
     "therapy_inventory": "6 therapies / 9 techniques / 9 therapy-disorder / 10 therapy-technique / 7 therapy-concept / 8 technique-concept links",
     "therapy_provenance": "pass · seeded Therapy/Technique content and all seeded cross-domain relations carry SourceReference provenance",
@@ -522,7 +540,17 @@
     "v066_api_query_budgets": "pass · Psychologist/Theory/Timeline lists 3/3/2 · representative details 13/13/9",
     "v066_deploy_check": "audited · DEBUG=0 production check reports only intentional HSTS include-subdomains/preload opt-in warnings",
     "v066_schema_boundary": "pass · no migration required",
-    "v066_git_transport": "local repository has no configured remote; push is impossible until a real remote URL is configured"
+    "v066_git_transport": "local repository has no configured remote; push is impossible until a real remote URL is configured",
+    "v073_focused_scoring_tests": "pass · 9/9 rubric ownership/path aggregation/legacy compatibility/seed revision/model integrity tests",
+    "v073_case_rubric_inventory": "pass · 6 current cases / 12 total revisions / 17 dimensions / 18 current rubric-mapped questions / 36 total steps / 108 total transitions",
+    "v073_case_graph_scoring_audit": "pass · 6 cases / 12 revisions / 17 dimensions / 0 attempts / 0 events / 0 answers / 0 failures after runtime-smoke cleanup",
+    "v073_seed_revision_idempotency": "pass · repeated seed keeps all 6 current cases on revision 2 with 12 total revisions and 17 scoring dimensions",
+    "v073_path_scoped_runtime_smoke": "pass · real HTTP stateful flow on case-high-energy-04 completed 3 decisions and returned information_gathering 6/6 plus differential_reasoning 3/3; temporary user/attempt cleaned",
+    "v073_sqlite_integrity": "pass · integrity_check ok · foreign_key_check 0 · in_progress_without_step 0",
+    "v073_scientific_regression": "pass · v0.6 audit unchanged: 0 active provenance gaps · 59 weak-only entities · 52 weak-only relations · 0 timeline precision issues",
+    "v073_research_archive": "pass · 2 datasets / 1918 records / exact stored hashes verified",
+    "v073_compileall": "pass",
+    "v073_pip_check": "pass · no broken requirements"
   },
   "release_notes": {
     "graph_layers": [
@@ -552,19 +580,22 @@
       "0.6.3": "Psychologist + Theory + Timeline APIs ✅",
       "0.6.4": "Frontend Atlas pages + Timeline UX ✅",
       "0.6.5": "Knowledge Graph + global search integration ✅",
-      "0.6.6": "Final hardening + performance + release freeze ✅"
+      "0.6.6": "Final hardening + performance + release freeze ✅",
+      "0.7.1": "Branching Case Architecture + Revision Safety ✅",
+      "0.7.2": "Server-Authoritative Attempt Engine + Stateful Runner ✅",
+      "0.7.3": "Revision-Pinned Multi-dimensional Educational Scoring + Feedback ✅"
     },
     "deliberately_deferred": [
       "Brain Atlas",
       "Assessment Atlas",
-      "fully branching clinical cases",
       "exam planning",
       "XP and achievements",
       "advanced recommendation engine",
       "content admin CMS",
       "claim-level citation graph",
       "Therapy user progress/mastery until learning evidence exists",
-      "Personalized treatment recommendation"
+      "Personalized treatment recommendation",
+      "advanced case analytics"
     ],
     "user_owned_data": [
       "concept bookmarks",
@@ -575,7 +606,8 @@
       "study activity",
       "cognitive distortion practice attempts",
       "therapy bookmarks",
-      "therapy notes"
+      "therapy notes",
+      "clinical case attempts and immutable attempt events"
     ],
     "therapy_foundation": {
       "entity_boundary": "Therapy and Technique are separate entities",
@@ -746,6 +778,15 @@
       "regression": "128/128 backend tests · 635/635 production route crawl · Chromium interaction audit · frontend 0.6.6 build/typecheck/audit pass",
       "schema": "no migration; exact research archive hashes preserved",
       "next": "v0.7 Advanced Branching Clinical Cases + Analytics"
+    },
+    "v073_multidimensional_scoring": {
+      "contract": "rubric belongs to CaseRevision; legacy rubric_version=0 remains readable without fabricated backfill",
+      "dimensions": "17 current revision-owned dimension rows across 6 current Case revisions; 18 mapped decision questions",
+      "scoring": "existing CaseChoice.score_value remains authoritative; dimension totals aggregate only reached immutable decision events",
+      "history_safety": "CaseAttemptEvent/Answer preserve dimension FK and events snapshot key/label/description/order",
+      "ui": "dimension labels appear only after a decision; completion shows Persian/RTL path-scoped cards plus non-competency disclaimer",
+      "runtime": "case-high-energy-04 HTTP smoke completed 9/9 with information_gathering 6/6 and differential_reasoning 3/3",
+      "next": "v0.7.4 Advanced Case Analytics"
     }
   }
 }

@@ -5,6 +5,7 @@ from django.db.models import Q
 from rest_framework import serializers
 
 from . import models as atlas_models
+from .services import build_case_attempt_dimension_feedback
 from .models import (
     Bookmark,
     CaseAttempt,
@@ -285,6 +286,7 @@ class ClinicalCaseListSerializer(serializers.ModelSerializer):
     primary_disorder = DisorderListSerializer(read_only=True)
     step_count = serializers.SerializerMethodField()
     revision_number = serializers.SerializerMethodField()
+    rubric_version = serializers.SerializerMethodField()
 
     class Meta:
         model = ClinicalCase
@@ -296,6 +298,7 @@ class ClinicalCaseListSerializer(serializers.ModelSerializer):
             "difficulty",
             "structure_mode",
             "revision_number",
+            "rubric_version",
             "primary_disorder",
             "step_count",
         )
@@ -307,6 +310,9 @@ class ClinicalCaseListSerializer(serializers.ModelSerializer):
 
     def get_revision_number(self, obj):
         return obj.current_revision.version if obj.current_revision_id else None
+
+    def get_rubric_version(self, obj):
+        return obj.current_revision.rubric_version if obj.current_revision_id else 0
 
 
 class ClinicalCaseDetailSerializer(ClinicalCaseListSerializer):
@@ -330,6 +336,7 @@ class CaseAttemptEventSerializer(serializers.ModelSerializer):
             "event_type",
             "step_id",
             "question_id",
+            "scoring_dimension_id",
             "selected_choice_id",
             "next_step_id",
             "outcome",
@@ -346,6 +353,7 @@ class CaseAttemptStateSerializer(serializers.ModelSerializer):
     case = serializers.SerializerMethodField()
     current_step = serializers.SerializerMethodField()
     history = CaseAttemptEventSerializer(source="events", many=True, read_only=True)
+    dimension_feedback = serializers.SerializerMethodField()
 
     class Meta:
         model = CaseAttempt
@@ -358,6 +366,7 @@ class CaseAttemptStateSerializer(serializers.ModelSerializer):
             "max_score",
             "current_step",
             "history",
+            "dimension_feedback",
             "created_at",
             "updated_at",
             "completed_at",
@@ -373,12 +382,16 @@ class CaseAttemptStateSerializer(serializers.ModelSerializer):
             "difficulty": obj.revision.difficulty,
             "structure_mode": obj.case.structure_mode,
             "revision_number": obj.revision.version,
+            "rubric_version": obj.revision.rubric_version,
         }
 
     def get_current_step(self, obj):
         if obj.current_step_id is None:
             return None
         return CaseStepSerializer(obj.current_step).data
+
+    def get_dimension_feedback(self, obj):
+        return build_case_attempt_dimension_feedback(obj)
 
 
 class BookmarkSerializer(serializers.ModelSerializer):

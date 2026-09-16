@@ -120,7 +120,7 @@ def submit_case(*, user, clinical_case, answers):
         raise ValidationError("این endpoint فقط برای کیس‌های خطی سازگار با نسخه قبلی است.")
 
     questions = {}
-    for step in revision.steps.filter(is_active=True).prefetch_related("questions__choices").all():
+    for step in revision.steps.filter(is_active=True).prefetch_related("questions__choices", "questions__scoring_dimension").all():
         for q in step.questions.all():
             if q.is_active:
                 questions[q.id] = q
@@ -155,6 +155,7 @@ def submit_case(*, user, clinical_case, answers):
         CaseAttemptAnswer.objects.create(
             attempt=attempt,
             question=question,
+            scoring_dimension=question.scoring_dimension,
             selected_choice=choice,
             awarded_score=awarded,
         )
@@ -166,6 +167,14 @@ def submit_case(*, user, clinical_case, answers):
             "full_credit": awarded == max_for_question,
             "feedback": choice.feedback,
             "explanation": question.explanation,
+            "scoring_dimension": (
+                {
+                    "key": question.scoring_dimension.stable_key,
+                    "label": question.scoring_dimension.label,
+                }
+                if question.scoring_dimension_id
+                else None
+            ),
         })
 
     attempt.score = score
@@ -194,6 +203,7 @@ def submit_case(*, user, clinical_case, answers):
             "score": attempt.score,
             "max_score": attempt.max_score,
             "case_revision": revision.version,
+            "rubric_version": revision.rubric_version,
         },
     )
     return attempt, feedback
@@ -201,6 +211,7 @@ def submit_case(*, user, clinical_case, answers):
 
 def _apply_stateful_case_completion_side_effects(attempt):
     disorder = attempt.revision.primary_disorder
+    dimension_feedback = build_case_attempt_dimension_feedback(attempt)
     if disorder_id := getattr(disorder, "id", None):
         progress, _ = UserProgress.objects.get_or_create(user=attempt.user, disorder_id=disorder_id)
         performance = round(attempt.score * 100 / attempt.max_score) if attempt.max_score else 0
@@ -222,6 +233,15 @@ def _apply_stateful_case_completion_side_effects(attempt):
             "score": attempt.score,
             "max_score": attempt.max_score,
             "case_revision": attempt.revision.version,
+            "rubric_version": attempt.revision.rubric_version,
+            "dimension_scores": [
+                {
+                    "key": item["key"],
+                    "score": item["score"],
+                    "max_score": item["max_score"],
+                }
+                for item in dimension_feedback["dimensions"]
+            ],
             "stateful_engine": True,
         },
     )
@@ -279,6 +299,13 @@ def _event_snapshot(*, step, question=None, choice=None, transition=None):
     if question is not None:
         snapshot["question_prompt"] = question.prompt
         snapshot["question_explanation"] = question.explanation
+        if question.scoring_dimension_id:
+            snapshot["scoring_dimension"] = {
+                "key": question.scoring_dimension.stable_key,
+                "label": question.scoring_dimension.label,
+                "description": question.scoring_dimension.description,
+                "sort_order": question.scoring_dimension.sort_order,
+            }
     if choice is not None:
         snapshot["choice_text"] = choice.text
         snapshot["choice_feedback"] = choice.feedback
@@ -289,6 +316,74 @@ def _event_snapshot(*, step, question=None, choice=None, transition=None):
         snapshot["outcome"] = CaseTransition.Outcome.COMPLETE
         snapshot["target_step_key"] = None
     return snapshot
+
+
+def build_case_attempt_dimension_feedback(attempt):
+    dimensions = {}
+    decision_count = 0
+    unscored_decisions = 0
+
+    for event in attempt.events.all():
+        if event.event_type != CaseAttemptEvent.EventType.DECISION:
+            continue
+        decision_count += 1
+        dimension_snapshot = event.snapshot.get("scoring_dimension") if isinstance(event.snapshot, dict) else None
+        if not isinstance(dimension_snapshot, dict):
+            unscored_decisions += 1
+            continue
+        key = dimension_snapshot.get("key")
+        label = dimension_snapshot.get("label")
+        if not isinstance(key, str) or not key or not isinstance(label, str) or not label:
+            unscored_decisions += 1
+            continue
+        raw_description = dimension_snapshot.get("description")
+        raw_sort_order = dimension_snapshot.get("sort_order")
+        description = raw_description if isinstance(raw_description, str) else ""
+        sort_order = raw_sort_order if isinstance(raw_sort_order, int) and not isinstance(raw_sort_order, bool) else 0
+        row = dimensions.setdefault(key, {
+            "key": key,
+            "label": label,
+            "description": description,
+            "sort_order": max(sort_order, 0),
+            "score": 0,
+            "max_score": 0,
+            "decision_count": 0,
+        })
+        row["score"] += event.awarded_score
+        row["max_score"] += event.max_score
+        row["decision_count"] += 1
+
+    ordered = sorted(dimensions.values(), key=lambda item: (item["sort_order"], item["label"], item["key"]))
+    review_dimensions = []
+    for row in ordered:
+        row["percent"] = round(row["score"] * 100 / row["max_score"]) if row["max_score"] else None
+        row["needs_review"] = row["max_score"] > row["score"]
+        if row["needs_review"]:
+            row["feedback"] = "در این بُعد بخشی از امتیاز مسیر از دست رفته است؛ بازخورد و توضیح تصمیم‌های مربوط را مرور کن."
+            review_dimensions.append(row["key"])
+        else:
+            row["feedback"] = "در تصمیم‌های طی‌شده این بُعد، امتیاز کامل ثبت شده است؛ توضیح تصمیم‌ها را برای تثبیت مرور کن."
+
+    if ordered:
+        message = "این breakdown فقط از تصمیم‌های واقعاً طی‌شده در همین revision ساخته شده است."
+    elif attempt.revision.rubric_version == 0:
+        message = "این تلاش پیش از rubric چندبعدی v0.7.3 ثبت شده و breakdown چندبعدی ندارد."
+    else:
+        message = "هنوز تصمیم امتیازدهی‌شده‌ای برای ساخت breakdown چندبعدی ثبت نشده است."
+
+    return {
+        "rubric_version": attempt.revision.rubric_version,
+        "available": bool(ordered),
+        "decision_count": decision_count,
+        "unscored_decisions": unscored_decisions,
+        "dimensions": ordered,
+        "review_dimensions": review_dimensions,
+        "message": message,
+        "disclaimer": (
+            "این breakdown فقط عملکرد در تصمیم‌های همین سناریوی آموزشی را توصیف می‌کند و "
+            "معیار صلاحیت بالینی، تشخیص، درمان یا ارزیابی حرفه‌ای نیست."
+        ),
+    }
 
 
 @transaction.atomic
@@ -318,7 +413,7 @@ def advance_case_attempt(*, user, attempt, step_id, choice_id, state_version):
 
     step = (
         CaseStep.objects.filter(pk=locked.current_step_id, is_active=True, revision=locked.revision)
-        .prefetch_related("questions__choices")
+        .prefetch_related("questions__choices", "questions__scoring_dimension")
         .first()
     )
     if step is None:
@@ -398,6 +493,7 @@ def advance_case_attempt(*, user, attempt, step_id, choice_id, state_version):
         step=step,
         event_type=event_type,
         question=question,
+        scoring_dimension=question.scoring_dimension if question is not None else None,
         selected_choice=choice,
         transition=transition,
         next_step=next_step,
@@ -415,6 +511,7 @@ def advance_case_attempt(*, user, attempt, step_id, choice_id, state_version):
         answer = CaseAttemptAnswer(
             attempt=locked,
             question=question,
+            scoring_dimension=question.scoring_dimension,
             selected_choice=choice,
             awarded_score=awarded_score,
         )
