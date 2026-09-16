@@ -79,7 +79,14 @@ from .serializers import (
     UserNoteSerializer,
     UserSerializer,
 )
-from .services import advance_case_attempt, start_or_resume_case_attempt, submit_case, submit_quiz
+from .services import (
+    advance_case_attempt,
+    build_personal_case_analytics_detail,
+    build_personal_case_analytics_overview,
+    start_or_resume_case_attempt,
+    submit_case,
+    submit_quiz,
+)
 from .validation import positive_int
 
 
@@ -403,6 +410,25 @@ def case_attempt_decision(request, attempt_id):
     data["event_id"] = event.id
     data["idempotent"] = idempotent
     return Response(data)
+
+
+@api_view(["GET"])
+@permission_classes([permissions.IsAuthenticated])
+def case_analytics_overview(request):
+    return Response(build_personal_case_analytics_overview(user=request.user))
+
+
+@api_view(["GET"])
+@permission_classes([permissions.IsAuthenticated])
+def case_analytics_detail(request, slug):
+    clinical_case = get_object_or_404(ClinicalCase, slug=slug)
+    payload = build_personal_case_analytics_detail(user=request.user, clinical_case=clinical_case)
+    if payload is None:
+        return Response(
+            {"detail": "برای این کاربر سابقه‌ای از این کیس وجود ندارد."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    return Response(payload)
 
 
 @api_view(["GET", "POST"])
