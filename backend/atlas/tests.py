@@ -348,6 +348,14 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(response.json()["revision_number"], 2)
         self.assertEqual([row["title"] for row in response.json()["steps"]], ["New step"])
 
+    def test_branching_case_public_detail_does_not_expose_future_steps(self):
+        fixture = self.create_branching_case_fixture(slug="branching-detail-redaction")
+        response = self.client.get(f"/api/cases/{fixture['case'].slug}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["structure_mode"], ClinicalCase.StructureMode.BRANCHING)
+        self.assertEqual(response.json()["revision_number"], fixture["revision"].version)
+        self.assertEqual(response.json()["steps"], [])
+
     def test_case_graph_validator_rejects_cycle(self):
         case = ClinicalCase.objects.create(
             slug="cycle-case",
@@ -618,6 +626,9 @@ class AtlasApiTests(APITestCase):
         response = self.client.post(f"/api/cases/{fixture['case'].slug}/attempts/", {}, format="json")
         self.assertEqual(response.status_code, 400)
         self.assertEqual(CaseAttempt.objects.filter(user=self.user_a, case=fixture["case"]).count(), 2)
+
+        current = self.client.get(f"/api/cases/{fixture['case'].slug}/attempts/current/")
+        self.assertEqual(current.status_code, 400)
 
     def test_v072_server_selects_next_branch_and_records_event_history(self):
         fixture = self.create_branching_case_fixture()

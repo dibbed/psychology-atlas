@@ -322,7 +322,7 @@ class ClinicalCaseDetailSerializer(ClinicalCaseListSerializer):
         fields = ClinicalCaseListSerializer.Meta.fields + ("educational_objective", "steps")
 
     def get_steps(self, obj):
-        if not obj.current_revision_id:
+        if not obj.current_revision_id or obj.structure_mode == ClinicalCase.StructureMode.BRANCHING:
             return []
         steps = [step for step in obj.current_revision.steps.all() if step.is_active]
         return CaseStepSerializer(steps, many=True).data

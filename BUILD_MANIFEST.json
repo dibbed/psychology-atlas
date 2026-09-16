@@ -242,6 +242,8 @@
     "v073_dimension_integrity_audit",
     "v073_multidimensional_case_runner_ui",
     "v073_educational_scoring_disclaimer",
+    "v073_branching_public_detail_redaction",
+    "v073_duplicate_in_progress_current_guard",
     "v073_runtime_http_scoring_smoke"
   ],
   "content": {
@@ -387,7 +389,7 @@
   ],
   "validation": {
     "django_check": "pass",
-    "backend_tests": "156/156 passed · v0.7.3 revision-pinned multidimensional educational Case scoring on backend/.venv",
+    "backend_tests": "157/157 passed · v0.7.3 revision-pinned multidimensional educational Case scoring plus v0.7.1-v0.7.3 integrity hardening on backend/.venv",
     "python_compileall": "pass",
     "pip_check": "pass · backend/.venv has no broken requirements; system-global Python conflicts are unrelated to the project release environment",
     "migration_drift_check": "pass · no changes detected",
@@ -545,6 +547,10 @@
     "v073_case_rubric_inventory": "pass · 6 current cases / 12 total revisions / 17 dimensions / 18 current rubric-mapped questions / 36 total steps / 108 total transitions",
     "v073_case_graph_scoring_audit": "pass · 6 cases / 12 revisions / 17 dimensions / 0 attempts / 0 events / 0 answers / 0 failures after runtime-smoke cleanup",
     "v073_seed_revision_idempotency": "pass · repeated seed keeps all 6 current cases on revision 2 with 12 total revisions and 17 scoring dimensions",
+    "v073_fresh_install_migration_chain": "pass · clean SQLite migrated through 0022/0023/0024/0025/0026, seeded twice, and audited at 6 cases / 6 revisions / 17 dimensions / 18 steps / 54 transitions",
+    "v073_legacy_upgrade_migration_chain": "pass · real historical 0021 linear case with completed + in-progress attempts upgraded through 0026; revision/transition/current_step/rubric backfills preserved and audit passed",
+    "v073_branching_detail_redaction": "pass · public branching Case detail exposes no future steps/questions/choices; stateful attempt APIs remain the only source of current branch content",
+    "v073_duplicate_current_guard": "pass · current-attempt endpoint rejects duplicate in-progress corruption instead of selecting one arbitrarily",
     "v073_path_scoped_runtime_smoke": "pass · real HTTP stateful flow on case-high-energy-04 completed 3 decisions and returned information_gathering 6/6 plus differential_reasoning 3/3; temporary user/attempt cleaned",
     "v073_sqlite_integrity": "pass · integrity_check ok · foreign_key_check 0 · in_progress_without_step 0",
     "v073_scientific_regression": "pass · v0.6 audit unchanged: 0 active provenance gaps · 59 weak-only entities · 52 weak-only relations · 0 timeline precision issues",

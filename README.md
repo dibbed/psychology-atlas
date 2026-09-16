@@ -30,7 +30,7 @@ revision-safe seed upgrade + idempotency         ✅
 Persian/RTL dimension result cards               ✅
 migration 0026 applied                            ✅
 focused v0.7.3 tests: 9/9 PASS                    ✅
-full backend suite: 156/156 PASS                  ✅
+full backend suite: 157/157 PASS                  ✅
 ```
 
 قواعد اصلی v0.7.3:
@@ -41,6 +41,8 @@ full backend suite: 156/156 PASS                  ✅
 - `CaseAttemptEvent` علاوه بر FK بُعد، key/label/description/order را داخل snapshot نگه می‌دارد تا history قدیمی در برابر تغییرات بعدی قابل بازسازی بماند.
 - attemptهای v0.7.2 و قدیمی‌تر با `rubric_version=0` همچنان معتبرند؛ API در آن‌ها breakdown خالی و توضیح compatibility برمی‌گرداند، بدون backfill ساختگی.
 - UI فقط بعد از ثبت تصمیم، بُعد مربوط به آن event را در history نشان می‌دهد؛ current decision از rubric برای cue دادن به پاسخ استفاده نمی‌کند.
+- detail عمومی Caseهای branching دیگر step/question/choiceهای branchهای آینده را برنمی‌گرداند؛ محتوای مسیر فقط از stateful attempt API و current step واقعی می‌آید.
+- endpoint مربوط به current attempt در وضعیت corruption با بیش از یک attempt درحال‌اجرا خطا می‌دهد و یکی را به‌صورت تصادفی انتخاب نمی‌کند.
 - نتیجه نهایی score/max_score کلی قبلی را حفظ می‌کند و در کنار آن کارت‌های dimension، درصد مسیر، تعداد تصمیم و feedback مرور را نشان می‌دهد.
 - این breakdown یک **rubric آموزشی محصول** است، نه ابزار سنجش psychometric، تشخیص، درمان یا معیار صلاحیت بالینی.
 

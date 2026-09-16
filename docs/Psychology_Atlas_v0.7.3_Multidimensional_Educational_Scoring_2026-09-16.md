@@ -189,6 +189,10 @@ The migration is additive. Old rows remain valid with null dimension bindings an
 - answer dimension matches the answer question
 - dimension event snapshots exist when required
 - snapshot key/label match the preserved dimension relation
+- public detail for branching cases returns no future steps/questions/choices; only the stateful attempt endpoint exposes the current reachable step
+- duplicate in-progress corruption is rejected consistently by both start/resume and current-attempt endpoints
+- a clean SQLite migration chain through `0022`–`0026` plus two seed runs passes graph audit
+- a historical `0021` fixture with completed and in-progress attempts upgrades through `0026` with revision, transition, current-step and legacy rubric compatibility preserved
 
 Final runtime audit:
 
@@ -235,7 +239,7 @@ Verified on the final implementation snapshot before release metadata closeout:
 
 ```text
 Focused v0.7.3 backend tests:  9/9 PASS
-Full backend suite:             156/156 PASS
+Full backend suite:             157/157 PASS
 Django system check:            PASS
 Migration drift check:          PASS
 Python compileall:              PASS
