@@ -27,7 +27,7 @@
 ## مسیر repo
 
 ```text
-C:\Users\Meliodas\Downloads\psychology_atlas_fullstack_mvp
+<repository-root>
 ```
 
 ## Git

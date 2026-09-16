@@ -3,7 +3,7 @@
 **Date:** 2026-09-12
 **Status:** development slice complete; v0.7.2 is not released yet
 **Base release:** v0.7.1 Branching Clinical Case Architecture + Revision Safety
-**Repository:** `C:\Users\Meliodas\Downloads\psychology_atlas_fullstack_mvp`
+**Repository:** `<repository-root>`
 
 ## 1. Scope of this part
 

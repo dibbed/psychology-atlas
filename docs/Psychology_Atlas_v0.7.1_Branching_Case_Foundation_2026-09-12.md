@@ -3,7 +3,7 @@
 **Date:** 2026-09-12
 **Release line:** v0.7 Advanced Branching Clinical Cases + Analytics
 **Slice:** v0.7.1
-**Repository:** `C:\Users\Meliodas\Downloads\psychology_atlas_fullstack_mvp`
+**Repository:** `<repository-root>`
 **Base:** frozen v0.6.6 line plus its v0.7 handoff documentation
 
 ---
