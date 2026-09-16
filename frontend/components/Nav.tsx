@@ -33,6 +33,7 @@ const navItems: NavItem[] = [
   { href: "/cases", label: "کیس‌ها", en: "Clinical Cases", group: "learn" },
   { href: "/saved", label: "ذخیره‌ها", en: "Saved", group: "personal" },
   { href: "/notes", label: "یادداشت‌ها", en: "Notes", group: "personal" },
+  { href: "/case-analytics", label: "تحلیل کیس‌ها", en: "Case Analytics", group: "personal" },
   { href: "/dashboard", label: "داشبورد", en: "Dashboard", group: "personal" },
 ];
 
@@ -63,6 +64,7 @@ function detailKind(pathname: string) {
   if (/^\/theories\/.+/.test(pathname)) return "پروفایل نظریه";
   if (/^\/timeline\/.+/.test(pathname)) return "رویداد تاریخی";
   if (/^\/quizzes\/.+/.test(pathname)) return "آزمون";
+  if (/^\/case-analytics\/.+/.test(pathname)) return "تحلیل کیس";
   if (/^\/cases\/.+/.test(pathname)) return "کیس بالینی";
   return "";
 }

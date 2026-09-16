@@ -1,10 +1,24 @@
 # Psychology Atlas Product Spec
 
-## Current development slice: v0.7.4.1 — Personal Case Analytics Foundation
+## Current development slice: v0.7.4.2 — Persian/RTL Personal Case Analytics UI
 
 Official release baseline remains **v0.7.3 — Revision-Pinned Multi-dimensional Educational Scoring + Feedback** until the full v0.7.4 analytics release is frozen.
 
 Psychology Atlas is an interactive educational system for psychology students. It should behave as a connected learning system, not as a psychology blog and not as a diagnostic product.
+
+### v0.7.4.2 Persian/RTL personal Case analytics UI invariants
+
+- The frontend consumes the authenticated v0.7.4.1 API contract directly. It does not recalculate analytics semantics, reconstruct paths from mutable Case graph state, or create parallel scoring logic in React.
+- Personal analytics routes are `/case-analytics` for the overview and `/case-analytics/<slug>` for one Case. Both require authentication and preserve the validated internal login return path.
+- The overview presents attempt count, completion rate, completed-attempt score summary, started Case count, reached decision count, and per-Case summaries ordered by backend recency.
+- Per-Case detail renders revision-aware educational dimensions, reached choice distributions, reconstructible completed paths, and recent attempts from the backend payload. UI bars visualize backend percentages only.
+- Legacy history remains explicit. If rubric/path data cannot be reconstructed, the UI shows compatibility counts and never invents dimensions, paths, psychometric interpretations, or clinical competency claims.
+- Case Analytics is discoverable from Personal navigation, the Case catalog, Dashboard, and a completed Case attempt. Completing a Case offers a direct link to its personal analytics detail.
+- Loading, authenticated-empty, API-error, no-owned-history, desktop, tablet and mobile responsive states are first-class. The 390px mobile layout keeps KPI, dimension, branch, path and attempt content readable without horizontal overflow.
+- The analytics copy is Persian/RTL-first. Technical identifiers such as revision numbers and stable step keys remain visible only where they improve auditability; unnecessary English product jargon is removed from user-facing copy.
+- Safety language is preserved from the API: personal Case analytics summarizes this learner's educational scenario history and must not be presented as diagnosis, treatment quality, normative ranking, therapist fitness or clinical competence.
+- v0.7.4.2 adds no backend schema, migration, scoring or scientific-content changes. The official release baseline remains v0.7.3 until v0.7.4.3 hardening/freeze completes the analytics release.
+- Browser QA uses real stateful Case events and temporary users that are deleted afterward. Desktop 1280px and mobile 390px overview/detail renders must remain free of clipping and horizontal overflow.
 
 ### v0.7.4.1 personal Case analytics foundation invariants
 

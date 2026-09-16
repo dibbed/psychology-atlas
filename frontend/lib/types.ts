@@ -294,6 +294,134 @@ export type CaseAttemptState = {
   idempotent?: boolean;
 };
 
+export type CaseAnalyticsAttemptSummary = {
+  total: number;
+  completed: number;
+  in_progress: number;
+  completion_rate: number | null;
+  average_completed_score_percent: number | null;
+  scored_completed_attempts: number;
+};
+
+export type CaseAnalyticsCaseSummary = {
+  case_id: number;
+  slug: string;
+  current_title: string;
+  latest_attempt_revision_title: string;
+  structure_mode: "linear" | "branching";
+  latest_attempt_revision_number: number;
+  latest_attempt_rubric_version: number;
+  attempts: number;
+  completed_attempts: number;
+  in_progress_attempts: number;
+  completion_rate: number | null;
+  average_completed_score_percent: number | null;
+  scored_completed_attempts: number;
+  decision_count: number;
+  last_activity_at: string;
+};
+
+export type CaseAnalyticsOverview = {
+  analytics_version: number;
+  scope: "personal";
+  generated_at: string;
+  attempts: CaseAnalyticsAttemptSummary;
+  cases_started: number;
+  decision_count: number;
+  cases: CaseAnalyticsCaseSummary[];
+  disclaimer: string;
+};
+
+export type CaseAnalyticsDimension = {
+  revision_number: number;
+  key: string;
+  label: string;
+  description: string;
+  sort_order: number;
+  score: number;
+  max_score: number;
+  percent: number | null;
+  decision_count: number;
+  attempt_count: number;
+  needs_review: boolean;
+};
+
+export type CaseAnalyticsBranchChoice = {
+  choice_id: number | null;
+  choice_text: string;
+  count: number;
+  selection_percent: number;
+  score: number;
+  max_score: number;
+  score_percent: number | null;
+};
+
+export type CaseAnalyticsBranch = {
+  revision_number: number;
+  step_key: string;
+  step_title: string;
+  decision_count: number;
+  choices: CaseAnalyticsBranchChoice[];
+};
+
+export type CaseAnalyticsPathStep = {
+  event_type: "decision" | "advance" | "terminal_complete";
+  step_key: string;
+  step_title: string;
+  node_kind: "decision" | "information" | "terminal" | "";
+  choice_id: number | null;
+  choice_text: string | null;
+};
+
+export type CaseAnalyticsCompletedPath = {
+  revision_number: number;
+  steps: CaseAnalyticsPathStep[];
+  attempt_count: number;
+  last_used_at: string | null;
+};
+
+export type CaseAnalyticsRecentAttempt = {
+  id: number;
+  revision_number: number;
+  revision_title: string;
+  rubric_version: number;
+  status: "in_progress" | "completed";
+  state_version: number;
+  score: number;
+  max_score: number;
+  score_percent: number | null;
+  event_count: number;
+  decision_count: number;
+  started_at: string;
+  updated_at: string;
+  completed_at: string | null;
+};
+
+export type CaseAnalyticsDetail = {
+  analytics_version: number;
+  scope: "personal";
+  generated_at: string;
+  case: {
+    id: number;
+    slug: string;
+    current_title: string;
+    structure_mode: "linear" | "branching";
+  };
+  attempts: CaseAnalyticsAttemptSummary;
+  decision_count: number;
+  dimensions: CaseAnalyticsDimension[];
+  branches: CaseAnalyticsBranch[];
+  completed_paths: CaseAnalyticsCompletedPath[];
+  recent_attempts: CaseAnalyticsRecentAttempt[];
+  legacy: {
+    rubric_zero_attempts: number;
+    rubric_zero_decisions: number;
+    unscored_dimension_decisions: number;
+    completed_attempts_without_reconstructible_path: number;
+  };
+  disclaimer: string;
+};
+
 export type Category = {
   slug: string;
   name_en: string;

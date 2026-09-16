@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { hasToken } from "@/lib/auth";
@@ -282,6 +283,7 @@ export default function CaseRunner({ item }: { item: ClinicalCase }) {
             <button className="button primary" type="button" onClick={() => void restart()} disabled={busy}>
               {busy ? "در حال شروع..." : "حل دوباره کیس"}
             </button>
+            <Link className="button" href={`/case-analytics/${item.slug}`}>دیدن تحلیل این کیس</Link>
           </div>
         </section>
       ) : step ? (
