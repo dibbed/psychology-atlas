@@ -362,15 +362,16 @@ def case_attempt_start(request, slug):
 @permission_classes([permissions.IsAuthenticated])
 def case_attempt_current(request, slug):
     clinical_case = get_object_or_404(ClinicalCase, slug=slug)
-    state = (
+    states = list(
         case_attempt_state_queryset()
         .filter(user=request.user, case=clinical_case, status=CaseAttempt.Status.IN_PROGRESS)
-        .order_by("-created_at", "-id")
-        .first()
+        .order_by("-created_at", "-id")[:2]
     )
-    if state is None:
+    if not states:
         return Response({"detail": "attempt در حال اجرا برای این کیس وجود ندارد."}, status=status.HTTP_404_NOT_FOUND)
-    return Response(CaseAttemptStateSerializer(state).data)
+    if len(states) > 1:
+        raise ValidationError("برای این کاربر و کیس بیش از یک attempt در حال اجرا وجود دارد؛ audit لازم است.")
+    return Response(CaseAttemptStateSerializer(states[0]).data)
 
 
 @api_view(["GET"])

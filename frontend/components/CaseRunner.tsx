@@ -171,11 +171,17 @@ export default function CaseRunner({ item }: { item: ClinicalCase }) {
     <div className="case-runner">
       <section className="case-attempt-bar" aria-label="وضعیت کیس">
         <div>
-          <span className="meta">نسخه کیس {faNumber(attempt.case.revision_number)}</span>
+          <span className="meta">
+            نسخه کیس {faNumber(attempt.case.revision_number)}
+            {attempt.case.rubric_version > 0 ? ` · rubric ${faNumber(attempt.case.rubric_version)}` : ""}
+          </span>
           <strong>{completed ? "مسیر تکمیل‌شده" : `گام جاری ${faNumber(attempt.history.length + 1)}`}</strong>
         </div>
         <div className="case-attempt-stats">
           <span>تصمیم‌های ثبت‌شده <strong>{faNumber(attempt.history.filter(event => event.event_type === "decision").length)}</strong></span>
+          {attempt.dimension_feedback.available && (
+            <span>ابعاد ثبت‌شده <strong>{faNumber(attempt.dimension_feedback.dimensions.length)}</strong></span>
+          )}
           <span>امتیاز مسیر <strong>{faNumber(attempt.score)} / {faNumber(attempt.max_score)}</strong></span>
         </div>
       </section>
@@ -207,6 +213,11 @@ export default function CaseRunner({ item }: { item: ClinicalCase }) {
                   <span className="meta">{eventLabel(event)}</span>
                 </div>
                 {event.snapshot.question_prompt && <p className="case-history-question">{event.snapshot.question_prompt}</p>}
+                {event.snapshot.scoring_dimension && (
+                  <div className="case-dimension-tag">
+                    بُعد آموزشی: <strong>{event.snapshot.scoring_dimension.label}</strong>
+                  </div>
+                )}
                 {event.snapshot.choice_text && (
                   <div className="case-history-choice">انتخاب ثبت‌شده: <strong>{event.snapshot.choice_text}</strong></div>
                 )}
@@ -235,6 +246,37 @@ export default function CaseRunner({ item }: { item: ClinicalCase }) {
             </div>
             <div className="score-ring" aria-label={`امتیاز ${percent} درصد`}>{faNumber(percent)}٪</div>
           </div>
+          {attempt.dimension_feedback.available && (
+            <section className="card case-dimension-summary" aria-labelledby="case-dimension-summary-title">
+              <div className="section-heading-row">
+                <div>
+                  <div className="meta">rubric چندبعدی همین مسیر</div>
+                  <h2 id="case-dimension-summary-title">خلاصه ابعاد آموزشی</h2>
+                </div>
+                <span className="muted small">فقط تصمیم‌های واقعاً طی‌شده محاسبه شده‌اند.</span>
+              </div>
+              <p className="muted">{attempt.dimension_feedback.message}</p>
+              <div className="case-dimension-grid">
+                {attempt.dimension_feedback.dimensions.map(dimension => (
+                  <article className={`case-dimension-card ${dimension.needs_review ? "needs-review" : ""}`} key={dimension.key}>
+                    <div className="case-dimension-card-head">
+                      <strong>{dimension.label}</strong>
+                      <span>{faNumber(dimension.score)} / {faNumber(dimension.max_score)}</span>
+                    </div>
+                    {dimension.percent !== null && (
+                      <div className="case-dimension-percent" aria-label={`${dimension.label}: ${dimension.percent} درصد از امتیاز مسیر`}>
+                        {faNumber(dimension.percent)}٪
+                      </div>
+                    )}
+                    {dimension.description && <p className="muted small">{dimension.description}</p>}
+                    <p className="case-dimension-feedback">{dimension.feedback}</p>
+                    <span className="muted small">تصمیم‌های این بُعد: {faNumber(dimension.decision_count)}</span>
+                  </article>
+                ))}
+              </div>
+              <p className="case-dimension-disclaimer">{attempt.dimension_feedback.disclaimer}</p>
+            </section>
+          )}
           {error && <p className="error" role="alert">{error}</p>}
           <div className="actions">
             <button className="button primary" type="button" onClick={() => void restart()} disabled={busy}>

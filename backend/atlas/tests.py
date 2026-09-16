@@ -19,9 +19,9 @@ from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from . import models as atlas_models
-from .case_graph import validate_case_revision_graph
+from .case_graph import case_seed_hash, validate_case_revision_graph
 from .models import (
-    Bookmark, CaseAttempt, CaseAttemptAnswer, CaseAttemptEvent, CaseChoice, CaseQuestion, CaseRevision, CaseStep, CaseTransition, Category, ClinicalCase,
+    Bookmark, CaseAttempt, CaseAttemptAnswer, CaseAttemptEvent, CaseChoice, CaseQuestion, CaseRevision, CaseScoringDimension, CaseStep, CaseTransition, Category, ClinicalCase,
     Concept, ConceptAlias, ConceptBookmark, ConceptNote, ConceptRelationship, ConceptRelationshipSource,
     ConceptSymptom, CognitiveDistortionPracticeAttempt, CognitiveDistortionPracticeChoice,
     CognitiveDistortionPracticeItem, DailyChallenge, DailyChallengeAttempt, DailyChallengeChoice, Disorder, DisorderConcept,
@@ -51,7 +51,7 @@ class AtlasApiTests(APITestCase):
         token = RefreshToken.for_user(user)
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token.access_token}")
 
-    def create_case_revision(self, case):
+    def create_case_revision(self, case, *, rubric_version=0):
         revision = CaseRevision.objects.create(
             case=case,
             version=1,
@@ -61,12 +61,13 @@ class AtlasApiTests(APITestCase):
             difficulty=case.difficulty,
             primary_disorder=case.primary_disorder,
             status=CaseRevision.Status.PUBLISHED,
+            rubric_version=rubric_version,
         )
         case.current_revision = revision
         case.save(update_fields=("current_revision", "updated_at"))
         return revision
 
-    def create_branching_case_fixture(self, slug="stateful-branch-case"):
+    def create_branching_case_fixture(self, slug="stateful-branch-case", *, scored=False):
         case = ClinicalCase.objects.create(
             slug=slug,
             title="Stateful Branch Case",
@@ -76,7 +77,7 @@ class AtlasApiTests(APITestCase):
             structure_mode=ClinicalCase.StructureMode.BRANCHING,
             is_active=True,
         )
-        revision = self.create_case_revision(case)
+        revision = self.create_case_revision(case, rubric_version=1 if scored else 0)
         entry = CaseStep.objects.create(
             case=case,
             revision=revision,
@@ -104,8 +105,18 @@ class AtlasApiTests(APITestCase):
             narrative="Right educational branch.",
             sort_order=3,
         )
+        scoring_dimension = None
+        if scored:
+            scoring_dimension = CaseScoringDimension.objects.create(
+                revision=revision,
+                stable_key="differential_reasoning",
+                label="استدلال افتراقی",
+                description="Test educational dimension",
+                sort_order=1,
+            )
         question = CaseQuestion.objects.create(
             step=entry,
+            scoring_dimension=scoring_dimension,
             prompt="Which path should be followed?",
             explanation="This is an educational branching decision.",
             sort_order=1,
@@ -163,6 +174,7 @@ class AtlasApiTests(APITestCase):
             "left": left,
             "right": right,
             "question": question,
+            "scoring_dimension": scoring_dimension,
             "left_choice": left_choice,
             "right_choice": right_choice,
             "left_transition": left_transition,
@@ -335,6 +347,14 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["revision_number"], 2)
         self.assertEqual([row["title"] for row in response.json()["steps"]], ["New step"])
+
+    def test_branching_case_public_detail_does_not_expose_future_steps(self):
+        fixture = self.create_branching_case_fixture(slug="branching-detail-redaction")
+        response = self.client.get(f"/api/cases/{fixture['case'].slug}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["structure_mode"], ClinicalCase.StructureMode.BRANCHING)
+        self.assertEqual(response.json()["revision_number"], fixture["revision"].version)
+        self.assertEqual(response.json()["steps"], [])
 
     def test_case_graph_validator_rejects_cycle(self):
         case = ClinicalCase.objects.create(
@@ -606,6 +626,9 @@ class AtlasApiTests(APITestCase):
         response = self.client.post(f"/api/cases/{fixture['case'].slug}/attempts/", {}, format="json")
         self.assertEqual(response.status_code, 400)
         self.assertEqual(CaseAttempt.objects.filter(user=self.user_a, case=fixture["case"]).count(), 2)
+
+        current = self.client.get(f"/api/cases/{fixture['case'].slug}/attempts/current/")
+        self.assertEqual(current.status_code, 400)
 
     def test_v072_server_selects_next_branch_and_records_event_history(self):
         fixture = self.create_branching_case_fixture()
@@ -927,6 +950,307 @@ class AtlasApiTests(APITestCase):
         call_command("audit_case_graphs", stdout=output)
         self.assertIn("Clinical case graph audit PASS", output.getvalue())
         self.assertIn("events=2", output.getvalue())
+
+    def test_v073_scored_attempt_exposes_path_scoped_dimension_feedback(self):
+        fixture = self.create_branching_case_fixture(slug="v073-scored-branch", scored=True)
+        self.auth(self.user_a)
+        started = self.client.post(f"/api/cases/{fixture['case'].slug}/attempts/", {}, format="json")
+        self.assertEqual(started.status_code, 201)
+        self.assertEqual(started.json()["case"]["rubric_version"], 1)
+        self.assertFalse(started.json()["dimension_feedback"]["available"])
+
+        payload = {
+            "step_id": fixture["entry"].id,
+            "choice_id": fixture["right_choice"].id,
+            "state_version": 0,
+        }
+        first = self.client.post(
+            f"/api/case-attempts/{started.json()['id']}/decisions/",
+            payload,
+            format="json",
+        )
+        self.assertEqual(first.status_code, 200)
+        data = first.json()
+        self.assertEqual(data["history"][0]["scoring_dimension_id"], fixture["scoring_dimension"].id)
+        self.assertEqual(
+            data["history"][0]["snapshot"]["scoring_dimension"]["key"],
+            "differential_reasoning",
+        )
+        feedback = data["dimension_feedback"]
+        self.assertTrue(feedback["available"])
+        self.assertEqual(feedback["decision_count"], 1)
+        self.assertEqual(feedback["unscored_decisions"], 0)
+        self.assertEqual(feedback["review_dimensions"], ["differential_reasoning"])
+        dimension = feedback["dimensions"][0]
+        self.assertEqual(dimension["score"], 1)
+        self.assertEqual(dimension["max_score"], 3)
+        self.assertEqual(dimension["percent"], 33)
+        self.assertTrue(dimension["needs_review"])
+
+        event = CaseAttemptEvent.objects.get(attempt_id=data["id"])
+        answer = CaseAttemptAnswer.objects.get(attempt_id=data["id"])
+        self.assertEqual(event.scoring_dimension_id, fixture["scoring_dimension"].id)
+        self.assertEqual(answer.scoring_dimension_id, fixture["scoring_dimension"].id)
+
+        retried = self.client.post(
+            f"/api/case-attempts/{data['id']}/decisions/",
+            payload,
+            format="json",
+        )
+        self.assertEqual(retried.status_code, 200)
+        self.assertTrue(retried.json()["idempotent"])
+        self.assertEqual(retried.json()["dimension_feedback"]["dimensions"][0]["score"], 1)
+
+    def test_v073_completion_activity_snapshots_dimension_totals(self):
+        fixture = self.create_branching_case_fixture(slug="v073-complete-scored", scored=True)
+        self.auth(self.user_a)
+        started = self.client.post(f"/api/cases/{fixture['case'].slug}/attempts/", {}, format="json")
+        attempt_id = started.json()["id"]
+        first = self.client.post(
+            f"/api/case-attempts/{attempt_id}/decisions/",
+            {
+                "step_id": fixture["entry"].id,
+                "choice_id": fixture["left_choice"].id,
+                "state_version": 0,
+            },
+            format="json",
+        )
+        self.assertEqual(first.status_code, 200)
+        completed = self.client.post(
+            f"/api/case-attempts/{attempt_id}/decisions/",
+            {"step_id": fixture["left"].id, "choice_id": None, "state_version": 1},
+            format="json",
+        )
+        self.assertEqual(completed.status_code, 200)
+        self.assertEqual(completed.json()["status"], CaseAttempt.Status.COMPLETED)
+        dimension = completed.json()["dimension_feedback"]["dimensions"][0]
+        self.assertEqual((dimension["score"], dimension["max_score"], dimension["percent"]), (3, 3, 100))
+        self.assertFalse(dimension["needs_review"])
+
+        activity = StudyActivity.objects.filter(
+            user=self.user_a,
+            activity_type=StudyActivity.Kind.CASE_COMPLETED,
+            clinical_case=fixture["case"],
+        ).latest("occurred_at")
+        self.assertEqual(activity.metadata["rubric_version"], 1)
+        self.assertEqual(
+            activity.metadata["dimension_scores"],
+            [{"key": "differential_reasoning", "score": 3, "max_score": 3}],
+        )
+        audit_output = StringIO()
+        call_command("audit_case_graphs", stdout=audit_output)
+        self.assertIn("Clinical case graph audit PASS", audit_output.getvalue())
+
+    def test_v073_rubric_zero_suppresses_accidental_dimension_feedback(self):
+        fixture = self.create_branching_case_fixture(slug="v073-rubric-zero-guard", scored=True)
+        fixture["revision"].rubric_version = 0
+        fixture["revision"].save(update_fields=("rubric_version", "updated_at"))
+
+        with self.assertRaises(ValidationError):
+            fixture["question"].full_clean()
+        issues = validate_case_revision_graph(fixture["revision"])
+        self.assertIn("legacy_rubric_has_active_dimensions", issues)
+        self.assertTrue(any(issue.endswith(":legacy_scoring_dimension_not_allowed") for issue in issues))
+
+        attempt = CaseAttempt.objects.create(
+            user=self.user_a,
+            case=fixture["case"],
+            revision=fixture["revision"],
+            current_step=fixture["right"],
+            state_version=1,
+        )
+        CaseAttemptEvent.objects.create(
+            attempt=attempt,
+            step=fixture["entry"],
+            event_type=CaseAttemptEvent.EventType.DECISION,
+            question=fixture["question"],
+            scoring_dimension=fixture["scoring_dimension"],
+            selected_choice=fixture["right_choice"],
+            transition=fixture["right_transition"],
+            next_step=fixture["right"],
+            outcome=CaseTransition.Outcome.CONTINUE,
+            awarded_score=1,
+            max_score=3,
+            state_version_before=0,
+            state_version_after=1,
+            snapshot={
+                "scoring_dimension": {
+                    "key": "differential_reasoning",
+                    "label": "استدلال افتراقی",
+                    "description": "legacy anomaly",
+                    "sort_order": 1,
+                }
+            },
+        )
+        self.auth(self.user_a)
+        response = self.client.get(f"/api/case-attempts/{attempt.id}/")
+        self.assertEqual(response.status_code, 200)
+        feedback = response.json()["dimension_feedback"]
+        self.assertEqual(feedback["rubric_version"], 0)
+        self.assertFalse(feedback["available"])
+        self.assertEqual(feedback["dimensions"], [])
+        self.assertEqual(feedback["decision_count"], 1)
+        self.assertEqual(feedback["unscored_decisions"], 1)
+
+    def test_v073_legacy_attempt_remains_compatible_without_dimension_breakdown(self):
+        fixture = self.create_branching_case_fixture(slug="v073-legacy-branch")
+        self.auth(self.user_a)
+        started = self.client.post(f"/api/cases/{fixture['case'].slug}/attempts/", {}, format="json")
+        response = self.client.post(
+            f"/api/case-attempts/{started.json()['id']}/decisions/",
+            {
+                "step_id": fixture["entry"].id,
+                "choice_id": fixture["left_choice"].id,
+                "state_version": 0,
+            },
+            format="json",
+        )
+        feedback = response.json()["dimension_feedback"]
+        self.assertEqual(feedback["rubric_version"], 0)
+        self.assertFalse(feedback["available"])
+        self.assertEqual(feedback["decision_count"], 1)
+        self.assertEqual(feedback["unscored_decisions"], 1)
+        self.assertEqual(feedback["dimensions"], [])
+
+    def test_v073_graph_validator_requires_rubric_dimension_mapping(self):
+        fixture = self.create_branching_case_fixture(slug="v073-rubric-audit", scored=True)
+        self.assertEqual(validate_case_revision_graph(fixture["revision"]), [])
+        fixture["question"].scoring_dimension = None
+        fixture["question"].save(update_fields=("scoring_dimension", "updated_at"))
+        issues = validate_case_revision_graph(fixture["revision"])
+        self.assertTrue(any(issue.endswith(":scoring_dimension_missing") for issue in issues))
+        self.assertTrue(any(issue.endswith(":unused") for issue in issues))
+
+    def test_v073_non_decision_event_rejects_scoring_dimension(self):
+        fixture = self.create_branching_case_fixture(slug="v073-advance-dimension-guard", scored=True)
+        attempt = CaseAttempt.objects.create(
+            user=self.user_a,
+            case=fixture["case"],
+            revision=fixture["revision"],
+            current_step=fixture["left"],
+            state_version=0,
+        )
+        event = CaseAttemptEvent(
+            attempt=attempt,
+            step=fixture["left"],
+            event_type=CaseAttemptEvent.EventType.ADVANCE,
+            scoring_dimension=fixture["scoring_dimension"],
+            transition=fixture["left_complete"],
+            next_step=None,
+            outcome=CaseTransition.Outcome.COMPLETE,
+            awarded_score=0,
+            max_score=0,
+            state_version_before=0,
+            state_version_after=1,
+            snapshot={"step_key": fixture["left"].stable_key, "outcome": CaseTransition.Outcome.COMPLETE},
+        )
+        with self.assertRaises(ValidationError):
+            event.full_clean()
+
+    def test_v073_question_rejects_dimension_from_another_revision(self):
+        fixture = self.create_branching_case_fixture(slug="v073-dimension-owner", scored=True)
+        foreign_case = ClinicalCase.objects.create(
+            slug="v073-dimension-foreign",
+            title="Foreign rubric case",
+            patient_summary="Summary",
+            educational_objective="Objective",
+            primary_disorder=self.disorder,
+            is_active=True,
+        )
+        foreign_revision = self.create_case_revision(foreign_case, rubric_version=1)
+        foreign_dimension = CaseScoringDimension.objects.create(
+            revision=foreign_revision,
+            stable_key="safety_attention",
+            label="توجه به ایمنی",
+        )
+        fixture["question"].scoring_dimension = foreign_dimension
+        with self.assertRaises(ValidationError):
+            fixture["question"].full_clean()
+
+    def test_v073_case_seed_hash_includes_dimension_definition_text(self):
+        base = {
+            "title": "Case",
+            "summary": "Summary",
+            "objective": "Objective",
+            "disorder": "test-disorder",
+            "difficulty": "introductory",
+            "rubric_version": 1,
+            "dimensions": ["information_gathering"],
+            "dimension_definitions": [
+                {
+                    "key": "information_gathering",
+                    "label": "جمع‌آوری و ساختاربندی اطلاعات",
+                    "description": "Version one",
+                }
+            ],
+            "step_dimensions": ["information_gathering"],
+            "steps": [("Step", "Narrative", "Prompt", [("Choice", 3, "Feedback")], "Explanation")],
+        }
+        changed = deepcopy(base)
+        changed["dimension_definitions"][0]["description"] = "Version two"
+        self.assertNotEqual(case_seed_hash(base), case_seed_hash(changed))
+
+    def test_v073_seed_upgrades_legacy_hashless_revision_by_publishing_new_revision(self):
+        legacy_case = ClinicalCase.objects.create(
+            slug="case-sudden-fear-01",
+            title="Legacy seeded case",
+            patient_summary="Legacy summary",
+            educational_objective="Legacy objective",
+            primary_disorder=self.disorder,
+            difficulty=ClinicalCase.Difficulty.INTRODUCTORY,
+            structure_mode=ClinicalCase.StructureMode.LINEAR,
+            is_active=True,
+            seed_managed=True,
+        )
+        legacy_revision = CaseRevision.objects.create(
+            case=legacy_case,
+            version=1,
+            title="Legacy seeded case",
+            patient_summary="Legacy summary",
+            educational_objective="Legacy objective",
+            difficulty=ClinicalCase.Difficulty.INTRODUCTORY,
+            primary_disorder=self.disorder,
+            status=CaseRevision.Status.PUBLISHED,
+            content_hash="",
+            rubric_version=0,
+            seed_managed=True,
+        )
+        legacy_case.current_revision = legacy_revision
+        legacy_case.save(update_fields=("current_revision", "updated_at"))
+
+        call_command("seed_mvp")
+        legacy_case.refresh_from_db()
+        legacy_revision.refresh_from_db()
+        self.assertNotEqual(legacy_case.current_revision_id, legacy_revision.id)
+        self.assertEqual(legacy_revision.status, CaseRevision.Status.RETIRED)
+        self.assertEqual(legacy_case.current_revision.version, 2)
+        self.assertEqual(legacy_case.current_revision.rubric_version, 1)
+        self.assertGreater(legacy_case.current_revision.scoring_dimensions.count(), 0)
+        self.assertEqual(validate_case_revision_graph(legacy_case.current_revision), [])
+
+    def test_v073_seed_publishes_idempotent_revision_scoring_rubric(self):
+        call_command("seed_mvp")
+        case = ClinicalCase.objects.get(slug="case-sudden-fear-01")
+        first_revision_id = case.current_revision_id
+        first_revision_count = case.revisions.count()
+        revision = case.current_revision
+        self.assertEqual(revision.rubric_version, 1)
+        self.assertEqual(
+            list(revision.scoring_dimensions.order_by("sort_order").values_list("stable_key", flat=True)),
+            ["information_gathering", "differential_reasoning", "calibrated_summary"],
+        )
+        active_questions = CaseQuestion.objects.filter(step__revision=revision, is_active=True).order_by("step__sort_order")
+        self.assertEqual(
+            list(active_questions.values_list("scoring_dimension__stable_key", flat=True)),
+            ["information_gathering", "differential_reasoning", "calibrated_summary"],
+        )
+        self.assertEqual(validate_case_revision_graph(revision), [])
+
+        call_command("seed_mvp")
+        case.refresh_from_db()
+        self.assertEqual(case.current_revision_id, first_revision_id)
+        self.assertEqual(case.revisions.count(), first_revision_count)
+        self.assertEqual(case.current_revision.scoring_dimensions.count(), 3)
 
     def test_disorder_search_matches_symptom_name(self):
         symptom = Symptom.objects.create(slug="special-symptom", name_en="Special Symptom", name_fa="نشانه ویژه")
