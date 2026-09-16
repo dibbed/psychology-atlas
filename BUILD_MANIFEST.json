@@ -2,6 +2,7 @@
   "project": "Psychology Atlas",
   "version": "0.7.3",
   "release_name": "Revision-Pinned Multi-dimensional Educational Scoring + Feedback",
+  "development_slice": "v0.7.4.1 Personal Case Analytics Foundation",
   "stack": {
     "frontend": "Next.js 16.3.3 + React 19 + TypeScript",
     "backend": "Django 5.2 + Django REST Framework",
@@ -245,7 +246,14 @@
     "v073_educational_scoring_disclaimer",
     "v073_branching_public_detail_redaction",
     "v073_duplicate_in_progress_current_guard",
-    "v073_runtime_http_scoring_smoke"
+    "v073_runtime_http_scoring_smoke",
+    "v0741_personal_case_analytics_overview_api",
+    "v0741_personal_case_analytics_detail_api",
+    "v0741_revision_aware_dimension_branch_path_aggregation",
+    "v0741_inactive_owned_case_history_preservation",
+    "v0741_legacy_rubric_zero_analytics_compatibility",
+    "v0741_malformed_snapshot_defensive_normalization",
+    "v0741_bounded_query_contract"
   ],
   "content": {
     "categories": 21,
@@ -390,7 +398,7 @@
   ],
   "validation": {
     "django_check": "pass",
-    "backend_tests": "158/158 passed · v0.7.3 revision-pinned multidimensional educational Case scoring plus v0.7.1-v0.7.3 integrity hardening on backend/.venv",
+    "backend_tests": "168/168 passed · current v0.7.4.1 personal Case analytics foundation on backend/.venv; v0.7.3 remains the official release baseline",
     "python_compileall": "pass",
     "pip_check": "pass · backend/.venv has no broken requirements; system-global Python conflicts are unrelated to the project release environment",
     "migration_drift_check": "pass · no changes detected",
@@ -558,7 +566,18 @@
     "v073_scientific_regression": "pass · v0.6 audit unchanged: 0 active provenance gaps · 59 weak-only entities · 52 weak-only relations · 0 timeline precision issues",
     "v073_research_archive": "pass · 2 datasets / 1918 records / exact stored hashes verified",
     "v073_compileall": "pass",
-    "v073_pip_check": "pass · no broken requirements"
+    "v073_pip_check": "pass · no broken requirements",
+    "v0741_focused_case_analytics_tests": "pass · 10/10 auth/ownership/overview/detail/legacy/inactive-history/malformed-snapshot/choice-identity/pre-stateful-history/query-budget tests",
+    "v0741_full_backend_suite": "pass · 168/168",
+    "v0741_query_budget": "pass · overview <=3 queries and per-Case detail <=4 queries in authenticated regression coverage, independent of attempt count",
+    "v0741_schema_boundary": "pass · no migration required; makemigrations --check --dry-run reports no changes detected",
+    "v0741_case_graph_state_audit": "pass · 6 cases / 12 revisions / 17 dimensions / 0 attempts / 0 events / 0 answers / 0 failures on current runtime DB",
+    "v0741_sqlite_integrity": "pass · integrity_check ok · foreign_key_check 0 · in_progress_without_step 0",
+    "v0741_scientific_regression": "pass · v0.6 audit unchanged: 0 active provenance gaps · 59 weak-only entities · 52 weak-only relations · 0 timeline precision issues",
+    "v0741_research_archive": "pass · 2 datasets / 1918 records / exact stored hashes verified",
+    "v0741_frontend_regression": "pass · frontend 0.7.3 typecheck/build 23/23 and npm audit 0 vulnerabilities; no UI changes in this backend-foundation slice",
+    "v0741_compileall": "pass",
+    "v0741_pip_check": "pass · no broken requirements"
   },
   "release_notes": {
     "graph_layers": [
@@ -795,6 +814,16 @@
       "ui": "dimension labels appear only after a decision; completion shows Persian/RTL path-scoped cards plus non-competency disclaimer",
       "runtime": "case-high-energy-04 HTTP smoke completed 9/9 with information_gathering 6/6 and differential_reasoning 3/3",
       "next": "v0.7.4 Advanced Case Analytics"
+    },
+    "v0741_case_analytics_foundation": {
+      "status": "development slice complete; official release baseline remains v0.7.3",
+      "scope": "authenticated personal-only Case analytics derived from existing CaseAttempt and immutable CaseAttemptEvent history",
+      "apis": "GET /api/case-analytics/overview/ and GET /api/case-analytics/cases/<slug>/",
+      "semantics": "attempt/completion summaries + revision-aware dimensions + reached branch distributions + completed path groups; no population comparison or parallel scoring state",
+      "history_safety": "inactive owned Case history remains readable; rubric_version=0 remains explicit; malformed legacy snapshot fields normalize defensively",
+      "performance": "overview <=3 authenticated-request queries; per-Case detail <=4; recent attempts and completed path groups capped at 20",
+      "validation": "10/10 focused analytics tests · 168/168 backend suite · frontend 23/23 build/typecheck · npm audit 0 · scientific/research/SQLite guards pass",
+      "next": "v0.7.4.2 Persian/RTL Personal Case Analytics UI"
     }
   }
 }

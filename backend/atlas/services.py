@@ -1,4 +1,7 @@
+from collections import defaultdict
+
 from django.db import transaction
+from django.db.models import Count
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
@@ -544,3 +547,397 @@ def advance_case_attempt(*, user, attempt, step_id, choice_id, state_version):
         locked.save(update_fields=("score", "max_score", "state_version", "current_step", "updated_at"))
 
     return locked, event, False
+
+
+CASE_ANALYTICS_VERSION = 1
+CASE_ANALYTICS_RECENT_ATTEMPT_LIMIT = 20
+CASE_ANALYTICS_PATH_LIMIT = 20
+CASE_ANALYTICS_DISCLAIMER = (
+    "این آمار فقط الگوهای ثبت‌شده در سناریوهای آموزشی همین کاربر را خلاصه می‌کند و "
+    "معیار صلاحیت بالینی، تشخیص، درمان یا مقایسه هنجاری با دیگران نیست."
+)
+
+
+def _analytics_percent(score, max_score):
+    if max_score is None or max_score <= 0:
+        return None
+    return round(score * 100 / max_score)
+
+
+def _analytics_completion_rate(completed, total):
+    if not total:
+        return None
+    return round(completed * 100 / total)
+
+
+def _average_scored_attempt_percent(rows):
+    percents = [
+        percent
+        for row in rows
+        if row["status"] == CaseAttempt.Status.COMPLETED
+        for percent in [_analytics_percent(row["score"], row["max_score"])]
+        if percent is not None
+    ]
+    if not percents:
+        return None, 0
+    return round(sum(percents) / len(percents)), len(percents)
+
+
+def build_personal_case_analytics_overview(*, user):
+    """Return bounded-query, personal-only Case analytics derived from immutable attempt history."""
+    attempt_rows = list(
+        CaseAttempt.objects.filter(user=user)
+        .values(
+            "id",
+            "case_id",
+            "case__slug",
+            "case__title",
+            "case__structure_mode",
+            "revision__version",
+            "revision__title",
+            "revision__rubric_version",
+            "status",
+            "score",
+            "max_score",
+            "created_at",
+            "updated_at",
+            "completed_at",
+        )
+        .order_by("case_id", "created_at", "id")
+    )
+    decision_counts = {
+        row["attempt__case_id"]: row["decision_count"]
+        for row in (
+            CaseAttemptEvent.objects.filter(
+                attempt__user=user,
+                event_type=CaseAttemptEvent.EventType.DECISION,
+            )
+            .values("attempt__case_id")
+            .annotate(decision_count=Count("id"))
+        )
+    }
+
+    by_case = defaultdict(list)
+    for row in attempt_rows:
+        by_case[row["case_id"]].append(row)
+
+    case_summaries = []
+    for case_id, rows in by_case.items():
+        total = len(rows)
+        completed = sum(row["status"] == CaseAttempt.Status.COMPLETED for row in rows)
+        in_progress = total - completed
+        average_percent, scored_completed = _average_scored_attempt_percent(rows)
+        latest = max(rows, key=lambda row: (row["updated_at"], row["id"]))
+        case_summaries.append({
+            "case_id": case_id,
+            "slug": latest["case__slug"],
+            "current_title": latest["case__title"],
+            "latest_attempt_revision_title": latest["revision__title"] or latest["case__title"],
+            "structure_mode": latest["case__structure_mode"],
+            "latest_attempt_revision_number": latest["revision__version"],
+            "latest_attempt_rubric_version": latest["revision__rubric_version"],
+            "attempts": total,
+            "completed_attempts": completed,
+            "in_progress_attempts": in_progress,
+            "completion_rate": _analytics_completion_rate(completed, total),
+            "average_completed_score_percent": average_percent,
+            "scored_completed_attempts": scored_completed,
+            "decision_count": decision_counts.get(case_id, 0),
+            "last_activity_at": latest["updated_at"],
+        })
+
+    case_summaries.sort(key=lambda row: (row["last_activity_at"], row["case_id"]), reverse=True)
+    total = len(attempt_rows)
+    completed = sum(row["status"] == CaseAttempt.Status.COMPLETED for row in attempt_rows)
+    average_percent, scored_completed = _average_scored_attempt_percent(attempt_rows)
+
+    return {
+        "analytics_version": CASE_ANALYTICS_VERSION,
+        "scope": "personal",
+        "generated_at": timezone.now(),
+        "attempts": {
+            "total": total,
+            "completed": completed,
+            "in_progress": total - completed,
+            "completion_rate": _analytics_completion_rate(completed, total),
+            "average_completed_score_percent": average_percent,
+            "scored_completed_attempts": scored_completed,
+        },
+        "cases_started": len(case_summaries),
+        "decision_count": sum(decision_counts.values()),
+        "cases": case_summaries,
+        "disclaimer": CASE_ANALYTICS_DISCLAIMER,
+    }
+
+
+def build_personal_case_analytics_detail(*, user, clinical_case):
+    """Return personal analytics for one Case without consulting mutable future graph state."""
+    attempt_rows = list(
+        CaseAttempt.objects.filter(user=user, case=clinical_case)
+        .values(
+            "id",
+            "revision__version",
+            "revision__title",
+            "revision__rubric_version",
+            "status",
+            "score",
+            "max_score",
+            "state_version",
+            "created_at",
+            "updated_at",
+            "completed_at",
+        )
+        .order_by("-created_at", "-id")
+    )
+    if not attempt_rows:
+        return None
+
+    event_rows = list(
+        CaseAttemptEvent.objects.filter(attempt__user=user, attempt__case=clinical_case)
+        .values(
+            "attempt_id",
+            "attempt__revision__version",
+            "attempt__revision__rubric_version",
+            "event_type",
+            "selected_choice_id",
+            "awarded_score",
+            "max_score",
+            "state_version_before",
+            "snapshot",
+        )
+        .order_by("attempt_id", "state_version_before", "id")
+    )
+
+    events_by_attempt = defaultdict(list)
+    for event in event_rows:
+        events_by_attempt[event["attempt_id"]].append(event)
+
+    dimension_groups = {}
+    branch_groups = {}
+    rubric_zero_decisions = 0
+    unscored_dimension_decisions = 0
+
+    for event in event_rows:
+        if event["event_type"] != CaseAttemptEvent.EventType.DECISION:
+            continue
+        snapshot = event["snapshot"] if isinstance(event["snapshot"], dict) else {}
+        revision_number = event["attempt__revision__version"]
+        rubric_version = event["attempt__revision__rubric_version"]
+
+        step_key = snapshot.get("step_key")
+        raw_step_title = snapshot.get("step_title")
+        step_title = raw_step_title if isinstance(raw_step_title, str) else ""
+        choice_text = snapshot.get("choice_text")
+        if isinstance(step_key, str) and step_key and isinstance(choice_text, str) and choice_text:
+            branch_key = (revision_number, step_key, step_title)
+            branch = branch_groups.setdefault(branch_key, {
+                "revision_number": revision_number,
+                "step_key": step_key,
+                "step_title": step_title,
+                "decision_count": 0,
+                "choices": {},
+            })
+            branch["decision_count"] += 1
+            choice_identity = (event["selected_choice_id"], choice_text)
+            choice = branch["choices"].setdefault(choice_identity, {
+                "choice_id": event["selected_choice_id"],
+                "choice_text": choice_text,
+                "count": 0,
+                "score": 0,
+                "max_score": 0,
+            })
+            choice["count"] += 1
+            choice["score"] += event["awarded_score"]
+            choice["max_score"] += event["max_score"]
+
+        if rubric_version < 1:
+            rubric_zero_decisions += 1
+            continue
+
+        dimension_snapshot = snapshot.get("scoring_dimension")
+        if not isinstance(dimension_snapshot, dict):
+            unscored_dimension_decisions += 1
+            continue
+        key = dimension_snapshot.get("key")
+        label = dimension_snapshot.get("label")
+        if not isinstance(key, str) or not key or not isinstance(label, str) or not label:
+            unscored_dimension_decisions += 1
+            continue
+        description = dimension_snapshot.get("description")
+        if not isinstance(description, str):
+            description = ""
+        raw_sort_order = dimension_snapshot.get("sort_order")
+        sort_order = raw_sort_order if isinstance(raw_sort_order, int) and not isinstance(raw_sort_order, bool) else 0
+        dimension_key = (revision_number, key, label, description)
+        dimension = dimension_groups.setdefault(dimension_key, {
+            "revision_number": revision_number,
+            "key": key,
+            "label": label,
+            "description": description,
+            "sort_order": max(sort_order, 0),
+            "score": 0,
+            "max_score": 0,
+            "decision_count": 0,
+            "attempt_ids": set(),
+        })
+        dimension["score"] += event["awarded_score"]
+        dimension["max_score"] += event["max_score"]
+        dimension["decision_count"] += 1
+        dimension["attempt_ids"].add(event["attempt_id"])
+
+    dimensions = []
+    for dimension in dimension_groups.values():
+        percent = _analytics_percent(dimension["score"], dimension["max_score"])
+        dimensions.append({
+            "revision_number": dimension["revision_number"],
+            "key": dimension["key"],
+            "label": dimension["label"],
+            "description": dimension["description"],
+            "sort_order": dimension["sort_order"],
+            "score": dimension["score"],
+            "max_score": dimension["max_score"],
+            "percent": percent,
+            "decision_count": dimension["decision_count"],
+            "attempt_count": len(dimension["attempt_ids"]),
+            "needs_review": percent is not None and dimension["score"] < dimension["max_score"],
+        })
+    dimensions.sort(key=lambda row: (-row["revision_number"], row["sort_order"], row["label"], row["key"]))
+
+    branches = []
+    for branch in branch_groups.values():
+        choices = []
+        for choice in branch["choices"].values():
+            choices.append({
+                "choice_id": choice["choice_id"],
+                "choice_text": choice["choice_text"],
+                "count": choice["count"],
+                "selection_percent": round(choice["count"] * 100 / branch["decision_count"]),
+                "score": choice["score"],
+                "max_score": choice["max_score"],
+                "score_percent": _analytics_percent(choice["score"], choice["max_score"]),
+            })
+        choices.sort(key=lambda row: (-row["count"], row["choice_text"], row["choice_id"] or 0))
+        branches.append({
+            "revision_number": branch["revision_number"],
+            "step_key": branch["step_key"],
+            "step_title": branch["step_title"],
+            "decision_count": branch["decision_count"],
+            "choices": choices,
+        })
+    branches.sort(key=lambda row: (-row["revision_number"], row["step_key"], row["step_title"]))
+
+    path_groups = {}
+    completed_attempts_without_reconstructible_path = 0
+    for attempt in attempt_rows:
+        if attempt["status"] != CaseAttempt.Status.COMPLETED:
+            continue
+        events = events_by_attempt.get(attempt["id"], [])
+        if not events:
+            completed_attempts_without_reconstructible_path += 1
+            continue
+        path_steps = []
+        signature_parts = []
+        valid_path = True
+        for event in events:
+            snapshot = event["snapshot"] if isinstance(event["snapshot"], dict) else {}
+            step_key = snapshot.get("step_key")
+            if not isinstance(step_key, str) or not step_key:
+                valid_path = False
+                break
+            step_title = snapshot.get("step_title") if isinstance(snapshot.get("step_title"), str) else ""
+            node_kind = snapshot.get("node_kind") if isinstance(snapshot.get("node_kind"), str) else ""
+            choice_text = snapshot.get("choice_text") if isinstance(snapshot.get("choice_text"), str) else None
+            target_step_key = snapshot.get("target_step_key") if isinstance(snapshot.get("target_step_key"), str) else None
+            signature_parts.append((
+                event["event_type"],
+                step_key,
+                event["selected_choice_id"],
+                choice_text,
+                target_step_key,
+            ))
+            path_steps.append({
+                "event_type": event["event_type"],
+                "step_key": step_key,
+                "step_title": step_title,
+                "node_kind": node_kind,
+                "choice_id": event["selected_choice_id"],
+                "choice_text": choice_text,
+            })
+        if not valid_path:
+            completed_attempts_without_reconstructible_path += 1
+            continue
+        path_key = (attempt["revision__version"], tuple(signature_parts))
+        path = path_groups.setdefault(path_key, {
+            "revision_number": attempt["revision__version"],
+            "steps": path_steps,
+            "attempt_count": 0,
+            "last_used_at": attempt["completed_at"] or attempt["updated_at"],
+        })
+        path["attempt_count"] += 1
+        used_at = attempt["completed_at"] or attempt["updated_at"]
+        if used_at and (not path["last_used_at"] or used_at > path["last_used_at"]):
+            path["last_used_at"] = used_at
+
+    paths = list(path_groups.values())
+    paths.sort(key=lambda row: (row["attempt_count"], row["last_used_at"]), reverse=True)
+    paths = paths[:CASE_ANALYTICS_PATH_LIMIT]
+
+    recent_attempts = []
+    for attempt in attempt_rows[:CASE_ANALYTICS_RECENT_ATTEMPT_LIMIT]:
+        events = events_by_attempt.get(attempt["id"], [])
+        recent_attempts.append({
+            "id": attempt["id"],
+            "revision_number": attempt["revision__version"],
+            "revision_title": attempt["revision__title"] or clinical_case.title,
+            "rubric_version": attempt["revision__rubric_version"],
+            "status": attempt["status"],
+            "state_version": attempt["state_version"],
+            "score": attempt["score"],
+            "max_score": attempt["max_score"],
+            "score_percent": _analytics_percent(attempt["score"], attempt["max_score"]),
+            "event_count": len(events),
+            "decision_count": sum(event["event_type"] == CaseAttemptEvent.EventType.DECISION for event in events),
+            "started_at": attempt["created_at"],
+            "updated_at": attempt["updated_at"],
+            "completed_at": attempt["completed_at"],
+        })
+
+    total = len(attempt_rows)
+    completed = sum(row["status"] == CaseAttempt.Status.COMPLETED for row in attempt_rows)
+    average_percent, scored_completed = _average_scored_attempt_percent(attempt_rows)
+    rubric_zero_attempts = sum(row["revision__rubric_version"] == 0 for row in attempt_rows)
+
+    return {
+        "analytics_version": CASE_ANALYTICS_VERSION,
+        "scope": "personal",
+        "generated_at": timezone.now(),
+        "case": {
+            "id": clinical_case.id,
+            "slug": clinical_case.slug,
+            "current_title": clinical_case.title,
+            "structure_mode": clinical_case.structure_mode,
+        },
+        "attempts": {
+            "total": total,
+            "completed": completed,
+            "in_progress": total - completed,
+            "completion_rate": _analytics_completion_rate(completed, total),
+            "average_completed_score_percent": average_percent,
+            "scored_completed_attempts": scored_completed,
+        },
+        "decision_count": sum(
+            event["event_type"] == CaseAttemptEvent.EventType.DECISION
+            for event in event_rows
+        ),
+        "dimensions": dimensions,
+        "branches": branches,
+        "completed_paths": paths,
+        "recent_attempts": recent_attempts,
+        "legacy": {
+            "rubric_zero_attempts": rubric_zero_attempts,
+            "rubric_zero_decisions": rubric_zero_decisions,
+            "unscored_dimension_decisions": unscored_dimension_decisions,
+            "completed_attempts_without_reconstructible_path": completed_attempts_without_reconstructible_path,
+        },
+        "disclaimer": CASE_ANALYTICS_DISCLAIMER,
+    }

@@ -1,8 +1,24 @@
 # Psychology Atlas Product Spec
 
-## Current implemented version: v0.7.3 — Revision-Pinned Multi-dimensional Educational Scoring + Feedback
+## Current development slice: v0.7.4.1 — Personal Case Analytics Foundation
+
+Official release baseline remains **v0.7.3 — Revision-Pinned Multi-dimensional Educational Scoring + Feedback** until the full v0.7.4 analytics release is frozen.
 
 Psychology Atlas is an interactive educational system for psychology students. It should behave as a connected learning system, not as a psychology blog and not as a diagnostic product.
+
+### v0.7.4.1 personal Case analytics foundation invariants
+
+- Analytics is derived from existing `CaseAttempt` and immutable `CaseAttemptEvent` history; v0.7.4.1 does not create a parallel analytics state table, scoring engine, or mutable event copy.
+- The API surface is authenticated and personal-only: `GET /api/case-analytics/overview/` and `GET /api/case-analytics/cases/<slug>/`. There is no cross-user or population analytics endpoint in this slice.
+- Overview analytics reports personal attempt/completion counts, completion rate, completed-attempt score summaries, started Case count, total reached decisions, and bounded-query per-Case summaries.
+- Per-Case analytics reports recent attempts, reached decision dimensions, reached branch-choice distributions, and completed-path groups. Only completed attempts form path statistics; in-progress immutable decisions may contribute to decision/dimension/branch aggregates.
+- Dimension, branch and path aggregation remains revision-aware. Historical rows from different `CaseRevision.version` values are not silently merged into one semantic bucket.
+- Dimension and branch labels come from immutable event snapshots rather than the mutable current Case graph. Malformed legacy snapshot fields are normalized defensively rather than crashing analytics.
+- Historical attempts for an inactive Case remain available to their owner. A user with no owned history for a Case receives 404 from the personal detail endpoint.
+- Legacy `rubric_version=0` attempts remain explicit: branch/path history can still be summarized, but no multidimensional performance is fabricated from missing/invalid rubric data.
+- Responses carry `analytics_version=1`, `scope=personal`, a generated timestamp and an educational-only disclaimer. Analytics must never be framed as clinical competence, diagnosis, treatment quality, therapist fitness or normative ranking.
+- Query count is intentionally bounded independently of attempt count: overview uses aggregate/attempt queries and per-Case detail uses Case lookup + attempt/event history queries. Response history lists are bounded where appropriate (`recent_attempts=20`, completed path groups=20).
+- v0.7.4.1 requires no schema migration. The next slice, v0.7.4.2, should build the Persian/RTL personal analytics UI against this stable API contract rather than duplicating aggregation in the frontend.
 
 ### v0.7.3 multidimensional educational scoring invariants
 
