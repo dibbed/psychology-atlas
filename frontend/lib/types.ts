@@ -172,27 +172,92 @@ export type Quiz = {
   }[];
 };
 
+export type CaseChoice = {
+  id: number;
+  text: string;
+};
+
+export type CaseQuestion = {
+  id: number;
+  prompt: string;
+  sort_order: number;
+  choices: CaseChoice[];
+};
+
+export type CaseStep = {
+  id: number;
+  stable_key: string;
+  node_kind: "decision" | "information" | "terminal";
+  title: string;
+  narrative: string;
+  sort_order: number;
+  questions: CaseQuestion[];
+};
+
 export type ClinicalCase = {
   id: number;
   slug: string;
   title: string;
   patient_summary: string;
   difficulty: string;
+  structure_mode: "linear" | "branching";
+  revision_number: number | null;
   step_count?: number;
   educational_objective?: string;
   primary_disorder: Disorder | null;
-  steps?: {
+  steps?: CaseStep[];
+};
+
+export type CaseAttemptEvent = {
+  id: number;
+  event_type: "decision" | "advance" | "terminal_complete";
+  step_id: number;
+  question_id: number | null;
+  selected_choice_id: number | null;
+  next_step_id: number | null;
+  outcome: "continue" | "complete";
+  awarded_score: number;
+  max_score: number;
+  state_version_before: number;
+  state_version_after: number;
+  snapshot: {
+    step_key?: string;
+    step_title?: string;
+    node_kind?: CaseStep["node_kind"];
+    question_prompt?: string;
+    question_explanation?: string;
+    choice_text?: string;
+    choice_feedback?: string;
+    outcome?: "continue" | "complete";
+    target_step_key?: string | null;
+  };
+  created_at: string;
+};
+
+export type CaseAttemptState = {
+  id: number;
+  case: {
     id: number;
+    slug: string;
     title: string;
-    narrative: string;
-    sort_order: number;
-    questions: {
-      id: number;
-      prompt: string;
-      sort_order: number;
-      choices: { id: number; text: string }[];
-    }[];
-  }[];
+    patient_summary: string;
+    educational_objective: string;
+    difficulty: string;
+    structure_mode: "linear" | "branching";
+    revision_number: number;
+  };
+  status: "in_progress" | "completed";
+  state_version: number;
+  score: number;
+  max_score: number;
+  current_step: CaseStep | null;
+  history: CaseAttemptEvent[];
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  resumed?: boolean;
+  event_id?: number;
+  idempotent?: boolean;
 };
 
 export type Category = {

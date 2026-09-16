@@ -28,7 +28,11 @@ export default function LoginPage() {
       }
       const data = await response.json();
       setTokens(data.access, data.refresh);
-      location.href = "/dashboard";
+      const requestedNext = new URLSearchParams(location.search).get("next");
+      const safeNext = requestedNext?.startsWith("/") && !requestedNext.startsWith("//")
+        ? requestedNext
+        : "/dashboard";
+      location.href = safeNext;
     } catch {
       setError("ارتباط با سرور برقرار نشد. اتصال Backend را بررسی کن و دوباره تلاش کن.");
     } finally {

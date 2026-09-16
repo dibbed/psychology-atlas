@@ -2,10 +2,13 @@ from django.core.cache import cache
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
+from atlas.case_graph import case_seed_hash
 from atlas.models import (
     CaseChoice,
     CaseQuestion,
+    CaseRevision,
     CaseStep,
+    CaseTransition,
     Category,
     ClinicalCase,
     DifferentialRelationship,
@@ -536,33 +539,65 @@ class Command(BaseCommand):
                     "educational_objective": case_data["objective"],
                     "primary_disorder": disorder_objs[case_data["disorder"]],
                     "difficulty": case_data["difficulty"],
+                    "structure_mode": ClinicalCase.StructureMode.LINEAR,
                     "is_active": True,
                     "seed_managed": True,
                 },
             )
-            for step_order, (title, narrative, prompt, choices, explanation) in enumerate(case_data["steps"], start=1):
-                step = CaseStep.objects.filter(case=case, sort_order=step_order).order_by("id").first()
-                if step:
-                    step.title = title
-                    step.narrative = narrative
-                    step.is_active = True
-                    step.save(update_fields=("title", "narrative", "is_active"))
-                else:
+            desired_hash = case_seed_hash(case_data)
+            current_revision = case.current_revision
+
+            if (
+                current_revision
+                and current_revision.version == 1
+                and current_revision.seed_managed
+                and not current_revision.content_hash
+            ):
+                current_revision.title = case_data["title"]
+                current_revision.patient_summary = case_data["summary"]
+                current_revision.educational_objective = case_data["objective"]
+                current_revision.primary_disorder = disorder_objs[case_data["disorder"]]
+                current_revision.difficulty = case_data["difficulty"]
+                current_revision.content_hash = desired_hash
+                current_revision.status = CaseRevision.Status.PUBLISHED
+                current_revision.published_at = current_revision.published_at or case.updated_at
+                current_revision.seed_managed = True
+                current_revision.save(update_fields=(
+                    "title", "patient_summary", "educational_objective", "primary_disorder",
+                    "difficulty", "content_hash", "status", "published_at", "seed_managed", "updated_at",
+                ))
+            elif not current_revision or current_revision.content_hash != desired_hash:
+                if current_revision and current_revision.status == CaseRevision.Status.PUBLISHED:
+                    current_revision.status = CaseRevision.Status.RETIRED
+                    current_revision.save(update_fields=("status", "updated_at"))
+
+                latest_version = case.revisions.order_by("-version").values_list("version", flat=True).first() or 0
+                revision = CaseRevision.objects.create(
+                    case=case,
+                    version=latest_version + 1,
+                    title=case_data["title"],
+                    patient_summary=case_data["summary"],
+                    educational_objective=case_data["objective"],
+                    primary_disorder=disorder_objs[case_data["disorder"]],
+                    difficulty=case_data["difficulty"],
+                    status=CaseRevision.Status.PUBLISHED,
+                    content_hash=desired_hash,
+                    published_at=case.updated_at,
+                    seed_managed=True,
+                )
+
+                seeded_steps = []
+                for step_order, (title, narrative, prompt, choices, explanation) in enumerate(case_data["steps"], start=1):
                     step = CaseStep.objects.create(
                         case=case,
+                        revision=revision,
+                        stable_key=f"step-{step_order}",
+                        node_kind=CaseStep.NodeKind.DECISION,
                         title=title,
                         narrative=narrative,
                         sort_order=step_order,
                         is_active=True,
                     )
-
-                question = CaseQuestion.objects.filter(step=step, sort_order=1).order_by("id").first()
-                if question:
-                    question.prompt = prompt
-                    question.explanation = explanation
-                    question.is_active = True
-                    question.save(update_fields=("prompt", "explanation", "is_active", "updated_at"))
-                else:
                     question = CaseQuestion.objects.create(
                         step=step,
                         prompt=prompt,
@@ -570,29 +605,36 @@ class Command(BaseCommand):
                         sort_order=1,
                         is_active=True,
                     )
-
-                active_choice_orders = []
-                for choice_order, (text, score, feedback) in enumerate(choices, start=1):
-                    active_choice_orders.append(choice_order)
-                    choice = CaseChoice.objects.filter(question=question, sort_order=choice_order).order_by("id").first()
-                    if choice:
-                        choice.text = text
-                        choice.score_value = score
-                        choice.feedback = feedback
-                        choice.is_active = True
-                        choice.save(update_fields=("text", "score_value", "feedback", "sort_order", "is_active"))
-                    else:
-                        CaseChoice.objects.create(
+                    seeded_choices = []
+                    for choice_order, (text, score, feedback) in enumerate(choices, start=1):
+                        seeded_choices.append(CaseChoice.objects.create(
                             question=question,
                             text=text,
                             score_value=score,
                             feedback=feedback,
                             sort_order=choice_order,
                             is_active=True,
+                        ))
+                    seeded_steps.append((step, seeded_choices))
+
+                for step_index, (step, choices) in enumerate(seeded_steps):
+                    next_step = seeded_steps[step_index + 1][0] if step_index + 1 < len(seeded_steps) else None
+                    for choice in choices:
+                        CaseTransition.objects.create(
+                            revision=revision,
+                            source_step=step,
+                            choice=choice,
+                            target_step=next_step,
+                            outcome=(CaseTransition.Outcome.CONTINUE if next_step else CaseTransition.Outcome.COMPLETE),
+                            sort_order=choice.sort_order,
+                            is_active=True,
+                            seed_managed=True,
                         )
-                question.choices.exclude(sort_order__in=active_choice_orders).update(is_active=False)
-                step.questions.exclude(sort_order=1).update(is_active=False)
-            case.steps.exclude(sort_order__in=range(1, len(case_data["steps"]) + 1)).update(is_active=False)
+
+                revision.entry_step = seeded_steps[0][0] if seeded_steps else None
+                revision.save(update_fields=("entry_step", "updated_at"))
+                case.current_revision = revision
+                case.save(update_fields=("current_revision", "updated_at"))
 
         ClinicalCase.objects.filter(seed_managed=True).exclude(slug__in=[row["slug"] for row in CASES]).update(is_active=False)
 

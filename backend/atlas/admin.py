@@ -4,6 +4,7 @@ from . import models as atlas_models
 from .models import (
     Bookmark,
     CaseAttempt,
+    CaseAttemptEvent,
     CaseChoice,
     CaseQuestion,
     CaseStep,
@@ -43,9 +44,12 @@ from .models import (
 for model in [
     Bookmark,
     CaseAttempt,
+    CaseAttemptEvent,
     CaseChoice,
     CaseQuestion,
     CaseStep,
+    atlas_models.CaseRevision,
+    atlas_models.CaseTransition,
     Category,
     ClinicalCase,
     DifferentialRelationship,

@@ -1,8 +1,97 @@
-# Psychology Atlas — v0.6.6 · Final Hardening + Performance + v0.6 Freeze
+# Psychology Atlas — v0.7.2 · Server-Authoritative Case Attempts + Stateful Runner
 
-یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.6.6 سری v0.6 روان‌شناسان، نظریه‌ها و Timeline را بعد از Graph/Search integration نهایی می‌کند: release audit علمی تکرارپذیر، performance hardening جست‌وجو، جلوگیری از stale Search UI، visibility دقیق‌تر provenance ضعیف و production/browser regression کامل.
+یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.7.2 معماری revision-safe نسخه قبل را به یک موتور اجرای واقعی و server-authoritative تبدیل می‌کند: start/resume، current node، state versioning، event history، transitionهای معتبر از سمت backend، idempotent replay protection و یک CaseRunner جدید که فقط مسیر واقعاً طی‌شده را نمایش می‌دهد.
 
-> این نرم‌افزار آموزشی است و ابزار تشخیص، درمان یا جایگزین ارزیابی حرفه‌ای نیست.
+> این نرم‌افزار آموزشی است و ابزار تشخیص، درمان، ارزیابی صلاحیت بالینی یا جایگزین ارزیابی حرفه‌ای نیست.
+
+## v0.7.2 Server Attempt State + Stateful Branching Runner
+
+```text
+CaseAttempt.current_step             ✅
+CaseAttempt.state_version            ✅
+CaseAttemptEvent immutable history   ✅
+start / resume                       ✅
+server-resolved transitions          ✅
+exact retry idempotency              ✅
+stale / skip / foreign choice guard  ✅
+completed-attempt immutability       ✅
+revision-pinned resume               ✅
+stateful Persian/RTL CaseRunner       ✅
+read-only reached-path history        ✅
+refresh resume                        ✅
+login return-to-case                  ✅
+migration 0025 applied                ✅
+focused v0.7.2 tests: 11/11 PASS       ✅
+```
+
+APIهای stateful احراز هویت‌شده:
+
+```text
+POST /api/cases/<slug>/attempts/
+GET  /api/cases/<slug>/attempts/current/
+GET  /api/case-attempts/<id>/
+POST /api/case-attempts/<id>/decisions/
+```
+
+قواعد اصلی v0.7.2:
+
+- frontend هیچ `next_step_id` یا score authoritative ارسال نمی‌کند؛ backend فقط از `CaseTransition` معتبر next state را resolve می‌کند.
+- هر mutation باید `step_id` جاری و `state_version` فعلی را داشته باشد؛ skip و stale/conflicting replay رد می‌شوند.
+- retry دقیق همان decision idempotent است و score، progress، StudyActivity یا history دوباره ثبت نمی‌شود.
+- هر attempt به همان `CaseRevision` شروع‌شده قفل می‌ماند، حتی اگر revision جدیدی منتشر شود.
+- history تصمیم‌ها read-only است و Runner فقط eventهای واقعاً طی‌شده را نشان می‌دهد؛ branch آینده در UI مسیر نمایش داده نمی‌شود.
+- decision node انتخاب می‌گیرد، information node transition خودکار دارد و terminal node پایان صریح مسیر را ثبت می‌کند.
+- بعد از refresh یا بازگشت به صفحه، همان attempt در حال اجرا resume می‌شود.
+- نتیجه نهایی فقط عملکرد در همان سناریوی آموزشی را خلاصه می‌کند و ادعای صلاحیت بالینی ندارد.
+- endpoint خطی قدیمی `/cases/<slug>/submit/` برای backward compatibility باقی مانده، اما CaseRunner v0.7.2 دیگر از آن استفاده نمی‌کند.
+- login از داخل Case یک `next` داخلی امن حمل می‌کند و پس از ورود کاربر را به همان Case برمی‌گرداند.
+
+E2E واقعی production با یک branching fixture موقت انجام شد: register، start، انتخاب branch، refresh/resume، history، terminal completion، retry/new attempt و login return-to-case همگی از مرورگر Chromium و API واقعی عبور کردند؛ سپس user/attempt/case fixture موقت کامل پاک شد.
+
+اسناد این release:
+
+```text
+docs/Psychology_Atlas_v0.7.2_Part1_Server_Attempt_Engine_2026-09-12.md
+docs/Psychology_Atlas_v0.7.2_Server_Branching_Release_2026-09-16.md
+```
+
+مرحله بعدی roadmap: **v0.7.3 Multi-dimensional Educational Scoring + Feedback**.
+
+## v0.7.1 Branching Case Architecture + Revision Safety
+
+این slice هنوز runner تعاملی stateful یا analytics نهایی v0.7 را فعال نمی‌کند؛ هدف آن ساخت foundation درست برای v0.7.2+ است.
+
+```text
+CaseRevision                         ✅
+CaseStep stable_key + node_kind      ✅
+Explicit CaseTransition graph        ✅
+CaseAttempt -> immutable revision    ✅
+Legacy linear submit compatibility   ✅
+Seed revision immutability           ✅
+DAG/cycle/reachability audit         ✅
+Current seed: 6 cases / 6 revisions / 18 nodes / 54 transitions
+Backend tests: 136/136 PASS
+Case API query budget: list <= 3 / detail <= 4
+SQLite integrity_check: ok / foreign_key_check: 0
+Frontend 0.7.1: typecheck PASS / build 23/23 / npm audit 0
+Production case smoke: /cases + representative detail HTTP 200
+```
+
+قواعد اصلی v0.7.1:
+
+- هر Case فعال یک `current_revision` دارد و هر Attempt به revision مشخص bind می‌شود.
+- تغییر ساختار seed، revision قبلی را mutate نمی‌کند؛ revision جدید ساخته و قبلی `retired` می‌شود.
+- nodeهای Case دارای `stable_key` و `node_kind` از نوع `decision`, `information`, `terminal` هستند.
+- branchها از `CaseTransition` صریح می‌آیند؛ transition حدسی یا AI-inferred وجود ندارد.
+- در v0.7.1 graph کیس DAG است و cycle در `python manage.py audit_case_graphs` failure محسوب می‌شود.
+- validator همچنین entry point، unreachable node، transition خراب، choice متعلق به node دیگر، inactive transition content و نبود completion path را بررسی می‌کند.
+- Case فعال بدون `published current_revision` و entry point معتبر از public API پنهان می‌ماند.
+- `CaseAttemptAnswer` اجازه اتصال choice به question دیگر یا question به revision متفاوت Attempt را نمی‌دهد؛ audit موجودی تاریخی را هم بررسی می‌کند.
+- API فعلی Case فقط `current_revision` را serialize می‌کند و `revision_number`, `structure_mode`, `stable_key`, `node_kind` را در contract قرار می‌دهد.
+- endpoint قدیمی submit فقط برای Caseهای `linear` نگه داشته شده تا v0.7.2 runner stateful جایگزین آن شود.
+- `seed_mvp` روی اجرای تکراری revision اضافه نمی‌سازد؛ فقط وقتی content hash تغییر کند revision جدید ایجاد می‌شود.
+
+مرحله بعدی: **v0.7.2 Server-authoritative Attempt State + Start/Resume/Decision APIs**.
 
 ## v0.6.6 Final Hardening + Performance + Release Freeze
 

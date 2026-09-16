@@ -1,10 +1,47 @@
 # Psychology Atlas Product Spec
 
-## Current implemented version: v0.6.6 — Final Hardening + Performance + v0.6 Freeze
+## Current implemented version: v0.7.2 — Server-Authoritative Case Attempts + Stateful Runner
 
 Psychology Atlas is an interactive educational system for psychology students. It should behave as a connected learning system, not as a psychology blog and not as a diagnostic product.
 
-v0.6.6 closes the Psychologists + Theories + Timeline release series after v0.6.5 Graph/Search integration. This slice adds repeatable scientific-release auditing, hardens exact-first search performance and stale-result behavior, makes weak archival provenance more visible, reconfirms Graph/cache/API budgets, and freezes the complete v0.6 runtime without inventing new scientific claims or date precision.
+### v0.7.2 server attempt engine + runner invariants
+
+- `CaseAttempt.current_step` is the only Case node the client may mutate; `state_version` provides stale-state and replay protection.
+- `CaseAttemptEvent` stores decision, automatic advance and terminal-completion history with before/after state versions plus server-generated audit snapshots.
+- Authenticated APIs support start/resume, current attempt, owned attempt detail and one-step decision/advance submission.
+- Frontend never supplies an authoritative next node or score. Backend resolves the valid `CaseTransition`, score and completion state.
+- Exact duplicate submissions are idempotent; conflicting replay, future-node skipping, foreign choices, stale versions and completed-attempt mutation are rejected.
+- Resume stays pinned to the original `CaseRevision` even after a newer revision becomes current.
+- The stateful CaseRunner renders only `current_step` and the immutable reached-path history returned by the attempt API; it does not use the full public case structure to calculate navigation.
+- Decision, information and terminal node UX are distinct. Previous history is read-only, refresh resumes server state, and completion uses the same educational-only guardrails as the rest of the product.
+- Login from a Case carries a validated internal `next` path and returns the learner to the same Case after authentication.
+- Migration `0025_v072_attempt_state_engine.py` is applied and backfills legacy in-progress attempts to the revision entry step when possible.
+- The legacy linear `/cases/<slug>/submit/` endpoint remains for compatibility, but the v0.7.2 frontend runner uses only stateful attempt endpoints.
+- Scalar Case score remains intentionally unchanged in v0.7.2. Multi-dimensional educational scoring belongs to v0.7.3 and must not be fabricated ahead of content support.
+- Focused v0.7.2 backend tests are 11/11 PASS. Final full-suite/frontend/release validation is recorded in `BUILD_MANIFEST.json` and `docs/Psychology_Atlas_v0.7.2_Server_Branching_Release_2026-09-16.md`.
+- Production Chromium E2E covered register, start, branch decision, refresh/resume, immutable path history, terminal completion, new-attempt retry and login return-to-case using a temporary branching fixture that was fully deleted afterward.
+
+v0.7.1 started the Advanced Branching Clinical Cases release series by replacing the implicit linear-only case structure with an additive revisioned graph foundation while preserving historical user data.
+
+### v0.7.1 branching-case foundation invariants
+
+- `ClinicalCase.current_revision` identifies the authoritative published structure for new reads/attempts.
+- `CaseRevision` snapshots case title, patient summary, educational objective, difficulty and primary disorder in addition to structural graph ownership.
+- Every `CaseStep` belongs to exactly one revision and has a stable node key plus explicit `decision`, `information` or `terminal` node kind.
+- `CaseTransition` models branch flow explicitly. Choice transitions can continue to another node or complete the case; information-node automatic transitions are supported by schema.
+- v0.7.1 deliberately uses DAG semantics. Cycles are rejected by the case graph audit rather than silently permitted.
+- `CaseAttempt.revision` is non-null and protected, so historical attempts remain tied to the exact structural revision they used.
+- The legacy linear submit service reads questions only from `current_revision`, stores the revision on the attempt, and rejects branching-mode cases until the stateful v0.7.2 engine is implemented.
+- `seed_mvp` hashes canonical case content. Re-running unchanged seed content creates no revisions; changed content publishes a new revision and retires the prior published revision instead of mutating historical structure.
+- Migrated v0.6.6 cases become revision 1 with explicit transitions. Current seed inventory is 6 active cases / 6 current revisions / 18 active case nodes / 54 explicit transitions.
+- `python manage.py audit_case_graphs` is a read-only structural release guard for missing entry points, cross-revision transitions, invalid/inactive choice ownership, unreachable nodes, cycles, missing completion paths, attempt/revision mismatches and historical answer/revision mismatches.
+- Active cases without a published current revision and valid entry step are excluded from public Case APIs.
+- `CaseAttemptAnswer` validates both choice→question ownership and question→attempt-revision ownership.
+- Case list/detail API adds `structure_mode` and `revision_number`; current step payloads expose `stable_key` and `node_kind` while preserving existing linear fields.
+- Public Case list/detail query budgets are <=3 / <=4 queries on the current seeded fixture.
+- Full backend suite is 136/136 PASS; Django check, migration drift, Python compileall, project-local `pip check`, SQLite integrity and foreign-key audit all pass.
+- Frontend package 0.7.1 typecheck and Next.js 16.3.3 production build pass with 23/23 generation units; npm audit reports 0 vulnerabilities; production `/cases` and representative Case detail smoke return HTTP 200 in Chromium.
+- v0.7.1 does not yet implement start/resume/current-node decision APIs, server-side in-progress attempt state, multidimensional scoring, advanced runner UX or analytics. Those remain v0.7.2+.
 
 ### v0.6.6 final-freeze invariants
 
