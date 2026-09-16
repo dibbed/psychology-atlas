@@ -415,7 +415,7 @@ A consistent SQLite backup was created outside the Git repository using SQLite's
 
 Snapshot location:
 
-`C:\Users\Meliodas\Downloads\psychology_atlas_backups\v0.5.5_final\db_v0.5.5_final.sqlite3`
+`<local-backup-root>\v0.5.5_final\db_v0.5.5_final.sqlite3`
 
 Snapshot metadata:
 - bytes: 49,364,992

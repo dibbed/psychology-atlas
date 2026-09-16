@@ -2,7 +2,7 @@
 ## Conservative Promotion + Dedupe + Aliases
 
 **Date:** 2026-09-05  
-**Project path:** `C:\Users\Meliodas\Downloads\psychology_atlas_fullstack_mvp`  
+**Project path:** `<repository-root>`
 **Base:** v0.6.1 Architecture Foundation  
 **Scope:** source-backed ResearchRecord promotion only. Public APIs, frontend Atlas pages and Knowledge Graph visibility remain deferred.
 
