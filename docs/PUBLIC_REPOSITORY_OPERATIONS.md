@@ -57,7 +57,7 @@ All third-party GitHub Actions are pinned to full commit SHAs. Dependabot tracks
 - npm updates under `/frontend`
 - GitHub Actions updates under `/`
 
-Minor and patch dependency updates are grouped to reduce pull-request noise; major changes remain reviewable separately where applicable.
+Automated version-update PRs are limited to minor and patch releases and are grouped to reduce pull-request noise. Major upgrades are intentionally manual because they can change framework/runtime contracts. Dependabot security updates remain enabled independently and may still open the update required to remediate a vulnerability.
 
 ## Security reporting
 
