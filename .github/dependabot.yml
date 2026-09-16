@@ -8,20 +8,30 @@ updates:
       day: monday
       time: "07:00"
       timezone: Europe/Berlin
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     rebase-strategy: auto
     labels:
       - dependencies
       - backend
     commit-message:
       prefix: deps(backend)
+    allow:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-patch
     groups:
-      python-minor-patch:
+      python-version-updates:
+        applies-to: version-updates
         patterns:
           - "*"
         update-types:
           - minor
           - patch
+      python-security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
   - package-ecosystem: npm
     directory: /frontend
@@ -30,20 +40,30 @@ updates:
       day: monday
       time: "07:15"
       timezone: Europe/Berlin
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     rebase-strategy: auto
     labels:
       - dependencies
       - frontend
     commit-message:
       prefix: deps(frontend)
+    allow:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-patch
     groups:
-      npm-minor-patch:
+      npm-version-updates:
+        applies-to: version-updates
         patterns:
           - "*"
         update-types:
           - minor
           - patch
+      npm-security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
   - package-ecosystem: github-actions
     directory: /
@@ -52,14 +72,23 @@ updates:
       day: monday
       time: "07:30"
       timezone: Europe/Berlin
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     rebase-strategy: auto
     labels:
       - dependencies
       - github-actions
     commit-message:
       prefix: deps(actions)
+    allow:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-patch
     groups:
-      actions-updates:
+      actions-version-updates:
+        applies-to: version-updates
         patterns:
           - "*"
+        update-types:
+          - minor
+          - patch
