@@ -1,150 +1,313 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { api } from "@/lib/api";
+import { useEffect, useRef, useState } from "react";
+import { api, ApiError } from "@/lib/api";
 import { hasToken } from "@/lib/auth";
 import { faNumber } from "@/lib/fa";
-import type { ClinicalCase } from "@/lib/types";
+import type { CaseAttemptEvent, CaseAttemptState, ClinicalCase } from "@/lib/types";
+
+function eventLabel(event: CaseAttemptEvent) {
+  if (event.event_type === "decision") return "تصمیم";
+  if (event.event_type === "advance") return "ادامه مسیر";
+  return "پایان مسیر";
+}
+
+function nodeLabel(kind: "decision" | "information" | "terminal") {
+  if (kind === "decision") return "مرحله تصمیم";
+  if (kind === "information") return "مرحله اطلاعاتی";
+  return "مرحله پایانی";
+}
 
 export default function CaseRunner({ item }: { item: ClinicalCase }) {
-  const steps = item.steps || [];
-  const allQuestions = useMemo(() => steps.flatMap(s => s.questions), [steps]);
-  const [answers, setAnswers] = useState<Record<number, number>>({});
-  const [currentStep, setCurrentStep] = useState(0);
-  const [furthestStep, setFurthestStep] = useState(0);
-  const [result, setResult] = useState<any>(null);
-  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState<CaseAttemptState | null>(null);
+  const [selectedChoice, setSelectedChoice] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [authRequired, setAuthRequired] = useState(false);
+  const [resumeNotice, setResumeNotice] = useState(false);
+  const stageHeadingRef = useRef<HTMLHeadingElement>(null);
 
-  const step = steps[currentStep];
-  const currentAnswered = step ? step.questions.every(q => answers[q.id]) : false;
-  const isLast = currentStep === steps.length - 1;
-
-  async function submit() {
-    if (busy) return;
+  async function startOrResume() {
     if (!hasToken()) {
-      location.href = "/login";
+      setAttempt(null);
+      setAuthRequired(true);
+      setLoading(false);
       return;
     }
+    setAuthRequired(false);
+    setLoading(true);
+    setError("");
     try {
-      setBusy(true);
-      setError("");
-      const data = await api<any>(`/cases/${item.slug}/submit/`, {
+      const data = await api<CaseAttemptState>(`/cases/${item.slug}/attempts/`, {
+        method: "POST",
+        body: JSON.stringify({})
+      }, true);
+      setAttempt(data);
+      setResumeNotice(Boolean(data.resumed));
+      setSelectedChoice(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "شروع یا ادامه کیس انجام نشد.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function refreshAttempt(attemptId: number) {
+    const fresh = await api<CaseAttemptState>(`/case-attempts/${attemptId}/`, {}, true);
+    setAttempt(fresh);
+    setSelectedChoice(null);
+    return fresh;
+  }
+
+  useEffect(() => {
+    void startOrResume();
+    // item.slug is the stable identity for this runner; startOrResume intentionally runs once per case.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.slug]);
+
+  useEffect(() => {
+    if (!attempt?.current_step) return;
+    setSelectedChoice(null);
+    requestAnimationFrame(() => stageHeadingRef.current?.focus());
+  }, [attempt?.current_step?.id, attempt?.state_version]);
+
+  async function advance() {
+    if (!attempt?.current_step || busy) return;
+    const step = attempt.current_step;
+    if (step.node_kind === "decision" && selectedChoice === null) return;
+
+    setBusy(true);
+    setError("");
+    try {
+      const next = await api<CaseAttemptState>(`/case-attempts/${attempt.id}/decisions/`, {
         method: "POST",
         body: JSON.stringify({
-          answers: Object.entries(answers).map(([question_id, choice_id]) => ({
-            question_id: Number(question_id),
-            choice_id
-          }))
+          step_id: step.id,
+          choice_id: step.node_kind === "decision" ? selectedChoice : null,
+          state_version: attempt.state_version
         })
       }, true);
-      setResult(data);
-    } catch (e: any) {
-      setError(e.message || "ارسال پاسخ‌های کیس انجام نشد.");
+      setAttempt(next);
+      setSelectedChoice(null);
+      setResumeNotice(false);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "ثبت مرحله کیس انجام نشد.";
+      setError(message);
+      if (e instanceof ApiError && e.status === 400) {
+        try {
+          await refreshAttempt(attempt.id);
+        } catch {
+          // Keep the original actionable error when state refresh is unavailable.
+        }
+      }
     } finally {
       setBusy(false);
     }
   }
 
-  if (!steps.length) return <div className="card"><p>برای این کیس هنوز مرحله‌ای ثبت نشده است.</p></div>;
+  async function restart() {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const next = await api<CaseAttemptState>(`/cases/${item.slug}/attempts/`, {
+        method: "POST",
+        body: JSON.stringify({})
+      }, true);
+      setAttempt(next);
+      setSelectedChoice(null);
+      setResumeNotice(Boolean(next.resumed));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "شروع دوباره کیس انجام نشد.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
-  if (result) {
-    const fullCredit = result.feedback.filter((f: any) => f.full_credit).length;
-    const missed = result.feedback.filter((f: any) => !f.full_credit);
-    const percent = result.max_score ? Math.round(result.score * 100 / result.max_score) : 0;
-
+  if (loading) {
     return (
-      <div className="stack">
-        <div className="case-result card">
-          <div>
-            <div className="meta">کیس بالینی تکمیل شد</div>
-            <h3 style={{ fontSize: 34 }}>{faNumber(result.score)} از {faNumber(result.max_score)}</h3>
-            <p>{faNumber(percent)}٪ امتیاز کل و {faNumber(fullCredit)} پاسخ با امتیاز کامل.</p>
-          </div>
-          <div className="score-ring">{faNumber(percent)}٪</div>
-        </div>
-
-        {missed.length > 0 && (
-          <div className="card">
-            <div className="meta">موارد نیازمند مرور</div>
-            <p style={{ marginTop: 8 }}>در {faNumber(missed.length)} تصمیم، امتیاز کامل نگرفتی. بازخوردهای زیر را مرور کن.</p>
-          </div>
-        )}
-
-        {result.feedback.map((f: any, index: number) => (
-          <div className={`card feedback-card ${f.full_credit ? "success" : "review"}`} key={f.question_id}>
-            <div className="feedback-head">
-              <strong>تصمیم {faNumber(index + 1)}</strong>
-              <span>{faNumber(f.awarded_score)} از {faNumber(f.max_score)} امتیاز</span>
-            </div>
-            <p style={{ marginTop: 10 }}>{f.feedback}</p>
-            <p style={{ marginTop: 8 }}>{f.explanation}</p>
-          </div>
-        ))}
-        <button className="button" onClick={() => { setResult(null); setAnswers({}); setCurrentStep(0); setFurthestStep(0); }}>حل دوباره کیس</button>
+      <div className="card case-state-card" role="status" aria-live="polite">
+        <div className="meta">کیس بالینی</div>
+        <h2>در حال آماده‌سازی مسیر آموزشی...</h2>
+        <p className="muted">اگر قبلاً این کیس را نیمه‌کاره گذاشته باشی، مسیر ثبت‌شده از سرور بازیابی می‌شود.</p>
       </div>
     );
   }
 
+  if (authRequired) {
+    return (
+      <div className="card case-state-card">
+        <div className="meta">ذخیره مسیر و ادامه بعدی</div>
+        <h2>برای شروع کیس وارد حساب شو</h2>
+        <p className="muted">مسیر تصمیم‌ها، مرحله جاری و امکان ادامه بعد از بستن صفحه به حساب کاربری متصل است.</p>
+        <div className="actions" style={{ marginTop: 18 }}>
+          <button className="button primary" type="button" onClick={() => { location.href = `/login?next=${encodeURIComponent(`/cases/${item.slug}`)}`; }}>
+            ورود و شروع کیس
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!attempt) {
+    return (
+      <div className="card case-state-card" role="alert">
+        <h2>بارگذاری کیس انجام نشد</h2>
+        {error && <p className="error">{error}</p>}
+        <button className="button primary" type="button" onClick={() => void startOrResume()}>
+          تلاش دوباره
+        </button>
+      </div>
+    );
+  }
+
+  const percent = attempt.max_score ? Math.round(attempt.score * 100 / attempt.max_score) : 0;
+  const completed = attempt.status === "completed";
+  const step = attempt.current_step;
+  const currentQuestion = step?.node_kind === "decision" ? step.questions[0] : undefined;
+
   return (
     <div className="case-runner">
-      <div className="case-progress">
-        {steps.map((_, index) => (
-          <div className={`case-progress-step ${index <= furthestStep ? "active" : ""}`} key={index}>
-            <span>{faNumber(index + 1)}</span>
-          </div>
-        ))}
-      </div>
-
-      <section className="card case-stage" key={step.id}>
-        <div className="meta">مرحله {faNumber(currentStep + 1)} از {faNumber(steps.length)}</div>
-        <h2>{step.title}</h2>
-        <p className="case-narrative">{step.narrative}</p>
-
-        {step.questions.map(q => (
-          <div className="question" key={q.id}>
-            <h3>{q.prompt}</h3>
-            {q.choices.map(choice => (
-              <button
-                type="button"
-                className={`choice ${answers[q.id] === choice.id ? "selected" : ""}`}
-                key={choice.id}
-                onClick={() => setAnswers(a => ({ ...a, [q.id]: choice.id }))}
-                disabled={currentStep < furthestStep || busy}
-              >
-                {choice.text}
-              </button>
-            ))}
-          </div>
-        ))}
-
-        {currentStep < furthestStep && <p className="muted small">این مرحله پس از مشاهده اطلاعات مرحله بعد قفل شده و فقط برای مرور نمایش داده می‌شود.</p>}
-        {error && <p className="error">{error}</p>}
-        <div className="actions" style={{ marginTop: 18 }}>
-          {currentStep > 0 && <button className="button" onClick={() => setCurrentStep(x => x - 1)}>مرحله قبل</button>}
-          {!isLast ? (
-            <button
-              className="button primary"
-              disabled={!currentAnswered}
-              onClick={() => {
-                const nextStep = currentStep + 1;
-                setFurthestStep(x => Math.max(x, nextStep));
-                setCurrentStep(nextStep);
-              }}
-            >
-              {currentStep < furthestStep ? "بازگشت به مرحله بعد" : "نمایش مرحله بعد"}
-            </button>
-          ) : (
-            <button
-              className="button primary"
-              disabled={!currentAnswered || Object.keys(answers).length !== allQuestions.length || busy}
-              onClick={submit}
-            >
-              {busy ? "در حال ارزیابی..." : "پایان کیس و دریافت بازخورد"}
-            </button>
-          )}
+      <section className="case-attempt-bar" aria-label="وضعیت کیس">
+        <div>
+          <span className="meta">نسخه کیس {faNumber(attempt.case.revision_number)}</span>
+          <strong>{completed ? "مسیر تکمیل‌شده" : `گام جاری ${faNumber(attempt.history.length + 1)}`}</strong>
+        </div>
+        <div className="case-attempt-stats">
+          <span>تصمیم‌های ثبت‌شده <strong>{faNumber(attempt.history.filter(event => event.event_type === "decision").length)}</strong></span>
+          <span>امتیاز مسیر <strong>{faNumber(attempt.score)} / {faNumber(attempt.max_score)}</strong></span>
         </div>
       </section>
+
+      {resumeNotice && !completed && (
+        <div className="case-resume-notice" role="status">
+          این تلاش از آخرین مرحله ثبت‌شده ادامه پیدا کرده است. تصمیم‌های قبلی قابل تغییر نیستند.
+        </div>
+      )}
+
+      {attempt.history.length > 0 && (
+        <section className="case-history" aria-labelledby="case-history-title">
+          <div className="section-heading-row">
+            <div>
+              <div className="meta">مسیر ثبت‌شده</div>
+              <h2 id="case-history-title">تاریخچه تصمیم‌ها و مراحل طی‌شده</h2>
+            </div>
+            <span className="muted small">فقط مسیر واقعی این تلاش نمایش داده می‌شود.</span>
+          </div>
+
+          <div className="case-history-list">
+            {attempt.history.map((event, index) => (
+              <article className="card case-history-item" key={event.id}>
+                <div className="case-history-head">
+                  <div>
+                    <span className="case-history-index">{faNumber(index + 1)}</span>
+                    <strong>{event.snapshot.step_title || `مرحله ${faNumber(index + 1)}`}</strong>
+                  </div>
+                  <span className="meta">{eventLabel(event)}</span>
+                </div>
+                {event.snapshot.question_prompt && <p className="case-history-question">{event.snapshot.question_prompt}</p>}
+                {event.snapshot.choice_text && (
+                  <div className="case-history-choice">انتخاب ثبت‌شده: <strong>{event.snapshot.choice_text}</strong></div>
+                )}
+                {event.snapshot.choice_feedback && <p className="case-history-feedback">{event.snapshot.choice_feedback}</p>}
+                {event.snapshot.question_explanation && <p className="muted small">{event.snapshot.question_explanation}</p>}
+                {event.event_type === "decision" && (
+                  <div className="case-history-score">
+                    امتیاز این تصمیم: {faNumber(event.awarded_score)} از {faNumber(event.max_score)}
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {completed ? (
+        <section className="stack" aria-live="polite">
+          <div className="case-result card">
+            <div>
+              <div className="meta">این مسیر آموزشی تکمیل شد</div>
+              <h2 style={{ fontSize: 34 }}>{faNumber(attempt.score)} از {faNumber(attempt.max_score)}</h2>
+              <p>
+                امتیاز این تلاش {faNumber(percent)}٪ است. این امتیاز فقط عملکرد در همین سناریوی آموزشی را خلاصه می‌کند و معیار صلاحیت بالینی نیست.
+              </p>
+            </div>
+            <div className="score-ring" aria-label={`امتیاز ${percent} درصد`}>{faNumber(percent)}٪</div>
+          </div>
+          {error && <p className="error" role="alert">{error}</p>}
+          <div className="actions">
+            <button className="button primary" type="button" onClick={() => void restart()} disabled={busy}>
+              {busy ? "در حال شروع..." : "حل دوباره کیس"}
+            </button>
+          </div>
+        </section>
+      ) : step ? (
+        <section className="card case-stage case-stage-stateful" aria-labelledby="case-current-step-title">
+          <div className="case-stage-heading">
+            <div>
+              <div className="meta">{nodeLabel(step.node_kind)} · state {faNumber(attempt.state_version)}</div>
+              <h2 id="case-current-step-title" ref={stageHeadingRef} tabIndex={-1}>{step.title}</h2>
+            </div>
+            <span className="case-node-key">{step.stable_key}</span>
+          </div>
+          <p className="case-narrative">{step.narrative}</p>
+
+          {step.node_kind === "decision" && currentQuestion && (
+            <div className="question case-current-question">
+              <h3>{currentQuestion.prompt}</h3>
+              <div className="case-choice-list" role="group" aria-label={currentQuestion.prompt}>
+                {currentQuestion.choices.map(choice => (
+                  <button
+                    type="button"
+                    className={`choice ${selectedChoice === choice.id ? "selected" : ""}`}
+                    key={choice.id}
+                    aria-pressed={selectedChoice === choice.id}
+                    onClick={() => setSelectedChoice(choice.id)}
+                    disabled={busy}
+                  >
+                    {choice.text}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {step.node_kind === "information" && (
+            <div className="case-node-hint">
+              این مرحله انتخابی ندارد. با ادامه، backend transition معتبر بعدی را تعیین می‌کند.
+            </div>
+          )}
+
+          {step.node_kind === "terminal" && (
+            <div className="case-node-hint">
+              به انتهای مسیر فعلی رسیده‌ای. پایان را ثبت کن تا خلاصه همین تلاش نمایش داده شود.
+            </div>
+          )}
+
+          {error && <p className="error" role="alert">{error}</p>}
+          <div className="actions" style={{ marginTop: 18 }}>
+            <button
+              className="button primary"
+              type="button"
+              disabled={busy || (step.node_kind === "decision" && selectedChoice === null)}
+              onClick={() => void advance()}
+            >
+              {busy
+                ? "در حال ثبت..."
+                : step.node_kind === "decision"
+                  ? "ثبت تصمیم و ادامه مسیر"
+                  : step.node_kind === "terminal"
+                    ? "ثبت پایان این مسیر"
+                    : "ادامه مسیر"}
+            </button>
+          </div>
+        </section>
+      ) : (
+        <div className="card" role="alert">
+          <p className="error">attempt در حال اجرا مرحله جاری معتبری ندارد. صفحه را دوباره بارگذاری کن.</p>
+        </div>
+      )}
     </div>
   );
 }

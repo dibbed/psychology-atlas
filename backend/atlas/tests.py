@@ -633,6 +633,10 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(data["history"][0]["event_type"], CaseAttemptEvent.EventType.DECISION)
         self.assertEqual(data["history"][0]["next_step_id"], fixture["left"].id)
         self.assertEqual(data["history"][0]["snapshot"]["target_step_key"], "left-path")
+        self.assertEqual(
+            data["history"][0]["snapshot"]["question_explanation"],
+            "This is an educational branching decision.",
+        )
         self.assertEqual(CaseAttemptAnswer.objects.filter(attempt_id=attempt_id).count(), 1)
 
     def test_v072_rejects_skip_foreign_choice_and_stale_state(self):

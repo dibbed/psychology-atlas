@@ -278,6 +278,7 @@ def _event_snapshot(*, step, question=None, choice=None, transition=None):
     }
     if question is not None:
         snapshot["question_prompt"] = question.prompt
+        snapshot["question_explanation"] = question.explanation
     if choice is not None:
         snapshot["choice_text"] = choice.text
         snapshot["choice_feedback"] = choice.feedback

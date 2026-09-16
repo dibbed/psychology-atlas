@@ -1,25 +1,27 @@
 # Psychology Atlas Product Spec
 
-## Current implemented version: v0.7.1 — Branching Clinical Case Architecture + Revision Safety
+## Current implemented version: v0.7.2 — Server-Authoritative Case Attempts + Stateful Runner
 
 Psychology Atlas is an interactive educational system for psychology students. It should behave as a connected learning system, not as a psychology blog and not as a diagnostic product.
 
-### Development in progress: v0.7.2 Part 1/2 — Server Attempt State Engine
+### v0.7.2 server attempt engine + runner invariants
 
-The official released version remains v0.7.1 until Part 2 completes. Part 1 adds the server-authoritative CaseAttempt state engine without migrating the frontend runner yet.
+- `CaseAttempt.current_step` is the only Case node the client may mutate; `state_version` provides stale-state and replay protection.
+- `CaseAttemptEvent` stores decision, automatic advance and terminal-completion history with before/after state versions plus server-generated audit snapshots.
+- Authenticated APIs support start/resume, current attempt, owned attempt detail and one-step decision/advance submission.
+- Frontend never supplies an authoritative next node or score. Backend resolves the valid `CaseTransition`, score and completion state.
+- Exact duplicate submissions are idempotent; conflicting replay, future-node skipping, foreign choices, stale versions and completed-attempt mutation are rejected.
+- Resume stays pinned to the original `CaseRevision` even after a newer revision becomes current.
+- The stateful CaseRunner renders only `current_step` and the immutable reached-path history returned by the attempt API; it does not use the full public case structure to calculate navigation.
+- Decision, information and terminal node UX are distinct. Previous history is read-only, refresh resumes server state, and completion uses the same educational-only guardrails as the rest of the product.
+- Login from a Case carries a validated internal `next` path and returns the learner to the same Case after authentication.
+- Migration `0025_v072_attempt_state_engine.py` is applied and backfills legacy in-progress attempts to the revision entry step when possible.
+- The legacy linear `/cases/<slug>/submit/` endpoint remains for compatibility, but the v0.7.2 frontend runner uses only stateful attempt endpoints.
+- Scalar Case score remains intentionally unchanged in v0.7.2. Multi-dimensional educational scoring belongs to v0.7.3 and must not be fabricated ahead of content support.
+- Focused v0.7.2 backend tests are 11/11 PASS. Final full-suite/frontend/release validation is recorded in `BUILD_MANIFEST.json` and `docs/Psychology_Atlas_v0.7.2_Server_Branching_Release_2026-09-16.md`.
+- Production Chromium E2E covered register, start, branch decision, refresh/resume, immutable path history, terminal completion, new-attempt retry and login return-to-case using a temporary branching fixture that was fully deleted afterward.
 
-- `CaseAttempt.current_step` is the only step the client may mutate; `state_version` provides stale-state/replay protection.
-- `CaseAttemptEvent` stores decision/advance/terminal-complete history with before/after state versions and server-generated audit snapshots.
-- New authenticated APIs support start/resume, current attempt, owned attempt detail and one-step decision/advance submission.
-- Exact duplicate requests are idempotent; conflicting replay, future-step skipping, foreign choices, stale versions and completed-attempt mutation are rejected.
-- Resume remains bound to the original CaseRevision even when a newer revision becomes current.
-- Completion side effects are applied once and continue to use the existing scalar educational score until v0.7.3 scoring work.
-- Migration `0025_v072_attempt_state_engine.py` is applied and backfills existing in-progress attempts to their revision entry step when possible.
-- Focused v0.7.2 Part 1 tests are 11/11 PASS and the full backend suite is 147/147 PASS at the Part 1 commit boundary.
-- Detailed development record: `docs/Psychology_Atlas_v0.7.2_Part1_Server_Attempt_Engine_2026-09-12.md`.
-- Part 2 will migrate the frontend CaseRunner, implement resume/history UX and perform final v0.7.2 release validation/version sync.
-
-v0.7.1 starts the Advanced Branching Clinical Cases release series by replacing the implicit linear-only case structure with an additive revisioned graph foundation while preserving the current linear runner and historical user data.
+v0.7.1 started the Advanced Branching Clinical Cases release series by replacing the implicit linear-only case structure with an additive revisioned graph foundation while preserving historical user data.
 
 ### v0.7.1 branching-case foundation invariants
 

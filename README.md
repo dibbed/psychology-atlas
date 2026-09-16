@@ -1,28 +1,30 @@
-# Psychology Atlas — v0.7.1 · Branching Clinical Case Architecture + Revision Safety
+# Psychology Atlas — v0.7.2 · Server-Authoritative Case Attempts + Stateful Runner
 
-یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.7.1 پایه معماری کیس‌های شاخه‌ای را به‌صورت additive و history-safe اضافه می‌کند: Case Revision، node identity، transitionهای صریح، version-bound attempts، graph integrity audit و seed versioning بدون شکستن runner خطی فعلی.
+یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.7.2 معماری revision-safe نسخه قبل را به یک موتور اجرای واقعی و server-authoritative تبدیل می‌کند: start/resume، current node، state versioning، event history، transitionهای معتبر از سمت backend، idempotent replay protection و یک CaseRunner جدید که فقط مسیر واقعاً طی‌شده را نمایش می‌دهد.
 
-> این نرم‌افزار آموزشی است و ابزار تشخیص، درمان یا جایگزین ارزیابی حرفه‌ای نیست.
+> این نرم‌افزار آموزشی است و ابزار تشخیص، درمان، ارزیابی صلاحیت بالینی یا جایگزین ارزیابی حرفه‌ای نیست.
 
-## v0.7.2 در حال توسعه — Part 1/2 Server Attempt State Engine
-
-نسخه رسمی هنوز **v0.7.1** است. نیمه اول v0.7.2 در backend پیاده شده و frontend runner در پیام بعدی مهاجرت می‌کند.
+## v0.7.2 Server Attempt State + Stateful Branching Runner
 
 ```text
-start/resume attempt                 ✅
-server-owned current_step            ✅
-state_version replay protection      ✅
-CaseAttemptEvent audit history       ✅
+CaseAttempt.current_step             ✅
+CaseAttempt.state_version            ✅
+CaseAttemptEvent immutable history   ✅
+start / resume                       ✅
 server-resolved transitions          ✅
-idempotent exact retry               ✅
-skip / foreign choice rejection      ✅
-user ownership isolation             ✅
-completed attempt immutability       ✅
-migration 0025 applied               ✅
-focused v0.7.2 tests: 11/11 PASS
+exact retry idempotency              ✅
+stale / skip / foreign choice guard  ✅
+completed-attempt immutability       ✅
+revision-pinned resume               ✅
+stateful Persian/RTL CaseRunner       ✅
+read-only reached-path history        ✅
+refresh resume                        ✅
+login return-to-case                  ✅
+migration 0025 applied                ✅
+focused v0.7.2 tests: 11/11 PASS       ✅
 ```
 
-APIهای جدید احراز هویت‌شده:
+APIهای stateful احراز هویت‌شده:
 
 ```text
 POST /api/cases/<slug>/attempts/
@@ -31,7 +33,29 @@ GET  /api/case-attempts/<id>/
 POST /api/case-attempts/<id>/decisions/
 ```
 
-کلاینت فقط `step_id`, `choice_id` و `state_version` را ارسال می‌کند؛ `next_step` همیشه توسط backend از `CaseTransition` معتبر resolve می‌شود. جزئیات کامل این نیمه در `docs/Psychology_Atlas_v0.7.2_Part1_Server_Attempt_Engine_2026-09-12.md` ثبت شده است.
+قواعد اصلی v0.7.2:
+
+- frontend هیچ `next_step_id` یا score authoritative ارسال نمی‌کند؛ backend فقط از `CaseTransition` معتبر next state را resolve می‌کند.
+- هر mutation باید `step_id` جاری و `state_version` فعلی را داشته باشد؛ skip و stale/conflicting replay رد می‌شوند.
+- retry دقیق همان decision idempotent است و score، progress، StudyActivity یا history دوباره ثبت نمی‌شود.
+- هر attempt به همان `CaseRevision` شروع‌شده قفل می‌ماند، حتی اگر revision جدیدی منتشر شود.
+- history تصمیم‌ها read-only است و Runner فقط eventهای واقعاً طی‌شده را نشان می‌دهد؛ branch آینده در UI مسیر نمایش داده نمی‌شود.
+- decision node انتخاب می‌گیرد، information node transition خودکار دارد و terminal node پایان صریح مسیر را ثبت می‌کند.
+- بعد از refresh یا بازگشت به صفحه، همان attempt در حال اجرا resume می‌شود.
+- نتیجه نهایی فقط عملکرد در همان سناریوی آموزشی را خلاصه می‌کند و ادعای صلاحیت بالینی ندارد.
+- endpoint خطی قدیمی `/cases/<slug>/submit/` برای backward compatibility باقی مانده، اما CaseRunner v0.7.2 دیگر از آن استفاده نمی‌کند.
+- login از داخل Case یک `next` داخلی امن حمل می‌کند و پس از ورود کاربر را به همان Case برمی‌گرداند.
+
+E2E واقعی production با یک branching fixture موقت انجام شد: register، start، انتخاب branch، refresh/resume، history، terminal completion، retry/new attempt و login return-to-case همگی از مرورگر Chromium و API واقعی عبور کردند؛ سپس user/attempt/case fixture موقت کامل پاک شد.
+
+اسناد این release:
+
+```text
+docs/Psychology_Atlas_v0.7.2_Part1_Server_Attempt_Engine_2026-09-12.md
+docs/Psychology_Atlas_v0.7.2_Server_Branching_Release_2026-09-16.md
+```
+
+مرحله بعدی roadmap: **v0.7.3 Multi-dimensional Educational Scoring + Feedback**.
 
 ## v0.7.1 Branching Case Architecture + Revision Safety
 
