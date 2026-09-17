@@ -1,10 +1,28 @@
 # Psychology Atlas Product Spec
 
-## Current release: v0.7.4 — Personal Case Analytics
+## Current release: v0.7.5 — Clinical Case Integrity Patch
 
-The v0.7 Clinical Case line is frozen through **v0.7.4 — Personal Case Analytics**. The next planned feature release is **v0.8 — Study Mode + Exam Planning + Advanced Recommendations**.
+The v0.7 Clinical Case line is frozen through **v0.7.5 — Clinical Case Integrity Patch**. v0.7.5 is a post-release correctness/concurrency patch, not a new feature slice. The next planned feature release is **v0.8 — Study Mode + Exam Planning + Advanced Recommendations**.
 
 Psychology Atlas is an interactive educational system for psychology students. It should behave as a connected learning system, not as a psychology blog and not as a diagnostic product.
+
+### v0.7.5 final v0.7 integrity patch invariants
+
+- `ClinicalCase` is the stable identity/slug container; current public title, summary, educational objective, difficulty and primary disorder come from its owned published `current_revision`. Reverse Disorder -> Case study-resource integration follows the same revision authority.
+- A Case is publicly runnable only when `current_revision.case_id == case.id`, the revision is published, its entry step belongs to that same revision and Case, the entry step is active, and the revision primary disorder is null or active.
+- Legacy linear submit remains backward compatible but progress and `StudyActivity.disorder` side effects are bound to the submitted attempt revision, not mutable `ClinicalCase.primary_disorder`.
+- Analytics current titles use the current revision. Historical attempt titles remain revision-pinned. Recent attempts are ordered by latest activity (`updated_at`) rather than original creation time.
+- Completed-path reconstruction cross-checks immutable snapshot semantics against event FKs: revision entry key, event step key/node kind, outcome, actual next-step target and decision choice requirements must all agree. Coherently forged snapshot chains are rejected as non-reconstructible history.
+- `CaseAttemptEvent.clean()` rejects event/node-kind mismatches. `audit_case_graphs` additionally verifies first-event entry ownership, event target chaining, terminal completion position, attempt status/current-step/completed-at consistency and snapshot/FK semantics.
+- At most one `in_progress` `CaseAttempt` may exist for a `(user, case)` pair. Migration `0027_v075_case_attempt_concurrency_guard.py` performs a read-only duplicate preflight and refuses to add the partial unique constraint if corruption exists; it never deletes, merges or silently repairs duplicate history.
+- SQLite write races are handled by narrowly bounded retry loops around start/resume and decision advancement. Concurrent identical starts resolve to one shared attempt. Concurrent identical decisions resolve idempotently to one immutable event/answer without double scoring. PostgreSQL continues to rely on row locking plus the database uniqueness invariant.
+- The CaseRunner converts 401s from start, decision refresh and restart flows back into the authentication-required state, clears stale attempt UI and preserves safe return-to-Case behavior. Resuming an attempt pinned to a non-current revision displays an explicit historical-revision notice and uses the attempt revision educational objective.
+- Historical migration validation uses Django `MigrationExecutor` and historical model states: a v0.6.2/atlas-0021 fixture with completed and in-progress attempts plus answers upgrades through 0027 with rows preserved and v0.7 revision/current-step backfill intact.
+- Fresh-install validation applies all migrations through 0027, runs `seed_mvp` twice and leaves 6 active Cases / 6 fresh revisions / 17 dimensions / 54 transitions with zero Case graph audit failures. Existing development runtime remains 6 Cases / 12 revisions / 17 dimensions and zero QA attempts/events/answers after cleanup.
+- The focused Case regression is 130/130 PASS and the full backend suite is 187/187 PASS before final release metadata. Final release gates also require Django check, migration drift check, Python compile/pip integrity, SQLite integrity/foreign keys, scientific/research audits, frontend typecheck/build/audit and GitHub CI/CodeQL.
+- Browser QA covers historical revision resume, current revision public metadata, invalid-refresh authentication recovery, token cleanup and a 320x800 viewport with no horizontal overflow.
+- v0.7.5 changes no scientific psychology corpus, scoring rubric semantics or analytics contract version. It is the final planned v0.7 patch; normal roadmap work proceeds to v0.8, with any future v0.7 patch reserved for newly discovered defects only.
+- The release record is `docs/Psychology_Atlas_v0.7.5_Clinical_Case_Integrity_Patch_2026-09-18.md`.
 
 ### v0.7.4.3 analytics hardening + v0.7.4 release-freeze invariants
 

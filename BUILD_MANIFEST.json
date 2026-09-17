@@ -1,8 +1,8 @@
 {
   "project": "Psychology Atlas",
-  "version": "0.7.4",
-  "release_name": "Personal Case Analytics",
-  "development_slice": "v0.7.4.3 Analytics Hardening + v0.7.4 Release Freeze ✅",
+  "version": "0.7.5",
+  "release_name": "Clinical Case Integrity Patch",
+  "development_slice": "v0.7.5 Post-Release Audit + v0.7 Final Closure ✅",
   "stack": {
     "frontend": "Next.js 16.3.5 + React 19.3 + TypeScript",
     "backend": "Django 5.2 + Django REST Framework",
@@ -270,7 +270,20 @@
     "v0743_refresh_failure_401_semantics",
     "v0743_analytics_accessibility_hardening",
     "v0743_320px_reduced_motion_browser_qa",
-    "v074_release_freeze"
+    "v074_release_freeze",
+    "v075_current_revision_authority",
+    "v075_legacy_submit_revision_safe_side_effects",
+    "v075_public_case_runnability_integrity",
+    "v075_disorder_case_reverse_integration_revision_safety",
+    "v075_event_snapshot_fk_consistency",
+    "v075_case_graph_history_audit_hardening",
+    "v075_recent_attempt_activity_ordering",
+    "v075_single_in_progress_attempt_db_constraint",
+    "v075_sqlite_start_concurrency_retry",
+    "v075_sqlite_decision_idempotency_retry",
+    "v075_runner_auth_expiry_recovery",
+    "v075_pinned_revision_resume_notice",
+    "v075_v07_final_patch_freeze"
   ],
   "content": {
     "categories": 21,
@@ -340,7 +353,7 @@
       "live_techniques": 35,
       "promoted_research_relationships": 479,
       "staging_policy": "future-domain and unsupported/lower-confidence records remain lossless staging-only",
-      "version_boundary": "v0.6 remains frozen; v0.7.1 added revision-safe branching architecture, v0.7.2 added the server-authoritative attempt engine/stateful runner, and v0.7.3 adds revision-pinned multidimensional educational scoring without changing the protected research archive",
+      "version_boundary": "v0.6 scientific/research corpus remains frozen; v0.7.1–v0.7.4 built revision-safe branching, stateful attempts, educational scoring and personal analytics; v0.7.5 is a post-release integrity/concurrency patch and does not alter protected research content",
       "staged_psychologists": 130,
       "staged_theories": 53,
       "staged_timeline_events": 63,
@@ -411,17 +424,18 @@
     "0023_v071_case_revision_snapshots.py",
     "0024_v071_case_revision_integrity.py",
     "0025_v072_attempt_state_engine.py",
-    "0026_v073_multidimensional_case_scoring.py"
+    "0026_v073_multidimensional_case_scoring.py",
+    "0027_v075_case_attempt_concurrency_guard.py"
   ],
   "validation": {
     "django_check": "pass",
-    "backend_tests": "179/179 passed · v0.7.4 analytics hardening + release freeze",
+    "backend_tests": "187/187 passed · final v0.7.5 code after SQLite IMMEDIATE concurrency refinement",
     "python_compileall": "pass",
     "pip_check": "pass · backend/.venv has no broken requirements; system-global Python conflicts are unrelated to the project release environment",
     "migration_drift_check": "pass · no changes detected",
     "seed_idempotency": "pass · repeated seed runs preserve imported seed_managed=False entities and relations while seed-owned relations remain independently managed",
-    "typescript_typecheck": "pass · frontend 0.7.4",
-    "next_production_build": "pass · frontend 0.7.4 · Next.js 16.3.5 Turbopack · 24/24 static-generation units including /case-analytics and /case-analytics/[slug]",
+    "typescript_typecheck": "pass · frontend 0.7.5",
+    "next_production_build": "pass · frontend 0.7.5 · Next.js 16.3.5 Turbopack · 24/24 static-generation units including /case-analytics and /case-analytics/[slug]",
     "npm_audit_low": "0 vulnerabilities",
     "frontend_route_smoke_test": "pass · v0.7.2 production Chromium E2E covered register, Case start, branch decision, refresh/resume, immutable reached-path history, terminal completion, new attempt, and safe login return-to-case",
     "dsm_master_source_sha256": "9680d7b1e85ae4ef58efa58f7c76bfcc04c7b317f1fbd40cbb2e27be02542694",
@@ -438,7 +452,7 @@
     "temporary_audit_user_cleanup": "pass · both v0.5.5 runtime-audit users deleted; 0 remaining",
     "therapy_foundation_tests": "3 targeted schema/provenance tests included in full suite",
     "canonical_module_cleanup": "pass · versioned backend runtime modules consolidated into views.py / serializers.py / seed_mvp.py",
-    "current_release": "v0.7.4 Personal Case Analytics",
+    "current_release": "v0.7.5 Clinical Case Integrity Patch",
     "v071_case_graph_audit": "pass · 6 current cases / 6 revisions / 18 nodes / 54 explicit transitions / 0 structural failures",
     "v071_case_seed_revision_idempotency": "pass · unchanged repeated seed remains 6 revisions / 18 nodes / 54 transitions; changed content publishes a new revision without mutating historical attempts",
     "v071_attempt_history_binding": "pass · legacy submit stores CaseAttempt.revision and prior attempts remain pinned after later case revisions",
@@ -455,7 +469,7 @@
     "v072_scientific_regression": "pass · v0.6 audit unchanged: 0 active provenance gaps · 59 weak-only entities · 52 weak-only relations · 0 timeline precision issues",
     "v072_research_archive": "pass · 2 datasets / 1918 records / exact stored hashes verified",
     "ruff": "not run · ruff is not installed in backend venv",
-    "git_diff_check": "pass · v0.7.3 release diff checked with git diff --check; generated frontend/next-env.d.ts build churn restored/excluded; no conflicts or whitespace errors",
+    "git_diff_check": "pass · final v0.7.5 release diff checked with git diff --check; generated frontend/next-env.d.ts build churn restored/excluded; no whitespace errors",
     "therapy_seed_api_tests": "6 targeted seed/API/provenance/filter/idempotency tests included in full suite",
     "therapy_inventory": "6 therapies / 9 techniques / 9 therapy-disorder / 10 therapy-technique / 7 therapy-concept / 8 technique-concept links",
     "therapy_provenance": "pass · seeded Therapy/Technique content and all seeded cross-domain relations carry SourceReference provenance",
@@ -627,7 +641,16 @@
     "v0743_research_archive": "pass · 2 datasets / 1918 records / exact stored hashes verified",
     "v0743_schema_boundary": "pass · no schema migration; makemigrations --check --dry-run reports no changes detected",
     "v0743_compileall": "pass",
-    "v0743_pip_check": "pass · no broken requirements"
+    "v0743_pip_check": "pass · no broken requirements",
+    "v075_case_regression_suite": "pass · 130/130 AtlasApiTests + V075CaseConcurrencyTests on final v0.7.5 code",
+    "v075_current_revision_authority": "pass · public Case metadata, availability, analytics current title, legacy side effects and Disorder reverse integration use the authoritative current/attempt CaseRevision instead of mutable ClinicalCase metadata",
+    "v075_concurrency": "pass · SQLite transaction_mode=IMMEDIATE + 10s busy timeout + bounded retry fallback; 25 concurrent-start rounds and 25 identical-decision rounds repeated across 5 consecutive stress runs with no leaked locks, duplicate active attempts/events/answers, or double scoring",
+    "v075_db_constraint": "pass · migration 0027 enforces one in-progress attempt per user/Case; historical duplicate preflight fails explicitly and preserves both rows without silent repair",
+    "v075_historical_upgrade": "pass · MigrationExecutor upgrade from atlas 0021/v0.6.2 through 0027 preserves one completed + one in-progress attempt and two answers, backfills revision 1/entry/current-step state, creates no fabricated events, and passes SQLite integrity/FK checks",
+    "v075_fresh_install": "pass · clean migrations through 0027 + two seed runs under SQLite IMMEDIATE · 6 active Cases / 6 fresh revisions / 17 dimensions / 54 transitions / graph audit 0 failures",
+    "v075_case_graph_audit": "pass · development runtime 6 Cases / 12 revisions / 17 dimensions / 0 attempts / 0 events / 0 answers / 0 failures after QA cleanup and repeated seed",
+    "v075_browser_qa": "pass · historical revision resume notice + current public revision + invalid-refresh auth recovery + token cleanup + 320x800 horizontal overflow=false",
+    "v075_sqlite_integrity": "pass · development DB integrity_check ok · foreign_key_check 0 · transaction_mode=IMMEDIATE · active-attempt partial unique index present"
   },
   "release_notes": {
     "graph_layers": [
@@ -664,7 +687,8 @@
       "0.7.4": "Personal Case Analytics ✅",
       "0.7.4.1": "Personal Case Analytics Foundation ✅",
       "0.7.4.2": "Persian/RTL Personal Case Analytics UI ✅",
-      "0.7.4.3": "Analytics Hardening + v0.7.4 Release Freeze ✅"
+      "0.7.4.3": "Analytics Hardening + v0.7.4 Release Freeze ✅",
+      "0.7.5": "Clinical Case Integrity Patch + v0.7 Final Closure ✅"
     },
     "deliberately_deferred": [
       "Brain Atlas",
