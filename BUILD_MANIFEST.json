@@ -2,7 +2,7 @@
   "project": "Psychology Atlas",
   "version": "0.7.3",
   "release_name": "Revision-Pinned Multi-dimensional Educational Scoring + Feedback",
-  "development_slice": "v0.7.4.1 Personal Case Analytics Foundation",
+  "development_slice": "v0.7.4.2 Persian/RTL Personal Case Analytics UI",
   "stack": {
     "frontend": "Next.js 16.3.3 + React 19 + TypeScript",
     "backend": "Django 5.2 + Django REST Framework",
@@ -253,7 +253,15 @@
     "v0741_inactive_owned_case_history_preservation",
     "v0741_legacy_rubric_zero_analytics_compatibility",
     "v0741_malformed_snapshot_defensive_normalization",
-    "v0741_bounded_query_contract"
+    "v0741_bounded_query_contract",
+    "v0742_personal_case_analytics_overview_ui",
+    "v0742_personal_case_analytics_detail_ui",
+    "v0742_revision_aware_dimension_branch_path_rendering",
+    "v0742_recent_attempt_history_ui",
+    "v0742_legacy_compatibility_notice",
+    "v0742_case_analytics_navigation_integration",
+    "v0742_completed_case_analytics_deep_link",
+    "v0742_responsive_rtl_analytics_ui"
   ],
   "content": {
     "categories": 21,
@@ -398,13 +406,13 @@
   ],
   "validation": {
     "django_check": "pass",
-    "backend_tests": "168/168 passed · current v0.7.4.1 personal Case analytics foundation on backend/.venv; v0.7.3 remains the official release baseline",
+    "backend_tests": "168/168 passed · v0.7.4.2 frontend analytics UI preserves the v0.7.4.1 backend foundation; v0.7.3 remains the official release baseline",
     "python_compileall": "pass",
     "pip_check": "pass · backend/.venv has no broken requirements; system-global Python conflicts are unrelated to the project release environment",
     "migration_drift_check": "pass · no changes detected",
     "seed_idempotency": "pass · repeated seed runs preserve imported seed_managed=False entities and relations while seed-owned relations remain independently managed",
     "typescript_typecheck": "pass · frontend 0.7.3",
-    "next_production_build": "pass · frontend 0.7.3 · Next.js 16.3.3 Turbopack · 23/23 static-generation units",
+    "next_production_build": "pass · frontend 0.7.3 · Next.js 16.3.3 Turbopack · 24/24 static-generation units including /case-analytics and /case-analytics/[slug]",
     "npm_audit_low": "0 vulnerabilities",
     "frontend_route_smoke_test": "pass · v0.7.2 production Chromium E2E covered register, Case start, branch decision, refresh/resume, immutable reached-path history, terminal completion, new attempt, and safe login return-to-case",
     "dsm_master_source_sha256": "9680d7b1e85ae4ef58efa58f7c76bfcc04c7b317f1fbd40cbb2e27be02542694",
@@ -577,7 +585,20 @@
     "v0741_research_archive": "pass · 2 datasets / 1918 records / exact stored hashes verified",
     "v0741_frontend_regression": "pass · frontend 0.7.3 typecheck/build 23/23 and npm audit 0 vulnerabilities; no UI changes in this backend-foundation slice",
     "v0741_compileall": "pass",
-    "v0741_pip_check": "pass · no broken requirements"
+    "v0741_pip_check": "pass · no broken requirements",
+    "v0742_backend_regression": "pass · full Django discovery 168/168; atlas.tests-only 163/163 is not recorded as the full suite",
+    "v0742_schema_boundary": "pass · no schema migration; review hardening adds response semantics only and makemigrations --check --dry-run reports no changes detected",
+    "v0742_frontend_typecheck": "pass · psychology-atlas-frontend@0.7.3",
+    "v0742_production_build": "pass · Next.js 16.3.3 Turbopack · 24/24 static-generation units · /case-analytics overview and dynamic detail routes included",
+    "v0742_npm_audit": "pass · 0 vulnerabilities",
+    "v0742_browser_qa": "pass · desktop Chromium at ~1280px plus mobile Playwright fallback at 390x844; authenticated real Case history exercised; no horizontal clipping on overview/detail",
+    "v0742_auth_and_empty_states": "pass · unauthenticated /case-analytics redirects to validated internal login return path; no-history, loading and API-error states inspected",
+    "v0742_case_graph_state_audit": "pass · 6 cases / 12 revisions / 17 dimensions / 0 attempts / 0 events / 0 answers / 0 failures after temporary QA-user cleanup",
+    "v0742_sqlite_integrity": "pass · integrity_check ok · foreign_key_check 0 · in_progress_without_step 0",
+    "v0742_scientific_regression": "pass · v0.6 audit unchanged: 0 active provenance gaps · 59 weak-only entities · 52 weak-only relations · 0 timeline precision issues",
+    "v0742_research_archive": "pass · 2 datasets / 1918 records / exact stored hashes verified",
+    "v0742_compileall": "pass",
+    "v0742_pip_check": "pass · no broken requirements"
   },
   "release_notes": {
     "graph_layers": [
@@ -610,7 +631,10 @@
       "0.6.6": "Final hardening + performance + release freeze ✅",
       "0.7.1": "Branching Case Architecture + Revision Safety ✅",
       "0.7.2": "Server-Authoritative Attempt Engine + Stateful Runner ✅",
-      "0.7.3": "Revision-Pinned Multi-dimensional Educational Scoring + Feedback ✅"
+      "0.7.3": "Revision-Pinned Multi-dimensional Educational Scoring + Feedback ✅",
+      "0.7.4.1": "Personal Case Analytics Foundation ✅",
+      "0.7.4.2": "Persian/RTL Personal Case Analytics UI ✅",
+      "0.7.4.3": "Analytics Hardening + v0.7.4 Release Freeze"
     },
     "deliberately_deferred": [
       "Brain Atlas",
@@ -824,6 +848,16 @@
       "performance": "overview <=3 authenticated-request queries; per-Case detail <=4; recent attempts and completed path groups capped at 20",
       "validation": "10/10 focused analytics tests · 168/168 backend suite · frontend 23/23 build/typecheck · npm audit 0 · scientific/research/SQLite guards pass",
       "next": "v0.7.4.2 Persian/RTL Personal Case Analytics UI"
+    },
+    "v0742_case_analytics_ui": {
+      "status": "development slice complete pending PR closure; official public release baseline remains v0.7.3",
+      "scope": "Persian-first RTL personal Case analytics overview and per-Case detail UI consuming the v0.7.4.1 authenticated API contract without a second frontend scoring engine",
+      "routes": "/case-analytics and /case-analytics/<slug>; navigation integrated from personal nav, dashboard, Case catalog and completed Case runner",
+      "semantics": "backend-owned completion/score percentages, revision-aware dimensions, reached branch distributions, reconstructible completed paths, recent attempts and explicit legacy counters",
+      "guardrails": "educational personal history only; no diagnosis, treatment-quality claim, clinical-competence inference, psychometric interpretation or population comparison",
+      "responsive_qa": "desktop ~1280px and mobile 390x844 verified with real stateful Case history; temporary QA users and artifacts removed",
+      "validation": "168/168 full backend regression · frontend typecheck · Next 24/24 production build · npm audit 0 · Django/migration/SQLite/scientific/research guards pass",
+      "next": "v0.7.4.3 Analytics Hardening + v0.7.4 Release Freeze"
     }
   }
 }

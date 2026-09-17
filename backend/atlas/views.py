@@ -114,6 +114,18 @@ def available_clinical_cases():
     )
 
 
+def clinical_case_is_runnable(clinical_case):
+    revision = clinical_case.current_revision if clinical_case.current_revision_id else None
+    primary_disorder = clinical_case.primary_disorder if clinical_case.primary_disorder_id else None
+    return bool(
+        clinical_case.is_active
+        and revision is not None
+        and revision.status == atlas_models.CaseRevision.Status.PUBLISHED
+        and revision.entry_step_id is not None
+        and (primary_disorder is None or primary_disorder.is_active)
+    )
+
+
 def case_attempt_state_queryset():
     return (
         CaseAttempt.objects.select_related(
@@ -421,13 +433,34 @@ def case_analytics_overview(request):
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
 def case_analytics_detail(request, slug):
-    clinical_case = get_object_or_404(ClinicalCase, slug=slug)
-    payload = build_personal_case_analytics_detail(user=request.user, clinical_case=clinical_case)
-    if payload is None:
+    try:
+        clinical_case = ClinicalCase.objects.select_related(
+            "current_revision",
+            "primary_disorder",
+        ).get(slug=slug)
+    except ClinicalCase.DoesNotExist:
         return Response(
-            {"detail": "برای این کاربر سابقه‌ای از این کیس وجود ندارد."},
+            {"detail": "کیس موردنظر پیدا نشد.", "code": "case_not_found"},
             status=status.HTTP_404_NOT_FOUND,
         )
+
+    is_runnable = clinical_case_is_runnable(clinical_case)
+    payload = build_personal_case_analytics_detail(user=request.user, clinical_case=clinical_case)
+    if payload is None:
+        if not is_runnable:
+            return Response(
+                {"detail": "کیس موردنظر در دسترس نیست.", "code": "case_not_found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(
+            {
+                "detail": "برای این کاربر سابقه‌ای از این کیس وجود ندارد.",
+                "code": "case_history_not_found",
+            },
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    payload["case"]["is_runnable"] = is_runnable
     return Response(payload)
 
 

@@ -1325,6 +1325,7 @@ class AtlasApiTests(APITestCase):
         response = self.client.get(f"/api/case-analytics/cases/{fixture['case'].slug}/")
         self.assertEqual(response.status_code, 200)
         data = response.json()
+        self.assertTrue(data["case"]["is_runnable"])
         self.assertEqual(data["attempts"]["total"], 3)
         self.assertEqual(data["attempts"]["completed"], 2)
         self.assertEqual(data["decision_count"], 3)
@@ -1370,7 +1371,12 @@ class AtlasApiTests(APITestCase):
         self.auth(self.user_a)
         response = self.client.get(f"/api/case-analytics/cases/{fixture['case'].slug}/")
         self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["code"], "case_history_not_found")
         self.assertNotIn(str(other_attempt), response.content.decode("utf-8"))
+
+        missing = self.client.get("/api/case-analytics/cases/does-not-exist/")
+        self.assertEqual(missing.status_code, 404)
+        self.assertEqual(missing.json()["code"], "case_not_found")
 
     def test_v0741_case_analytics_preserves_inactive_case_history(self):
         fixture = self.create_branching_case_fixture(slug="v0741-inactive-history", scored=True)
@@ -1381,7 +1387,9 @@ class AtlasApiTests(APITestCase):
         self.auth(self.user_a)
         response = self.client.get(f"/api/case-analytics/cases/{fixture['case'].slug}/")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["recent_attempts"][0]["id"], attempt_id)
+        data = response.json()
+        self.assertFalse(data["case"]["is_runnable"])
+        self.assertEqual(data["recent_attempts"][0]["id"], attempt_id)
 
     def test_v0741_case_analytics_keeps_legacy_rubric_zero_explicit(self):
         fixture = self.create_branching_case_fixture(slug="v0741-legacy", scored=False)
