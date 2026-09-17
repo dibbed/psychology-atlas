@@ -487,6 +487,13 @@ class CaseAttempt(TimeStampedModel):
             models.Index(fields=("user", "-created_at")),
             models.Index(fields=("case", "revision", "status")),
         ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=("user", "case"),
+                condition=Q(status="in_progress"),
+                name="uq_case_attempt_user_case_in_progress",
+            ),
+        ]
 
     def clean(self):
         super().clean()
@@ -567,6 +574,8 @@ class CaseAttemptEvent(models.Model):
         if self.state_version_after != self.state_version_before + 1:
             errors["state_version_after"] = "Event state version must advance exactly once."
         if self.event_type == self.EventType.DECISION:
+            if self.step_id and self.step.node_kind != CaseStep.NodeKind.DECISION:
+                errors["step"] = "Decision events require a decision step."
             if not self.question_id or not self.selected_choice_id or not self.transition_id:
                 errors["event_type"] = "Decision events require question, choice, and transition."
             else:
@@ -577,6 +586,8 @@ class CaseAttemptEvent(models.Model):
                 if self.transition.source_step_id != self.step_id or self.transition.choice_id != self.selected_choice_id:
                     errors["transition"] = "Decision transition must match the event step and selected choice."
         elif self.event_type == self.EventType.ADVANCE:
+            if self.step_id and self.step.node_kind != CaseStep.NodeKind.INFORMATION:
+                errors["step"] = "Advance events require an information step."
             if self.question_id or self.selected_choice_id or not self.transition_id:
                 errors["event_type"] = "Advance events require an automatic transition and no question or choice."
             elif self.transition.source_step_id != self.step_id or self.transition.choice_id is not None:

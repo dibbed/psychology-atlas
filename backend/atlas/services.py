@@ -1,6 +1,7 @@
+import time
 from collections import defaultdict
 
-from django.db import transaction
+from django.db import IntegrityError, OperationalError, connection, transaction
 from django.db.models import Count
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
@@ -186,8 +187,9 @@ def submit_case(*, user, clinical_case, answers):
     attempt.completed_at = timezone.now()
     attempt.save(update_fields=("score", "status", "current_step", "completed_at", "updated_at"))
 
-    if clinical_case.primary_disorder_id:
-        progress, _ = UserProgress.objects.get_or_create(user=user, disorder=clinical_case.primary_disorder)
+    disorder = revision.primary_disorder
+    if disorder_id := getattr(disorder, "id", None):
+        progress, _ = UserProgress.objects.get_or_create(user=user, disorder_id=disorder_id)
         performance = round(score * 100 / max_score) if max_score else 0
         earned_progress = 25 + round(performance * 0.60)
         progress.progress_percent = max(progress.progress_percent, earned_progress)
@@ -201,7 +203,7 @@ def submit_case(*, user, clinical_case, answers):
         user,
         StudyActivity.Kind.CASE_COMPLETED,
         clinical_case=clinical_case,
-        disorder=clinical_case.primary_disorder,
+        disorder=disorder,
         metadata={
             "score": attempt.score,
             "max_score": attempt.max_score,
@@ -250,8 +252,21 @@ def _apply_stateful_case_completion_side_effects(attempt):
     )
 
 
+_SQLITE_LOCK_RETRY_DELAYS = (0.02, 0.05, 0.10, 0.20, 0.40)
+
+
+def _validate_resumable_case_attempt(attempt):
+    if (
+        attempt.current_step_id is None
+        or attempt.current_step.revision_id != attempt.revision_id
+        or not attempt.current_step.is_active
+    ):
+        raise ValidationError("attempt در حال اجرا state معتبر برای resume ندارد.")
+    return attempt
+
+
 @transaction.atomic
-def start_or_resume_case_attempt(*, user, clinical_case):
+def _start_or_resume_case_attempt_once(*, user, clinical_case):
     locked_case = (
         ClinicalCase.objects.select_for_update()
         .select_related("current_revision__entry_step")
@@ -266,14 +281,7 @@ def start_or_resume_case_attempt(*, user, clinical_case):
     if len(existing_attempts) > 1:
         raise ValidationError("برای این کاربر و کیس بیش از یک attempt در حال اجرا وجود دارد؛ audit لازم است.")
     if existing_attempts:
-        existing = existing_attempts[0]
-        if (
-            existing.current_step_id is None
-            or existing.current_step.revision_id != existing.revision_id
-            or not existing.current_step.is_active
-        ):
-            raise ValidationError("attempt در حال اجرا state معتبر برای resume ندارد.")
-        return existing, False
+        return _validate_resumable_case_attempt(existing_attempts[0]), False
 
     revision = locked_case.current_revision
     if revision is None or revision.status != revision.Status.PUBLISHED:
@@ -291,6 +299,32 @@ def start_or_resume_case_attempt(*, user, clinical_case):
         state_version=0,
     )
     return attempt, True
+
+
+def start_or_resume_case_attempt(*, user, clinical_case):
+    """Start exactly one active attempt, retrying only transient SQLite writer-lock races."""
+    for retry_index in range(len(_SQLITE_LOCK_RETRY_DELAYS) + 1):
+        try:
+            return _start_or_resume_case_attempt_once(user=user, clinical_case=clinical_case)
+        except IntegrityError:
+            existing = (
+                CaseAttempt.objects.filter(
+                    user=user,
+                    case=clinical_case,
+                    status=CaseAttempt.Status.IN_PROGRESS,
+                )
+                .select_related("revision", "current_step")
+                .order_by("-created_at", "-id")
+                .first()
+            )
+            if existing is not None:
+                return _validate_resumable_case_attempt(existing), False
+            raise
+        except OperationalError as exc:
+            is_transient_sqlite_lock = connection.vendor == "sqlite" and "locked" in str(exc).lower()
+            if not is_transient_sqlite_lock or retry_index >= len(_SQLITE_LOCK_RETRY_DELAYS):
+                raise
+            time.sleep(_SQLITE_LOCK_RETRY_DELAYS[retry_index])
 
 
 def _event_snapshot(*, step, question=None, choice=None, transition=None):
@@ -393,7 +427,7 @@ def build_case_attempt_dimension_feedback(attempt):
 
 
 @transaction.atomic
-def advance_case_attempt(*, user, attempt, step_id, choice_id, state_version):
+def _advance_case_attempt_once(*, user, attempt, step_id, choice_id, state_version):
     locked = (
         CaseAttempt.objects.select_for_update()
         .select_related("case", "revision__primary_disorder", "current_step")
@@ -549,6 +583,52 @@ def advance_case_attempt(*, user, attempt, step_id, choice_id, state_version):
     return locked, event, False
 
 
+def _recover_case_attempt_event_race(*, user, attempt, step_id, choice_id, state_version):
+    refreshed = (
+        CaseAttempt.objects.select_related("case", "revision__primary_disorder", "current_step")
+        .get(pk=attempt.pk, user=user)
+    )
+    prior_event = (
+        refreshed.events.filter(step_id=step_id)
+        .select_related("selected_choice", "next_step", "transition")
+        .first()
+    )
+    if prior_event is None:
+        return None
+    if prior_event.state_version_before == state_version and prior_event.selected_choice_id == choice_id:
+        return refreshed, prior_event, True
+    raise ValidationError("این مرحله قبلاً با یک state یا انتخاب دیگر ثبت شده است.")
+
+
+def advance_case_attempt(*, user, attempt, step_id, choice_id, state_version):
+    """Advance one immutable Case event, retrying transient SQLite writer-lock races."""
+    for retry_index in range(len(_SQLITE_LOCK_RETRY_DELAYS) + 1):
+        try:
+            return _advance_case_attempt_once(
+                user=user,
+                attempt=attempt,
+                step_id=step_id,
+                choice_id=choice_id,
+                state_version=state_version,
+            )
+        except IntegrityError:
+            recovered = _recover_case_attempt_event_race(
+                user=user,
+                attempt=attempt,
+                step_id=step_id,
+                choice_id=choice_id,
+                state_version=state_version,
+            )
+            if recovered is not None:
+                return recovered
+            raise
+        except OperationalError as exc:
+            is_transient_sqlite_lock = connection.vendor == "sqlite" and "locked" in str(exc).lower()
+            if not is_transient_sqlite_lock or retry_index >= len(_SQLITE_LOCK_RETRY_DELAYS):
+                raise
+            time.sleep(_SQLITE_LOCK_RETRY_DELAYS[retry_index])
+
+
 CASE_ANALYTICS_VERSION = 1
 CASE_ANALYTICS_RECENT_ATTEMPT_LIMIT = 20
 CASE_ANALYTICS_PATH_LIMIT = 20
@@ -593,8 +673,12 @@ def _reconstruct_completed_attempt_path(attempt, events):
         CaseAttemptEvent.EventType.ADVANCE: CaseStep.NodeKind.INFORMATION,
         CaseAttemptEvent.EventType.TERMINAL_COMPLETE: CaseStep.NodeKind.TERMINAL,
     }
+    entry_step_key = events[0].get("attempt__revision__entry_step__stable_key")
+    if not isinstance(entry_step_key, str) or not entry_step_key:
+        return None
+
     expected_state_version = 0
-    expected_step_key = None
+    expected_step_key = entry_step_key
     signature_parts = []
     path_steps = []
 
@@ -610,14 +694,16 @@ def _reconstruct_completed_attempt_path(attempt, events):
         step_key = snapshot.get("step_key")
         node_kind = snapshot.get("node_kind")
         snapshot_outcome = snapshot.get("outcome")
+        expected_node_kind = event_node_kinds[event["event_type"]]
         if (
             not isinstance(step_key, str)
             or not step_key
-            or node_kind != event_node_kinds[event["event_type"]]
+            or step_key != event["step__stable_key"]
+            or node_kind != expected_node_kind
+            or event["step__node_kind"] != expected_node_kind
             or snapshot_outcome != event["outcome"]
+            or step_key != expected_step_key
         ):
-            return None
-        if expected_step_key is not None and step_key != expected_step_key:
             return None
 
         raw_step_title = snapshot.get("step_title")
@@ -628,6 +714,7 @@ def _reconstruct_completed_attempt_path(attempt, events):
         ):
             return None
         target_step_key = raw_target_step_key
+        actual_target_step_key = event["next_step__stable_key"]
 
         raw_choice_text = snapshot.get("choice_text")
         if event["event_type"] == CaseAttemptEvent.EventType.DECISION:
@@ -639,16 +726,24 @@ def _reconstruct_completed_attempt_path(attempt, events):
                 return None
             choice_text = raw_choice_text
         else:
-            if event["selected_choice_id"] is not None:
+            if event["selected_choice_id"] is not None or raw_choice_text is not None:
                 return None
-            choice_text = raw_choice_text if isinstance(raw_choice_text, str) else None
+            choice_text = None
 
         if event["outcome"] == CaseTransition.Outcome.CONTINUE:
-            if target_step_key is None or index == len(events) - 1:
+            if (
+                target_step_key is None
+                or target_step_key != actual_target_step_key
+                or index == len(events) - 1
+            ):
                 return None
             expected_step_key = target_step_key
         elif event["outcome"] == CaseTransition.Outcome.COMPLETE:
-            if target_step_key is not None or index != len(events) - 1:
+            if (
+                target_step_key is not None
+                or actual_target_step_key is not None
+                or index != len(events) - 1
+            ):
                 return None
             expected_step_key = None
         else:
@@ -685,6 +780,7 @@ def build_personal_case_analytics_overview(*, user):
             "case_id",
             "case__slug",
             "case__title",
+            "case__current_revision__title",
             "case__structure_mode",
             "revision__version",
             "revision__title",
@@ -724,7 +820,7 @@ def build_personal_case_analytics_overview(*, user):
         case_summaries.append({
             "case_id": case_id,
             "slug": latest["case__slug"],
-            "current_title": latest["case__title"],
+            "current_title": latest["case__current_revision__title"] or latest["case__title"],
             "latest_attempt_revision_title": latest["revision__title"] or latest["case__title"],
             "structure_mode": latest["case__structure_mode"],
             "latest_attempt_revision_number": latest["revision__version"],
@@ -780,7 +876,7 @@ def build_personal_case_analytics_detail(*, user, clinical_case):
             "updated_at",
             "completed_at",
         )
-        .order_by("-created_at", "-id")
+        .order_by("-updated_at", "-id")
     )
     if not attempt_rows:
         return None
@@ -791,8 +887,12 @@ def build_personal_case_analytics_detail(*, user, clinical_case):
             "attempt_id",
             "attempt__revision__version",
             "attempt__revision__rubric_version",
+            "attempt__revision__entry_step__stable_key",
             "event_type",
+            "step__stable_key",
+            "step__node_kind",
             "selected_choice_id",
+            "next_step__stable_key",
             "awarded_score",
             "max_score",
             "state_version_before",
@@ -980,7 +1080,11 @@ def build_personal_case_analytics_detail(*, user, clinical_case):
         "case": {
             "id": clinical_case.id,
             "slug": clinical_case.slug,
-            "current_title": clinical_case.title,
+            "current_title": (
+                clinical_case.current_revision.title
+                if clinical_case.current_revision_id and clinical_case.current_revision.title
+                else clinical_case.title
+            ),
             "structure_mode": clinical_case.structure_mode,
         },
         "attempts": {

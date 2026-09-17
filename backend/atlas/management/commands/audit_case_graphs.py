@@ -8,6 +8,8 @@ from atlas.models import (
     CaseAttemptEvent,
     CaseRevision,
     CaseScoringDimension,
+    CaseStep,
+    CaseTransition,
     ClinicalCase,
 )
 
@@ -60,10 +62,25 @@ class Command(BaseCommand):
                     failures.append(f"attempt:{attempt.id}:current_step_case_mismatch")
                 if attempt.current_step.revision_id != attempt.revision_id:
                     failures.append(f"attempt:{attempt.id}:current_step_revision_mismatch")
-            if attempt.status == CaseAttempt.Status.COMPLETED and attempt.current_step_id is not None:
-                failures.append(f"attempt:{attempt.id}:completed_has_current_step")
+            if attempt.status == CaseAttempt.Status.COMPLETED:
+                if attempt.current_step_id is not None:
+                    failures.append(f"attempt:{attempt.id}:completed_has_current_step")
+                if attempt.completed_at is None:
+                    failures.append(f"attempt:{attempt.id}:completed_at_missing")
+            elif attempt.completed_at is not None:
+                failures.append(f"attempt:{attempt.id}:in_progress_has_completed_at")
 
             events = list(attempt.events.order_by("state_version_before", "id"))
+            if events:
+                if attempt.revision.entry_step_id and events[0].step_id != attempt.revision.entry_step_id:
+                    failures.append(f"attempt:{attempt.id}:first_event_not_revision_entry")
+            elif (
+                attempt.status == CaseAttempt.Status.IN_PROGRESS
+                and attempt.revision.entry_step_id
+                and attempt.current_step_id != attempt.revision.entry_step_id
+            ):
+                failures.append(f"attempt:{attempt.id}:initial_current_step_not_revision_entry")
+
             for expected_before, event in enumerate(events):
                 if event.state_version_before != expected_before:
                     failures.append(
@@ -71,12 +88,37 @@ class Command(BaseCommand):
                     )
                 if event.state_version_after != event.state_version_before + 1:
                     failures.append(f"attempt:{attempt.id}:event:{event.id}:state_version_jump")
+                if expected_before > 0:
+                    previous = events[expected_before - 1]
+                    if previous.outcome != CaseTransition.Outcome.CONTINUE:
+                        failures.append(f"attempt:{attempt.id}:event_after_completion")
+                    elif previous.next_step_id != event.step_id:
+                        failures.append(
+                            f"attempt:{attempt.id}:event:{event.id}:step_does_not_match_previous_target"
+                        )
+                if event.outcome == CaseTransition.Outcome.COMPLETE and expected_before != len(events) - 1:
+                    failures.append(f"attempt:{attempt.id}:event:{event.id}:completion_not_terminal_in_history")
+
             expected_state_version = events[-1].state_version_after if events else 0
             if attempt.state_version != expected_state_version:
                 failures.append(
                     f"attempt:{attempt.id}:state_version={attempt.state_version}:expected={expected_state_version}"
                 )
+            if events:
+                final_event = events[-1]
+                if attempt.status == CaseAttempt.Status.COMPLETED:
+                    if final_event.outcome != CaseTransition.Outcome.COMPLETE:
+                        failures.append(f"attempt:{attempt.id}:completed_without_terminal_event")
+                elif final_event.outcome == CaseTransition.Outcome.COMPLETE:
+                    failures.append(f"attempt:{attempt.id}:in_progress_after_completion_event")
+                elif attempt.current_step_id != final_event.next_step_id:
+                    failures.append(f"attempt:{attempt.id}:current_step_not_latest_event_target")
 
+        event_node_kinds = {
+            CaseAttemptEvent.EventType.DECISION: CaseStep.NodeKind.DECISION,
+            CaseAttemptEvent.EventType.ADVANCE: CaseStep.NodeKind.INFORMATION,
+            CaseAttemptEvent.EventType.TERMINAL_COMPLETE: CaseStep.NodeKind.TERMINAL,
+        }
         for event in CaseAttemptEvent.objects.select_related(
             "attempt__revision",
             "step__revision",
@@ -90,6 +132,28 @@ class Command(BaseCommand):
         ):
             if event.step.revision_id != event.attempt.revision_id:
                 failures.append(f"event:{event.id}:step_revision_mismatch")
+            expected_node_kind = event_node_kinds.get(event.event_type)
+            if expected_node_kind is None:
+                failures.append(f"event:{event.id}:unknown_event_type")
+            elif event.step.node_kind != expected_node_kind:
+                failures.append(f"event:{event.id}:event_node_kind_mismatch")
+
+            snapshot = event.snapshot if isinstance(event.snapshot, dict) else {}
+            if snapshot.get("step_key") != event.step.stable_key:
+                failures.append(f"event:{event.id}:snapshot_step_key_mismatch")
+            if expected_node_kind is not None and snapshot.get("node_kind") != expected_node_kind:
+                failures.append(f"event:{event.id}:snapshot_node_kind_mismatch")
+            if snapshot.get("outcome") != event.outcome:
+                failures.append(f"event:{event.id}:snapshot_outcome_mismatch")
+            expected_target_key = event.next_step.stable_key if event.next_step_id else None
+            if snapshot.get("target_step_key") != expected_target_key:
+                failures.append(f"event:{event.id}:snapshot_target_mismatch")
+            if event.event_type == CaseAttemptEvent.EventType.DECISION:
+                if not isinstance(snapshot.get("choice_text"), str) or not snapshot.get("choice_text"):
+                    failures.append(f"event:{event.id}:snapshot_choice_text_missing")
+            elif snapshot.get("choice_text") is not None:
+                failures.append(f"event:{event.id}:non_decision_snapshot_has_choice_text")
+
             if event.question_id and event.question.step_id != event.step_id:
                 failures.append(f"event:{event.id}:question_step_mismatch")
             if event.scoring_dimension_id:
