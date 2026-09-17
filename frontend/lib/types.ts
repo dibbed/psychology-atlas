@@ -406,6 +406,7 @@ export type CaseAnalyticsDetail = {
     slug: string;
     current_title: string;
     structure_mode: "linear" | "branching";
+    is_runnable: boolean;
   };
   attempts: CaseAnalyticsAttemptSummary;
   decision_count: number;

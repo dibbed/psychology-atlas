@@ -84,7 +84,11 @@ export default function CaseAnalyticsDetailPage() {
     api<CaseAnalyticsDetail>(`/case-analytics/cases/${slug}/`, {}, true)
       .then(setData)
       .catch((reason: unknown) => {
-        if (reason instanceof ApiError && reason.status === 404) {
+        if (
+          reason instanceof ApiError
+          && reason.status === 404
+          && reason.code === "case_history_not_found"
+        ) {
           setNoHistory(true);
           return;
         }
@@ -152,7 +156,9 @@ export default function CaseAnalyticsDetailPage() {
           <p className="section-copy">فقط تصمیم‌ها و مسیرهایی که واقعاً در تاریخچه این حساب ثبت شده‌اند در این صفحه دیده می‌شوند.</p>
         </div>
         <div className="actions analytics-head-actions">
-          <Link className="button primary" href={`/cases/${data.case.slug}`}>باز کردن کیس</Link>
+          {data.case.is_runnable && (
+            <Link className="button primary" href={`/cases/${data.case.slug}`}>باز کردن کیس</Link>
+          )}
           <Link className="button" href="/dashboard">داشبورد</Link>
         </div>
       </header>

@@ -587,7 +587,7 @@
     "v0741_compileall": "pass",
     "v0741_pip_check": "pass · no broken requirements",
     "v0742_backend_regression": "pass · full Django discovery 168/168; atlas.tests-only 163/163 is not recorded as the full suite",
-    "v0742_schema_boundary": "pass · frontend-only slice; makemigrations --check --dry-run reports no changes detected",
+    "v0742_schema_boundary": "pass · no schema migration; review hardening adds response semantics only and makemigrations --check --dry-run reports no changes detected",
     "v0742_frontend_typecheck": "pass · psychology-atlas-frontend@0.7.3",
     "v0742_production_build": "pass · Next.js 16.3.3 Turbopack · 24/24 static-generation units · /case-analytics overview and dynamic detail routes included",
     "v0742_npm_audit": "pass · 0 vulnerabilities",
