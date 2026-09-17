@@ -79,7 +79,7 @@ export async function api<T>(
 
   let token = authenticated ? getAccessToken() : null;
   if (authenticated && !token) token = await refreshAccessToken();
-  if (authenticated && !token) throw new Error("برای ادامه باید وارد حساب شوی.");
+  if (authenticated && !token) throw new ApiError(401, "برای ادامه باید وارد حساب شوی.");
 
   let response = await makeRequest(token);
   if (authenticated && response.status === 401) {
