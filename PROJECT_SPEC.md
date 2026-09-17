@@ -1,10 +1,28 @@
 # Psychology Atlas Product Spec
 
-## Current development slice: v0.7.4.2 — Persian/RTL Personal Case Analytics UI
+## Current release: v0.7.4 — Personal Case Analytics
 
-Official release baseline remains **v0.7.3 — Revision-Pinned Multi-dimensional Educational Scoring + Feedback** until the full v0.7.4 analytics release is frozen.
+The v0.7 Clinical Case line is frozen through **v0.7.4 — Personal Case Analytics**. The next planned feature release is **v0.8 — Study Mode + Exam Planning + Advanced Recommendations**.
 
 Psychology Atlas is an interactive educational system for psychology students. It should behave as a connected learning system, not as a psychology blog and not as a diagnostic product.
+
+### v0.7.4.3 analytics hardening + v0.7.4 release-freeze invariants
+
+- The public analytics contract remains `analytics_version=1` and `scope=personal`. v0.7.4.3 freezes the expected overview/detail response keys with regression coverage rather than adding a second contract generation during release closeout.
+- A completed Case attempt contributes to `completed_paths` only when its immutable event stream is internally reconstructible: state versions are contiguous from zero, each snapshot `node_kind` matches its event type, snapshots carry valid step/outcome/target semantics, continue events chain to the next recorded stable key, and the final event proves completion with no further target.
+- Historical corruption or partial history is never silently repaired, inferred from the mutable current graph, or deleted by analytics. A completed attempt that fails reconstruction remains visible in attempt totals and increments `completed_attempts_without_reconstructible_path`.
+- Revision boundaries remain strict for dimensions, branch groups and completed paths. Identical stable keys, labels or choice text from different `CaseRevision.version` values are not silently merged into one historical semantic bucket.
+- Completed attempts with `max_score <= 0` are explicitly unscored: their percentage is null and they do not enter `average_completed_score_percent`. Partially scored history stays explicit through legacy counters instead of being normalized into a complete rubric.
+- Duplicate in-progress rows, if present historically, are surfaced as stored history without automatic repair. Stateful runtime start/resume guards remain responsible for rejecting duplicate-current corruption.
+- The authenticated query budget remains independent of personal history volume: overview <=3 queries and per-Case detail <=4 queries; recent attempts and completed-path groups remain capped at 20. A 40-attempt regression fixture enforces the volume boundary.
+- Inactive Case history remains readable only to its owner. An inactive Case with no owned history does not leak existence or another user's attempt data through analytics detail.
+- Analytics login return paths are explicitly allowlisted to `/case-analytics` and `/case-analytics/<safe-slug>` in addition to the existing Case runner path. Arbitrary/external `next` values remain rejected by falling back to Dashboard.
+- Authentication refresh failure is represented as `ApiError(401)` so personal analytics can consistently return the learner through login instead of presenting token expiry as an ordinary server error.
+- Percentage meters use semantic progressbar attributes; loading announces status to assistive technology; retry does not require a full browser reload; long historical labels/keys wrap safely.
+- Real Chromium QA covers authenticated desktop analytics and a 320x800 reduced-motion viewport. Overview and detail both keep `scrollWidth === clientWidth`, and keyboard Tab reaches the global skip-link.
+- v0.7.4.3 adds no model, migration, seed-scientific-content or research-archive changes. The final local backend suite is 179/179 PASS; frontend package version is 0.7.4 and the validated production build is Next.js 16.3.5 with 24/24 generation units.
+- The complete v0.7.4 release remains educational-only personal history analytics. It must not be framed as diagnosis, treatment-quality evaluation, normative ranking, therapist fitness, psychometric assessment or clinical competence.
+- The full release record is `docs/Psychology_Atlas_v0.7.4_Personal_Case_Analytics_Release_2026-09-17.md`.
 
 ### v0.7.4.2 Persian/RTL personal Case analytics UI invariants
 
@@ -17,7 +35,7 @@ Psychology Atlas is an interactive educational system for psychology students. I
 - Loading, authenticated-empty, API-error, no-owned-history, desktop, tablet and mobile responsive states are first-class. The 390px mobile layout keeps KPI, dimension, branch, path and attempt content readable without horizontal overflow.
 - The analytics copy is Persian/RTL-first. Technical identifiers such as revision numbers and stable step keys remain visible only where they improve auditability; unnecessary English product jargon is removed from user-facing copy.
 - Safety language is preserved from the API: personal Case analytics summarizes this learner's educational scenario history and must not be presented as diagnosis, treatment quality, normative ranking, therapist fitness or clinical competence.
-- v0.7.4.2 adds no backend schema, migration, scoring or scientific-content changes. The official release baseline remains v0.7.3 until v0.7.4.3 hardening/freeze completes the analytics release.
+- v0.7.4.2 added no backend schema, migration, scoring or scientific-content changes. Its UI contract is now incorporated into the frozen v0.7.4 release after the v0.7.4.3 hardening pass.
 - Browser QA uses real stateful Case events and temporary users that are deleted afterward. Desktop 1280px and mobile 390px overview/detail renders must remain free of clipping and horizontal overflow.
 
 ### v0.7.4.1 personal Case analytics foundation invariants

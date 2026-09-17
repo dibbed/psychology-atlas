@@ -583,6 +583,99 @@ def _average_scored_attempt_percent(rows):
     return round(sum(percents) / len(percents)), len(percents)
 
 
+def _reconstruct_completed_attempt_path(attempt, events):
+    """Return a historical path only when the immutable event stream is internally complete."""
+    if not events:
+        return None
+
+    event_node_kinds = {
+        CaseAttemptEvent.EventType.DECISION: CaseStep.NodeKind.DECISION,
+        CaseAttemptEvent.EventType.ADVANCE: CaseStep.NodeKind.INFORMATION,
+        CaseAttemptEvent.EventType.TERMINAL_COMPLETE: CaseStep.NodeKind.TERMINAL,
+    }
+    expected_state_version = 0
+    expected_step_key = None
+    signature_parts = []
+    path_steps = []
+
+    for index, event in enumerate(events):
+        if (
+            event["state_version_before"] != expected_state_version
+            or event["state_version_after"] != expected_state_version + 1
+            or event["event_type"] not in event_node_kinds
+        ):
+            return None
+
+        snapshot = event["snapshot"] if isinstance(event["snapshot"], dict) else {}
+        step_key = snapshot.get("step_key")
+        node_kind = snapshot.get("node_kind")
+        snapshot_outcome = snapshot.get("outcome")
+        if (
+            not isinstance(step_key, str)
+            or not step_key
+            or node_kind != event_node_kinds[event["event_type"]]
+            or snapshot_outcome != event["outcome"]
+        ):
+            return None
+        if expected_step_key is not None and step_key != expected_step_key:
+            return None
+
+        raw_step_title = snapshot.get("step_title")
+        step_title = raw_step_title if isinstance(raw_step_title, str) else ""
+        raw_target_step_key = snapshot.get("target_step_key")
+        if raw_target_step_key is not None and (
+            not isinstance(raw_target_step_key, str) or not raw_target_step_key
+        ):
+            return None
+        target_step_key = raw_target_step_key
+
+        raw_choice_text = snapshot.get("choice_text")
+        if event["event_type"] == CaseAttemptEvent.EventType.DECISION:
+            if (
+                event["selected_choice_id"] is None
+                or not isinstance(raw_choice_text, str)
+                or not raw_choice_text
+            ):
+                return None
+            choice_text = raw_choice_text
+        else:
+            if event["selected_choice_id"] is not None:
+                return None
+            choice_text = raw_choice_text if isinstance(raw_choice_text, str) else None
+
+        if event["outcome"] == CaseTransition.Outcome.CONTINUE:
+            if target_step_key is None or index == len(events) - 1:
+                return None
+            expected_step_key = target_step_key
+        elif event["outcome"] == CaseTransition.Outcome.COMPLETE:
+            if target_step_key is not None or index != len(events) - 1:
+                return None
+            expected_step_key = None
+        else:
+            return None
+
+        signature_parts.append((
+            event["event_type"],
+            step_key,
+            event["selected_choice_id"],
+            choice_text,
+            target_step_key,
+        ))
+        path_steps.append({
+            "event_type": event["event_type"],
+            "step_key": step_key,
+            "step_title": step_title,
+            "node_kind": node_kind,
+            "choice_id": event["selected_choice_id"],
+            "choice_text": choice_text,
+        })
+        expected_state_version += 1
+
+    if attempt["state_version"] != expected_state_version:
+        return None
+    return tuple(signature_parts), path_steps
+
+
 def build_personal_case_analytics_overview(*, user):
     """Return bounded-query, personal-only Case analytics derived from immutable attempt history."""
     attempt_rows = list(
@@ -703,6 +796,8 @@ def build_personal_case_analytics_detail(*, user, clinical_case):
             "awarded_score",
             "max_score",
             "state_version_before",
+            "state_version_after",
+            "outcome",
             "snapshot",
         )
         .order_by("attempt_id", "state_version_before", "id")
@@ -832,41 +927,12 @@ def build_personal_case_analytics_detail(*, user, clinical_case):
         if attempt["status"] != CaseAttempt.Status.COMPLETED:
             continue
         events = events_by_attempt.get(attempt["id"], [])
-        if not events:
+        reconstructed = _reconstruct_completed_attempt_path(attempt, events)
+        if reconstructed is None:
             completed_attempts_without_reconstructible_path += 1
             continue
-        path_steps = []
-        signature_parts = []
-        valid_path = True
-        for event in events:
-            snapshot = event["snapshot"] if isinstance(event["snapshot"], dict) else {}
-            step_key = snapshot.get("step_key")
-            if not isinstance(step_key, str) or not step_key:
-                valid_path = False
-                break
-            step_title = snapshot.get("step_title") if isinstance(snapshot.get("step_title"), str) else ""
-            node_kind = snapshot.get("node_kind") if isinstance(snapshot.get("node_kind"), str) else ""
-            choice_text = snapshot.get("choice_text") if isinstance(snapshot.get("choice_text"), str) else None
-            target_step_key = snapshot.get("target_step_key") if isinstance(snapshot.get("target_step_key"), str) else None
-            signature_parts.append((
-                event["event_type"],
-                step_key,
-                event["selected_choice_id"],
-                choice_text,
-                target_step_key,
-            ))
-            path_steps.append({
-                "event_type": event["event_type"],
-                "step_key": step_key,
-                "step_title": step_title,
-                "node_kind": node_kind,
-                "choice_id": event["selected_choice_id"],
-                "choice_text": choice_text,
-            })
-        if not valid_path:
-            completed_attempts_without_reconstructible_path += 1
-            continue
-        path_key = (attempt["revision__version"], tuple(signature_parts))
+        signature_parts, path_steps = reconstructed
+        path_key = (attempt["revision__version"], signature_parts)
         path = path_groups.setdefault(path_key, {
             "revision_number": attempt["revision__version"],
             "steps": path_steps,

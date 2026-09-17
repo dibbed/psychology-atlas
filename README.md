@@ -1,10 +1,10 @@
-# Psychology Atlas — v0.7.3 · Revision-Pinned Multi-dimensional Educational Scoring
+# Psychology Atlas — v0.7.4 · Personal Case Analytics
 
 [![CI](https://github.com/dibbed/psychology-atlas/actions/workflows/ci.yml/badge.svg)](https://github.com/dibbed/psychology-atlas/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/dibbed/psychology-atlas/actions/workflows/codeql.yml/badge.svg)](https://github.com/dibbed/psychology-atlas/actions/workflows/codeql.yml)
 [![Latest release](https://img.shields.io/github/v/release/dibbed/psychology-atlas?display_name=tag)](https://github.com/dibbed/psychology-atlas/releases)
 
-یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.7.3 روی موتور server-authoritative نسخه قبل یک rubric آموزشی چندبعدی و revision-pinned اضافه می‌کند: هر تصمیم می‌تواند به یک بُعد آموزشی مشخص تعلق داشته باشد، event/answer همان بُعد را به‌صورت history-safe حفظ می‌کنند و نتیجه فقط از تصمیم‌های واقعاً طی‌شده همان مسیر ساخته می‌شود؛ امتیاز کلی v0.7.2 و سازگاری attemptهای قدیمی حفظ شده‌اند.
+یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.7.4 خط Clinical Case نسخه 0.7 را با **Personal Case Analytics** کامل می‌کند: تحلیل فقط از `CaseAttempt` و eventهای immutable همان کاربر ساخته می‌شود، revision boundaryها حفظ می‌شوند، مسیرهای تکمیل‌شده فقط وقتی نمایش داده می‌شوند که history واقعاً قابل بازسازی باشد و رابط فارسی/RTL overview/detail بدون ساخت scoring موازی در frontend این داده‌ها را نمایش می‌دهد.
 
 > این نرم‌افزار آموزشی است و ابزار تشخیص، درمان، ارزیابی صلاحیت بالینی یا جایگزین ارزیابی حرفه‌ای نیست.
 
@@ -16,9 +16,42 @@
 
 اگر برای استفاده‌ای خارج از این محدوده به مجوز نیاز داری، ابتدا باید اجازه صریح صاحب repository را دریافت کنی.
 
+## v0.7.4 — Personal Case Analytics
+
+```text
+personal-only analytics API                         ✅
+revision-aware dimension + branch aggregation       ✅
+completed-path history with integrity validation    ✅
+legacy/partial-history visibility                   ✅
+Persian/RTL overview + per-Case detail              ✅
+auth return-path + refresh-failure hardening        ✅
+accessible semantic percentage meters               ✅
+320px reduced-motion browser QA                     ✅
+bounded analytics query budgets                     ✅
+no schema migration                                 ✅
+focused v0.7.4.3 tests: 11/11 PASS                  ✅
+full backend suite: 179/179 PASS                    ✅
+Next.js 16.3.5 production build: 24/24 PASS         ✅
+npm audit: 0 vulnerabilities                        ✅
+```
+
+v0.7.4 تحلیل کیس را فقط از history واقعی همان کاربر می‌سازد. داده‌های revisionهای متفاوت بی‌صدا merge نمی‌شوند و completed path فقط وقتی معتبر است که event stream از state version صفر تا completion نهایی، پیوسته و سازگار باشد. history ناقص حذف یا repair نمی‌شود؛ به‌صورت صریح در compatibility counters باقی می‌ماند.
+
+Frontend مسیرهای `/case-analytics` و `/case-analytics/[slug]` را به‌صورت فارسی/RTL ارائه می‌کند و percentage یا path جدیدی در client محاسبه نمی‌کند. login return-path برای analytics نیز با allowlist داخلی محدود شده است و expiry نامعتبر token به‌صورت 401 قابل‌پیش‌بینی مدیریت می‌شود.
+
+Release freeze همچنین روی history حجیم query budget را ثابت نگه می‌دارد: overview حداکثر 3 query و detail حداکثر 4 query. recent attempts و completed path groups نیز هرکدام سقف 20 دارند.
+
+سند کامل release:
+
+```text
+docs/Psychology_Atlas_v0.7.4_Personal_Case_Analytics_Release_2026-09-17.md
+```
+
+مرحله بعدی roadmap: **v0.8 Study Mode + Exam Planning + Advanced Recommendations**.
+
 ## v0.7.4.2 Development Slice — Persian/RTL Personal Case Analytics UI
 
-> baseline رسمی release همچنان **v0.7.3** است؛ این slice رابط analytics نسخه بعدی را روی API ثابت v0.7.4.1 کامل می‌کند و هنوز tag/release مستقل v0.7.4 ایجاد نمی‌کند.
+> این development slice در زمان پیاده‌سازی روی baseline **v0.7.3** ساخته شد و اکنون به‌عنوان بخشی از release نهایی **v0.7.4** ادغام شده است.
 
 ```text
 /case-analytics personal overview                 ✅
@@ -47,11 +80,11 @@ Browser QA با user و attempt موقت روی desktop 1280px و mobile 390px �
 docs/Psychology_Atlas_v0.7.4.2_Personal_Case_Analytics_UI_2026-09-16.md
 ```
 
-مرحله بعدی: **v0.7.4.3 Analytics Hardening + Release Freeze**.
+مرحله بعدی این development slice، **v0.7.4.3 Analytics Hardening + Release Freeze** بود که در release نهایی v0.7.4 بسته شد.
 
 ## v0.7.4.1 Development Slice — Personal Case Analytics Foundation
 
-> baseline رسمی release همچنان **v0.7.3** است؛ این بخش foundation نسخه بعدی است و هنوز tag/release مستقل v0.7.4 ایجاد نمی‌کند.
+> این development slice در زمان پیاده‌سازی foundation روی baseline **v0.7.3** ساخته شد و اکنون داخل release نهایی **v0.7.4** قرار دارد.
 
 ```text
 personal analytics overview API                  ✅

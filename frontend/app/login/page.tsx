@@ -34,6 +34,13 @@ export default function LoginPage() {
         location.href = `/cases/${encodeURIComponent(caseMatch[1])}`;
         return;
       }
+      const analyticsMatch = requestedNext?.match(/^\/case-analytics(?:\/([A-Za-z0-9_-]+))?\/?$/);
+      if (analyticsMatch) {
+        location.href = analyticsMatch[1]
+          ? `/case-analytics/${encodeURIComponent(analyticsMatch[1])}`
+          : "/case-analytics";
+        return;
+      }
       location.href = "/dashboard";
     } catch {
       setError("ارتباط با سرور برقرار نشد. اتصال Backend را بررسی کن و دوباره تلاش کن.");

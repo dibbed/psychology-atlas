@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { useCallback, useEffect, useState } from "react";
+import { ApiError, api } from "@/lib/api";
 import { hasToken } from "@/lib/auth";
 import { faNumber, faPercent } from "@/lib/fa";
 import type { CaseAnalyticsOverview } from "@/lib/types";
+
+const ANALYTICS_PATH = "/case-analytics";
 
 function percentLabel(value: number | null) {
   return value === null ? "—" : faPercent(value);
@@ -19,22 +21,39 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function redirectToLogin(nextPath: string) {
+  location.href = `/login?next=${encodeURIComponent(nextPath)}`;
+}
+
 export default function CaseAnalyticsPage() {
   const [data, setData] = useState<CaseAnalyticsOverview | null>(null);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const loadAnalytics = useCallback(async () => {
     if (!hasToken()) {
-      location.href = `/login?next=${encodeURIComponent("/case-analytics")}`;
+      redirectToLogin(ANALYTICS_PATH);
       return;
     }
 
-    api<CaseAnalyticsOverview>("/case-analytics/overview/", {}, true)
-      .then(setData)
-      .catch((reason: unknown) => {
-        setError(reason instanceof Error ? reason.message : "دریافت تحلیل کیس‌ها انجام نشد.");
-      });
+    setLoading(true);
+    setError("");
+    try {
+      setData(await api<CaseAnalyticsOverview>("/case-analytics/overview/", {}, true));
+    } catch (reason: unknown) {
+      if (reason instanceof ApiError && reason.status === 401) {
+        redirectToLogin(ANALYTICS_PATH);
+        return;
+      }
+      setError(reason instanceof Error ? reason.message : "دریافت تحلیل کیس‌ها انجام نشد.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadAnalytics();
+  }, [loadAnalytics]);
 
   if (error) {
     return (
@@ -44,8 +63,8 @@ export default function CaseAnalyticsPage() {
           <h1>تحلیل کیس‌ها بارگذاری نشد</h1>
           <p>{error}</p>
           <div className="actions">
-            <button className="button primary" type="button" onClick={() => location.reload()}>
-              تلاش دوباره
+            <button className="button primary" type="button" onClick={() => void loadAnalytics()} disabled={loading}>
+              {loading ? "در حال تلاش..." : "تلاش دوباره"}
             </button>
             <Link className="button" href="/cases">بازگشت به کیس‌ها</Link>
           </div>
@@ -57,10 +76,11 @@ export default function CaseAnalyticsPage() {
   if (!data) {
     return (
       <main className="shell page">
-        <section className="analytics-loading" role="status" aria-live="polite">
-          <div className="analytics-loading-line wide" />
-          <div className="analytics-loading-line" />
-          <div className="analytics-loading-grid">
+        <section className="analytics-loading" role="status" aria-live="polite" aria-busy="true">
+          <span className="sr-only">در حال بارگذاری تحلیل شخصی کیس‌ها...</span>
+          <div className="analytics-loading-line wide" aria-hidden="true" />
+          <div className="analytics-loading-line" aria-hidden="true" />
+          <div className="analytics-loading-grid" aria-hidden="true">
             {Array.from({ length: 4 }).map((_, index) => <span key={index} />)}
           </div>
         </section>
@@ -139,7 +159,15 @@ export default function CaseAnalyticsPage() {
                       {item.in_progress_attempts > 0 ? "در حال اجرا" : "بدون تلاش باز"}
                     </span>
                   </div>
-                  <div className="analytics-case-progress" aria-label={`نرخ تکمیل ${percentLabel(item.completion_rate)}`}>
+                  <div
+                    className="analytics-case-progress"
+                    role="progressbar"
+                    aria-label="نرخ تکمیل"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={item.completion_rate ?? undefined}
+                    aria-valuetext={percentLabel(item.completion_rate)}
+                  >
                     <span style={{ width: `${Math.max(0, Math.min(100, item.completion_rate ?? 0))}%` }} />
                   </div>
                 </div>

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ApiError, api } from "@/lib/api";
 import { hasToken } from "@/lib/auth";
 import { faNumber, faPercent } from "@/lib/fa";
@@ -39,6 +39,10 @@ function legacyCount(data: CaseAnalyticsDetail) {
     + data.legacy.completed_attempts_without_reconstructible_path;
 }
 
+function redirectToLogin(nextPath: string) {
+  location.href = `/login?next=${encodeURIComponent(nextPath)}`;
+}
+
 function PathCard({ path, index }: { path: CaseAnalyticsCompletedPath; index: number }) {
   return (
     <article className="analytics-path-card">
@@ -71,30 +75,44 @@ export default function CaseAnalyticsDetailPage() {
   const [data, setData] = useState<CaseAnalyticsDetail | null>(null);
   const [error, setError] = useState("");
   const [noHistory, setNoHistory] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const loadAnalytics = useCallback(async () => {
     if (!slug) return;
+    const nextPath = `/case-analytics/${slug}`;
     if (!hasToken()) {
-      location.href = `/login?next=${encodeURIComponent(`/case-analytics/${slug}`)}`;
+      redirectToLogin(nextPath);
       return;
     }
 
+    setLoading(true);
     setError("");
     setNoHistory(false);
-    api<CaseAnalyticsDetail>(`/case-analytics/cases/${slug}/`, {}, true)
-      .then(setData)
-      .catch((reason: unknown) => {
-        if (
-          reason instanceof ApiError
-          && reason.status === 404
-          && reason.code === "case_history_not_found"
-        ) {
-          setNoHistory(true);
-          return;
-        }
-        setError(reason instanceof Error ? reason.message : "دریافت جزئیات تحلیل انجام نشد.");
-      });
+    try {
+      setData(await api<CaseAnalyticsDetail>(`/case-analytics/cases/${slug}/`, {}, true));
+    } catch (reason: unknown) {
+      if (reason instanceof ApiError && reason.status === 401) {
+        redirectToLogin(nextPath);
+        return;
+      }
+      if (
+        reason instanceof ApiError
+        && reason.status === 404
+        && reason.code === "case_history_not_found"
+      ) {
+        setData(null);
+        setNoHistory(true);
+        return;
+      }
+      setError(reason instanceof Error ? reason.message : "دریافت جزئیات تحلیل انجام نشد.");
+    } finally {
+      setLoading(false);
+    }
   }, [slug]);
+
+  useEffect(() => {
+    void loadAnalytics();
+  }, [loadAnalytics]);
 
   if (error) {
     return (
@@ -104,7 +122,9 @@ export default function CaseAnalyticsDetailPage() {
           <h1>جزئیات تحلیل بارگذاری نشد</h1>
           <p>{error}</p>
           <div className="actions">
-            <button className="button primary" type="button" onClick={() => location.reload()}>تلاش دوباره</button>
+            <button className="button primary" type="button" onClick={() => void loadAnalytics()} disabled={loading}>
+              {loading ? "در حال تلاش..." : "تلاش دوباره"}
+            </button>
             <Link className="button" href="/case-analytics">بازگشت به تحلیل‌ها</Link>
           </div>
         </section>
@@ -133,10 +153,11 @@ export default function CaseAnalyticsDetailPage() {
   if (!data) {
     return (
       <main className="shell page">
-        <section className="analytics-loading" role="status" aria-live="polite">
-          <div className="analytics-loading-line wide" />
-          <div className="analytics-loading-line" />
-          <div className="analytics-loading-grid">
+        <section className="analytics-loading" role="status" aria-live="polite" aria-busy="true">
+          <span className="sr-only">در حال بارگذاری جزئیات تحلیل کیس...</span>
+          <div className="analytics-loading-line wide" aria-hidden="true" />
+          <div className="analytics-loading-line" aria-hidden="true" />
+          <div className="analytics-loading-grid" aria-hidden="true">
             {Array.from({ length: 4 }).map((_, index) => <span key={index} />)}
           </div>
         </section>
@@ -207,7 +228,15 @@ export default function CaseAnalyticsDetailPage() {
                     </div>
                     <b>{percentLabel(dimension.percent)}</b>
                   </div>
-                  <div className="analytics-meter" aria-label={`${dimension.label}: ${percentLabel(dimension.percent)}`}>
+                  <div
+                    className="analytics-meter"
+                    role="progressbar"
+                    aria-label={dimension.label}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={dimension.percent ?? undefined}
+                    aria-valuetext={percentLabel(dimension.percent)}
+                  >
                     <span style={{ width: `${Math.max(0, Math.min(100, dimension.percent ?? 0))}%` }} />
                   </div>
                   <div className="analytics-dimension-meta">
@@ -283,7 +312,15 @@ export default function CaseAnalyticsDetailPage() {
                         <strong>{choice.choice_text}</strong>
                         <span>{faNumber(choice.count)} بار انتخاب · امتیاز {percentLabel(choice.score_percent)}</span>
                       </div>
-                      <div className="analytics-choice-bar" aria-label={`انتخاب ${choice.choice_text}: ${faPercent(choice.selection_percent)}`}>
+                      <div
+                        className="analytics-choice-bar"
+                        role="progressbar"
+                        aria-label={`سهم انتخاب ${choice.choice_text}`}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={choice.selection_percent}
+                        aria-valuetext={faPercent(choice.selection_percent)}
+                      >
                         <span style={{ width: `${Math.max(0, Math.min(100, choice.selection_percent))}%` }} />
                       </div>
                       <b>{faPercent(choice.selection_percent)}</b>
