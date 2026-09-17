@@ -161,12 +161,16 @@ class DisorderDetailSerializer(DisorderListSerializer):
 
     def get_study_resources(self, obj):
         quizzes = sorted((q for q in obj.quizzes.all() if q.is_active), key=lambda q: q.title)[:4]
-        cases = sorted((c for c in obj.clinical_cases.all() if c.is_active), key=lambda c: c.title)[:4]
+        case_revisions = list(getattr(obj, "current_case_revisions", ()))[:4]
         return {
             "quizzes": [{"slug": q.slug, "title": q.title} for q in quizzes],
             "cases": [
-                {"slug": c.slug, "title": c.title, "difficulty": c.difficulty}
-                for c in cases
+                {
+                    "slug": revision.case.slug,
+                    "title": revision.title or revision.case.title,
+                    "difficulty": revision.difficulty,
+                }
+                for revision in case_revisions
             ],
         }
 
@@ -283,7 +287,10 @@ class CaseStepSerializer(serializers.ModelSerializer):
 
 
 class ClinicalCaseListSerializer(serializers.ModelSerializer):
-    primary_disorder = DisorderListSerializer(read_only=True)
+    title = serializers.SerializerMethodField()
+    patient_summary = serializers.SerializerMethodField()
+    difficulty = serializers.SerializerMethodField()
+    primary_disorder = serializers.SerializerMethodField()
     step_count = serializers.SerializerMethodField()
     revision_number = serializers.SerializerMethodField()
     rubric_version = serializers.SerializerMethodField()
@@ -303,6 +310,25 @@ class ClinicalCaseListSerializer(serializers.ModelSerializer):
             "step_count",
         )
 
+    def get_title(self, obj):
+        if not obj.current_revision_id:
+            return obj.title
+        return obj.current_revision.title or obj.title
+
+    def get_patient_summary(self, obj):
+        if not obj.current_revision_id:
+            return obj.patient_summary
+        return obj.current_revision.patient_summary
+
+    def get_difficulty(self, obj):
+        if not obj.current_revision_id:
+            return obj.difficulty
+        return obj.current_revision.difficulty
+
+    def get_primary_disorder(self, obj):
+        disorder = obj.current_revision.primary_disorder if obj.current_revision_id else obj.primary_disorder
+        return DisorderListSerializer(disorder).data if disorder is not None else None
+
     def get_step_count(self, obj):
         if not obj.current_revision_id:
             return 0
@@ -316,10 +342,16 @@ class ClinicalCaseListSerializer(serializers.ModelSerializer):
 
 
 class ClinicalCaseDetailSerializer(ClinicalCaseListSerializer):
+    educational_objective = serializers.SerializerMethodField()
     steps = serializers.SerializerMethodField()
 
     class Meta(ClinicalCaseListSerializer.Meta):
         fields = ClinicalCaseListSerializer.Meta.fields + ("educational_objective", "steps")
+
+    def get_educational_objective(self, obj):
+        if not obj.current_revision_id:
+            return obj.educational_objective
+        return obj.current_revision.educational_objective
 
     def get_steps(self, obj):
         if not obj.current_revision_id or obj.structure_mode == ClinicalCase.StructureMode.BRANCHING:

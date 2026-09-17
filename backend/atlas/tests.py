@@ -1,7 +1,8 @@
 import hashlib
 import json
+from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
-from datetime import date
+from datetime import date, timedelta
 from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -12,7 +13,8 @@ from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.db import connection
+from django.db import IntegrityError, close_old_connections, connection, transaction
+from django.test import TransactionTestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
@@ -21,6 +23,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from . import models as atlas_models
 from .case_graph import case_seed_hash, validate_case_revision_graph
+from .services import advance_case_attempt, start_or_resume_case_attempt
 from .models import (
     Bookmark, CaseAttempt, CaseAttemptAnswer, CaseAttemptEvent, CaseChoice, CaseQuestion, CaseRevision, CaseScoringDimension, CaseStep, CaseTransition, Category, ClinicalCase,
     Concept, ConceptAlias, ConceptBookmark, ConceptNote, ConceptRelationship, ConceptRelationshipSource,
@@ -333,6 +336,279 @@ class AtlasApiTests(APITestCase):
         attempt = CaseAttempt.objects.get(id=response.json()["attempt_id"])
         self.assertEqual(attempt.revision_id, revision.id)
 
+    def test_v07_public_case_metadata_comes_from_current_revision_snapshot(self):
+        mutable_disorder = Disorder.objects.create(
+            category=self.category,
+            slug="mutable-case-disorder",
+            name_en="Mutable Case Disorder",
+            is_active=True,
+        )
+        revision_disorder = Disorder.objects.create(
+            category=self.category,
+            slug="revision-case-disorder",
+            name_en="Revision Case Disorder",
+            is_active=True,
+        )
+        case = ClinicalCase.objects.create(
+            slug="revision-metadata-case",
+            title="Mutable title",
+            patient_summary="Mutable summary",
+            educational_objective="Mutable objective",
+            difficulty=ClinicalCase.Difficulty.ADVANCED,
+            primary_disorder=mutable_disorder,
+            is_active=True,
+        )
+        revision = CaseRevision.objects.create(
+            case=case,
+            version=1,
+            title="Revision title",
+            patient_summary="Revision summary",
+            educational_objective="Revision objective",
+            difficulty=ClinicalCase.Difficulty.INTRODUCTORY,
+            primary_disorder=revision_disorder,
+            status=CaseRevision.Status.PUBLISHED,
+        )
+        step = CaseStep.objects.create(
+            case=case,
+            revision=revision,
+            stable_key="entry",
+            title="Entry",
+            narrative="Revision narrative",
+            sort_order=1,
+        )
+        revision.entry_step = step
+        revision.save(update_fields=("entry_step", "updated_at"))
+        case.current_revision = revision
+        case.save(update_fields=("current_revision", "updated_at"))
+
+        response = self.client.get(f"/api/cases/{case.slug}/")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["title"], "Revision title")
+        self.assertEqual(data["patient_summary"], "Revision summary")
+        self.assertEqual(data["educational_objective"], "Revision objective")
+        self.assertEqual(data["difficulty"], ClinicalCase.Difficulty.INTRODUCTORY)
+        self.assertEqual(data["primary_disorder"]["slug"], revision_disorder.slug)
+
+        revision_disorder_detail = self.client.get(f"/api/disorders/{revision_disorder.slug}/")
+        mutable_disorder_detail = self.client.get(f"/api/disorders/{mutable_disorder.slug}/")
+        self.assertEqual(revision_disorder_detail.status_code, 200)
+        self.assertEqual(mutable_disorder_detail.status_code, 200)
+        revision_case_rows = revision_disorder_detail.json()["study_resources"]["cases"]
+        mutable_case_rows = mutable_disorder_detail.json()["study_resources"]["cases"]
+        self.assertIn(case.slug, {row["slug"] for row in revision_case_rows})
+        self.assertNotIn(case.slug, {row["slug"] for row in mutable_case_rows})
+        revision_case_row = next(row for row in revision_case_rows if row["slug"] == case.slug)
+        self.assertEqual(revision_case_row["title"], "Revision title")
+        self.assertEqual(revision_case_row["difficulty"], ClinicalCase.Difficulty.INTRODUCTORY)
+
+        mutable_disorder.is_active = False
+        mutable_disorder.save(update_fields=("is_active", "updated_at"))
+        self.assertEqual(self.client.get(f"/api/cases/{case.slug}/").status_code, 200)
+
+        revision_disorder.is_active = False
+        revision_disorder.save(update_fields=("is_active", "updated_at"))
+        self.assertEqual(self.client.get(f"/api/cases/{case.slug}/").status_code, 404)
+
+    def test_v075_public_case_requires_owned_active_current_revision_entry(self):
+        case = ClinicalCase.objects.create(
+            slug="owned-current-revision-case",
+            title="Owned current revision",
+            patient_summary="summary",
+            primary_disorder=self.disorder,
+            is_active=True,
+        )
+        revision = self.create_case_revision(case)
+        entry = CaseStep.objects.create(
+            case=case,
+            revision=revision,
+            stable_key="entry",
+            title="Entry",
+            narrative="Entry",
+            sort_order=1,
+        )
+        revision.entry_step = entry
+        revision.save(update_fields=("entry_step", "updated_at"))
+
+        other_case = ClinicalCase.objects.create(
+            slug="foreign-current-revision-case",
+            title="Foreign current revision",
+            patient_summary="summary",
+            primary_disorder=self.disorder,
+            is_active=True,
+        )
+        other_revision = self.create_case_revision(other_case)
+        other_entry = CaseStep.objects.create(
+            case=other_case,
+            revision=other_revision,
+            stable_key="entry",
+            title="Other entry",
+            narrative="Other entry",
+            sort_order=1,
+        )
+        other_revision.entry_step = other_entry
+        other_revision.save(update_fields=("entry_step", "updated_at"))
+
+        case.current_revision = other_revision
+        case.save(update_fields=("current_revision", "updated_at"))
+        self.assertEqual(self.client.get(f"/api/cases/{case.slug}/").status_code, 404)
+
+        case.current_revision = revision
+        case.save(update_fields=("current_revision", "updated_at"))
+        entry.is_active = False
+        entry.save(update_fields=("is_active",))
+        self.assertEqual(self.client.get(f"/api/cases/{case.slug}/").status_code, 404)
+
+    def test_v075_dashboard_case_history_uses_attempt_revision_metadata(self):
+        mutable_disorder = Disorder.objects.create(
+            category=self.category,
+            slug="dashboard-mutable-disorder",
+            name_en="Dashboard Mutable Disorder",
+            is_active=False,
+        )
+        revision_disorder = Disorder.objects.create(
+            category=self.category,
+            slug="dashboard-revision-disorder",
+            name_en="Dashboard Revision Disorder",
+            is_active=True,
+        )
+        case = ClinicalCase.objects.create(
+            slug="dashboard-revision-history",
+            title="Mutable dashboard title",
+            patient_summary="summary",
+            primary_disorder=mutable_disorder,
+            is_active=True,
+        )
+        revision = CaseRevision.objects.create(
+            case=case,
+            version=1,
+            title="Pinned dashboard title",
+            patient_summary="summary",
+            primary_disorder=revision_disorder,
+            status=CaseRevision.Status.PUBLISHED,
+        )
+        CaseAttempt.objects.create(
+            user=self.user_a,
+            case=case,
+            revision=revision,
+            status=CaseAttempt.Status.COMPLETED,
+            score=4,
+            max_score=5,
+            completed_at=timezone.now(),
+        )
+
+        self.auth(self.user_a)
+        response = self.client.get("/api/dashboard/")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["cases_completed"], 1)
+        self.assertEqual(data["case_accuracy"], 80)
+        self.assertEqual(len(data["recent_cases"]), 1)
+        self.assertEqual(data["recent_cases"][0]["slug"], case.slug)
+        self.assertEqual(data["recent_cases"][0]["title"], "Pinned dashboard title")
+
+    def test_v075_atlas_overview_case_count_matches_public_runnability(self):
+        valid_case = ClinicalCase.objects.create(
+            slug="overview-valid-case",
+            title="Overview valid",
+            patient_summary="summary",
+            primary_disorder=self.disorder,
+            is_active=True,
+        )
+        valid_revision = self.create_case_revision(valid_case)
+        valid_entry = CaseStep.objects.create(
+            case=valid_case,
+            revision=valid_revision,
+            stable_key="entry",
+            title="Entry",
+            narrative="Entry",
+            sort_order=1,
+        )
+        valid_revision.entry_step = valid_entry
+        valid_revision.save(update_fields=("entry_step", "updated_at"))
+
+        inactive_revision_disorder = Disorder.objects.create(
+            category=self.category,
+            slug="overview-inactive-revision-disorder",
+            name_en="Overview Inactive Revision Disorder",
+            is_active=False,
+        )
+        invalid_case = ClinicalCase.objects.create(
+            slug="overview-invalid-case",
+            title="Overview invalid",
+            patient_summary="summary",
+            primary_disorder=self.disorder,
+            is_active=True,
+        )
+        invalid_revision = CaseRevision.objects.create(
+            case=invalid_case,
+            version=1,
+            title="Overview invalid",
+            patient_summary="summary",
+            primary_disorder=inactive_revision_disorder,
+            status=CaseRevision.Status.PUBLISHED,
+        )
+        invalid_entry = CaseStep.objects.create(
+            case=invalid_case,
+            revision=invalid_revision,
+            stable_key="entry",
+            title="Entry",
+            narrative="Entry",
+            sort_order=1,
+        )
+        invalid_revision.entry_step = invalid_entry
+        invalid_revision.save(update_fields=("entry_step", "updated_at"))
+        invalid_case.current_revision = invalid_revision
+        invalid_case.save(update_fields=("current_revision", "updated_at"))
+
+        self.assertEqual(self.client.get(f"/api/cases/{valid_case.slug}/").status_code, 200)
+        self.assertEqual(self.client.get(f"/api/cases/{invalid_case.slug}/").status_code, 404)
+        overview = self.client.get("/api/atlas-overview/")
+        self.assertEqual(overview.status_code, 200)
+        self.assertEqual(overview.json()["counts"]["clinical_cases"], 1)
+
+    def test_v07_legacy_linear_submit_uses_revision_disorder_for_side_effects(self):
+        mutable_disorder = Disorder.objects.create(
+            category=self.category,
+            slug="legacy-mutable-disorder",
+            name_en="Legacy Mutable Disorder",
+            is_active=True,
+        )
+        case = ClinicalCase.objects.create(
+            slug="legacy-revision-side-effects",
+            title="Legacy revision side effects",
+            patient_summary="summary",
+            primary_disorder=mutable_disorder,
+            is_active=True,
+        )
+        revision = self.create_case_revision(case)
+        revision.primary_disorder = self.disorder
+        revision.save(update_fields=("primary_disorder", "updated_at"))
+        step = CaseStep.objects.create(
+            case=case,
+            revision=revision,
+            stable_key="step-1",
+            title="Step",
+            narrative="Narrative",
+            sort_order=1,
+        )
+        revision.entry_step = step
+        revision.save(update_fields=("entry_step", "updated_at"))
+        question = CaseQuestion.objects.create(step=step, prompt="Question", sort_order=1)
+        choice = CaseChoice.objects.create(question=question, text="Choice", score_value=2, sort_order=1)
+
+        self.auth(self.user_a)
+        response = self.client.post(
+            f"/api/cases/{case.slug}/submit/",
+            {"answers": [{"question_id": question.id, "choice_id": choice.id}]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(UserProgress.objects.filter(user=self.user_a, disorder=self.disorder).exists())
+        self.assertFalse(UserProgress.objects.filter(user=self.user_a, disorder=mutable_disorder).exists())
+        activity = StudyActivity.objects.get(user=self.user_a, activity_type=StudyActivity.Kind.CASE_COMPLETED)
+        self.assertEqual(activity.disorder_id, self.disorder.id)
+
     def test_case_detail_reads_only_current_revision_steps(self):
         case = ClinicalCase.objects.create(
             slug="revision-detail-case",
@@ -589,6 +865,7 @@ class AtlasApiTests(APITestCase):
             status=CaseAttempt.Status.COMPLETED,
             score=3,
             max_score=3,
+            completed_at=timezone.now(),
         )
 
         modified_cases = deepcopy(seed_module.CASES)
@@ -636,27 +913,32 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(current.status_code, 200)
         self.assertEqual(current.json()["id"], attempt_id)
 
-    def test_v072_start_rejects_duplicate_in_progress_integrity_violation(self):
+    def test_v075_database_guard_prevents_duplicate_in_progress_attempts(self):
         fixture = self.create_branching_case_fixture()
-        CaseAttempt.objects.create(
+        existing = CaseAttempt.objects.create(
             user=self.user_a,
             case=fixture["case"],
             revision=fixture["revision"],
             current_step=fixture["entry"],
         )
-        CaseAttempt.objects.create(
-            user=self.user_a,
-            case=fixture["case"],
-            revision=fixture["revision"],
-            current_step=fixture["entry"],
-        )
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            CaseAttempt.objects.create(
+                user=self.user_a,
+                case=fixture["case"],
+                revision=fixture["revision"],
+                current_step=fixture["entry"],
+            )
+
         self.auth(self.user_a)
         response = self.client.post(f"/api/cases/{fixture['case'].slug}/attempts/", {}, format="json")
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(CaseAttempt.objects.filter(user=self.user_a, case=fixture["case"]).count(), 2)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["resumed"])
+        self.assertEqual(response.json()["id"], existing.id)
+        self.assertEqual(CaseAttempt.objects.filter(user=self.user_a, case=fixture["case"]).count(), 1)
 
         current = self.client.get(f"/api/cases/{fixture['case'].slug}/attempts/current/")
-        self.assertEqual(current.status_code, 400)
+        self.assertEqual(current.status_code, 200)
+        self.assertEqual(current.json()["id"], existing.id)
 
     def test_v072_server_selects_next_branch_and_records_event_history(self):
         fixture = self.create_branching_case_fixture()
@@ -1735,6 +2017,41 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(data["completed_paths"], [])
         self.assertEqual(data["legacy"]["completed_attempts_without_reconstructible_path"], 1)
 
+    def test_v0743_completed_path_rejects_coherently_corrupted_snapshot_chain(self):
+        fixture = self.create_branching_case_fixture(slug="v0743-snapshot-chain", scored=True)
+        attempt_id = self.run_branch_attempt(fixture, branch="right", complete=True)
+        events = list(CaseAttemptEvent.objects.filter(attempt_id=attempt_id).order_by("state_version_before"))
+        self.assertEqual(len(events), 2)
+
+        first_snapshot = dict(events[0].snapshot)
+        first_snapshot["target_step_key"] = "fabricated-step"
+        events[0].snapshot = first_snapshot
+        events[0].save(update_fields=("snapshot",))
+
+        second_snapshot = dict(events[1].snapshot)
+        second_snapshot["step_key"] = "fabricated-step"
+        events[1].snapshot = second_snapshot
+        events[1].save(update_fields=("snapshot",))
+
+        self.auth(self.user_a)
+        response = self.client.get(f"/api/case-analytics/cases/{fixture['case'].slug}/")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["completed_paths"], [])
+        self.assertEqual(data["legacy"]["completed_attempts_without_reconstructible_path"], 1)
+
+        with self.assertRaises(CommandError):
+            call_command("audit_case_graphs", stdout=StringIO(), stderr=StringIO())
+
+    def test_v0743_event_model_rejects_event_node_kind_mismatch(self):
+        fixture = self.create_branching_case_fixture(slug="v0743-model-event-kind", scored=True)
+        attempt_id = self.run_branch_attempt(fixture, branch="right", complete=False)
+        event = CaseAttemptEvent.objects.get(attempt_id=attempt_id)
+        event.event_type = CaseAttemptEvent.EventType.ADVANCE
+        with self.assertRaises(ValidationError) as error:
+            event.full_clean()
+        self.assertIn("step", error.exception.message_dict)
+
     def test_v0743_zero_max_score_is_explicitly_unscored(self):
         fixture = self.create_branching_case_fixture(slug="v0743-zero-max", scored=True)
         CaseChoice.objects.filter(question=fixture["question"]).update(score_value=0)
@@ -1823,9 +2140,17 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(data["completed_paths"][0]["attempt_count"], 2)
         self.assertIn(first_attempt, {row["id"] for row in data["recent_attempts"]})
 
-    def test_v0743_duplicate_in_progress_rows_are_reported_without_silent_repair(self):
-        fixture = self.create_branching_case_fixture(slug="v0743-duplicate-in-progress", scored=True)
-        for _ in range(2):
+    def test_v075_duplicate_in_progress_rows_are_blocked_before_analytics(self):
+        fixture = self.create_branching_case_fixture(slug="v075-duplicate-in-progress", scored=True)
+        existing = CaseAttempt.objects.create(
+            user=self.user_a,
+            case=fixture["case"],
+            revision=fixture["revision"],
+            current_step=fixture["entry"],
+            status=CaseAttempt.Status.IN_PROGRESS,
+            state_version=0,
+        )
+        with self.assertRaises(IntegrityError), transaction.atomic():
             CaseAttempt.objects.create(
                 user=self.user_a,
                 case=fixture["case"],
@@ -1839,10 +2164,10 @@ class AtlasApiTests(APITestCase):
         response = self.client.get(f"/api/case-analytics/cases/{fixture['case'].slug}/")
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertEqual(data["attempts"]["total"], 2)
-        self.assertEqual(data["attempts"]["in_progress"], 2)
+        self.assertEqual(data["attempts"]["total"], 1)
+        self.assertEqual(data["attempts"]["in_progress"], 1)
+        self.assertEqual(data["recent_attempts"][0]["id"], existing.id)
         self.assertEqual(data["decision_count"], 0)
-        self.assertEqual(CaseAttempt.objects.filter(user=self.user_a, case=fixture["case"]).count(), 2)
 
     def test_v0743_inactive_case_without_owned_history_does_not_leak_other_user_data(self):
         fixture = self.create_branching_case_fixture(slug="v0743-inactive-private", scored=True)
@@ -1856,6 +2181,38 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(response.json()["code"], "case_not_found")
         self.assertNotIn(str(other_attempt), response.content.decode("utf-8"))
         self.assertNotIn(fixture["entry"].stable_key, response.content.decode("utf-8"))
+
+    def test_v0743_recent_attempts_are_ordered_by_latest_activity(self):
+        fixture = self.create_branching_case_fixture(slug="v0743-recent-activity", scored=True)
+        now = timezone.now()
+        older = CaseAttempt.objects.create(
+            user=self.user_a,
+            case=fixture["case"],
+            revision=fixture["revision"],
+            current_step=None,
+            status=CaseAttempt.Status.COMPLETED,
+            state_version=0,
+            completed_at=now - timedelta(hours=2),
+        )
+        newer = CaseAttempt.objects.create(
+            user=self.user_a,
+            case=fixture["case"],
+            revision=fixture["revision"],
+            current_step=None,
+            status=CaseAttempt.Status.COMPLETED,
+            state_version=0,
+            completed_at=now - timedelta(hours=1),
+        )
+        CaseAttempt.objects.filter(pk=older.pk).update(updated_at=now + timedelta(hours=1))
+        CaseAttempt.objects.filter(pk=newer.pk).update(updated_at=now)
+
+        self.auth(self.user_a)
+        response = self.client.get(f"/api/case-analytics/cases/{fixture['case'].slug}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [row["id"] for row in response.json()["recent_attempts"][:2]],
+            [older.id, newer.id],
+        )
 
     def test_v0743_large_personal_history_keeps_query_budget_and_response_caps(self):
         fixture = self.create_branching_case_fixture(slug="v0743-volume", scored=True)
@@ -5313,3 +5670,144 @@ class V066ReleaseAuditTests(APITestCase):
         self.relation.save(update_fields=("review_status", "updated_at"))
         with self.assertRaises(CommandError):
             call_command("audit_v06_release", stdout=StringIO(), stderr=StringIO())
+
+
+class V075CaseConcurrencyTests(TransactionTestCase):
+    reset_sequences = True
+
+    def setUp(self):
+        category = Category.objects.create(slug="v075-concurrency", name_en="v0.7.5 concurrency")
+        disorder = Disorder.objects.create(
+            category=category,
+            slug="v075-concurrency-disorder",
+            name_en="v0.7.5 Concurrency Disorder",
+            is_active=True,
+        )
+        self.user = User.objects.create_user(
+            username="v075-concurrency@example.com",
+            email="v075-concurrency@example.com",
+            password="ComplexPass123!",
+        )
+        self.case = ClinicalCase.objects.create(
+            slug="v075-concurrency-case",
+            title="Concurrency Case",
+            patient_summary="summary",
+            primary_disorder=disorder,
+            structure_mode=ClinicalCase.StructureMode.BRANCHING,
+            is_active=True,
+        )
+        revision = CaseRevision.objects.create(
+            case=self.case,
+            version=1,
+            title=self.case.title,
+            patient_summary=self.case.patient_summary,
+            primary_disorder=disorder,
+            status=CaseRevision.Status.PUBLISHED,
+        )
+        self.entry = CaseStep.objects.create(
+            case=self.case,
+            revision=revision,
+            stable_key="entry",
+            node_kind=CaseStep.NodeKind.DECISION,
+            title="Entry",
+            narrative="Entry",
+            sort_order=1,
+        )
+        self.next_step = CaseStep.objects.create(
+            case=self.case,
+            revision=revision,
+            stable_key="next",
+            node_kind=CaseStep.NodeKind.INFORMATION,
+            title="Next",
+            narrative="Next",
+            sort_order=2,
+        )
+        question = CaseQuestion.objects.create(
+            step=self.entry,
+            prompt="Choose",
+            explanation="Concurrency regression",
+            sort_order=1,
+        )
+        self.choice = CaseChoice.objects.create(
+            question=question,
+            text="Continue",
+            score_value=3,
+            sort_order=1,
+        )
+        CaseTransition.objects.create(
+            revision=revision,
+            source_step=self.entry,
+            choice=self.choice,
+            target_step=self.next_step,
+            outcome=CaseTransition.Outcome.CONTINUE,
+            sort_order=1,
+            is_active=True,
+        )
+        revision.entry_step = self.entry
+        revision.save(update_fields=("entry_step", "updated_at"))
+        self.case.current_revision = revision
+        self.case.save(update_fields=("current_revision", "updated_at"))
+
+    def _start(self):
+        close_old_connections()
+        try:
+            user = User.objects.get(pk=self.user.pk)
+            clinical_case = ClinicalCase.objects.get(pk=self.case.pk)
+            attempt, created = start_or_resume_case_attempt(user=user, clinical_case=clinical_case)
+            return attempt.id, created
+        finally:
+            close_old_connections()
+
+    def _advance(self, attempt_id):
+        close_old_connections()
+        try:
+            user = User.objects.get(pk=self.user.pk)
+            attempt = CaseAttempt.objects.get(pk=attempt_id)
+            _, event, idempotent = advance_case_attempt(
+                user=user,
+                attempt=attempt,
+                step_id=self.entry.id,
+                choice_id=self.choice.id,
+                state_version=0,
+            )
+            return event.id, idempotent
+        finally:
+            close_old_connections()
+
+    def test_v075_concurrent_start_returns_one_shared_attempt_without_sqlite_lock_error(self):
+        for _ in range(25):
+            CaseAttempt.objects.filter(user=self.user, case=self.case).delete()
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                results = list(executor.map(lambda _: self._start(), range(2)))
+
+            attempt_ids = {attempt_id for attempt_id, _ in results}
+            self.assertEqual(len(attempt_ids), 1)
+            self.assertEqual(sum(created for _, created in results), 1)
+            self.assertEqual(
+                CaseAttempt.objects.filter(
+                    user=self.user,
+                    case=self.case,
+                    status=CaseAttempt.Status.IN_PROGRESS,
+                ).count(),
+                1,
+            )
+
+    def test_v075_concurrent_identical_decision_is_idempotent_without_sqlite_lock_error(self):
+        for _ in range(25):
+            CaseAttempt.objects.filter(user=self.user, case=self.case).delete()
+            attempt, created = start_or_resume_case_attempt(user=self.user, clinical_case=self.case)
+            self.assertTrue(created)
+
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                results = list(executor.map(lambda _: self._advance(attempt.id), range(2)))
+
+            event_ids = {event_id for event_id, _ in results}
+            self.assertEqual(len(event_ids), 1)
+            self.assertEqual(sum(idempotent for _, idempotent in results), 1)
+            attempt.refresh_from_db()
+            self.assertEqual(attempt.state_version, 1)
+            self.assertEqual(attempt.score, 3)
+            self.assertEqual(attempt.max_score, 3)
+            self.assertEqual(attempt.current_step_id, self.next_step.id)
+            self.assertEqual(CaseAttemptEvent.objects.filter(attempt=attempt).count(), 1)
+            self.assertEqual(CaseAttemptAnswer.objects.filter(attempt=attempt).count(), 1)

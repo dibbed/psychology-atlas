@@ -29,6 +29,16 @@ export default function CaseRunner({ item }: { item: ClinicalCase }) {
   const [resumeNotice, setResumeNotice] = useState(false);
   const stageHeadingRef = useRef<HTMLHeadingElement>(null);
 
+  function requireAuthentication(reason: unknown) {
+    if (!(reason instanceof ApiError) || reason.status !== 401) return false;
+    setAttempt(null);
+    setSelectedChoice(null);
+    setError("");
+    setAuthRequired(true);
+    setResumeNotice(false);
+    return true;
+  }
+
   async function startOrResume() {
     if (!hasToken()) {
       setAttempt(null);
@@ -48,7 +58,9 @@ export default function CaseRunner({ item }: { item: ClinicalCase }) {
       setResumeNotice(Boolean(data.resumed));
       setSelectedChoice(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "شروع یا ادامه کیس انجام نشد.");
+      if (!requireAuthentication(e)) {
+        setError(e instanceof Error ? e.message : "شروع یا ادامه کیس انجام نشد.");
+      }
     } finally {
       setLoading(false);
     }
@@ -93,13 +105,14 @@ export default function CaseRunner({ item }: { item: ClinicalCase }) {
       setSelectedChoice(null);
       setResumeNotice(false);
     } catch (e) {
+      if (requireAuthentication(e)) return;
       const message = e instanceof Error ? e.message : "ثبت مرحله کیس انجام نشد.";
       setError(message);
       if (e instanceof ApiError && e.status === 400) {
         try {
           await refreshAttempt(attempt.id);
-        } catch {
-          // Keep the original actionable error when state refresh is unavailable.
+        } catch (refreshError) {
+          requireAuthentication(refreshError);
         }
       }
     } finally {
@@ -120,7 +133,9 @@ export default function CaseRunner({ item }: { item: ClinicalCase }) {
       setSelectedChoice(null);
       setResumeNotice(Boolean(next.resumed));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "شروع دوباره کیس انجام نشد.");
+      if (!requireAuthentication(e)) {
+        setError(e instanceof Error ? e.message : "شروع دوباره کیس انجام نشد.");
+      }
     } finally {
       setBusy(false);
     }
@@ -190,6 +205,14 @@ export default function CaseRunner({ item }: { item: ClinicalCase }) {
       {resumeNotice && !completed && (
         <div className="case-resume-notice" role="status">
           این تلاش از آخرین مرحله ثبت‌شده ادامه پیدا کرده است. تصمیم‌های قبلی قابل تغییر نیستند.
+        </div>
+      )}
+
+      {item.revision_number !== null && attempt.case.revision_number !== item.revision_number && (
+        <div className="case-resume-notice" role="status">
+          <strong>این تلاش روی نسخه {faNumber(attempt.case.revision_number)} کیس ادامه پیدا می‌کند.</strong>
+          <span> محتوای مسیر و هدف آموزشی از همان نسخه ثبت‌شده حفظ شده است.</span>
+          {attempt.case.educational_objective && <p className="muted small">{attempt.case.educational_objective}</p>}
         </div>
       )}
 

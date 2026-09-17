@@ -1,10 +1,10 @@
-# Psychology Atlas — v0.7.4 · Personal Case Analytics
+# Psychology Atlas — v0.7.5 · Clinical Case Integrity Patch
 
 [![CI](https://github.com/dibbed/psychology-atlas/actions/workflows/ci.yml/badge.svg)](https://github.com/dibbed/psychology-atlas/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/dibbed/psychology-atlas/actions/workflows/codeql.yml/badge.svg)](https://github.com/dibbed/psychology-atlas/actions/workflows/codeql.yml)
 [![Latest release](https://img.shields.io/github/v/release/dibbed/psychology-atlas?display_name=tag)](https://github.com/dibbed/psychology-atlas/releases)
 
-یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.7.4 خط Clinical Case نسخه 0.7 را با **Personal Case Analytics** کامل می‌کند: تحلیل فقط از `CaseAttempt` و eventهای immutable همان کاربر ساخته می‌شود، revision boundaryها حفظ می‌شوند، مسیرهای تکمیل‌شده فقط وقتی نمایش داده می‌شوند که history واقعاً قابل بازسازی باشد و رابط فارسی/RTL overview/detail بدون ساخت scoring موازی در frontend این داده‌ها را نمایش می‌دهد.
+یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.7.5 آخرین patch خط Clinical Case نسخه 0.7 است: بعد از audit کامل v0.7، مرجع authoritative محتوای کیس روی `CaseRevision` یکدست شده، integrity تاریخچه و analytics سخت‌تر شده، start/decision همزمان روی SQLite بدون duplicate یا lock leak مدیریت می‌شود و یک constraint دیتابیسی از بیش از یک attempt درحال‌اجرا برای هر user/Case جلوگیری می‌کند. قابلیت **Personal Case Analytics** نسخه v0.7.4 بدون تغییر contract باقی مانده است.
 
 > این نرم‌افزار آموزشی است و ابزار تشخیص، درمان، ارزیابی صلاحیت بالینی یا جایگزین ارزیابی حرفه‌ای نیست.
 
@@ -15,6 +15,45 @@
 **No open-source license is granted.** مگر با اجازه کتبی جداگانه از صاحب حقوق، مجوز عمومی برای استفاده، کپی، تغییر، بازتوزیع، sublicense یا ساخت derivative work از کد اعطا نشده است؛ به‌جز دسترسی‌ها و قابلیت‌هایی که Terms of Service خود GitHub برای میزبانی، مشاهده و قابلیت‌های پلتفرم مانند fork الزاماً فراهم می‌کند.
 
 اگر برای استفاده‌ای خارج از این محدوده به مجوز نیاز داری، ابتدا باید اجازه صریح صاحب repository را دریافت کنی.
+
+## v0.7.5 — Clinical Case Integrity Patch
+
+```text
+CaseRevision as current public metadata authority         ✅
+legacy linear submit revision-safe side effects          ✅
+Case availability / entry-step ownership guards          ✅
+Disorder -> Case reverse integration revision safety     ✅
+Dashboard Case history revision metadata                 ✅
+Atlas overview Case availability count                   ✅
+analytics snapshot/FK/path-chain integrity               ✅
+recent attempts ordered by latest activity               ✅
+one in-progress attempt per user/Case DB constraint      ✅
+SQLite concurrent start retry                            ✅
+SQLite concurrent decision idempotency                   ✅
+CaseRunner auth-expiry recovery                          ✅
+pinned historical revision resume notice                 ✅
+migration 0027 duplicate preflight / no silent repair    ✅
+v0.6.2 -> v0.7.5 historical migration audit              ✅
+fresh install + repeated seed audit                      ✅
+Case-focused regression: 132/132 PASS                    ✅
+full backend suite: 189/189 PASS                         ✅
+```
+
+این patch نتیجه audit کامل خط v0.7 است و feature جدیدی به roadmap اضافه نمی‌کند. `ClinicalCase` همچنان identity و slug پایدار کیس را نگه می‌دارد، اما title/summary/objective/difficulty/primary disorder قابل‌نمایش و side effectهای آموزشی از revision مربوط به همان read/attempt گرفته می‌شوند. بنابراین انتشار revision جدید، history یا progress یک attempt قدیمی را به metadata جدید متصل نمی‌کند.
+
+برای concurrency، migration `0027_v075_case_attempt_concurrency_guard.py` یک unique constraint شرطی روی `(user, case)` برای `status=in_progress` اضافه می‌کند. قبل از ساخت constraint، دیتابیس قدیمی برای duplicate بررسی می‌شود؛ اگر corruption موجود باشد migration با پیام صریح متوقف می‌شود و هیچ attemptی را حذف، merge یا repair نمی‌کند. روی SQLite نیز transactionها با `IMMEDIATE` write intent، busy timeout و retry محدود اجرا می‌شوند تا raceهای start و decision بدون lock leakage مدیریت شوند؛ decision یکسان همزمان به همان event immutable برمی‌گردد، بدون double-score یا duplicate answer.
+
+`audit_case_graphs` علاوه بر graph/revision ownership، پیوستگی eventها، entry point، state version، node kind، snapshot/FK consistency، completion semantics و `completed_at` را کنترل می‌کند. Personal Case Analytics فقط pathهایی را reconstruct می‌کند که snapshot و FKهای immutable با هم سازگار باشند.
+
+Migration audit با historical model state واقعی Django از schema `0021` (v0.6.2) تا `0027` انجام شده و completed/in-progress attemptها و answerهای legacy حفظ شدند. fresh install نیز migrations کامل + دو اجرای seed را بدون drift پشت سر گذاشت.
+
+v0.7.5 آخرین release برنامه‌ریزی‌شده برای خط v0.7 است. بعد از این patch، roadmap عادی مستقیماً به **v0.8 — Study Mode + Exam Planning + Advanced Recommendations** می‌رود؛ patch دیگری فقط در صورت کشف bug واقعی ساخته می‌شود.
+
+سند کامل release:
+
+```text
+docs/Psychology_Atlas_v0.7.5_Clinical_Case_Integrity_Patch_2026-09-18.md
+```
 
 ## v0.7.4 — Personal Case Analytics
 

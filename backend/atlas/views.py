@@ -1,7 +1,7 @@
 from collections.abc import Mapping
 
 from django.contrib.auth.models import User
-from django.db.models import Case, Count, IntegerField, Prefetch, Q, Value, When
+from django.db.models import Case, Count, F, IntegerField, Prefetch, Q, Value, When
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, permissions, status
@@ -106,22 +106,53 @@ def available_clinical_cases():
     queryset = ClinicalCase.objects.filter(is_active=True)
     queryset = queryset.filter(
         current_revision__isnull=False,
+        current_revision__case_id=F("id"),
         current_revision__status=atlas_models.CaseRevision.Status.PUBLISHED,
         current_revision__entry_step__isnull=False,
+        current_revision__entry_step__is_active=True,
+        current_revision__entry_step__revision_id=F("current_revision_id"),
+        current_revision__entry_step__case_id=F("id"),
     )
     return queryset.filter(
-        Q(primary_disorder__isnull=True) | Q(primary_disorder__is_active=True)
+        Q(current_revision__primary_disorder__isnull=True)
+        | Q(current_revision__primary_disorder__is_active=True)
+    )
+
+
+def current_case_revision_prefetch():
+    return Prefetch(
+        "clinical_case_revisions",
+        queryset=(
+            atlas_models.CaseRevision.objects.filter(
+                status=atlas_models.CaseRevision.Status.PUBLISHED,
+                case__is_active=True,
+                case__current_revision_id=F("id"),
+                entry_step__isnull=False,
+                entry_step__is_active=True,
+                entry_step__revision_id=F("id"),
+                entry_step__case_id=F("case_id"),
+            )
+            .select_related("case")
+            .order_by("title", "id")
+        ),
+        to_attr="current_case_revisions",
     )
 
 
 def clinical_case_is_runnable(clinical_case):
     revision = clinical_case.current_revision if clinical_case.current_revision_id else None
-    primary_disorder = clinical_case.primary_disorder if clinical_case.primary_disorder_id else None
+    if revision is None:
+        return False
+    entry_step = revision.entry_step if revision.entry_step_id else None
+    primary_disorder = revision.primary_disorder if revision.primary_disorder_id else None
     return bool(
         clinical_case.is_active
-        and revision is not None
+        and revision.case_id == clinical_case.id
         and revision.status == atlas_models.CaseRevision.Status.PUBLISHED
-        and revision.entry_step_id is not None
+        and entry_step is not None
+        and entry_step.is_active
+        and entry_step.revision_id == revision.id
+        and entry_step.case_id == clinical_case.id
         and (primary_disorder is None or primary_disorder.is_active)
     )
 
@@ -255,7 +286,7 @@ class DisorderDetailView(generics.RetrieveAPIView):
             "incoming_relationships__disorder",
             "source_links__source",
             "quizzes",
-            "clinical_cases",
+            current_case_revision_prefetch(),
             "concept_links__concept",
             "therapy_links__therapy__family",
             "therapy_links__source_links__source",
@@ -280,7 +311,7 @@ def compare_disorders(request):
             "incoming_relationships__disorder",
             "source_links__source",
             "quizzes",
-            "clinical_cases",
+            current_case_revision_prefetch(),
             "concept_links__concept",
             "therapy_links__therapy__family",
             "therapy_links__source_links__source",
@@ -324,18 +355,22 @@ class ClinicalCaseListView(generics.ListAPIView):
     serializer_class = ClinicalCaseListSerializer
     queryset = (
         available_clinical_cases()
-        .select_related("primary_disorder", "primary_disorder__category", "current_revision")
+        .select_related(
+            "current_revision",
+            "current_revision__primary_disorder",
+            "current_revision__primary_disorder__category",
+        )
         .prefetch_related("current_revision__steps")
         .annotate(
             difficulty_order=Case(
-                When(difficulty=ClinicalCase.Difficulty.INTRODUCTORY, then=Value(0)),
-                When(difficulty=ClinicalCase.Difficulty.INTERMEDIATE, then=Value(1)),
-                When(difficulty=ClinicalCase.Difficulty.ADVANCED, then=Value(2)),
+                When(current_revision__difficulty=ClinicalCase.Difficulty.INTRODUCTORY, then=Value(0)),
+                When(current_revision__difficulty=ClinicalCase.Difficulty.INTERMEDIATE, then=Value(1)),
+                When(current_revision__difficulty=ClinicalCase.Difficulty.ADVANCED, then=Value(2)),
                 default=Value(3),
                 output_field=IntegerField(),
             )
         )
-        .order_by("difficulty_order", "title", "id")
+        .order_by("difficulty_order", "current_revision__title", "id")
     )
 
 
@@ -344,7 +379,11 @@ class ClinicalCaseDetailView(generics.RetrieveAPIView):
     lookup_field = "slug"
     queryset = (
         available_clinical_cases()
-        .select_related("primary_disorder", "primary_disorder__category", "current_revision")
+        .select_related(
+            "current_revision",
+            "current_revision__primary_disorder",
+            "current_revision__primary_disorder__category",
+        )
         .prefetch_related("current_revision__steps__questions__choices")
     )
 
@@ -436,7 +475,8 @@ def case_analytics_detail(request, slug):
     try:
         clinical_case = ClinicalCase.objects.select_related(
             "current_revision",
-            "primary_disorder",
+            "current_revision__entry_step",
+            "current_revision__primary_disorder",
         ).get(slug=slug)
     except ClinicalCase.DoesNotExist:
         return Response(
@@ -563,10 +603,10 @@ def dashboard(request):
         quiz__is_active=True,
     ).select_related("quiz", "quiz__disorder").order_by("-completed_at")
     case_attempts = request.user.case_attempts.filter(
-        Q(case__primary_disorder__isnull=True) | Q(case__primary_disorder__is_active=True),
+        Q(revision__primary_disorder__isnull=True) | Q(revision__primary_disorder__is_active=True),
         status="completed",
         case__is_active=True,
-    ).select_related("case", "case__primary_disorder").order_by("-completed_at")
+    ).select_related("case", "revision", "revision__primary_disorder").order_by("-completed_at")
     notes_qs = UserNote.objects.filter(user=request.user, disorder__is_active=True).select_related("disorder", "disorder__category").order_by("-updated_at")
     concept_bookmarks_qs = ConceptBookmark.objects.filter(user=request.user, concept__is_active=True).select_related("concept").order_by("-created_at")
     concept_notes_qs = ConceptNote.objects.filter(user=request.user, concept__is_active=True).select_related("concept").order_by("-updated_at")
@@ -705,7 +745,7 @@ def dashboard(request):
         "recent_cases": [
             {
                 "id": a.id,
-                "title": a.case.title,
+                "title": a.revision.title or a.case.title,
                 "slug": a.case.slug,
                 "score": a.score,
                 "max_score": a.max_score,
@@ -1177,9 +1217,7 @@ def atlas_overview(request):
     valid_quizzes = Quiz.objects.filter(is_active=True).filter(
         Q(disorder__isnull=True) | Q(disorder__is_active=True)
     )
-    valid_cases = ClinicalCase.objects.filter(is_active=True).filter(
-        Q(primary_disorder__isnull=True) | Q(primary_disorder__is_active=True)
-    )
+    valid_cases = available_clinical_cases()
     valid_challenges = DailyChallenge.objects.filter(is_active=True).filter(
         Q(concept__isnull=True) | Q(concept__is_active=True),
         Q(disorder__isnull=True) | Q(disorder__is_active=True),
