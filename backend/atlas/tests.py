@@ -1500,6 +1500,426 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(detail.status_code, 200)
         self.assertLessEqual(len(detail_queries), 4)
 
+    def test_v0743_case_analytics_contract_v1_keys_are_frozen(self):
+        fixture = self.create_branching_case_fixture(slug="v0743-contract", scored=True)
+        self.run_branch_attempt(fixture, branch="left", complete=True)
+
+        self.auth(self.user_a)
+        overview = self.client.get("/api/case-analytics/overview/")
+        detail = self.client.get(f"/api/case-analytics/cases/{fixture['case'].slug}/")
+        self.assertEqual(overview.status_code, 200)
+        self.assertEqual(detail.status_code, 200)
+
+        overview_data = overview.json()
+        self.assertEqual(overview_data["analytics_version"], 1)
+        self.assertEqual(
+            set(overview_data),
+            {"analytics_version", "scope", "generated_at", "attempts", "cases_started", "decision_count", "cases", "disclaimer"},
+        )
+        self.assertEqual(
+            set(overview_data["attempts"]),
+            {"total", "completed", "in_progress", "completion_rate", "average_completed_score_percent", "scored_completed_attempts"},
+        )
+        self.assertEqual(
+            set(overview_data["cases"][0]),
+            {
+                "case_id", "slug", "current_title", "latest_attempt_revision_title", "structure_mode",
+                "latest_attempt_revision_number", "latest_attempt_rubric_version", "attempts", "completed_attempts",
+                "in_progress_attempts", "completion_rate", "average_completed_score_percent",
+                "scored_completed_attempts", "decision_count", "last_activity_at",
+            },
+        )
+
+        detail_data = detail.json()
+        self.assertEqual(detail_data["analytics_version"], 1)
+        self.assertEqual(
+            set(detail_data),
+            {
+                "analytics_version", "scope", "generated_at", "case", "attempts", "decision_count",
+                "dimensions", "branches", "completed_paths", "recent_attempts", "legacy", "disclaimer",
+            },
+        )
+        self.assertEqual(set(detail_data["case"]), {"id", "slug", "current_title", "structure_mode", "is_runnable"})
+        self.assertEqual(
+            set(detail_data["dimensions"][0]),
+            {
+                "revision_number", "key", "label", "description", "sort_order", "score", "max_score",
+                "percent", "decision_count", "attempt_count", "needs_review",
+            },
+        )
+        self.assertEqual(
+            set(detail_data["branches"][0]),
+            {"revision_number", "step_key", "step_title", "decision_count", "choices"},
+        )
+        self.assertEqual(
+            set(detail_data["branches"][0]["choices"][0]),
+            {"choice_id", "choice_text", "count", "selection_percent", "score", "max_score", "score_percent"},
+        )
+        self.assertEqual(
+            set(detail_data["completed_paths"][0]),
+            {"revision_number", "steps", "attempt_count", "last_used_at"},
+        )
+        self.assertEqual(
+            set(detail_data["completed_paths"][0]["steps"][0]),
+            {"event_type", "step_key", "step_title", "node_kind", "choice_id", "choice_text"},
+        )
+        self.assertEqual(
+            set(detail_data["recent_attempts"][0]),
+            {
+                "id", "revision_number", "revision_title", "rubric_version", "status", "state_version",
+                "score", "max_score", "score_percent", "event_count", "decision_count", "started_at",
+                "updated_at", "completed_at",
+            },
+        )
+        self.assertEqual(
+            set(detail_data["legacy"]),
+            {
+                "rubric_zero_attempts", "rubric_zero_decisions", "unscored_dimension_decisions",
+                "completed_attempts_without_reconstructible_path",
+            },
+        )
+
+    def test_v0743_case_analytics_preserves_revision_boundaries(self):
+        fixture_v1 = self.create_branching_case_fixture(slug="v0743-revision-boundary", scored=True)
+        self.run_branch_attempt(fixture_v1, branch="left", complete=True)
+        case = fixture_v1["case"]
+        fixture_v1["revision"].status = CaseRevision.Status.RETIRED
+        fixture_v1["revision"].save(update_fields=("status", "updated_at"))
+
+        revision_v2 = CaseRevision.objects.create(
+            case=case,
+            version=2,
+            title="Stateful Branch Case v2",
+            patient_summary=case.patient_summary,
+            educational_objective=case.educational_objective,
+            difficulty=case.difficulty,
+            primary_disorder=case.primary_disorder,
+            status=CaseRevision.Status.PUBLISHED,
+            rubric_version=1,
+        )
+        entry_v2 = CaseStep.objects.create(
+            case=case,
+            revision=revision_v2,
+            stable_key="entry",
+            node_kind=CaseStep.NodeKind.DECISION,
+            title="Entry revised",
+            narrative="Revision two decision.",
+            sort_order=1,
+        )
+        left_v2 = CaseStep.objects.create(
+            case=case,
+            revision=revision_v2,
+            stable_key="left-path",
+            node_kind=CaseStep.NodeKind.INFORMATION,
+            title="Left path revised",
+            narrative="Revision two branch.",
+            sort_order=2,
+        )
+        dimension_v2 = CaseScoringDimension.objects.create(
+            revision=revision_v2,
+            stable_key="differential_reasoning",
+            label="استدلال افتراقی نسخه دوم",
+            description="Revision two semantics",
+            sort_order=1,
+        )
+        question_v2 = CaseQuestion.objects.create(
+            step=entry_v2,
+            scoring_dimension=dimension_v2,
+            prompt="Which revised path?",
+            explanation="Revision two explanation.",
+            sort_order=1,
+        )
+        choice_v2 = CaseChoice.objects.create(
+            question=question_v2,
+            text="Take the left path",
+            score_value=3,
+            feedback="Revision two feedback",
+            sort_order=1,
+        )
+        transition_v2 = CaseTransition.objects.create(
+            revision=revision_v2,
+            source_step=entry_v2,
+            choice=choice_v2,
+            target_step=left_v2,
+            outcome=CaseTransition.Outcome.CONTINUE,
+            sort_order=1,
+        )
+        complete_v2 = CaseTransition.objects.create(
+            revision=revision_v2,
+            source_step=left_v2,
+            choice=None,
+            target_step=None,
+            outcome=CaseTransition.Outcome.COMPLETE,
+        )
+        revision_v2.entry_step = entry_v2
+        revision_v2.save(update_fields=("entry_step", "updated_at"))
+        case.current_revision = revision_v2
+        case.title = "Stateful Branch Case current"
+        case.save(update_fields=("current_revision", "title", "updated_at"))
+
+        fixture_v2 = {
+            "case": case,
+            "revision": revision_v2,
+            "entry": entry_v2,
+            "left": left_v2,
+            "right": left_v2,
+            "left_choice": choice_v2,
+            "right_choice": choice_v2,
+            "left_complete": complete_v2,
+            "right_complete": complete_v2,
+            "left_transition": transition_v2,
+            "right_transition": transition_v2,
+        }
+        self.run_branch_attempt(fixture_v2, branch="left", complete=True)
+
+        self.auth(self.user_a)
+        response = self.client.get(f"/api/case-analytics/cases/{case.slug}/")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual({row["revision_number"] for row in data["dimensions"]}, {1, 2})
+        self.assertEqual({row["revision_number"] for row in data["branches"]}, {1, 2})
+        self.assertEqual({row["revision_number"] for row in data["completed_paths"]}, {1, 2})
+        labels = {(row["revision_number"], row["label"]) for row in data["dimensions"]}
+        self.assertIn((1, "استدلال افتراقی"), labels)
+        self.assertIn((2, "استدلال افتراقی نسخه دوم"), labels)
+
+    def test_v0743_completed_path_requires_terminally_complete_event_stream(self):
+        fixture = self.create_branching_case_fixture(slug="v0743-incomplete-completed", scored=True)
+        attempt_id = self.run_branch_attempt(fixture, branch="left", complete=False)
+        CaseAttempt.objects.filter(pk=attempt_id).update(
+            status=CaseAttempt.Status.COMPLETED,
+            current_step=None,
+            completed_at=timezone.now(),
+        )
+
+        self.auth(self.user_a)
+        response = self.client.get(f"/api/case-analytics/cases/{fixture['case'].slug}/")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["attempts"]["completed"], 1)
+        self.assertEqual(data["decision_count"], 1)
+        self.assertEqual(data["completed_paths"], [])
+        self.assertEqual(data["legacy"]["completed_attempts_without_reconstructible_path"], 1)
+
+    def test_v0743_completed_path_rejects_event_state_version_gap(self):
+        fixture = self.create_branching_case_fixture(slug="v0743-state-gap", scored=True)
+        attempt_id = self.run_branch_attempt(fixture, branch="left", complete=True)
+        CaseAttemptEvent.objects.filter(
+            attempt_id=attempt_id,
+            event_type=CaseAttemptEvent.EventType.ADVANCE,
+        ).update(state_version_before=3, state_version_after=4)
+
+        self.auth(self.user_a)
+        response = self.client.get(f"/api/case-analytics/cases/{fixture['case'].slug}/")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["completed_paths"], [])
+        self.assertEqual(data["legacy"]["completed_attempts_without_reconstructible_path"], 1)
+
+    def test_v0743_zero_max_score_is_explicitly_unscored(self):
+        fixture = self.create_branching_case_fixture(slug="v0743-zero-max", scored=True)
+        CaseChoice.objects.filter(question=fixture["question"]).update(score_value=0)
+        self.run_branch_attempt(fixture, branch="left", complete=True)
+
+        self.auth(self.user_a)
+        response = self.client.get(f"/api/case-analytics/cases/{fixture['case'].slug}/")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIsNone(data["attempts"]["average_completed_score_percent"])
+        self.assertEqual(data["attempts"]["scored_completed_attempts"], 0)
+        self.assertEqual(data["dimensions"][0]["score"], 0)
+        self.assertEqual(data["dimensions"][0]["max_score"], 0)
+        self.assertIsNone(data["dimensions"][0]["percent"])
+        self.assertFalse(data["dimensions"][0]["needs_review"])
+        self.assertIsNone(data["branches"][0]["choices"][0]["score_percent"])
+
+    def test_v0743_zero_decision_terminal_attempt_has_reconstructible_path(self):
+        case = ClinicalCase.objects.create(
+            slug="v0743-zero-decision",
+            title="Terminal-only educational case",
+            patient_summary="Summary",
+            educational_objective="Objective",
+            primary_disorder=self.disorder,
+            structure_mode=ClinicalCase.StructureMode.BRANCHING,
+            is_active=True,
+        )
+        revision = self.create_case_revision(case, rubric_version=0)
+        terminal = CaseStep.objects.create(
+            case=case,
+            revision=revision,
+            stable_key="terminal",
+            node_kind=CaseStep.NodeKind.TERMINAL,
+            title="Terminal",
+            narrative="No decision is required.",
+            sort_order=1,
+        )
+        revision.entry_step = terminal
+        revision.save(update_fields=("entry_step", "updated_at"))
+
+        self.auth(self.user_a)
+        started = self.client.post(f"/api/cases/{case.slug}/attempts/", {}, format="json")
+        self.assertEqual(started.status_code, 201)
+        finished = self.client.post(
+            f"/api/case-attempts/{started.json()['id']}/decisions/",
+            {"step_id": terminal.id, "choice_id": None, "state_version": 0},
+            format="json",
+        )
+        self.assertEqual(finished.status_code, 200)
+        self.assertEqual(finished.json()["status"], CaseAttempt.Status.COMPLETED)
+
+        response = self.client.get(f"/api/case-analytics/cases/{case.slug}/")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["decision_count"], 0)
+        self.assertEqual(data["branches"], [])
+        self.assertEqual(data["dimensions"], [])
+        self.assertEqual(len(data["completed_paths"]), 1)
+        self.assertEqual(data["completed_paths"][0]["steps"][0]["event_type"], "terminal_complete")
+        self.assertIsNone(data["attempts"]["average_completed_score_percent"])
+
+    def test_v0743_partially_scored_decisions_remain_explicit(self):
+        fixture = self.create_branching_case_fixture(slug="v0743-partial-scoring", scored=True)
+        first_attempt = self.run_branch_attempt(fixture, branch="left", complete=True)
+        second_attempt = self.run_branch_attempt(fixture, branch="left", complete=True)
+        event = CaseAttemptEvent.objects.get(
+            attempt_id=second_attempt,
+            event_type=CaseAttemptEvent.EventType.DECISION,
+        )
+        snapshot = dict(event.snapshot)
+        snapshot.pop("scoring_dimension", None)
+        event.snapshot = snapshot
+        event.save(update_fields=("snapshot",))
+
+        self.auth(self.user_a)
+        response = self.client.get(f"/api/case-analytics/cases/{fixture['case'].slug}/")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["decision_count"], 2)
+        self.assertEqual(data["legacy"]["unscored_dimension_decisions"], 1)
+        self.assertEqual(len(data["dimensions"]), 1)
+        self.assertEqual(data["dimensions"][0]["decision_count"], 1)
+        self.assertEqual(data["dimensions"][0]["attempt_count"], 1)
+        self.assertEqual(data["dimensions"][0]["score"], 3)
+        self.assertEqual(data["dimensions"][0]["max_score"], 3)
+        self.assertEqual(data["completed_paths"][0]["attempt_count"], 2)
+        self.assertIn(first_attempt, {row["id"] for row in data["recent_attempts"]})
+
+    def test_v0743_duplicate_in_progress_rows_are_reported_without_silent_repair(self):
+        fixture = self.create_branching_case_fixture(slug="v0743-duplicate-in-progress", scored=True)
+        for _ in range(2):
+            CaseAttempt.objects.create(
+                user=self.user_a,
+                case=fixture["case"],
+                revision=fixture["revision"],
+                current_step=fixture["entry"],
+                status=CaseAttempt.Status.IN_PROGRESS,
+                state_version=0,
+            )
+
+        self.auth(self.user_a)
+        response = self.client.get(f"/api/case-analytics/cases/{fixture['case'].slug}/")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["attempts"]["total"], 2)
+        self.assertEqual(data["attempts"]["in_progress"], 2)
+        self.assertEqual(data["decision_count"], 0)
+        self.assertEqual(CaseAttempt.objects.filter(user=self.user_a, case=fixture["case"]).count(), 2)
+
+    def test_v0743_inactive_case_without_owned_history_does_not_leak_other_user_data(self):
+        fixture = self.create_branching_case_fixture(slug="v0743-inactive-private", scored=True)
+        other_attempt = self.run_branch_attempt(fixture, user=self.user_b, branch="left", complete=True)
+        fixture["case"].is_active = False
+        fixture["case"].save(update_fields=("is_active", "updated_at"))
+
+        self.auth(self.user_a)
+        response = self.client.get(f"/api/case-analytics/cases/{fixture['case'].slug}/")
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["code"], "case_not_found")
+        self.assertNotIn(str(other_attempt), response.content.decode("utf-8"))
+        self.assertNotIn(fixture["entry"].stable_key, response.content.decode("utf-8"))
+
+    def test_v0743_large_personal_history_keeps_query_budget_and_response_caps(self):
+        fixture = self.create_branching_case_fixture(slug="v0743-volume", scored=True)
+        now = timezone.now()
+        for _ in range(40):
+            attempt = CaseAttempt.objects.create(
+                user=self.user_a,
+                case=fixture["case"],
+                revision=fixture["revision"],
+                current_step=None,
+                status=CaseAttempt.Status.COMPLETED,
+                state_version=2,
+                score=3,
+                max_score=3,
+                completed_at=now,
+            )
+            CaseAttemptEvent.objects.create(
+                attempt=attempt,
+                step=fixture["entry"],
+                event_type=CaseAttemptEvent.EventType.DECISION,
+                question=fixture["question"],
+                scoring_dimension=fixture["scoring_dimension"],
+                selected_choice=fixture["left_choice"],
+                transition=fixture["left_transition"],
+                next_step=fixture["left"],
+                outcome=CaseTransition.Outcome.CONTINUE,
+                awarded_score=3,
+                max_score=3,
+                state_version_before=0,
+                state_version_after=1,
+                snapshot={
+                    "step_key": "entry",
+                    "step_title": "Entry",
+                    "node_kind": "decision",
+                    "choice_text": "Take the left path",
+                    "scoring_dimension": {
+                        "key": "differential_reasoning",
+                        "label": "استدلال افتراقی",
+                        "description": "Test educational dimension",
+                        "sort_order": 1,
+                    },
+                    "outcome": CaseTransition.Outcome.CONTINUE,
+                    "target_step_key": "left-path",
+                },
+            )
+            CaseAttemptEvent.objects.create(
+                attempt=attempt,
+                step=fixture["left"],
+                event_type=CaseAttemptEvent.EventType.ADVANCE,
+                transition=fixture["left_complete"],
+                next_step=None,
+                outcome=CaseTransition.Outcome.COMPLETE,
+                awarded_score=0,
+                max_score=0,
+                state_version_before=1,
+                state_version_after=2,
+                snapshot={
+                    "step_key": "left-path",
+                    "step_title": "Left path",
+                    "node_kind": "information",
+                    "outcome": CaseTransition.Outcome.COMPLETE,
+                    "target_step_key": None,
+                },
+            )
+
+        self.auth(self.user_a)
+        with CaptureQueriesContext(connection) as overview_queries:
+            overview = self.client.get("/api/case-analytics/overview/")
+        with CaptureQueriesContext(connection) as detail_queries:
+            detail = self.client.get(f"/api/case-analytics/cases/{fixture['case'].slug}/")
+
+        self.assertEqual(overview.status_code, 200)
+        self.assertEqual(detail.status_code, 200)
+        self.assertLessEqual(len(overview_queries), 3)
+        self.assertLessEqual(len(detail_queries), 4)
+        self.assertEqual(overview.json()["attempts"]["total"], 40)
+        data = detail.json()
+        self.assertEqual(data["attempts"]["total"], 40)
+        self.assertEqual(data["decision_count"], 40)
+        self.assertEqual(len(data["recent_attempts"]), 20)
+        self.assertEqual(len(data["completed_paths"]), 1)
+        self.assertEqual(data["completed_paths"][0]["attempt_count"], 40)
+
     def test_disorder_search_matches_symptom_name(self):
         symptom = Symptom.objects.create(slug="special-symptom", name_en="Special Symptom", name_fa="نشانه ویژه")
         DisorderSymptom.objects.create(disorder=self.disorder, symptom=symptom)
