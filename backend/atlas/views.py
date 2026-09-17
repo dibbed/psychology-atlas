@@ -603,10 +603,10 @@ def dashboard(request):
         quiz__is_active=True,
     ).select_related("quiz", "quiz__disorder").order_by("-completed_at")
     case_attempts = request.user.case_attempts.filter(
-        Q(case__primary_disorder__isnull=True) | Q(case__primary_disorder__is_active=True),
+        Q(revision__primary_disorder__isnull=True) | Q(revision__primary_disorder__is_active=True),
         status="completed",
         case__is_active=True,
-    ).select_related("case", "case__primary_disorder").order_by("-completed_at")
+    ).select_related("case", "revision", "revision__primary_disorder").order_by("-completed_at")
     notes_qs = UserNote.objects.filter(user=request.user, disorder__is_active=True).select_related("disorder", "disorder__category").order_by("-updated_at")
     concept_bookmarks_qs = ConceptBookmark.objects.filter(user=request.user, concept__is_active=True).select_related("concept").order_by("-created_at")
     concept_notes_qs = ConceptNote.objects.filter(user=request.user, concept__is_active=True).select_related("concept").order_by("-updated_at")
@@ -745,7 +745,7 @@ def dashboard(request):
         "recent_cases": [
             {
                 "id": a.id,
-                "title": a.case.title,
+                "title": a.revision.title or a.case.title,
                 "slug": a.case.slug,
                 "score": a.score,
                 "max_score": a.max_score,
@@ -1217,9 +1217,7 @@ def atlas_overview(request):
     valid_quizzes = Quiz.objects.filter(is_active=True).filter(
         Q(disorder__isnull=True) | Q(disorder__is_active=True)
     )
-    valid_cases = ClinicalCase.objects.filter(is_active=True).filter(
-        Q(primary_disorder__isnull=True) | Q(primary_disorder__is_active=True)
-    )
+    valid_cases = available_clinical_cases()
     valid_challenges = DailyChallenge.objects.filter(is_active=True).filter(
         Q(concept__isnull=True) | Q(concept__is_active=True),
         Q(disorder__isnull=True) | Q(disorder__is_active=True),

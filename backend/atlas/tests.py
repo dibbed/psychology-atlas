@@ -459,6 +459,114 @@ class AtlasApiTests(APITestCase):
         entry.save(update_fields=("is_active",))
         self.assertEqual(self.client.get(f"/api/cases/{case.slug}/").status_code, 404)
 
+    def test_v075_dashboard_case_history_uses_attempt_revision_metadata(self):
+        mutable_disorder = Disorder.objects.create(
+            category=self.category,
+            slug="dashboard-mutable-disorder",
+            name_en="Dashboard Mutable Disorder",
+            is_active=False,
+        )
+        revision_disorder = Disorder.objects.create(
+            category=self.category,
+            slug="dashboard-revision-disorder",
+            name_en="Dashboard Revision Disorder",
+            is_active=True,
+        )
+        case = ClinicalCase.objects.create(
+            slug="dashboard-revision-history",
+            title="Mutable dashboard title",
+            patient_summary="summary",
+            primary_disorder=mutable_disorder,
+            is_active=True,
+        )
+        revision = CaseRevision.objects.create(
+            case=case,
+            version=1,
+            title="Pinned dashboard title",
+            patient_summary="summary",
+            primary_disorder=revision_disorder,
+            status=CaseRevision.Status.PUBLISHED,
+        )
+        CaseAttempt.objects.create(
+            user=self.user_a,
+            case=case,
+            revision=revision,
+            status=CaseAttempt.Status.COMPLETED,
+            score=4,
+            max_score=5,
+            completed_at=timezone.now(),
+        )
+
+        self.auth(self.user_a)
+        response = self.client.get("/api/dashboard/")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["cases_completed"], 1)
+        self.assertEqual(data["case_accuracy"], 80)
+        self.assertEqual(len(data["recent_cases"]), 1)
+        self.assertEqual(data["recent_cases"][0]["slug"], case.slug)
+        self.assertEqual(data["recent_cases"][0]["title"], "Pinned dashboard title")
+
+    def test_v075_atlas_overview_case_count_matches_public_runnability(self):
+        valid_case = ClinicalCase.objects.create(
+            slug="overview-valid-case",
+            title="Overview valid",
+            patient_summary="summary",
+            primary_disorder=self.disorder,
+            is_active=True,
+        )
+        valid_revision = self.create_case_revision(valid_case)
+        valid_entry = CaseStep.objects.create(
+            case=valid_case,
+            revision=valid_revision,
+            stable_key="entry",
+            title="Entry",
+            narrative="Entry",
+            sort_order=1,
+        )
+        valid_revision.entry_step = valid_entry
+        valid_revision.save(update_fields=("entry_step", "updated_at"))
+
+        inactive_revision_disorder = Disorder.objects.create(
+            category=self.category,
+            slug="overview-inactive-revision-disorder",
+            name_en="Overview Inactive Revision Disorder",
+            is_active=False,
+        )
+        invalid_case = ClinicalCase.objects.create(
+            slug="overview-invalid-case",
+            title="Overview invalid",
+            patient_summary="summary",
+            primary_disorder=self.disorder,
+            is_active=True,
+        )
+        invalid_revision = CaseRevision.objects.create(
+            case=invalid_case,
+            version=1,
+            title="Overview invalid",
+            patient_summary="summary",
+            primary_disorder=inactive_revision_disorder,
+            status=CaseRevision.Status.PUBLISHED,
+        )
+        invalid_entry = CaseStep.objects.create(
+            case=invalid_case,
+            revision=invalid_revision,
+            stable_key="entry",
+            title="Entry",
+            narrative="Entry",
+            sort_order=1,
+        )
+        invalid_revision.entry_step = invalid_entry
+        invalid_revision.save(update_fields=("entry_step", "updated_at"))
+        invalid_case.current_revision = invalid_revision
+        invalid_case.save(update_fields=("current_revision", "updated_at"))
+
+        self.assertEqual(self.client.get(f"/api/cases/{valid_case.slug}/").status_code, 200)
+        self.assertEqual(self.client.get(f"/api/cases/{invalid_case.slug}/").status_code, 404)
+        overview = self.client.get("/api/atlas-overview/")
+        self.assertEqual(overview.status_code, 200)
+        self.assertEqual(overview.json()["counts"]["clinical_cases"], 1)
+
     def test_v07_legacy_linear_submit_uses_revision_disorder_for_side_effects(self):
         mutable_disorder = Disorder.objects.create(
             category=self.category,
