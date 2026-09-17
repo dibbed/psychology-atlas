@@ -1,10 +1,10 @@
-# Psychology Atlas — v0.7.2 · Server-Authoritative Case Attempts + Stateful Runner
+# Psychology Atlas — v0.7.3 · Revision-Pinned Multi-dimensional Educational Scoring
 
 [![CI](https://github.com/dibbed/psychology-atlas/actions/workflows/ci.yml/badge.svg)](https://github.com/dibbed/psychology-atlas/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/dibbed/psychology-atlas/actions/workflows/codeql.yml/badge.svg)](https://github.com/dibbed/psychology-atlas/actions/workflows/codeql.yml)
 [![Latest release](https://img.shields.io/github/v/release/dibbed/psychology-atlas?display_name=tag)](https://github.com/dibbed/psychology-atlas/releases)
 
-یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.7.2 معماری revision-safe نسخه قبل را به یک موتور اجرای واقعی و server-authoritative تبدیل می‌کند: start/resume، current node، state versioning، event history، transitionهای معتبر از سمت backend، idempotent replay protection و یک CaseRunner جدید که فقط مسیر واقعاً طی‌شده را نمایش می‌دهد.
+یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.7.3 روی موتور server-authoritative نسخه قبل یک rubric آموزشی چندبعدی و revision-pinned اضافه می‌کند: هر تصمیم می‌تواند به یک بُعد آموزشی مشخص تعلق داشته باشد، event/answer همان بُعد را به‌صورت history-safe حفظ می‌کنند و نتیجه فقط از تصمیم‌های واقعاً طی‌شده همان مسیر ساخته می‌شود؛ امتیاز کلی v0.7.2 و سازگاری attemptهای قدیمی حفظ شده‌اند.
 
 > این نرم‌افزار آموزشی است و ابزار تشخیص، درمان، ارزیابی صلاحیت بالینی یا جایگزین ارزیابی حرفه‌ای نیست.
 
@@ -15,6 +15,129 @@
 **No open-source license is granted.** مگر با اجازه کتبی جداگانه از صاحب حقوق، مجوز عمومی برای استفاده، کپی، تغییر، بازتوزیع، sublicense یا ساخت derivative work از کد اعطا نشده است؛ به‌جز دسترسی‌ها و قابلیت‌هایی که Terms of Service خود GitHub برای میزبانی، مشاهده و قابلیت‌های پلتفرم مانند fork الزاماً فراهم می‌کند.
 
 اگر برای استفاده‌ای خارج از این محدوده به مجوز نیاز داری، ابتدا باید اجازه صریح صاحب repository را دریافت کنی.
+
+## v0.7.4.2 Development Slice — Persian/RTL Personal Case Analytics UI
+
+> baseline رسمی release همچنان **v0.7.3** است؛ این slice رابط analytics نسخه بعدی را روی API ثابت v0.7.4.1 کامل می‌کند و هنوز tag/release مستقل v0.7.4 ایجاد نمی‌کند.
+
+```text
+/case-analytics personal overview                 ✅
+/case-analytics/[slug] per-Case detail            ✅
+auth + safe login return                          ✅
+backend-owned percentages only                    ✅
+revision-aware dimension UI                       ✅
+reached choice-distribution UI                    ✅
+completed-path history UI                         ✅
+recent attempt history                            ✅
+legacy compatibility visibility                   ✅
+Personal nav + Dashboard + Cases integration      ✅
+completed Case -> analytics deep link             ✅
+responsive Persian/RTL desktop + mobile           ✅
+```
+
+صفحه overview تعداد تلاش‌ها، نرخ تکمیل، میانگین تلاش‌های تکمیل‌شده، تعداد کیس‌های شروع‌شده و تصمیم‌های ثبت‌شده را نشان می‌دهد و برای هر کیس یک summary شخصی برمی‌گرداند. صفحه detail نیز dimensionهای آموزشی، انتخاب‌های واقعاً طی‌شده در branchها، pathهای تکمیل‌شده و recent attempts را بدون محاسبه موازی در frontend نمایش می‌دهد.
+
+تمام درصدها و groupingها از API v0.7.4.1 می‌آیند. frontend فقط آن‌ها را نمایش می‌دهد و از mutable Case graph برای بازسازی history یا score استفاده نمی‌کند. history قدیمی با rubric/path ناکامل نیز صریح باقی می‌ماند و چیزی به‌صورت ساختگی backfill نمی‌شود.
+
+Browser QA با user و attempt موقت روی desktop 1280px و mobile 390px انجام شد؛ overview/detail بدون horizontal overflow یا clipping بودند و userهای QA پس از تست حذف شدند.
+
+سند development slice:
+
+```text
+docs/Psychology_Atlas_v0.7.4.2_Personal_Case_Analytics_UI_2026-09-16.md
+```
+
+مرحله بعدی: **v0.7.4.3 Analytics Hardening + Release Freeze**.
+
+## v0.7.4.1 Development Slice — Personal Case Analytics Foundation
+
+> baseline رسمی release همچنان **v0.7.3** است؛ این بخش foundation نسخه بعدی است و هنوز tag/release مستقل v0.7.4 ایجاد نمی‌کند.
+
+```text
+personal analytics overview API                  ✅
+personal per-Case analytics API                  ✅
+attempt/completion summaries                     ✅
+revision-aware dimension aggregation             ✅
+reached branch-choice distribution               ✅
+completed-path grouping                          ✅
+legacy rubric_version=0 compatibility            ✅
+inactive owned history preservation              ✅
+malformed snapshot defensive normalization       ✅
+bounded query-count contract                     ✅
+no schema migration                              ✅
+focused v0.7.4.1 tests: 10/10 PASS               ✅
+full backend suite: 168/168 PASS                 ✅
+```
+
+APIهای این slice فقط برای کاربر authenticated هستند:
+
+```text
+GET /api/case-analytics/overview/
+GET /api/case-analytics/cases/<slug>/
+```
+
+Analytics مستقیماً از `CaseAttempt` و `CaseAttemptEvent`های immutable ساخته می‌شود و state موازی یا score جدید ایجاد نمی‌کند. Overview تعداد attemptها، completion، Caseهای شروع‌شده و تصمیم‌های ثبت‌شده را خلاصه می‌کند. Detail هر Case نیز recent attempts، dimensionهای واقعاً طی‌شده، distribution انتخاب branchها و pathهای تکمیل‌شده را برمی‌گرداند.
+
+گروه‌بندی‌ها revision-aware هستند؛ داده‌های revisionهای تاریخی با معنای متفاوت بی‌صدا ادغام نمی‌شوند. Case غیرفعال نیز اگر history متعلق به کاربر داشته باشد از analytics شخصی حذف نمی‌شود. برای rubricهای قدیمی v0، dimension ساختگی تولید نمی‌شود.
+
+این خروجی فقط **آمار آموزشی شخصی** است و معیار صلاحیت بالینی، تشخیص، درمان، therapist fitness یا ranking هنجاری نیست. UI فارسی/RTL این contract در **v0.7.4.2** ساخته می‌شود.
+
+سند development slice:
+
+```text
+docs/Psychology_Atlas_v0.7.4.1_Personal_Case_Analytics_Foundation_2026-09-16.md
+```
+
+## v0.7.3 Multi-dimensional Educational Scoring + Feedback
+
+```text
+CaseRevision.rubric_version                     ✅
+revision-owned CaseScoringDimension              ✅
+CaseQuestion -> primary scoring dimension        ✅
+CaseAttemptEvent dimension snapshot + FK         ✅
+CaseAttemptAnswer dimension preservation          ✅
+path-scoped dimension aggregation                ✅
+legacy rubric_version=0 compatibility            ✅
+revision-safe seed upgrade + idempotency         ✅
+Persian/RTL dimension result cards               ✅
+migration 0026 applied                            ✅
+focused v0.7.3 tests: 10/10 PASS                    ✅
+full backend suite: 158/158 PASS                  ✅
+```
+
+قواعد اصلی v0.7.3:
+
+- rubric به `CaseRevision` تعلق دارد؛ تغییر محتوای scoring برای seedهای رسمی revision جدید منتشر می‌کند و revision تاریخی را mutate نمی‌کند.
+- هر سؤال تصمیم حداکثر یک بُعد آموزشی اصلی دارد. score همان `score_value` موجود است و عدد علمی یا psychometric جدیدی جعل نشده است.
+- breakdown از eventهای immutable همان attempt ساخته می‌شود و فقط decisionهایی را جمع می‌کند که کاربر واقعاً در مسیر خود طی کرده است؛ branchهای بازدیدنشده در denominator وارد نمی‌شوند.
+- `CaseAttemptEvent` علاوه بر FK بُعد، key/label/description/order را داخل snapshot نگه می‌دارد تا history قدیمی در برابر تغییرات بعدی قابل بازسازی بماند.
+- attemptهای v0.7.2 و قدیمی‌تر با `rubric_version=0` همچنان معتبرند؛ API در آن‌ها breakdown خالی و توضیح compatibility برمی‌گرداند، بدون backfill ساختگی. revisionهای rubric v0 اجازه mapping فعال scoring dimension ندارند و aggregation نیز به‌صورت defensive چنین داده‌ای را نادیده می‌گیرد.
+- UI فقط بعد از ثبت تصمیم، بُعد مربوط به آن event را در history نشان می‌دهد؛ current decision از rubric برای cue دادن به پاسخ استفاده نمی‌کند.
+- detail عمومی Caseهای branching دیگر step/question/choiceهای branchهای آینده را برنمی‌گرداند؛ محتوای مسیر فقط از stateful attempt API و current step واقعی می‌آید.
+- endpoint مربوط به current attempt در وضعیت corruption با بیش از یک attempt درحال‌اجرا خطا می‌دهد و یکی را به‌صورت تصادفی انتخاب نمی‌کند.
+- نتیجه نهایی score/max_score کلی قبلی را حفظ می‌کند و در کنار آن کارت‌های dimension، درصد مسیر، تعداد تصمیم و feedback مرور را نشان می‌دهد.
+- این breakdown یک **rubric آموزشی محصول** است، نه ابزار سنجش psychometric، تشخیص، درمان یا معیار صلاحیت بالینی.
+
+موجودی runtime فعلی پس از seed v0.7.3:
+
+```text
+6 current Clinical Cases
+12 total CaseRevisions (6 historical v1 + 6 current v2)
+17 CaseScoringDimensions
+36 total CaseSteps / 108 total CaseTransitions
+18 current rubric-mapped decision questions
+0 runtime test attempts/events/answers after cleanup
+```
+
+Runtime HTTP smoke روی `case-high-energy-04` سه تصمیم واقعی را از سرور عبور داد و breakdown نهایی را به‌صورت `information_gathering = 6/6` و `differential_reasoning = 3/3` برگرداند؛ user و attempt موقت در پایان حذف شدند.
+
+سند release:
+
+```text
+docs/Psychology_Atlas_v0.7.3_Multidimensional_Educational_Scoring_2026-09-16.md
+```
+
+مرحله بعدی roadmap: **v0.7.4 Advanced Case Analytics**.
 
 ## v0.7.2 Server Attempt State + Stateful Branching Runner
 
