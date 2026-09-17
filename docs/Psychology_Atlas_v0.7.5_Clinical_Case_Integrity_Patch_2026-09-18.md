@@ -112,6 +112,18 @@ The audit is read-only. It reports corruption and does not rewrite history.
 
 Per-Case analytics `recent_attempts` now sort by `updated_at` rather than `created_at`. This makes "recent" reflect the latest interaction/completion activity rather than only the time the attempt was first opened.
 
+### 9. Dashboard completed-Case history stays revision-pinned
+
+The personal Dashboard previously filtered completed Case attempts through mutable `ClinicalCase.primary_disorder` and displayed mutable `ClinicalCase.title`. A later Case revision could therefore make an old completed attempt disappear from Dashboard history or rename that historical row independently of the attempt revision.
+
+v0.7.5 now filters the Dashboard Case history by `CaseAttempt.revision.primary_disorder` and displays the attempt revision title. The stable Case slug remains the navigation identity. A direct regression covers a Case whose mutable disorder is inactive while the completed attempt revision disorder remains active, and verifies the revision title plus the preserved completion/accuracy summary.
+
+### 10. Atlas overview Case count matches public runnability
+
+The Atlas overview Case count previously used a separate mutable `ClinicalCase.primary_disorder` filter. It could count a Case that the public Case list/detail correctly rejected because its current revision or revision disorder was not runnable.
+
+The overview now reuses `available_clinical_cases()`, so the count and public Case API share the same published-revision, entry-step ownership and active revision-disorder boundary. A regression creates one runnable Case and one Case with an inactive revision disorder and verifies that only the runnable Case is counted.
+
 ## Concurrency hardening
 
 ### Database invariant
@@ -255,8 +267,8 @@ This verifies migration completeness and seed idempotency on a fresh deployment.
 
 Backend:
 
-- Case-focused `AtlasApiTests + V075CaseConcurrencyTests`: **130/130 PASS**
-- full Django backend suite: **187/187 PASS**
+- Case-focused `AtlasApiTests + V075CaseConcurrencyTests`: **132/132 PASS**
+- full Django backend suite: **189/189 PASS**
 - Django system check: PASS
 - `makemigrations --check --dry-run`: no changes detected
 - project venv `pip check`: no broken requirements
@@ -290,7 +302,7 @@ Frontend final local validation:
 - mobile QA: 320x800 horizontal overflow false
 - invalid server-rejected refresh token returns CaseRunner to auth state and clears local tokens
 
-Local release closeout repeats passed on the final v0.7.5 code: Case-focused 130/130, full backend 187/187, TypeScript, Next.js 24/24 build, npm audit, migration/fresh-install guards, database integrity and scientific/research audits. GitHub tag/release is created only after the merged `main` commit passes post-merge CI and CodeQL.
+Local release closeout repeats passed on the final v0.7.5 code: Case-focused 132/132, full backend 189/189, TypeScript, Next.js 24/24 build, npm audit, migration/fresh-install guards, database integrity and scientific/research audits. GitHub tag/release is created only after the merged `main` commit passes post-merge CI and CodeQL.
 
 ## Version boundary
 

@@ -23,6 +23,8 @@ CaseRevision as current public metadata authority         ✅
 legacy linear submit revision-safe side effects          ✅
 Case availability / entry-step ownership guards          ✅
 Disorder -> Case reverse integration revision safety     ✅
+Dashboard Case history revision metadata                 ✅
+Atlas overview Case availability count                   ✅
 analytics snapshot/FK/path-chain integrity               ✅
 recent attempts ordered by latest activity               ✅
 one in-progress attempt per user/Case DB constraint      ✅
@@ -33,13 +35,13 @@ pinned historical revision resume notice                 ✅
 migration 0027 duplicate preflight / no silent repair    ✅
 v0.6.2 -> v0.7.5 historical migration audit              ✅
 fresh install + repeated seed audit                      ✅
-Case-focused regression: 130/130 PASS                    ✅
-full backend suite: 187/187 PASS                         ✅
+Case-focused regression: 132/132 PASS                    ✅
+full backend suite: 189/189 PASS                         ✅
 ```
 
 این patch نتیجه audit کامل خط v0.7 است و feature جدیدی به roadmap اضافه نمی‌کند. `ClinicalCase` همچنان identity و slug پایدار کیس را نگه می‌دارد، اما title/summary/objective/difficulty/primary disorder قابل‌نمایش و side effectهای آموزشی از revision مربوط به همان read/attempt گرفته می‌شوند. بنابراین انتشار revision جدید، history یا progress یک attempt قدیمی را به metadata جدید متصل نمی‌کند.
 
-برای concurrency، migration `0027_v075_case_attempt_concurrency_guard.py` یک unique constraint شرطی روی `(user, case)` برای `status=in_progress` اضافه می‌کند. قبل از ساخت constraint، دیتابیس قدیمی برای duplicate بررسی می‌شود؛ اگر corruption موجود باشد migration با پیام صریح متوقف می‌شود و هیچ attemptی را حذف، merge یا repair نمی‌کند. روی SQLite نیز raceهای writer-lock در start و decision با retry محدود مدیریت می‌شوند و decision یکسان همزمان به همان event immutable برمی‌گردد، بدون double-score یا duplicate answer.
+برای concurrency، migration `0027_v075_case_attempt_concurrency_guard.py` یک unique constraint شرطی روی `(user, case)` برای `status=in_progress` اضافه می‌کند. قبل از ساخت constraint، دیتابیس قدیمی برای duplicate بررسی می‌شود؛ اگر corruption موجود باشد migration با پیام صریح متوقف می‌شود و هیچ attemptی را حذف، merge یا repair نمی‌کند. روی SQLite نیز transactionها با `IMMEDIATE` write intent، busy timeout و retry محدود اجرا می‌شوند تا raceهای start و decision بدون lock leakage مدیریت شوند؛ decision یکسان همزمان به همان event immutable برمی‌گردد، بدون double-score یا duplicate answer.
 
 `audit_case_graphs` علاوه بر graph/revision ownership، پیوستگی eventها، entry point، state version، node kind، snapshot/FK consistency، completion semantics و `completed_at` را کنترل می‌کند. Personal Case Analytics فقط pathهایی را reconstruct می‌کند که snapshot و FKهای immutable با هم سازگار باشند.
 
