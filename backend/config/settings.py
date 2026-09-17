@@ -69,6 +69,10 @@ if DB_ENGINE == "sqlite":
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
             "NAME": db_path,
+            "OPTIONS": {
+                "transaction_mode": os.getenv("SQLITE_TRANSACTION_MODE", "IMMEDIATE"),
+                "timeout": float(os.getenv("SQLITE_TIMEOUT_SECONDS", "10")),
+            },
         }
     }
 elif DB_ENGINE in {"postgres", "postgresql"}:

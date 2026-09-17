@@ -252,7 +252,7 @@ def _apply_stateful_case_completion_side_effects(attempt):
     )
 
 
-_SQLITE_LOCK_RETRY_DELAYS = (0.02, 0.05, 0.10, 0.20, 0.40)
+_SQLITE_LOCK_RETRY_DELAYS = (0.02, 0.05, 0.10, 0.20, 0.40, 0.80, 1.60)
 
 
 def _validate_resumable_case_attempt(attempt):

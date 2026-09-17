@@ -5667,7 +5667,7 @@ class V075CaseConcurrencyTests(TransactionTestCase):
             close_old_connections()
 
     def test_v075_concurrent_start_returns_one_shared_attempt_without_sqlite_lock_error(self):
-        for _ in range(10):
+        for _ in range(25):
             CaseAttempt.objects.filter(user=self.user, case=self.case).delete()
             with ThreadPoolExecutor(max_workers=2) as executor:
                 results = list(executor.map(lambda _: self._start(), range(2)))
@@ -5685,7 +5685,7 @@ class V075CaseConcurrencyTests(TransactionTestCase):
             )
 
     def test_v075_concurrent_identical_decision_is_idempotent_without_sqlite_lock_error(self):
-        for _ in range(10):
+        for _ in range(25):
             CaseAttempt.objects.filter(user=self.user, case=self.case).delete()
             attempt, created = start_or_resume_case_attempt(user=self.user, clinical_case=self.case)
             self.assertTrue(created)
