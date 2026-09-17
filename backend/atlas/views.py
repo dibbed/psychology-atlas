@@ -79,7 +79,14 @@ from .serializers import (
     UserNoteSerializer,
     UserSerializer,
 )
-from .services import advance_case_attempt, start_or_resume_case_attempt, submit_case, submit_quiz
+from .services import (
+    advance_case_attempt,
+    build_personal_case_analytics_detail,
+    build_personal_case_analytics_overview,
+    start_or_resume_case_attempt,
+    submit_case,
+    submit_quiz,
+)
 from .validation import positive_int
 
 
@@ -104,6 +111,18 @@ def available_clinical_cases():
     )
     return queryset.filter(
         Q(primary_disorder__isnull=True) | Q(primary_disorder__is_active=True)
+    )
+
+
+def clinical_case_is_runnable(clinical_case):
+    revision = clinical_case.current_revision if clinical_case.current_revision_id else None
+    primary_disorder = clinical_case.primary_disorder if clinical_case.primary_disorder_id else None
+    return bool(
+        clinical_case.is_active
+        and revision is not None
+        and revision.status == atlas_models.CaseRevision.Status.PUBLISHED
+        and revision.entry_step_id is not None
+        and (primary_disorder is None or primary_disorder.is_active)
     )
 
 
@@ -403,6 +422,46 @@ def case_attempt_decision(request, attempt_id):
     data["event_id"] = event.id
     data["idempotent"] = idempotent
     return Response(data)
+
+
+@api_view(["GET"])
+@permission_classes([permissions.IsAuthenticated])
+def case_analytics_overview(request):
+    return Response(build_personal_case_analytics_overview(user=request.user))
+
+
+@api_view(["GET"])
+@permission_classes([permissions.IsAuthenticated])
+def case_analytics_detail(request, slug):
+    try:
+        clinical_case = ClinicalCase.objects.select_related(
+            "current_revision",
+            "primary_disorder",
+        ).get(slug=slug)
+    except ClinicalCase.DoesNotExist:
+        return Response(
+            {"detail": "کیس موردنظر پیدا نشد.", "code": "case_not_found"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    is_runnable = clinical_case_is_runnable(clinical_case)
+    payload = build_personal_case_analytics_detail(user=request.user, clinical_case=clinical_case)
+    if payload is None:
+        if not is_runnable:
+            return Response(
+                {"detail": "کیس موردنظر در دسترس نیست.", "code": "case_not_found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(
+            {
+                "detail": "برای این کاربر سابقه‌ای از این کیس وجود ندارد.",
+                "code": "case_history_not_found",
+            },
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    payload["case"]["is_runnable"] = is_runnable
+    return Response(payload)
 
 
 @api_view(["GET", "POST"])

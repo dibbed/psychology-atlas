@@ -16,6 +16,78 @@
 
 اگر برای استفاده‌ای خارج از این محدوده به مجوز نیاز داری، ابتدا باید اجازه صریح صاحب repository را دریافت کنی.
 
+## v0.7.4.2 Development Slice — Persian/RTL Personal Case Analytics UI
+
+> baseline رسمی release همچنان **v0.7.3** است؛ این slice رابط analytics نسخه بعدی را روی API ثابت v0.7.4.1 کامل می‌کند و هنوز tag/release مستقل v0.7.4 ایجاد نمی‌کند.
+
+```text
+/case-analytics personal overview                 ✅
+/case-analytics/[slug] per-Case detail            ✅
+auth + safe login return                          ✅
+backend-owned percentages only                    ✅
+revision-aware dimension UI                       ✅
+reached choice-distribution UI                    ✅
+completed-path history UI                         ✅
+recent attempt history                            ✅
+legacy compatibility visibility                   ✅
+Personal nav + Dashboard + Cases integration      ✅
+completed Case -> analytics deep link             ✅
+responsive Persian/RTL desktop + mobile           ✅
+```
+
+صفحه overview تعداد تلاش‌ها، نرخ تکمیل، میانگین تلاش‌های تکمیل‌شده، تعداد کیس‌های شروع‌شده و تصمیم‌های ثبت‌شده را نشان می‌دهد و برای هر کیس یک summary شخصی برمی‌گرداند. صفحه detail نیز dimensionهای آموزشی، انتخاب‌های واقعاً طی‌شده در branchها، pathهای تکمیل‌شده و recent attempts را بدون محاسبه موازی در frontend نمایش می‌دهد.
+
+تمام درصدها و groupingها از API v0.7.4.1 می‌آیند. frontend فقط آن‌ها را نمایش می‌دهد و از mutable Case graph برای بازسازی history یا score استفاده نمی‌کند. history قدیمی با rubric/path ناکامل نیز صریح باقی می‌ماند و چیزی به‌صورت ساختگی backfill نمی‌شود.
+
+Browser QA با user و attempt موقت روی desktop 1280px و mobile 390px انجام شد؛ overview/detail بدون horizontal overflow یا clipping بودند و userهای QA پس از تست حذف شدند.
+
+سند development slice:
+
+```text
+docs/Psychology_Atlas_v0.7.4.2_Personal_Case_Analytics_UI_2026-09-16.md
+```
+
+مرحله بعدی: **v0.7.4.3 Analytics Hardening + Release Freeze**.
+
+## v0.7.4.1 Development Slice — Personal Case Analytics Foundation
+
+> baseline رسمی release همچنان **v0.7.3** است؛ این بخش foundation نسخه بعدی است و هنوز tag/release مستقل v0.7.4 ایجاد نمی‌کند.
+
+```text
+personal analytics overview API                  ✅
+personal per-Case analytics API                  ✅
+attempt/completion summaries                     ✅
+revision-aware dimension aggregation             ✅
+reached branch-choice distribution               ✅
+completed-path grouping                          ✅
+legacy rubric_version=0 compatibility            ✅
+inactive owned history preservation              ✅
+malformed snapshot defensive normalization       ✅
+bounded query-count contract                     ✅
+no schema migration                              ✅
+focused v0.7.4.1 tests: 10/10 PASS               ✅
+full backend suite: 168/168 PASS                 ✅
+```
+
+APIهای این slice فقط برای کاربر authenticated هستند:
+
+```text
+GET /api/case-analytics/overview/
+GET /api/case-analytics/cases/<slug>/
+```
+
+Analytics مستقیماً از `CaseAttempt` و `CaseAttemptEvent`های immutable ساخته می‌شود و state موازی یا score جدید ایجاد نمی‌کند. Overview تعداد attemptها، completion، Caseهای شروع‌شده و تصمیم‌های ثبت‌شده را خلاصه می‌کند. Detail هر Case نیز recent attempts، dimensionهای واقعاً طی‌شده، distribution انتخاب branchها و pathهای تکمیل‌شده را برمی‌گرداند.
+
+گروه‌بندی‌ها revision-aware هستند؛ داده‌های revisionهای تاریخی با معنای متفاوت بی‌صدا ادغام نمی‌شوند. Case غیرفعال نیز اگر history متعلق به کاربر داشته باشد از analytics شخصی حذف نمی‌شود. برای rubricهای قدیمی v0، dimension ساختگی تولید نمی‌شود.
+
+این خروجی فقط **آمار آموزشی شخصی** است و معیار صلاحیت بالینی، تشخیص، درمان، therapist fitness یا ranking هنجاری نیست. UI فارسی/RTL این contract در **v0.7.4.2** ساخته می‌شود.
+
+سند development slice:
+
+```text
+docs/Psychology_Atlas_v0.7.4.1_Personal_Case_Analytics_Foundation_2026-09-16.md
+```
+
 ## v0.7.3 Multi-dimensional Educational Scoring + Feedback
 
 ```text

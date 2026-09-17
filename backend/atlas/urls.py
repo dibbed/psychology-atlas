@@ -26,6 +26,8 @@ urlpatterns = [
     path("cases/<slug:slug>/attempts/current/", views.case_attempt_current),
     path("case-attempts/<int:attempt_id>/", views.case_attempt_detail),
     path("case-attempts/<int:attempt_id>/decisions/", views.case_attempt_decision),
+    path("case-analytics/overview/", views.case_analytics_overview),
+    path("case-analytics/cases/<slug:slug>/", views.case_analytics_detail),
 
     path("bookmarks/", views.bookmarks),
     path("bookmarks/<slug:slug>/", views.bookmark_delete),
