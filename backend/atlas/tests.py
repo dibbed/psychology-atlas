@@ -1716,6 +1716,25 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(data["completed_paths"], [])
         self.assertEqual(data["legacy"]["completed_attempts_without_reconstructible_path"], 1)
 
+    def test_v0743_completed_path_rejects_event_node_kind_mismatch(self):
+        fixture = self.create_branching_case_fixture(slug="v0743-node-kind-mismatch", scored=True)
+        attempt_id = self.run_branch_attempt(fixture, branch="left", complete=True)
+        event = CaseAttemptEvent.objects.get(
+            attempt_id=attempt_id,
+            event_type=CaseAttemptEvent.EventType.DECISION,
+        )
+        snapshot = dict(event.snapshot)
+        snapshot["node_kind"] = CaseStep.NodeKind.INFORMATION
+        event.snapshot = snapshot
+        event.save(update_fields=("snapshot",))
+
+        self.auth(self.user_a)
+        response = self.client.get(f"/api/case-analytics/cases/{fixture['case'].slug}/")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["completed_paths"], [])
+        self.assertEqual(data["legacy"]["completed_attempts_without_reconstructible_path"], 1)
+
     def test_v0743_zero_max_score_is_explicitly_unscored(self):
         fixture = self.create_branching_case_fixture(slug="v0743-zero-max", scored=True)
         CaseChoice.objects.filter(question=fixture["question"]).update(score_value=0)

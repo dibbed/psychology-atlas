@@ -78,7 +78,7 @@ A completed attempt is now considered reconstructible only when its immutable ev
 
 - event state versions start at 0 and advance exactly one step at a time
 - each event's before/after state pair is contiguous
-- snapshot `step_key`, `node_kind`, `outcome` and target semantics are structurally valid
+- snapshot `step_key`, `outcome` and target semantics are structurally valid, and snapshot `node_kind` matches the immutable event type
 - the next event starts on the target stable key recorded by the previous continue event
 - a decision event retains a real selected choice and choice text
 - a continue event cannot be the final event
@@ -268,8 +268,8 @@ duplicate_in_progress_groups=0
 Verified on the v0.7.4.3 release-freeze branch before PR closure:
 
 ```text
-Focused v0.7.4.3 analytics hardening tests: 10/10 PASS
-Full backend suite:                          178/178 PASS
+Focused v0.7.4.3 analytics hardening tests: 11/11 PASS
+Full backend suite:                          179/179 PASS
 Django system check:                        PASS
 Migration drift check:                      PASS / no changes detected
 Case graph/state/scoring audit:             PASS

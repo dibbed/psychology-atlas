@@ -9,7 +9,7 @@ Psychology Atlas is an interactive educational system for psychology students. I
 ### v0.7.4.3 analytics hardening + v0.7.4 release-freeze invariants
 
 - The public analytics contract remains `analytics_version=1` and `scope=personal`. v0.7.4.3 freezes the expected overview/detail response keys with regression coverage rather than adding a second contract generation during release closeout.
-- A completed Case attempt contributes to `completed_paths` only when its immutable event stream is internally reconstructible: state versions are contiguous from zero, snapshots carry valid step/node/outcome/target semantics, continue events chain to the next recorded stable key, and the final event proves completion with no further target.
+- A completed Case attempt contributes to `completed_paths` only when its immutable event stream is internally reconstructible: state versions are contiguous from zero, each snapshot `node_kind` matches its event type, snapshots carry valid step/outcome/target semantics, continue events chain to the next recorded stable key, and the final event proves completion with no further target.
 - Historical corruption or partial history is never silently repaired, inferred from the mutable current graph, or deleted by analytics. A completed attempt that fails reconstruction remains visible in attempt totals and increments `completed_attempts_without_reconstructible_path`.
 - Revision boundaries remain strict for dimensions, branch groups and completed paths. Identical stable keys, labels or choice text from different `CaseRevision.version` values are not silently merged into one historical semantic bucket.
 - Completed attempts with `max_score <= 0` are explicitly unscored: their percentage is null and they do not enter `average_completed_score_percent`. Partially scored history stays explicit through legacy counters instead of being normalized into a complete rubric.
@@ -20,7 +20,7 @@ Psychology Atlas is an interactive educational system for psychology students. I
 - Authentication refresh failure is represented as `ApiError(401)` so personal analytics can consistently return the learner through login instead of presenting token expiry as an ordinary server error.
 - Percentage meters use semantic progressbar attributes; loading announces status to assistive technology; retry does not require a full browser reload; long historical labels/keys wrap safely.
 - Real Chromium QA covers authenticated desktop analytics and a 320x800 reduced-motion viewport. Overview and detail both keep `scrollWidth === clientWidth`, and keyboard Tab reaches the global skip-link.
-- v0.7.4.3 adds no model, migration, seed-scientific-content or research-archive changes. The final local backend suite is 178/178 PASS; frontend package version is 0.7.4 and the validated production build is Next.js 16.3.5 with 24/24 generation units.
+- v0.7.4.3 adds no model, migration, seed-scientific-content or research-archive changes. The final local backend suite is 179/179 PASS; frontend package version is 0.7.4 and the validated production build is Next.js 16.3.5 with 24/24 generation units.
 - The complete v0.7.4 release remains educational-only personal history analytics. It must not be framed as diagnosis, treatment-quality evaluation, normative ranking, therapist fitness, psychometric assessment or clinical competence.
 - The full release record is `docs/Psychology_Atlas_v0.7.4_Personal_Case_Analytics_Release_2026-09-17.md`.
 

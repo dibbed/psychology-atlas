@@ -588,15 +588,10 @@ def _reconstruct_completed_attempt_path(attempt, events):
     if not events:
         return None
 
-    valid_event_types = {
-        CaseAttemptEvent.EventType.DECISION,
-        CaseAttemptEvent.EventType.ADVANCE,
-        CaseAttemptEvent.EventType.TERMINAL_COMPLETE,
-    }
-    valid_node_kinds = {
-        CaseStep.NodeKind.DECISION,
-        CaseStep.NodeKind.INFORMATION,
-        CaseStep.NodeKind.TERMINAL,
+    event_node_kinds = {
+        CaseAttemptEvent.EventType.DECISION: CaseStep.NodeKind.DECISION,
+        CaseAttemptEvent.EventType.ADVANCE: CaseStep.NodeKind.INFORMATION,
+        CaseAttemptEvent.EventType.TERMINAL_COMPLETE: CaseStep.NodeKind.TERMINAL,
     }
     expected_state_version = 0
     expected_step_key = None
@@ -607,7 +602,7 @@ def _reconstruct_completed_attempt_path(attempt, events):
         if (
             event["state_version_before"] != expected_state_version
             or event["state_version_after"] != expected_state_version + 1
-            or event["event_type"] not in valid_event_types
+            or event["event_type"] not in event_node_kinds
         ):
             return None
 
@@ -618,7 +613,7 @@ def _reconstruct_completed_attempt_path(attempt, events):
         if (
             not isinstance(step_key, str)
             or not step_key
-            or node_kind not in valid_node_kinds
+            or node_kind != event_node_kinds[event["event_type"]]
             or snapshot_outcome != event["outcome"]
         ):
             return None
