@@ -5,11 +5,13 @@ export const API_URL =
 
 export class ApiError extends Error {
   status: number;
+  code?: string;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, code?: string) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -46,12 +48,14 @@ function refreshAccessToken(): Promise<string | null> {
 }
 
 async function parseError(response: Response) {
-  let detail = `خطای درخواست (${response.status})`;
+  let message = `خطای درخواست (${response.status})`;
+  let code: string | undefined;
   try {
     const body = await response.json();
-    detail = body.detail || JSON.stringify(body);
+    message = body.detail || JSON.stringify(body);
+    if (typeof body.code === "string") code = body.code;
   } catch {}
-  return detail;
+  return { message, code };
 }
 
 export async function api<T>(
@@ -85,7 +89,8 @@ export async function api<T>(
 
   if (!response.ok) {
     if (response.status === 401) clearTokens();
-    throw new ApiError(response.status, await parseError(response));
+    const error = await parseError(response);
+    throw new ApiError(response.status, error.message, error.code);
   }
 
   if (response.status === 204) return undefined as T;
@@ -94,6 +99,9 @@ export async function api<T>(
 
 export async function publicFetch<T>(path: string): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, { cache: "no-store" });
-  if (!response.ok) throw new ApiError(response.status, await parseError(response));
+  if (!response.ok) {
+    const error = await parseError(response);
+    throw new ApiError(response.status, error.message, error.code);
+  }
   return response.json();
 }

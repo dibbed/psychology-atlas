@@ -41,7 +41,10 @@ export default function DashboardPage() {
     <main className="shell page stack">
       <div className="dashboard-v3-head">
         <div><div className="meta">Dashboard V3</div><h1 className="section-title" style={{ fontSize: 44 }}>فعالیت را به تصمیم بعدی مطالعه وصل کن.</h1><p className="section-copy">Progress، Streak، Heatmap، SRS و Recommendation همگی از داده ثبت‌شده حساب تو ساخته می‌شوند.</p></div>
-        <Link className="button primary" href="/study">باز کردن مرکز مطالعه</Link>
+        <div className="actions analytics-head-actions">
+          <Link className="button primary" href="/study">باز کردن مرکز مطالعه</Link>
+          <Link className="button" href="/case-analytics">تحلیل کیس‌های من</Link>
+        </div>
       </div>
 
       <div className="stats stats-8">

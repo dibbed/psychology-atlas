@@ -1,8 +1,58 @@
 # Psychology Atlas Product Spec
 
-## Current implemented version: v0.7.2 — Server-Authoritative Case Attempts + Stateful Runner
+## Current development slice: v0.7.4.2 — Persian/RTL Personal Case Analytics UI
+
+Official release baseline remains **v0.7.3 — Revision-Pinned Multi-dimensional Educational Scoring + Feedback** until the full v0.7.4 analytics release is frozen.
 
 Psychology Atlas is an interactive educational system for psychology students. It should behave as a connected learning system, not as a psychology blog and not as a diagnostic product.
+
+### v0.7.4.2 Persian/RTL personal Case analytics UI invariants
+
+- The frontend consumes the authenticated v0.7.4.1 API contract directly. It does not recalculate analytics semantics, reconstruct paths from mutable Case graph state, or create parallel scoring logic in React.
+- Personal analytics routes are `/case-analytics` for the overview and `/case-analytics/<slug>` for one Case. Both require authentication and preserve the validated internal login return path.
+- The overview presents attempt count, completion rate, completed-attempt score summary, started Case count, reached decision count, and per-Case summaries ordered by backend recency.
+- Per-Case detail renders revision-aware educational dimensions, reached choice distributions, reconstructible completed paths, and recent attempts from the backend payload. UI bars visualize backend percentages only.
+- Legacy history remains explicit. If rubric/path data cannot be reconstructed, the UI shows compatibility counts and never invents dimensions, paths, psychometric interpretations, or clinical competency claims.
+- Case Analytics is discoverable from Personal navigation, the Case catalog, Dashboard, and a completed Case attempt. Completing a Case offers a direct link to its personal analytics detail.
+- Loading, authenticated-empty, API-error, no-owned-history, desktop, tablet and mobile responsive states are first-class. The 390px mobile layout keeps KPI, dimension, branch, path and attempt content readable without horizontal overflow.
+- The analytics copy is Persian/RTL-first. Technical identifiers such as revision numbers and stable step keys remain visible only where they improve auditability; unnecessary English product jargon is removed from user-facing copy.
+- Safety language is preserved from the API: personal Case analytics summarizes this learner's educational scenario history and must not be presented as diagnosis, treatment quality, normative ranking, therapist fitness or clinical competence.
+- v0.7.4.2 adds no backend schema, migration, scoring or scientific-content changes. The official release baseline remains v0.7.3 until v0.7.4.3 hardening/freeze completes the analytics release.
+- Browser QA uses real stateful Case events and temporary users that are deleted afterward. Desktop 1280px and mobile 390px overview/detail renders must remain free of clipping and horizontal overflow.
+
+### v0.7.4.1 personal Case analytics foundation invariants
+
+- Analytics is derived from existing `CaseAttempt` and immutable `CaseAttemptEvent` history; v0.7.4.1 does not create a parallel analytics state table, scoring engine, or mutable event copy.
+- The API surface is authenticated and personal-only: `GET /api/case-analytics/overview/` and `GET /api/case-analytics/cases/<slug>/`. There is no cross-user or population analytics endpoint in this slice.
+- Overview analytics reports personal attempt/completion counts, completion rate, completed-attempt score summaries, started Case count, total reached decisions, and bounded-query per-Case summaries.
+- Per-Case analytics reports recent attempts, reached decision dimensions, reached branch-choice distributions, and completed-path groups. Only completed attempts form path statistics; in-progress immutable decisions may contribute to decision/dimension/branch aggregates.
+- Dimension, branch and path aggregation remains revision-aware. Historical rows from different `CaseRevision.version` values are not silently merged into one semantic bucket.
+- Dimension and branch labels come from immutable event snapshots rather than the mutable current Case graph. Malformed legacy snapshot fields are normalized defensively rather than crashing analytics.
+- Historical attempts for an inactive Case remain available to their owner. A user with no owned history for a Case receives 404 from the personal detail endpoint.
+- Legacy `rubric_version=0` attempts remain explicit: branch/path history can still be summarized, but no multidimensional performance is fabricated from missing/invalid rubric data.
+- Responses carry `analytics_version=1`, `scope=personal`, a generated timestamp and an educational-only disclaimer. Analytics must never be framed as clinical competence, diagnosis, treatment quality, therapist fitness or normative ranking.
+- Query count is intentionally bounded independently of attempt count: overview uses aggregate/attempt queries and per-Case detail uses Case lookup + attempt/event history queries. Response history lists are bounded where appropriate (`recent_attempts=20`, completed path groups=20).
+- v0.7.4.1 requires no schema migration. The next slice, v0.7.4.2, should build the Persian/RTL personal analytics UI against this stable API contract rather than duplicating aggregation in the frontend.
+
+### v0.7.3 multidimensional educational scoring invariants
+
+- `CaseRevision.rubric_version` declares the scoring-contract generation for that immutable Case revision; `0` means no multidimensional rubric and `1` is the first v0.7.3 rubric contract.
+- `CaseScoringDimension` belongs to one `CaseRevision` and uses a revision-scoped stable key, label, description and sort order. Dimensions are educational product metadata, not psychometric constructs or validated competency scales.
+- A decision `CaseQuestion` may reference one primary scoring dimension from the same revision. The existing `CaseChoice.score_value` remains the authoritative numeric score; v0.7.3 does not fabricate a new scientific score scale.
+- `CaseAttemptEvent.scoring_dimension` and `CaseAttemptAnswer.scoring_dimension` preserve the dimension used at decision time. Event snapshots also copy dimension key/label/description/order so reached-path history remains reconstructible and auditable.
+- The API computes `dimension_feedback` from immutable decision events in the exact path the learner actually traversed. Unvisited branches never inflate a denominator or appear as missed performance.
+- Old attempts/revisions remain valid with `rubric_version=0`. Missing dimension data is represented explicitly as legacy/unscored rather than backfilled from later content. Rubric v0 revisions cannot assign active scoring dimensions, and feedback aggregation defensively suppresses any anomalous legacy dimension snapshot instead of treating it as a valid multidimensional rubric.
+- The stateful runner does not expose scoring dimensions before a decision. After a decision, reached history can show the dimension label; after completion, Persian/RTL cards show score/max, path-scoped percentage, decision count and review feedback.
+- Public detail serialization for `structure_mode=branching` returns no revision steps/questions/choices, preventing unreached future branch content from leaking outside the stateful current-step API; linear detail compatibility is preserved.
+- `GET /api/cases/<slug>/attempts/current/` rejects duplicate in-progress corruption instead of selecting one arbitrarily, matching the start/resume integrity guard.
+- Dimension feedback is deliberately educational and includes an explicit non-diagnostic/non-competency disclaimer. It must never be presented as therapist fitness, clinical competence, diagnosis or treatment guidance.
+- Seeded v0.7.3 content maps 18 current Case decision questions onto 17 revision-owned dimension records across the 6 current Case revisions. Re-seeding identical content is idempotent; rubric changes publish a new CaseRevision instead of mutating historical structure.
+- Migration `0026_v073_multidimensional_case_scoring.py` is additive and preserves all prior attempts/revisions. The current local runtime has 12 total revisions: 6 historical v1 revisions and 6 current v2 rubric revisions.
+- `audit_case_graphs` now validates rubric existence, question→dimension ownership, unused dimensions, attempt event/answer ownership, and event snapshot key/label consistency in addition to the v0.7.1/v0.7.2 graph/state invariants.
+- Focused v0.7.3 tests are 10/10 PASS and the full backend suite is 158/158 PASS. Frontend 0.7.3 typecheck/build and npm audit are green; scientific/research archive regressions remain unchanged.
+- Runtime HTTP smoke on `case-high-energy-04` completed three real server decisions and produced path-scoped totals of `information_gathering=6/6` and `differential_reasoning=3/3`; the temporary user/attempt was deleted afterward.
+- Detailed release validation is recorded in `BUILD_MANIFEST.json` and `docs/Psychology_Atlas_v0.7.3_Multidimensional_Educational_Scoring_2026-09-16.md`.
+- The next Clinical Case slice is v0.7.4 Advanced Case Analytics; it should consume these immutable event/dimension primitives rather than invent parallel scoring state.
 
 ### v0.7.2 server attempt engine + runner invariants
 

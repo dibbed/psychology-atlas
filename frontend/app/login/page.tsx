@@ -29,10 +29,12 @@ export default function LoginPage() {
       const data = await response.json();
       setTokens(data.access, data.refresh);
       const requestedNext = new URLSearchParams(location.search).get("next");
-      const safeNext = requestedNext?.startsWith("/") && !requestedNext.startsWith("//")
-        ? requestedNext
-        : "/dashboard";
-      location.href = safeNext;
+      const caseMatch = requestedNext?.match(/^\/cases\/([A-Za-z0-9_-]+)\/?$/);
+      if (caseMatch) {
+        location.href = `/cases/${encodeURIComponent(caseMatch[1])}`;
+        return;
+      }
+      location.href = "/dashboard";
     } catch {
       setError("ارتباط با سرور برقرار نشد. اتصال Backend را بررسی کن و دوباره تلاش کن.");
     } finally {

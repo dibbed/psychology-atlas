@@ -1,5 +1,5 @@
 from django.core.cache import cache
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from atlas.case_graph import case_seed_hash
@@ -7,6 +7,7 @@ from atlas.models import (
     CaseChoice,
     CaseQuestion,
     CaseRevision,
+    CaseScoringDimension,
     CaseStep,
     CaseTransition,
     Category,
@@ -296,6 +297,30 @@ QUIZZES = [
     },
 ]
 
+CASE_SCORING_DIMENSIONS = {
+    "information_gathering": {
+        "label": "جمع‌آوری و ساختاربندی اطلاعات",
+        "description": "تمرکز بر انتخاب اطلاعات مرتبط، بررسی زمینه و کامل‌کردن تصویر آموزشی پیش از نتیجه‌گیری.",
+    },
+    "differential_reasoning": {
+        "label": "استدلال افتراقی",
+        "description": "تمرکز بر مقایسه فرضیه‌ها و استفاده از شواهد کیس برای افتراق توضیح‌های جایگزین.",
+    },
+    "safety_attention": {
+        "label": "توجه به ایمنی",
+        "description": "تمرکز بر شناسایی و اولویت‌دادن به اطلاعات ایمنی و خطر در چارچوب سناریوی آموزشی.",
+    },
+    "mechanism_formulation": {
+        "label": "مفهوم‌سازی سازوکار",
+        "description": "تمرکز بر فهم رابطه میان نشانه‌ها، رفتارها و سازوکارهای نگهدارنده مطرح‌شده در سناریو.",
+    },
+    "calibrated_summary": {
+        "label": "جمع‌بندی محتاطانه",
+        "description": "تمرکز بر جمع‌بندی متناسب با داده‌های موجود، محدودیت‌ها و پرهیز از قطعیت زودهنگام.",
+    },
+}
+
+
 CASES = [
     {
         "slug": "case-sudden-fear-01",
@@ -304,6 +329,9 @@ CASES = [
         "objective": "تمرین افتراق پانیک از نگرانی فراگیر، اضطراب اجتماعی و توضیح‌های جسمانی یا ماده‌ای.",
         "disorder": "panic-disorder",
         "difficulty": "introductory",
+        "rubric_version": 1,
+        "dimensions": ["information_gathering", "differential_reasoning", "calibrated_summary"],
+        "step_dimensions": ["information_gathering", "differential_reasoning", "calibrated_summary"],
         "steps": [
             ("شرح اولیه", "حمله‌ها در چند موقعیت متفاوت رخ داده‌اند و در چند دقیقه شدت گرفته‌اند.", "در مرحله بعد چه چیزی باید بررسی شود؟", [
                 ("الگوی حمله، عوامل جسمانی، مصرف مواد و اجتناب", 3, "انتخاب قوی؛ ارزیابی را باز نگه می‌دارد."),
@@ -329,6 +357,9 @@ CASES = [
         "objective": "تمرین شناسایی چرخه وسواس، اجبار و اجتناب و افتراق آن از نگرانی معمول.",
         "disorder": "obsessive-compulsive-disorder",
         "difficulty": "introductory",
+        "rubric_version": 1,
+        "dimensions": ["information_gathering", "mechanism_formulation", "differential_reasoning"],
+        "step_dimensions": ["information_gathering", "mechanism_formulation", "differential_reasoning"],
         "steps": [
             ("شرح اولیه", "فرد می‌داند ترسش اغراق‌آمیز به نظر می‌رسد اما هنگام مقاومت اضطراب زیادی تجربه می‌کند.", "کدام سؤال بیشترین ارزش آموزشی دارد؟", [("زمان صرف‌شده، محرک‌ها و رفتارهای خنثی‌ساز را بررسی کنیم", 3, "چرخه نشانه را روشن می‌کند."), ("فقط بپرسیم آیا فرد منظم است", 0, "نظم شخصیتی جای بررسی وسواس و اجبار را نمی‌گیرد."), ("فقط شدت اضطراب را از ۱ تا ۱۰ بپرسیم", 1, "مفید است اما کافی نیست.")], "ارزیابی OCD باید رابطه فکر مزاحم و پاسخ اجباری را بررسی کند."),
             ("چرخه نشانه", "شست‌وشو موقتاً اضطراب را کم می‌کند اما چند دقیقه بعد شک دوباره برمی‌گردد.", "این الگو چه چیزی را نشان می‌دهد؟", [("کاهش موقت اضطراب می‌تواند اجبار را تقویت کند", 3, "این همان چرخه نگهدارنده مهم است."), ("شست‌وشو مشکل را برای همیشه حل می‌کند", 0, "اطلاعات خلاف این را نشان می‌دهد."), ("این الگو فقط افسردگی است", 0, "با داده‌های کیس سازگار نیست.")], "رفتار اجباری می‌تواند از طریق کاهش موقت اضطراب تقویت شود."),
@@ -342,6 +373,9 @@ CASES = [
         "objective": "تمرین ارزیابی افسردگی، ایمنی و ضرورت بررسی سابقه خلق بالا.",
         "disorder": "major-depressive-disorder",
         "difficulty": "intermediate",
+        "rubric_version": 1,
+        "dimensions": ["safety_attention", "differential_reasoning", "calibrated_summary"],
+        "step_dimensions": ["safety_attention", "differential_reasoning", "calibrated_summary"],
         "steps": [
             ("شرح اولیه", "افت عملکرد تحصیلی و اجتماعی نیز گزارش می‌شود.", "کدام حوزه باید به‌طور مستقیم بررسی شود؟", [("ایمنی و افکار خودکشی یا آسیب به خود", 3, "ارزیابی ایمنی ضروری است."), ("فقط علایق هنری", 0, "برای ایمنی کافی نیست."), ("فقط قد و وزن", 0, "موضوع اصلی را پوشش نمی‌دهد.")], "در ارزیابی افسردگی، ایمنی باید به شکل روشن بررسی شود."),
             ("سابقه خلق", "فرد یک دوره چندروزه انرژی بیشتر داشته اما بدون کاهش واضح نیاز به خواب یا تغییر عمده رفتار.", "بهترین اقدام چیست؟", [("تاریخچه خلق بالا را دقیق‌تر بررسی کنیم و زود نتیجه نگیریم", 3, "افتراق طیف دوقطبی نیازمند جزئیات است."), ("فوراً Bipolar I تشخیص دهیم", 0, "اطلاعات برای چنین نتیجه‌ای کافی نیست."), ("سابقه خلق بالا را نادیده بگیریم", 0, "این بخش برای افتراق مهم است.")], "سابقه مانیا یا هیپومانیا باید به‌دقت بررسی شود."),
@@ -355,6 +389,9 @@ CASES = [
         "objective": "تمرین تشخیص اهمیت دوره‌های خلق بالا در افتراق اختلالات دوقطبی.",
         "disorder": "bipolar-i-disorder",
         "difficulty": "intermediate",
+        "rubric_version": 1,
+        "dimensions": ["information_gathering", "differential_reasoning"],
+        "step_dimensions": ["information_gathering", "information_gathering", "differential_reasoning"],
         "steps": [
             ("دوره خلق بالا", "تغییر رفتار برای اطرافیان واضح بوده و عملکرد مالی و شغلی به‌شدت آسیب دیده است.", "کدام ویژگی اهمیت بیشتری دارد؟", [("شدت تغییر و اختلال عملکرد", 3, "برای درک مانیا بسیار مهم است."), ("رنگ لباس", 0, "ارزش تشخیصی اصلی ندارد."), ("علاقه به موسیقی", 0, "به تنهایی مرتبط نیست.")], "شدت و اثر عملکردی بخشی مهم از ارزیابی دوره خلق بالاست."),
             ("افتراق", "مصرف محرک و علت پزشکی آشکار در بررسی اولیه گزارش نشده است.", "چه چیزی هنوز باید بررسی شود؟", [("زمان‌بندی دوره، سابقه افسردگی و سابقه خانوادگی", 3, "به تکمیل تصویر کمک می‌کند."), ("فقط نمرات مدرسه", 0, "کافی نیست."), ("هیچ چیز دیگر", 0, "ارزیابی کامل‌تر لازم است.")], "سیر زمانی و دوره‌های قبلی برای الگوی دوقطبی مهم‌اند."),
@@ -368,6 +405,9 @@ CASES = [
         "objective": "تمرین بررسی حوزه‌های نشانه پس از تروما و اهمیت زمان‌بندی.",
         "disorder": "post-traumatic-stress-disorder",
         "difficulty": "intermediate",
+        "rubric_version": 1,
+        "dimensions": ["information_gathering", "differential_reasoning", "calibrated_summary"],
+        "step_dimensions": ["information_gathering", "differential_reasoning", "calibrated_summary"],
         "steps": [
             ("پس از حادثه", "فرد از مسیر وقوع حادثه اجتناب می‌کند و با صداهای مشابه به‌شدت واکنش نشان می‌دهد.", "کدام حوزه‌ها باید بررسی شوند؟", [("مزاحمت، اجتناب، خلق و شناخت، برانگیختگی و عملکرد", 3, "بررسی چندحوزه‌ای مناسب است."), ("فقط خواب", 1, "خواب مهم است اما کافی نیست."), ("فقط حافظه عمومی", 0, "تصویر کامل را نمی‌دهد.")], "ارزیابی پس از تروما چند حوزه نشانه را پوشش می‌دهد."),
             ("زمان‌بندی", "نشانه‌ها چند ماه ادامه داشته‌اند.", "کدام نکته در افتراق مهم‌تر می‌شود؟", [("تداوم نشانه‌ها نسبت به دوره کوتاه استرس حاد", 3, "زمان‌بندی برای افتراق مهم است."), ("رنگ خودرو", 0, "ارتباطی ندارد."), ("سن دقیق به تنهایی", 0, "به تنهایی تعیین‌کننده نیست.")], "زمان‌بندی یکی از تفاوت‌های آموزشی PTSD و استرس حاد است."),
@@ -381,6 +421,9 @@ CASES = [
         "objective": "تمرین افتراق الگوی شخصیتی مرزی از نوسان‌های دوره‌ای خلق.",
         "disorder": "borderline-personality-disorder",
         "difficulty": "advanced",
+        "rubric_version": 1,
+        "dimensions": ["information_gathering", "differential_reasoning", "safety_attention"],
+        "step_dimensions": ["information_gathering", "differential_reasoning", "safety_attention"],
         "steps": [
             ("الگوی روابط", "تغییرات شدید هیجان اغلب در واکنش به تعارض یا ترس از رهاشدن رخ می‌دهند.", "کدام سؤال بیشترین ارزش دارد؟", [("الگوی طولانی‌مدت روابط، خودپنداره، تکانشگری و ایمنی را بررسی کنیم", 3, "برای فهم الگوی شخصیت مناسب است."), ("فقط یک هفته اخیر را بررسی کنیم", 0, "برای الگوی شخصیتی کافی نیست."), ("فقط میزان خواب را بپرسیم", 1, "خواب مفید است اما کافی نیست.")], "ارزیابی شخصیت نیازمند بررسی الگوی طولانی‌مدت در چند زمینه است."),
             ("افتراق خلقی", "تغییرات هیجان معمولاً ساعتی و در واکنش به روابط رخ می‌دهند و دوره‌های مستقل چندروزه با افزایش پایدار انرژی گزارش نمی‌شود.", "کدام افتراق مهم است؟", [("شخصیت مرزی در برابر اختلال دوقطبی", 3, "الگوی زمانی و زمینه‌ای برای افتراق مهم است."), ("فوبیای خاص", 0, "محور کیس نیست."), ("اختلال احتکار", 0, "محور کیس نیست.")], "بی‌ثباتی هیجانی و دوره خلقی یک مفهوم واحد نیستند."),
@@ -544,7 +587,20 @@ class Command(BaseCommand):
                     "seed_managed": True,
                 },
             )
-            desired_hash = case_seed_hash(case_data)
+            dimension_definitions = []
+            for dimension_key in case_data.get("dimensions", []):
+                try:
+                    definition = CASE_SCORING_DIMENSIONS[dimension_key]
+                except KeyError as exc:
+                    raise CommandError(f"Unknown case scoring dimension {dimension_key!r} for {case.slug}.") from exc
+                dimension_definitions.append({
+                    "key": dimension_key,
+                    "label": definition["label"],
+                    "description": definition["description"],
+                })
+            hash_payload = dict(case_data)
+            hash_payload["dimension_definitions"] = dimension_definitions
+            desired_hash = case_seed_hash(hash_payload)
             current_revision = case.current_revision
 
             if (
@@ -552,6 +608,7 @@ class Command(BaseCommand):
                 and current_revision.version == 1
                 and current_revision.seed_managed
                 and not current_revision.content_hash
+                and case_data.get("rubric_version", 0) == 0
             ):
                 current_revision.title = case_data["title"]
                 current_revision.patient_summary = case_data["summary"]
@@ -559,12 +616,13 @@ class Command(BaseCommand):
                 current_revision.primary_disorder = disorder_objs[case_data["disorder"]]
                 current_revision.difficulty = case_data["difficulty"]
                 current_revision.content_hash = desired_hash
+                current_revision.rubric_version = case_data.get("rubric_version", 0)
                 current_revision.status = CaseRevision.Status.PUBLISHED
                 current_revision.published_at = current_revision.published_at or case.updated_at
                 current_revision.seed_managed = True
                 current_revision.save(update_fields=(
                     "title", "patient_summary", "educational_objective", "primary_disorder",
-                    "difficulty", "content_hash", "status", "published_at", "seed_managed", "updated_at",
+                    "difficulty", "content_hash", "rubric_version", "status", "published_at", "seed_managed", "updated_at",
                 ))
             elif not current_revision or current_revision.content_hash != desired_hash:
                 if current_revision and current_revision.status == CaseRevision.Status.PUBLISHED:
@@ -582,9 +640,30 @@ class Command(BaseCommand):
                     difficulty=case_data["difficulty"],
                     status=CaseRevision.Status.PUBLISHED,
                     content_hash=desired_hash,
+                    rubric_version=case_data.get("rubric_version", 0),
                     published_at=case.updated_at,
                     seed_managed=True,
                 )
+
+                step_dimensions = case_data.get("step_dimensions", [])
+                if revision.rubric_version >= 1 and len(step_dimensions) != len(case_data["steps"]):
+                    raise CommandError(f"Case {case.slug} rubric step mapping does not match the number of case steps.")
+
+                dimension_objs = {}
+                for dimension_order, dimension_key in enumerate(case_data.get("dimensions", []), start=1):
+                    try:
+                        definition = CASE_SCORING_DIMENSIONS[dimension_key]
+                    except KeyError as exc:
+                        raise CommandError(f"Unknown case scoring dimension {dimension_key!r} for {case.slug}.") from exc
+                    dimension_objs[dimension_key] = CaseScoringDimension.objects.create(
+                        revision=revision,
+                        stable_key=dimension_key,
+                        label=definition["label"],
+                        description=definition["description"],
+                        sort_order=dimension_order,
+                        is_active=True,
+                        seed_managed=True,
+                    )
 
                 seeded_steps = []
                 for step_order, (title, narrative, prompt, choices, explanation) in enumerate(case_data["steps"], start=1):
@@ -598,8 +677,17 @@ class Command(BaseCommand):
                         sort_order=step_order,
                         is_active=True,
                     )
+                    scoring_dimension = None
+                    if revision.rubric_version >= 1:
+                        dimension_key = step_dimensions[step_order - 1]
+                        scoring_dimension = dimension_objs.get(dimension_key)
+                        if scoring_dimension is None:
+                            raise CommandError(
+                                f"Case {case.slug} step {step_order} references undefined dimension {dimension_key!r}."
+                            )
                     question = CaseQuestion.objects.create(
                         step=step,
+                        scoring_dimension=scoring_dimension,
                         prompt=prompt,
                         explanation=explanation,
                         sort_order=1,

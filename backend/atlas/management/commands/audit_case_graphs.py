@@ -2,7 +2,14 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Count
 
 from atlas.case_graph import validate_case_revision_graph
-from atlas.models import CaseAttempt, CaseAttemptAnswer, CaseAttemptEvent, CaseRevision, ClinicalCase
+from atlas.models import (
+    CaseAttempt,
+    CaseAttemptAnswer,
+    CaseAttemptEvent,
+    CaseRevision,
+    CaseScoringDimension,
+    ClinicalCase,
+)
 
 
 class Command(BaseCommand):
@@ -74,6 +81,8 @@ class Command(BaseCommand):
             "attempt__revision",
             "step__revision",
             "question__step",
+            "question__scoring_dimension",
+            "scoring_dimension",
             "selected_choice__question",
             "transition__revision",
             "transition__source_step",
@@ -83,6 +92,21 @@ class Command(BaseCommand):
                 failures.append(f"event:{event.id}:step_revision_mismatch")
             if event.question_id and event.question.step_id != event.step_id:
                 failures.append(f"event:{event.id}:question_step_mismatch")
+            if event.scoring_dimension_id:
+                if event.scoring_dimension.revision_id != event.attempt.revision_id:
+                    failures.append(f"event:{event.id}:scoring_dimension_revision_mismatch")
+                if not event.question_id or event.question.scoring_dimension_id != event.scoring_dimension_id:
+                    failures.append(f"event:{event.id}:scoring_dimension_question_mismatch")
+                dimension_snapshot = event.snapshot.get("scoring_dimension") if isinstance(event.snapshot, dict) else None
+                if not isinstance(dimension_snapshot, dict):
+                    failures.append(f"event:{event.id}:scoring_dimension_snapshot_missing")
+                else:
+                    if dimension_snapshot.get("key") != event.scoring_dimension.stable_key:
+                        failures.append(f"event:{event.id}:scoring_dimension_snapshot_key_mismatch")
+                    if dimension_snapshot.get("label") != event.scoring_dimension.label:
+                        failures.append(f"event:{event.id}:scoring_dimension_snapshot_label_mismatch")
+            elif event.question_id and event.question.scoring_dimension_id:
+                failures.append(f"event:{event.id}:scoring_dimension_missing")
             if event.selected_choice_id and event.selected_choice.question_id != event.question_id:
                 failures.append(f"event:{event.id}:choice_question_mismatch")
             if event.transition_id:
@@ -100,17 +124,27 @@ class Command(BaseCommand):
         for answer in CaseAttemptAnswer.objects.select_related(
             "attempt__revision",
             "question__step__revision",
+            "question__scoring_dimension",
+            "scoring_dimension",
             "selected_choice__question",
         ):
             if answer.selected_choice.question_id != answer.question_id:
                 failures.append(f"answer:{answer.id}:choice_question_mismatch")
             if answer.question.step.revision_id != answer.attempt.revision_id:
                 failures.append(f"answer:{answer.id}:question_revision_mismatch")
+            if answer.scoring_dimension_id:
+                if answer.scoring_dimension.revision_id != answer.attempt.revision_id:
+                    failures.append(f"answer:{answer.id}:scoring_dimension_revision_mismatch")
+                if answer.question.scoring_dimension_id != answer.scoring_dimension_id:
+                    failures.append(f"answer:{answer.id}:scoring_dimension_question_mismatch")
+            elif answer.question.scoring_dimension_id:
+                failures.append(f"answer:{answer.id}:scoring_dimension_missing")
 
         self.stdout.write(
             f"Clinical case graph audit: cases={ClinicalCase.objects.count()} "
-            f"revisions={revisions.count()} attempts={CaseAttempt.objects.count()} "
-            f"events={CaseAttemptEvent.objects.count()} answers={CaseAttemptAnswer.objects.count()} "
+            f"revisions={revisions.count()} dimensions={CaseScoringDimension.objects.count()} "
+            f"attempts={CaseAttempt.objects.count()} events={CaseAttemptEvent.objects.count()} "
+            f"answers={CaseAttemptAnswer.objects.count()} "
             f"failures={len(failures)}"
         )
         if failures:
