@@ -1,10 +1,10 @@
-# Psychology Atlas — v0.7.5 · Clinical Case Integrity Patch
+# Psychology Atlas — v0.8.1 · Study Planning Foundation
 
 [![CI](https://github.com/dibbed/psychology-atlas/actions/workflows/ci.yml/badge.svg)](https://github.com/dibbed/psychology-atlas/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/dibbed/psychology-atlas/actions/workflows/codeql.yml/badge.svg)](https://github.com/dibbed/psychology-atlas/actions/workflows/codeql.yml)
 [![Latest release](https://img.shields.io/github/v/release/dibbed/psychology-atlas?display_name=tag)](https://github.com/dibbed/psychology-atlas/releases)
 
-یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.7.5 آخرین patch خط Clinical Case نسخه 0.7 است: بعد از audit کامل v0.7، مرجع authoritative محتوای کیس روی `CaseRevision` یکدست شده، integrity تاریخچه و analytics سخت‌تر شده، start/decision همزمان روی SQLite بدون duplicate یا lock leak مدیریت می‌شود و یک constraint دیتابیسی از بیش از یک attempt درحال‌اجرا برای هر user/Case جلوگیری می‌کند. قابلیت **Personal Case Analytics** نسخه v0.7.4 بدون تغییر contract باقی مانده است.
+یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.8.1 اولین slice از خط **Study Mode + Exam Planning + Advanced Recommendations** است و فقط foundation برنامه‌ریزی را اضافه می‌کند: تنظیمات شخصی مطالعه با timezone معتبر IANA، StudyPlan عمومی/امتحان، ظرفیت هفتگی، Scope صریح روی دامنه‌های اطلس و lifecycle امن Draft/Active/Pause/Archive. این نسخه عمداً هنوز StudyBlock scheduler یا Recommendation V2 نمی‌سازد و قرارداد قدیمی `/api/study/overview/` و رفتار Daily Challenge را تغییر نمی‌دهد.
 
 > این نرم‌افزار آموزشی است و ابزار تشخیص، درمان، ارزیابی صلاحیت بالینی یا جایگزین ارزیابی حرفه‌ای نیست.
 
@@ -15,6 +15,41 @@
 **No open-source license is granted.** مگر با اجازه کتبی جداگانه از صاحب حقوق، مجوز عمومی برای استفاده، کپی، تغییر، بازتوزیع، sublicense یا ساخت derivative work از کد اعطا نشده است؛ به‌جز دسترسی‌ها و قابلیت‌هایی که Terms of Service خود GitHub برای میزبانی، مشاهده و قابلیت‌های پلتفرم مانند fork الزاماً فراهم می‌کند.
 
 اگر برای استفاده‌ای خارج از این محدوده به مجوز نیاز داری، ابتدا باید اجازه صریح صاحب repository را دریافت کنی.
+
+## v0.8.1 — Study Planning Foundation
+
+```text
+UserStudySettings + valid IANA study timezone             ✅
+StudyPlan general/exam intent model                       ✅
+7-day deterministic StudyPlanAvailability                ✅
+explicit-FK StudyPlanScope across 8 content domains       ✅
+exactly-one-target + duplicate-target DB integrity        ✅
+authenticated owner-scoped planning APIs                  ✅
+scope catalog with active-content boundary                ✅
+Draft / Active / Paused / Archived lifecycle              ✅
+Persian/RTL /study/plans management UI                    ✅
+existing /api/study/overview/ compatibility               ✅
+Daily Challenge timezone behavior unchanged               ✅
+migration 0028 + 0027→0028 preservation regression        ✅
+fresh-install migration through 0028                      ✅
+focused v0.8.1 tests: 28/28 PASS                          ✅
+full backend suite: 217/217 PASS                          ✅
+Next.js 16.3.5 production build: 26/26 PASS               ✅
+npm audit: 0 vulnerabilities                              ✅
+desktop 1280 + mobile 390 Chromium overflow audit         ✅
+```
+
+`v0.8.1` فقط **intent/configuration layer** را می‌سازد. `StudyPlan` هیچ mastery، SRS due date، Quiz score یا Case result را کپی نمی‌کند. Scope فقط می‌گوید چه محتوایی داخل برنامه مطالعه قرار دارد و `priority` صرفاً ورودی برنامه‌ریز آینده است، نه ارزیابی علمی یا آمادگی امتحان.
+
+Migration `0028_v081_study_plan_foundation.py` چهار مدل `UserStudySettings`, `StudyPlan`, `StudyPlanAvailability`, `StudyPlanScope` را به‌صورت additive اضافه می‌کند. کاربران موجود به‌طور خودکار Plan یا Settings دریافت نمی‌کنند؛ Settings در اولین استفاده به‌صورت lazy ساخته می‌شود. regression تاریخی از 0027 به 0028 ثابت می‌کند UserProgress قبلی حفظ می‌شود.
+
+رابط کاربری جدید در `/study/plans`, `/study/plans/new` و `/study/plans/[id]` قرار دارد. Plan فعال برای تغییر Scope یا Availability باید ابتدا Pause شود. این مرز عمداً scheduler را از configuration جدا می‌کند تا v0.8.2 بتواند generation را روی state پایدار و auditپذیر بسازد.
+
+سند کامل release:
+
+```text
+docs/Psychology_Atlas_v0.8.1_Study_Planning_Foundation_2026-09-19.md
+```
 
 ## v0.7.5 — Clinical Case Integrity Patch
 
