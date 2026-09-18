@@ -14,6 +14,7 @@ from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import IntegrityError, close_old_connections, connection, transaction
+from django.db.migrations.executor import MigrationExecutor
 from django.test import TransactionTestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
@@ -5811,3 +5812,866 @@ class V075CaseConcurrencyTests(TransactionTestCase):
             self.assertEqual(attempt.current_step_id, self.next_step.id)
             self.assertEqual(CaseAttemptEvent.objects.filter(attempt=attempt).count(), 1)
             self.assertEqual(CaseAttemptAnswer.objects.filter(attempt=attempt).count(), 1)
+
+
+class V081StudyPlanningFoundationTests(APITestCase):
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(
+            username="v081@example.com",
+            email="v081@example.com",
+            password="ComplexPass123!",
+        )
+        self.other_user = User.objects.create_user(
+            username="v081-other@example.com",
+            email="v081-other@example.com",
+            password="ComplexPass123!",
+        )
+        self.client.force_authenticate(self.user)
+
+        self.category = Category.objects.create(slug="v081-category", name_en="v0.8.1")
+        self.disorder = Disorder.objects.create(
+            category=self.category,
+            slug="v081-disorder",
+            name_en="v0.8.1 Disorder",
+            name_fa="اختلال آزمایشی ۰.۸.۱",
+            is_active=True,
+        )
+        self.inactive_disorder = Disorder.objects.create(
+            category=self.category,
+            slug="v081-inactive-disorder",
+            name_en="Inactive v0.8.1 Disorder",
+            is_active=False,
+        )
+        self.concept = Concept.objects.create(
+            slug="v081-concept",
+            name_en="v0.8.1 Concept",
+            name_fa="مفهوم آزمایشی ۰.۸.۱",
+            simple_definition="Study planning test concept.",
+            is_active=True,
+        )
+        self.family = atlas_models.TherapyFamily.objects.create(
+            slug="v081-family",
+            name_en="v0.8.1 Family",
+            name_fa="خانواده درمانی آزمایشی",
+            is_active=True,
+        )
+        self.therapy = atlas_models.Therapy.objects.create(
+            family=self.family,
+            slug="v081-therapy",
+            name_en="v0.8.1 Therapy",
+            name_fa="درمان آزمایشی ۰.۸.۱",
+            is_active=True,
+        )
+        self.theory = atlas_models.Theory.objects.create(
+            slug="v081-theory",
+            name_en="v0.8.1 Theory",
+            name_fa="نظریه آزمایشی ۰.۸.۱",
+            is_active=True,
+        )
+        self.psychologist = atlas_models.Psychologist.objects.create(
+            slug="v081-psychologist",
+            name_en="v0.8.1 Psychologist",
+            name_fa="روان‌شناس آزمایشی ۰.۸.۱",
+            is_active=True,
+        )
+        self.timeline_event = atlas_models.TimelineEvent.objects.create(
+            slug="v081-timeline",
+            title_en="v0.8.1 Timeline Event",
+            title_fa="رویداد آزمایشی ۰.۸.۱",
+            is_active=True,
+        )
+        self.quiz = Quiz.objects.create(
+            slug="v081-quiz",
+            title="آزمون آزمایشی ۰.۸.۱",
+            disorder=self.disorder,
+            is_active=True,
+        )
+        self.case = ClinicalCase.objects.create(
+            slug="v081-case",
+            title="کیس آزمایشی ۰.۸.۱",
+            patient_summary="summary",
+            primary_disorder=self.disorder,
+            structure_mode=ClinicalCase.StructureMode.BRANCHING,
+            is_active=True,
+        )
+        revision = CaseRevision.objects.create(
+            case=self.case,
+            version=1,
+            title=self.case.title,
+            patient_summary=self.case.patient_summary,
+            primary_disorder=self.disorder,
+            status=CaseRevision.Status.PUBLISHED,
+        )
+        entry = CaseStep.objects.create(
+            case=self.case,
+            revision=revision,
+            stable_key="entry",
+            node_kind=CaseStep.NodeKind.TERMINAL,
+            title="پایان",
+            narrative="Terminal study planning fixture.",
+            sort_order=1,
+            is_active=True,
+        )
+        revision.entry_step = entry
+        revision.save(update_fields=("entry_step", "updated_at"))
+        self.case.current_revision = revision
+        self.case.save(update_fields=("current_revision", "updated_at"))
+
+    def _create_plan(self, **overrides):
+        payload = {
+            "name": "برنامه مطالعه نسخه ۰.۸.۱",
+            "plan_kind": "general",
+            "start_date": "2026-09-19",
+            "target_date": None,
+            "notes": "",
+        }
+        payload.update(overrides)
+        response = self.client.post("/api/study/plans/", payload, format="json")
+        self.assertEqual(response.status_code, 201, response.json())
+        return response
+
+    def _set_scope(self, plan_id, rows=None):
+        if rows is None:
+            rows = [
+                {
+                    "target_type": "concept",
+                    "target_slug": self.concept.slug,
+                    "priority": 4,
+                    "include_practice": True,
+                    "sort_order": 0,
+                }
+            ]
+        return self.client.put(
+            f"/api/study/plans/{plan_id}/scopes/",
+            {"scopes": rows},
+            format="json",
+        )
+
+    def test_v081_settings_are_lazy_user_scoped_and_use_app_timezone(self):
+        self.assertFalse(atlas_models.UserStudySettings.objects.filter(user=self.user).exists())
+        response = self.client.get("/api/study/settings/")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["study_timezone"], "Asia/Tehran")
+        self.assertEqual(payload["default_daily_minutes"], 45)
+        self.assertEqual(payload["default_session_minutes"], 25)
+        self.assertEqual(payload["week_starts_on"], 5)
+        self.assertEqual(atlas_models.UserStudySettings.objects.filter(user=self.user).count(), 1)
+        self.assertFalse(atlas_models.UserStudySettings.objects.filter(user=self.other_user).exists())
+
+    def test_v081_settings_accept_valid_iana_timezone_and_reject_invalid_values(self):
+        valid = self.client.put(
+            "/api/study/settings/",
+            {
+                "study_timezone": "Europe/Berlin",
+                "default_daily_minutes": 90,
+                "default_session_minutes": 30,
+                "week_starts_on": 0,
+            },
+            format="json",
+        )
+        self.assertEqual(valid.status_code, 200)
+        self.assertEqual(valid.json()["study_timezone"], "Europe/Berlin")
+
+        invalid = self.client.put(
+            "/api/study/settings/",
+            {
+                "study_timezone": "UTC+03:30",
+                "default_daily_minutes": 90,
+                "default_session_minutes": 30,
+                "week_starts_on": 0,
+            },
+            format="json",
+        )
+        self.assertEqual(invalid.status_code, 400)
+        self.assertEqual(invalid.json()["code"], "study_timezone_invalid")
+
+        invalid_minutes = self.client.put(
+            "/api/study/settings/",
+            {
+                "study_timezone": "Europe/Berlin",
+                "default_daily_minutes": 20,
+                "default_session_minutes": 30,
+                "week_starts_on": 0,
+            },
+            format="json",
+        )
+        self.assertEqual(invalid_minutes.status_code, 400)
+        self.assertEqual(invalid_minutes.json()["code"], "study_plan_invalid")
+
+    def test_v081_model_settings_validation_and_one_row_per_user(self):
+        invalid = atlas_models.UserStudySettings(
+            user=self.user,
+            study_timezone="Not/A_Timezone",
+            default_daily_minutes=45,
+            default_session_minutes=25,
+        )
+        with self.assertRaises(ValidationError):
+            invalid.full_clean()
+
+        atlas_models.UserStudySettings.objects.create(user=self.user)
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                atlas_models.UserStudySettings.objects.create(user=self.user)
+
+    def test_v081_general_plan_creation_is_draft_with_seven_default_days(self):
+        response = self._create_plan()
+        payload = response.json()
+        self.assertEqual(payload["status"], "draft")
+        self.assertEqual(payload["plan_kind"], "general")
+        self.assertEqual(payload["generation_version"], 0)
+        self.assertIsNone(payload["last_generated_at"])
+        self.assertEqual(len(payload["availability"]), 7)
+        self.assertEqual({row["weekday"] for row in payload["availability"]}, set(range(7)))
+        self.assertTrue(all(row["available_minutes"] == 45 for row in payload["availability"]))
+        plan = atlas_models.StudyPlan.objects.get(pk=payload["id"])
+        self.assertEqual(plan.user, self.user)
+
+    def test_v081_exam_plan_requires_target_and_rejects_reversed_dates(self):
+        missing = self.client.post(
+            "/api/study/plans/",
+            {
+                "name": "Exam",
+                "plan_kind": "exam",
+                "start_date": "2026-09-19",
+            },
+            format="json",
+        )
+        self.assertEqual(missing.status_code, 400)
+        self.assertEqual(missing.json()["code"], "study_plan_invalid_date_range")
+
+        reversed_dates = self.client.post(
+            "/api/study/plans/",
+            {
+                "name": "Exam",
+                "plan_kind": "exam",
+                "start_date": "2026-10-01",
+                "target_date": "2026-09-30",
+            },
+            format="json",
+        )
+        self.assertEqual(reversed_dates.status_code, 400)
+        self.assertEqual(reversed_dates.json()["code"], "study_plan_invalid_date_range")
+
+        valid = self._create_plan(
+            name="آزمون",
+            plan_kind="exam",
+            target_date="2026-10-15",
+        )
+        self.assertEqual(valid.json()["target_date"], "2026-10-15")
+
+    def test_v081_plan_patch_rejects_status_and_archived_plan_is_immutable(self):
+        plan_id = self._create_plan().json()["id"]
+        bad = self.client.patch(
+            f"/api/study/plans/{plan_id}/",
+            {"status": "active"},
+            format="json",
+        )
+        self.assertEqual(bad.status_code, 400)
+        self.assertEqual(bad.json()["code"], "study_plan_invalid")
+
+        archived = self.client.post(f"/api/study/plans/{plan_id}/archive/", {}, format="json")
+        self.assertEqual(archived.status_code, 200)
+        self.assertEqual(archived.json()["status"], "archived")
+        self.assertIsNotNone(archived.json()["archived_at"])
+
+        edit = self.client.patch(
+            f"/api/study/plans/{plan_id}/",
+            {"name": "changed"},
+            format="json",
+        )
+        self.assertEqual(edit.status_code, 409)
+        self.assertEqual(edit.json()["code"], "study_plan_archived")
+
+    def test_v081_plan_endpoints_are_owner_scoped_and_do_not_leak_other_user(self):
+        own_id = self._create_plan().json()["id"]
+        other = atlas_models.StudyPlan.objects.create(
+            user=self.other_user,
+            name="Other user's plan",
+            start_date=date(2026, 9, 19),
+        )
+        response = self.client.get("/api/study/plans/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([row["id"] for row in response.json()["plans"]], [own_id])
+
+        for method, path, payload in [
+            ("get", f"/api/study/plans/{other.id}/", None),
+            ("patch", f"/api/study/plans/{other.id}/", {"name": "stolen"}),
+            ("put", f"/api/study/plans/{other.id}/availability/", {"availability": []}),
+            ("put", f"/api/study/plans/{other.id}/scopes/", {"scopes": []}),
+            ("post", f"/api/study/plans/{other.id}/archive/", {}),
+            ("post", f"/api/study/plans/{other.id}/pause/", {}),
+            ("post", f"/api/study/plans/{other.id}/activate/", {}),
+        ]:
+            call = getattr(self.client, method)
+            result = call(path, payload, format="json") if payload is not None else call(path)
+            self.assertEqual(result.status_code, 404, (method, path, result.content))
+            self.assertEqual(result.json()["code"], "study_plan_not_found")
+
+    def test_v081_availability_replace_requires_exactly_seven_unique_weekdays(self):
+        plan_id = self._create_plan().json()["id"]
+        rows = [
+            {"weekday": day, "available_minutes": 0 if day == 4 else 60}
+            for day in range(7)
+        ]
+        ok = self.client.put(
+            f"/api/study/plans/{plan_id}/availability/",
+            {"availability": rows},
+            format="json",
+        )
+        self.assertEqual(ok.status_code, 200)
+        self.assertEqual(ok.json()["weekly_available_minutes"], 360)
+        self.assertEqual(ok.json()["availability"][4]["available_minutes"], 0)
+
+        missing = self.client.put(
+            f"/api/study/plans/{plan_id}/availability/",
+            {"availability": rows[:-1]},
+            format="json",
+        )
+        self.assertEqual(missing.status_code, 400)
+        self.assertEqual(missing.json()["code"], "study_plan_no_availability")
+
+        duplicate = rows.copy()
+        duplicate[-1] = {"weekday": 5, "available_minutes": 60}
+        bad = self.client.put(
+            f"/api/study/plans/{plan_id}/availability/",
+            {"availability": duplicate},
+            format="json",
+        )
+        self.assertEqual(bad.status_code, 400)
+        self.assertEqual(bad.json()["code"], "study_plan_no_availability")
+
+    def test_v081_availability_rejects_negative_and_huge_minutes_without_mutation(self):
+        plan_id = self._create_plan().json()["id"]
+        before = list(
+            atlas_models.StudyPlanAvailability.objects.filter(plan_id=plan_id)
+            .order_by("weekday")
+            .values_list("available_minutes", flat=True)
+        )
+        for value in (-1, 1_000_000_000):
+            rows = [{"weekday": day, "available_minutes": 45} for day in range(7)]
+            rows[2]["available_minutes"] = value
+            response = self.client.put(
+                f"/api/study/plans/{plan_id}/availability/",
+                {"availability": rows},
+                format="json",
+            )
+            self.assertEqual(response.status_code, 400)
+            self.assertEqual(response.json()["code"], "study_plan_no_availability")
+        after = list(
+            atlas_models.StudyPlanAvailability.objects.filter(plan_id=plan_id)
+            .order_by("weekday")
+            .values_list("available_minutes", flat=True)
+        )
+        self.assertEqual(after, before)
+
+    def test_v081_scope_replace_supports_all_declared_target_domains(self):
+        plan_id = self._create_plan().json()["id"]
+        rows = [
+            ("disorder", self.disorder.slug),
+            ("concept", self.concept.slug),
+            ("therapy", self.therapy.slug),
+            ("theory", self.theory.slug),
+            ("psychologist", self.psychologist.slug),
+            ("timeline_event", self.timeline_event.slug),
+            ("quiz", self.quiz.slug),
+            ("clinical_case", self.case.slug),
+        ]
+        response = self._set_scope(
+            plan_id,
+            [
+                {
+                    "target_type": target_type,
+                    "target_slug": slug,
+                    "priority": (index % 5) + 1,
+                    "include_practice": True,
+                    "sort_order": index,
+                }
+                for index, (target_type, slug) in enumerate(rows)
+            ],
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()["scopes"]
+        self.assertEqual([row["target_type"] for row in payload], [row[0] for row in rows])
+        self.assertTrue(all(row["is_active"] for row in payload))
+        self.assertEqual(atlas_models.StudyPlanScope.objects.filter(plan_id=plan_id).count(), 8)
+
+    def test_v081_scope_replace_rejects_duplicate_and_inactive_targets_transactionally(self):
+        plan_id = self._create_plan().json()["id"]
+        first = self._set_scope(plan_id)
+        self.assertEqual(first.status_code, 200)
+
+        duplicate_row = {
+            "target_type": "concept",
+            "target_slug": self.concept.slug,
+            "priority": 3,
+            "include_practice": True,
+            "sort_order": 0,
+        }
+        duplicate = self._set_scope(plan_id, [duplicate_row, {**duplicate_row, "sort_order": 1}])
+        self.assertEqual(duplicate.status_code, 400)
+        self.assertEqual(duplicate.json()["code"], "study_plan_scope_duplicate")
+        self.assertEqual(atlas_models.StudyPlanScope.objects.filter(plan_id=plan_id).count(), 1)
+
+        inactive = self._set_scope(
+            plan_id,
+            [
+                {
+                    "target_type": "disorder",
+                    "target_slug": self.inactive_disorder.slug,
+                    "priority": 3,
+                    "include_practice": True,
+                    "sort_order": 0,
+                }
+            ],
+        )
+        self.assertEqual(inactive.status_code, 400)
+        self.assertEqual(inactive.json()["code"], "study_plan_scope_invalid")
+        scope = atlas_models.StudyPlanScope.objects.get(plan_id=plan_id)
+        self.assertEqual(scope.concept, self.concept)
+
+    def test_v081_scope_model_enforces_exactly_one_target_priority_and_duplicate_target(self):
+        plan = atlas_models.StudyPlan.objects.create(
+            user=self.user,
+            name="Model plan",
+            start_date=date(2026, 9, 19),
+        )
+        zero = atlas_models.StudyPlanScope(plan=plan, priority=3)
+        with self.assertRaises(ValidationError):
+            zero.full_clean()
+
+        two = atlas_models.StudyPlanScope(
+            plan=plan,
+            priority=3,
+            concept=self.concept,
+            disorder=self.disorder,
+        )
+        with self.assertRaises(ValidationError):
+            two.full_clean()
+
+        invalid_priority = atlas_models.StudyPlanScope(
+            plan=plan,
+            priority=6,
+            concept=self.concept,
+        )
+        with self.assertRaises(ValidationError):
+            invalid_priority.full_clean()
+
+        atlas_models.StudyPlanScope.objects.create(plan=plan, concept=self.concept)
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                atlas_models.StudyPlanScope.objects.create(plan=plan, concept=self.concept)
+
+    def test_v081_activation_requires_scope_and_capacity_then_pause_and_archive_preserve_configuration(self):
+        plan_id = self._create_plan().json()["id"]
+        no_scope = self.client.post(f"/api/study/plans/{plan_id}/activate/", {}, format="json")
+        self.assertEqual(no_scope.status_code, 409)
+        self.assertEqual(no_scope.json()["code"], "study_plan_scope_invalid")
+
+        self.assertEqual(self._set_scope(plan_id).status_code, 200)
+        zero_rows = [{"weekday": day, "available_minutes": 0} for day in range(7)]
+        self.assertEqual(
+            self.client.put(
+                f"/api/study/plans/{plan_id}/availability/",
+                {"availability": zero_rows},
+                format="json",
+            ).status_code,
+            200,
+        )
+        no_capacity = self.client.post(f"/api/study/plans/{plan_id}/activate/", {}, format="json")
+        self.assertEqual(no_capacity.status_code, 409)
+        self.assertEqual(no_capacity.json()["code"], "study_plan_no_availability")
+
+        rows = [{"weekday": day, "available_minutes": 30 if day == 0 else 0} for day in range(7)]
+        self.client.put(
+            f"/api/study/plans/{plan_id}/availability/",
+            {"availability": rows},
+            format="json",
+        )
+        active = self.client.post(f"/api/study/plans/{plan_id}/activate/", {}, format="json")
+        self.assertEqual(active.status_code, 200)
+        self.assertEqual(active.json()["status"], "active")
+
+        scope_count = atlas_models.StudyPlanScope.objects.filter(plan_id=plan_id).count()
+        availability_count = atlas_models.StudyPlanAvailability.objects.filter(plan_id=plan_id).count()
+        paused = self.client.post(f"/api/study/plans/{plan_id}/pause/", {}, format="json")
+        self.assertEqual(paused.status_code, 200)
+        self.assertEqual(paused.json()["status"], "paused")
+        self.assertEqual(atlas_models.StudyPlanScope.objects.filter(plan_id=plan_id).count(), scope_count)
+        self.assertEqual(atlas_models.StudyPlanAvailability.objects.filter(plan_id=plan_id).count(), availability_count)
+
+        archived = self.client.post(f"/api/study/plans/{plan_id}/archive/", {}, format="json")
+        self.assertEqual(archived.status_code, 200)
+        reactivate = self.client.post(f"/api/study/plans/{plan_id}/activate/", {}, format="json")
+        self.assertEqual(reactivate.status_code, 409)
+        self.assertEqual(reactivate.json()["code"], "study_plan_archived")
+
+    def test_v081_scope_and_availability_changes_require_draft_or_paused_plan(self):
+        plan_id = self._create_plan().json()["id"]
+        self.assertEqual(self._set_scope(plan_id).status_code, 200)
+        active = self.client.post(f"/api/study/plans/{plan_id}/activate/", {}, format="json")
+        self.assertEqual(active.status_code, 200)
+
+        scope = self._set_scope(plan_id, [])
+        self.assertEqual(scope.status_code, 409)
+        self.assertEqual(scope.json()["code"], "study_plan_not_actionable")
+
+        availability = self.client.put(
+            f"/api/study/plans/{plan_id}/availability/",
+            {"availability": [{"weekday": day, "available_minutes": 30} for day in range(7)]},
+            format="json",
+        )
+        self.assertEqual(availability.status_code, 409)
+        self.assertEqual(availability.json()["code"], "study_plan_not_actionable")
+
+    def test_v081_existing_study_overview_contract_is_unchanged_by_plan_foundation(self):
+        before = self.client.get("/api/study/overview/")
+        self.assertEqual(before.status_code, 200)
+        self._create_plan()
+        after = self.client.get("/api/study/overview/")
+        self.assertEqual(after.status_code, 200)
+        expected_keys = {
+            "streak",
+            "heatmap",
+            "recommendations",
+            "review",
+            "concepts",
+            "daily_challenge_completed",
+            "distortion_practice",
+        }
+        self.assertEqual(set(before.json()), expected_keys)
+        self.assertEqual(set(after.json()), expected_keys)
+        self.assertNotIn("plans", after.json())
+
+    def test_v081_seed_does_not_modify_personal_plan_or_settings(self):
+        settings_response = self.client.get("/api/study/settings/")
+        self.assertEqual(settings_response.status_code, 200)
+        plan_id = self._create_plan().json()["id"]
+        self.assertEqual(self._set_scope(plan_id).status_code, 200)
+        before_plan = atlas_models.StudyPlan.objects.get(pk=plan_id)
+        before_updated = before_plan.updated_at
+        before_scope_ids = list(
+            atlas_models.StudyPlanScope.objects.filter(plan_id=plan_id).values_list("id", flat=True)
+        )
+
+        call_command("seed_mvp", stdout=StringIO())
+
+        after_plan = atlas_models.StudyPlan.objects.get(pk=plan_id)
+        self.assertEqual(after_plan.updated_at, before_updated)
+        self.assertEqual(
+            list(atlas_models.StudyPlanScope.objects.filter(plan_id=plan_id).values_list("id", flat=True)),
+            before_scope_ids,
+        )
+        self.assertTrue(atlas_models.UserStudySettings.objects.filter(user=self.user).exists())
+
+    def test_v081_plan_list_query_count_is_bounded_with_multiple_plans_and_scopes(self):
+        for index in range(5):
+            plan = atlas_models.StudyPlan.objects.create(
+                user=self.user,
+                name=f"Plan {index}",
+                start_date=date(2026, 9, 19),
+            )
+            atlas_models.StudyPlanAvailability.objects.bulk_create(
+                [
+                    atlas_models.StudyPlanAvailability(plan=plan, weekday=day, available_minutes=30)
+                    for day in range(7)
+                ]
+            )
+            atlas_models.StudyPlanScope.objects.create(
+                plan=plan,
+                concept=self.concept,
+                sort_order=0,
+            )
+
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.get("/api/study/plans/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()["plans"]), 5)
+        self.assertLessEqual(len(queries), 6)
+
+    def test_v081_user_deletion_cascades_personal_planning_rows(self):
+        plan_id = self._create_plan().json()["id"]
+        self.client.get("/api/study/settings/")
+        self.assertEqual(self._set_scope(plan_id).status_code, 200)
+
+        user_id = self.user.id
+        self.user.delete()
+
+        self.assertFalse(atlas_models.UserStudySettings.objects.filter(user_id=user_id).exists())
+        self.assertFalse(atlas_models.StudyPlan.objects.filter(user_id=user_id).exists())
+        self.assertFalse(atlas_models.StudyPlanAvailability.objects.filter(plan_id=plan_id).exists())
+        self.assertFalse(atlas_models.StudyPlanScope.objects.filter(plan_id=plan_id).exists())
+
+
+
+    def test_v081_scope_catalog_is_uniform_searchable_and_excludes_inactive_targets(self):
+        for target_type, query, expected_slug in [
+            ("disorder", "آزمایشی", self.disorder.slug),
+            ("concept", "v0.8.1 Concept", self.concept.slug),
+            ("therapy", "درمان آزمایشی", self.therapy.slug),
+            ("theory", "v0.8.1 Theory", self.theory.slug),
+            ("psychologist", "v0.8.1 Psychologist", self.psychologist.slug),
+            ("timeline_event", "رویداد آزمایشی", self.timeline_event.slug),
+            ("quiz", "آزمون آزمایشی", self.quiz.slug),
+            ("clinical_case", "کیس آزمایشی", self.case.slug),
+        ]:
+            response = self.client.get(
+                "/api/study/scope-catalog/",
+                {"target_type": target_type, "q": query, "limit": 20},
+            )
+            self.assertEqual(response.status_code, 200, (target_type, response.content))
+            self.assertIn(expected_slug, [row["target_slug"] for row in response.json()["items"]])
+
+        inactive = self.client.get(
+            "/api/study/scope-catalog/",
+            {"target_type": "disorder", "q": "Inactive v0.8.1", "limit": 20},
+        )
+        self.assertEqual(inactive.status_code, 200)
+        self.assertNotIn(
+            self.inactive_disorder.slug,
+            [row["target_slug"] for row in inactive.json()["items"]],
+        )
+
+    def test_v081_scope_catalog_rejects_unknown_type_and_oversized_limit(self):
+        unknown = self.client.get(
+            "/api/study/scope-catalog/",
+            {"target_type": "unknown", "limit": 20},
+        )
+        self.assertEqual(unknown.status_code, 400)
+        self.assertEqual(unknown.json()["code"], "study_plan_scope_invalid")
+
+        oversized = self.client.get(
+            "/api/study/scope-catalog/",
+            {"target_type": "concept", "limit": 5000},
+        )
+        self.assertEqual(oversized.status_code, 400)
+        self.assertEqual(oversized.json()["code"], "study_plan_scope_invalid")
+
+        malformed = self.client.get(
+            "/api/study/scope-catalog/",
+            {"target_type": "concept", "limit": "1e9"},
+        )
+        self.assertEqual(malformed.status_code, 400)
+        self.assertEqual(malformed.json()["code"], "study_plan_scope_invalid")
+
+
+
+    def test_v081_malformed_payloads_keep_stable_error_code(self):
+        for method, path, payload in [
+            (
+                "put",
+                "/api/study/settings/",
+                ["not", "an", "object"],
+            ),
+            (
+                "post",
+                "/api/study/plans/",
+                ["not", "an", "object"],
+            ),
+        ]:
+            response = getattr(self.client, method)(path, payload, format="json")
+            self.assertEqual(response.status_code, 400, (method, path, response.content))
+            self.assertEqual(response.json()["code"], "study_plan_invalid")
+
+    def test_v081_personal_planning_endpoints_require_authentication(self):
+        self.client.force_authenticate(user=None)
+        for method, path, payload in [
+            ("get", "/api/study/settings/", None),
+            ("get", "/api/study/scope-catalog/?target_type=concept", None),
+            ("get", "/api/study/plans/", None),
+            ("post", "/api/study/plans/", {"name": "blocked"}),
+        ]:
+            call = getattr(self.client, method)
+            response = call(path, payload, format="json") if payload is not None else call(path)
+            self.assertEqual(response.status_code, 401, (method, path, response.content))
+
+    def test_v081_scope_catalog_rejects_pathologically_long_query(self):
+        response = self.client.get(
+            "/api/study/scope-catalog/",
+            {"target_type": "concept", "q": "x" * 201, "limit": 20},
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["code"], "study_plan_scope_invalid")
+        self.assertEqual(response.json()["errors"]["q"], "too_long")
+
+
+    def test_v081_scope_replace_query_count_is_bounded_for_many_targets(self):
+        plan_id = self._create_plan().json()["id"]
+        concepts = [
+            Concept.objects.create(
+                slug=f"v081-bulk-concept-{index}",
+                name_en=f"Bulk Concept {index}",
+                simple_definition="query budget fixture",
+                is_active=True,
+            )
+            for index in range(40)
+        ]
+        payload = {
+            "scopes": [
+                {
+                    "target_type": "concept",
+                    "target_slug": concept.slug,
+                    "priority": 3,
+                    "include_practice": True,
+                    "sort_order": index,
+                }
+                for index, concept in enumerate(concepts)
+            ]
+        }
+
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.put(
+                f"/api/study/plans/{plan_id}/scopes/",
+                payload,
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(len(response.json()["scopes"]), 40)
+        self.assertLessEqual(len(queries), 12)
+
+
+    def test_v081_activation_rejects_incomplete_availability_corruption(self):
+        plan_id = self._create_plan().json()["id"]
+        self.assertEqual(self._set_scope(plan_id).status_code, 200)
+        atlas_models.StudyPlanAvailability.objects.filter(
+            plan_id=plan_id,
+            weekday=6,
+        ).delete()
+
+        response = self.client.post(
+            f"/api/study/plans/{plan_id}/activate/",
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["code"], "study_plan_no_availability")
+
+    def test_v081_activation_rejects_scope_that_becomes_inactive(self):
+        plan_id = self._create_plan().json()["id"]
+        self.assertEqual(self._set_scope(plan_id).status_code, 200)
+        self.concept.is_active = False
+        self.concept.save(update_fields=("is_active", "updated_at"))
+
+        detail = self.client.get(f"/api/study/plans/{plan_id}/")
+        self.assertEqual(detail.status_code, 200)
+        self.assertFalse(detail.json()["scopes"][0]["is_active"])
+
+        response = self.client.post(
+            f"/api/study/plans/{plan_id}/activate/",
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["code"], "study_plan_scope_invalid")
+
+    def test_v081_case_scope_catalog_matches_public_runnability_guards(self):
+        revision = CaseRevision.objects.get(pk=self.case.current_revision_id)
+        revision.primary_disorder = self.inactive_disorder
+        revision.save(update_fields=("primary_disorder", "updated_at"))
+
+        inactive_disorder = self.client.get(
+            "/api/study/scope-catalog/",
+            {"target_type": "clinical_case", "q": self.case.slug, "limit": 20},
+        )
+        self.assertEqual(inactive_disorder.status_code, 200)
+        self.assertNotIn(
+            self.case.slug,
+            [row["target_slug"] for row in inactive_disorder.json()["items"]],
+        )
+
+        revision.primary_disorder = self.disorder
+        foreign_case = ClinicalCase.objects.create(
+            slug="v081-foreign-case",
+            title="Foreign Case",
+            patient_summary="foreign",
+            primary_disorder=self.disorder,
+            structure_mode=ClinicalCase.StructureMode.BRANCHING,
+            is_active=True,
+        )
+        foreign_revision = CaseRevision.objects.create(
+            case=foreign_case,
+            version=1,
+            title="Foreign Revision",
+            patient_summary="foreign",
+            primary_disorder=self.disorder,
+            status=CaseRevision.Status.PUBLISHED,
+        )
+        foreign_step = CaseStep.objects.create(
+            case=foreign_case,
+            revision=foreign_revision,
+            stable_key="foreign-entry",
+            node_kind=CaseStep.NodeKind.TERMINAL,
+            title="Foreign entry",
+            narrative="foreign",
+            sort_order=1,
+            is_active=True,
+        )
+        revision.entry_step = foreign_step
+        revision.save(update_fields=("primary_disorder", "entry_step", "updated_at"))
+
+        foreign_entry = self.client.get(
+            "/api/study/scope-catalog/",
+            {"target_type": "clinical_case", "q": self.case.slug, "limit": 20},
+        )
+        self.assertEqual(foreign_entry.status_code, 200)
+        self.assertNotIn(
+            self.case.slug,
+            [row["target_slug"] for row in foreign_entry.json()["items"]],
+        )
+
+
+class V081StudyPlanningMigrationTests(TransactionTestCase):
+    reset_sequences = True
+
+    migrate_from = ("atlas", "0027_v075_case_attempt_concurrency_guard")
+    migrate_to = ("atlas", "0028_v081_study_plan_foundation")
+
+    def test_v081_upgrade_preserves_existing_user_progress_and_creates_no_personal_planning_rows(self):
+        executor = MigrationExecutor(connection)
+        executor.migrate([self.migrate_from])
+        old_apps = executor.loader.project_state([self.migrate_from]).apps
+
+        UserModel = old_apps.get_model("auth", "User")
+        CategoryModel = old_apps.get_model("atlas", "Category")
+        DisorderModel = old_apps.get_model("atlas", "Disorder")
+        ProgressModel = old_apps.get_model("atlas", "UserProgress")
+
+        user = UserModel.objects.create(
+            username="v081-migration@example.com",
+            email="v081-migration@example.com",
+            password="!",
+        )
+        category = CategoryModel.objects.create(slug="v081-migration", name_en="Migration")
+        disorder = DisorderModel.objects.create(
+            category_id=category.id,
+            slug="v081-migration-disorder",
+            name_en="Migration Disorder",
+        )
+        ProgressModel.objects.create(
+            user_id=user.id,
+            disorder_id=disorder.id,
+            progress_percent=55,
+        )
+
+        executor = MigrationExecutor(connection)
+        executor.migrate([self.migrate_to])
+        new_apps = executor.loader.project_state([self.migrate_to]).apps
+
+        NewUser = new_apps.get_model("auth", "User")
+        NewProgress = new_apps.get_model("atlas", "UserProgress")
+        StudyPlanModel = new_apps.get_model("atlas", "StudyPlan")
+        StudySettingsModel = new_apps.get_model("atlas", "UserStudySettings")
+
+        self.assertEqual(NewUser.objects.filter(pk=user.id).count(), 1)
+        self.assertEqual(
+            NewProgress.objects.filter(
+                user_id=user.id,
+                disorder_id=disorder.id,
+                progress_percent=55,
+            ).count(),
+            1,
+        )
+        self.assertEqual(StudyPlanModel.objects.count(), 0)
+        self.assertEqual(StudySettingsModel.objects.count(), 0)
