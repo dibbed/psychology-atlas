@@ -28,6 +28,7 @@ const navItems: NavItem[] = [
   { href: "/map", label: "نقشه دانش", en: "Knowledge Graph", group: "explore" },
   { href: "/compare", label: "مقایسه", en: "Compare", group: "explore" },
   { href: "/study", label: "مطالعه", en: "Study Center", group: "learn" },
+  { href: "/study/plans", label: "برنامه‌ها", en: "Study Plans", group: "learn" },
   { href: "/flashcards", label: "فلش‌کارت", en: "Flashcards", group: "learn" },
   { href: "/quizzes", label: "آزمون‌ها", en: "Quizzes", group: "learn" },
   { href: "/cases", label: "کیس‌ها", en: "Clinical Cases", group: "learn" },
@@ -63,6 +64,7 @@ function detailKind(pathname: string) {
   if (/^\/psychologists\/.+/.test(pathname)) return "پروفایل روان‌شناس";
   if (/^\/theories\/.+/.test(pathname)) return "پروفایل نظریه";
   if (/^\/timeline\/.+/.test(pathname)) return "رویداد تاریخی";
+  if (/^\/study\/plans\/.+/.test(pathname)) return "برنامه مطالعه";
   if (/^\/quizzes\/.+/.test(pathname)) return "آزمون";
   if (/^\/case-analytics\/.+/.test(pathname)) return "تحلیل کیس";
   if (/^\/cases\/.+/.test(pathname)) return "کیس بالینی";
