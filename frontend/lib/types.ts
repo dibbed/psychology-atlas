@@ -1270,3 +1270,73 @@ export type DSMOverview = {
   release_updates: Record<string, unknown>;
   health_check: Record<string, unknown>;
 };
+
+
+export type StudyScopeTargetType =
+  | "disorder"
+  | "concept"
+  | "therapy"
+  | "theory"
+  | "psychologist"
+  | "timeline_event"
+  | "quiz"
+  | "clinical_case";
+
+export type UserStudySettings = {
+  study_timezone: string;
+  default_daily_minutes: number;
+  default_session_minutes: number;
+  week_starts_on: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type StudyPlanAvailability = {
+  weekday: number;
+  available_minutes: number;
+};
+
+export type StudyPlanScope = {
+  id: number;
+  target_type: StudyScopeTargetType;
+  target_slug: string;
+  title: string;
+  priority: number;
+  include_practice: boolean;
+  sort_order: number;
+  is_active: boolean;
+};
+
+export type StudyPlan = {
+  id: number;
+  name: string;
+  plan_kind: "general" | "exam";
+  status: "draft" | "active" | "paused" | "completed" | "archived";
+  start_date: string;
+  target_date: string | null;
+  notes: string;
+  generation_version: number;
+  last_generated_at: string | null;
+  archived_at: string | null;
+  completed_at: string | null;
+  weekly_available_minutes: number;
+  availability: StudyPlanAvailability[];
+  scopes: StudyPlanScope[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type StudyPlanListResponse = {
+  plans: StudyPlan[];
+};
+
+export type StudyScopeCatalogItem = {
+  target_type: StudyScopeTargetType;
+  target_slug: string;
+  title: string;
+  subtitle: string;
+};
+
+export type StudyScopeCatalogResponse = {
+  items: StudyScopeCatalogItem[];
+};

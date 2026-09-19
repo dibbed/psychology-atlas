@@ -4,6 +4,7 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import F, Q
 from django.utils import timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 class TimeStampedModel(models.Model):
@@ -1034,6 +1035,329 @@ class UserConceptProgress(TimeStampedModel):
             models.UniqueConstraint(fields=("user", "concept"), name="uq_user_concept_progress")
         ]
         indexes = [models.Index(fields=("user", "progress_percent"))]
+
+
+class UserStudySettings(TimeStampedModel):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="study_settings",
+    )
+    study_timezone = models.CharField(max_length=64, default="Asia/Tehran")
+    default_daily_minutes = models.PositiveSmallIntegerField(
+        default=45,
+        validators=[MinValueValidator(5), MaxValueValidator(720)],
+    )
+    default_session_minutes = models.PositiveSmallIntegerField(
+        default=25,
+        validators=[MinValueValidator(5), MaxValueValidator(240)],
+    )
+    week_starts_on = models.PositiveSmallIntegerField(
+        default=5,
+        validators=[MinValueValidator(0), MaxValueValidator(6)],
+        help_text="Python weekday convention: Monday=0, Sunday=6.",
+    )
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(default_daily_minutes__gte=5) & Q(default_daily_minutes__lte=720),
+                name="ck_study_settings_daily_minutes",
+            ),
+            models.CheckConstraint(
+                condition=Q(default_session_minutes__gte=5) & Q(default_session_minutes__lte=240),
+                name="ck_study_settings_session_minutes",
+            ),
+            models.CheckConstraint(
+                condition=Q(default_session_minutes__lte=F("default_daily_minutes")),
+                name="ck_study_settings_session_lte_daily",
+            ),
+            models.CheckConstraint(
+                condition=Q(week_starts_on__gte=0) & Q(week_starts_on__lte=6),
+                name="ck_study_settings_week_start",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        try:
+            ZoneInfo(self.study_timezone)
+        except (ZoneInfoNotFoundError, ValueError, TypeError):
+            errors["study_timezone"] = "Study timezone must be a valid IANA timezone."
+        if self.default_session_minutes > self.default_daily_minutes:
+            errors["default_session_minutes"] = "Default session minutes cannot exceed default daily minutes."
+        if errors:
+            raise ValidationError(errors)
+
+
+class StudyPlan(TimeStampedModel):
+    class Kind(models.TextChoices):
+        GENERAL = "general", "General"
+        EXAM = "exam", "Exam"
+
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        ACTIVE = "active", "Active"
+        PAUSED = "paused", "Paused"
+        COMPLETED = "completed", "Completed"
+        ARCHIVED = "archived", "Archived"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="study_plans",
+    )
+    name = models.CharField(max_length=180)
+    plan_kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.GENERAL, db_index=True)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.DRAFT, db_index=True)
+    start_date = models.DateField(default=timezone.localdate)
+    target_date = models.DateField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+    generation_version = models.PositiveIntegerField(default=0)
+    last_generated_at = models.DateTimeField(null=True, blank=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ("-updated_at", "-id")
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(plan_kind="general") | Q(target_date__isnull=False),
+                name="ck_study_plan_exam_target",
+            ),
+            models.CheckConstraint(
+                condition=Q(target_date__isnull=True) | Q(target_date__gte=F("start_date")),
+                name="ck_study_plan_date_order",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=("user", "status")),
+            models.Index(fields=("user", "target_date")),
+        ]
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.plan_kind == self.Kind.EXAM and self.target_date is None:
+            errors["target_date"] = "Exam plans require a target date."
+        if self.target_date is not None and self.target_date < self.start_date:
+            errors["target_date"] = "Target date cannot be earlier than the start date."
+        if errors:
+            raise ValidationError(errors)
+
+    def __str__(self):
+        return f"{self.user_id}:{self.name}"
+
+
+class StudyPlanAvailability(TimeStampedModel):
+    plan = models.ForeignKey(StudyPlan, on_delete=models.CASCADE, related_name="availability")
+    weekday = models.PositiveSmallIntegerField(validators=[MinValueValidator(0), MaxValueValidator(6)])
+    available_minutes = models.PositiveSmallIntegerField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(1440)],
+    )
+
+    class Meta:
+        ordering = ("weekday", "id")
+        constraints = [
+            models.UniqueConstraint(fields=("plan", "weekday"), name="uq_study_plan_weekday"),
+            models.CheckConstraint(
+                condition=Q(weekday__gte=0) & Q(weekday__lte=6),
+                name="ck_study_availability_weekday",
+            ),
+            models.CheckConstraint(
+                condition=Q(available_minutes__gte=0) & Q(available_minutes__lte=1440),
+                name="ck_study_availability_minutes",
+            ),
+        ]
+
+
+class StudyPlanScope(TimeStampedModel):
+    plan = models.ForeignKey(StudyPlan, on_delete=models.CASCADE, related_name="scopes")
+    priority = models.PositiveSmallIntegerField(
+        default=3,
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+    )
+    include_practice = models.BooleanField(default=True)
+    sort_order = models.PositiveIntegerField(default=0)
+
+    disorder = models.ForeignKey(
+        Disorder,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="study_plan_scopes",
+    )
+    concept = models.ForeignKey(
+        Concept,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="study_plan_scopes",
+    )
+    therapy = models.ForeignKey(
+        "Therapy",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="study_plan_scopes",
+    )
+    theory = models.ForeignKey(
+        "Theory",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="study_plan_scopes",
+    )
+    psychologist = models.ForeignKey(
+        "Psychologist",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="study_plan_scopes",
+    )
+    timeline_event = models.ForeignKey(
+        "TimelineEvent",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="study_plan_scopes",
+    )
+    quiz = models.ForeignKey(
+        Quiz,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="study_plan_scopes",
+    )
+    clinical_case = models.ForeignKey(
+        ClinicalCase,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="study_plan_scopes",
+    )
+
+    class Meta:
+        ordering = ("sort_order", "id")
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    (
+                        Q(disorder__isnull=False)
+                        & Q(concept__isnull=True)
+                        & Q(therapy__isnull=True)
+                        & Q(theory__isnull=True)
+                        & Q(psychologist__isnull=True)
+                        & Q(timeline_event__isnull=True)
+                        & Q(quiz__isnull=True)
+                        & Q(clinical_case__isnull=True)
+                    )
+                    | (
+                        Q(disorder__isnull=True)
+                        & Q(concept__isnull=False)
+                        & Q(therapy__isnull=True)
+                        & Q(theory__isnull=True)
+                        & Q(psychologist__isnull=True)
+                        & Q(timeline_event__isnull=True)
+                        & Q(quiz__isnull=True)
+                        & Q(clinical_case__isnull=True)
+                    )
+                    | (
+                        Q(disorder__isnull=True)
+                        & Q(concept__isnull=True)
+                        & Q(therapy__isnull=False)
+                        & Q(theory__isnull=True)
+                        & Q(psychologist__isnull=True)
+                        & Q(timeline_event__isnull=True)
+                        & Q(quiz__isnull=True)
+                        & Q(clinical_case__isnull=True)
+                    )
+                    | (
+                        Q(disorder__isnull=True)
+                        & Q(concept__isnull=True)
+                        & Q(therapy__isnull=True)
+                        & Q(theory__isnull=False)
+                        & Q(psychologist__isnull=True)
+                        & Q(timeline_event__isnull=True)
+                        & Q(quiz__isnull=True)
+                        & Q(clinical_case__isnull=True)
+                    )
+                    | (
+                        Q(disorder__isnull=True)
+                        & Q(concept__isnull=True)
+                        & Q(therapy__isnull=True)
+                        & Q(theory__isnull=True)
+                        & Q(psychologist__isnull=False)
+                        & Q(timeline_event__isnull=True)
+                        & Q(quiz__isnull=True)
+                        & Q(clinical_case__isnull=True)
+                    )
+                    | (
+                        Q(disorder__isnull=True)
+                        & Q(concept__isnull=True)
+                        & Q(therapy__isnull=True)
+                        & Q(theory__isnull=True)
+                        & Q(psychologist__isnull=True)
+                        & Q(timeline_event__isnull=False)
+                        & Q(quiz__isnull=True)
+                        & Q(clinical_case__isnull=True)
+                    )
+                    | (
+                        Q(disorder__isnull=True)
+                        & Q(concept__isnull=True)
+                        & Q(therapy__isnull=True)
+                        & Q(theory__isnull=True)
+                        & Q(psychologist__isnull=True)
+                        & Q(timeline_event__isnull=True)
+                        & Q(quiz__isnull=False)
+                        & Q(clinical_case__isnull=True)
+                    )
+                    | (
+                        Q(disorder__isnull=True)
+                        & Q(concept__isnull=True)
+                        & Q(therapy__isnull=True)
+                        & Q(theory__isnull=True)
+                        & Q(psychologist__isnull=True)
+                        & Q(timeline_event__isnull=True)
+                        & Q(quiz__isnull=True)
+                        & Q(clinical_case__isnull=False)
+                    )
+                ),
+                name="ck_study_scope_one_target",
+            ),
+            models.CheckConstraint(
+                condition=Q(priority__gte=1) & Q(priority__lte=5),
+                name="ck_study_scope_priority",
+            ),
+            models.UniqueConstraint(fields=("plan", "disorder"), name="uq_study_scope_disorder"),
+            models.UniqueConstraint(fields=("plan", "concept"), name="uq_study_scope_concept"),
+            models.UniqueConstraint(fields=("plan", "therapy"), name="uq_study_scope_therapy"),
+            models.UniqueConstraint(fields=("plan", "theory"), name="uq_study_scope_theory"),
+            models.UniqueConstraint(fields=("plan", "psychologist"), name="uq_study_scope_psychologist"),
+            models.UniqueConstraint(fields=("plan", "timeline_event"), name="uq_study_scope_timeline"),
+            models.UniqueConstraint(fields=("plan", "quiz"), name="uq_study_scope_quiz"),
+            models.UniqueConstraint(fields=("plan", "clinical_case"), name="uq_study_scope_case"),
+        ]
+        indexes = [
+            models.Index(fields=("plan", "priority", "sort_order")),
+        ]
+
+    def clean(self):
+        super().clean()
+        target_fields = (
+            "disorder_id",
+            "concept_id",
+            "therapy_id",
+            "theory_id",
+            "psychologist_id",
+            "timeline_event_id",
+            "quiz_id",
+            "clinical_case_id",
+        )
+        if sum(getattr(self, field) is not None for field in target_fields) != 1:
+            raise ValidationError("Study plan scope must reference exactly one target.")
 
 
 class ConceptBookmark(models.Model):

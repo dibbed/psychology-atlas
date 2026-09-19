@@ -87,6 +87,21 @@ from .services import (
     submit_case,
     submit_quiz,
 )
+from .study_planning import (
+    StudyPlanningError,
+    create_study_plan,
+    get_user_plan,
+    replace_plan_availability,
+    replace_plan_scopes,
+    study_plan_payload,
+    study_plan_queryset,
+    study_scope_catalog,
+    study_settings_for_user,
+    study_settings_payload,
+    transition_study_plan,
+    update_study_plan,
+    update_study_settings,
+)
 from .validation import positive_int
 
 
@@ -3627,3 +3642,129 @@ class TimelineEventDetailView(generics.RetrieveAPIView):
     serializer_class = TimelineEventDetailSerializer
     lookup_field = "slug"
     queryset = _v063_timeline_detail_queryset()
+
+def _study_object_payload(request):
+    if not isinstance(request.data, Mapping):
+        raise StudyPlanningError(
+            "study_plan_invalid",
+            "بدنه درخواست باید یک شیء JSON باشد.",
+            errors={"payload": "must_be_object"},
+        )
+    return request.data
+
+
+def _study_planning_error_response(exc):
+    payload = {"code": exc.code, "detail": exc.detail}
+    if exc.errors is not None:
+        payload["errors"] = exc.errors
+    return Response(payload, status=exc.status_code)
+
+
+@api_view(["GET", "PUT"])
+@permission_classes([permissions.IsAuthenticated])
+def study_settings(request):
+    try:
+        if request.method == "PUT":
+            settings_obj = update_study_settings(request.user, _study_object_payload(request))
+        else:
+            settings_obj = study_settings_for_user(request.user)
+        return Response(study_settings_payload(settings_obj))
+    except StudyPlanningError as exc:
+        return _study_planning_error_response(exc)
+
+
+@api_view(["GET"])
+@permission_classes([permissions.IsAuthenticated])
+def study_scope_catalog_view(request):
+    try:
+        raw_limit = request.query_params.get("limit", "20")
+        if not isinstance(raw_limit, str) or not raw_limit.isascii() or not raw_limit.isdigit():
+            raise StudyPlanningError(
+                "study_plan_scope_invalid",
+                "محدودیت نتایج نامعتبر است.",
+                errors={"limit": "must_be_integer"},
+            )
+        items = study_scope_catalog(
+            target_type=request.query_params.get("target_type", "").strip(),
+            query=request.query_params.get("q", ""),
+            limit=int(raw_limit),
+        )
+        return Response({"items": items})
+    except StudyPlanningError as exc:
+        return _study_planning_error_response(exc)
+
+
+@api_view(["GET", "POST"])
+@permission_classes([permissions.IsAuthenticated])
+def study_plans(request):
+    try:
+        if request.method == "POST":
+            plan = create_study_plan(request.user, _study_object_payload(request))
+            return Response(study_plan_payload(plan), status=status.HTTP_201_CREATED)
+        plans = study_plan_queryset(request.user)
+        return Response({"plans": [study_plan_payload(plan) for plan in plans]})
+    except StudyPlanningError as exc:
+        return _study_planning_error_response(exc)
+
+
+@api_view(["GET", "PATCH"])
+@permission_classes([permissions.IsAuthenticated])
+def study_plan_detail(request, plan_id):
+    try:
+        if request.method == "PATCH":
+            plan = update_study_plan(request.user, plan_id, _study_object_payload(request))
+        else:
+            plan = get_user_plan(request.user, plan_id)
+        return Response(study_plan_payload(plan))
+    except StudyPlanningError as exc:
+        return _study_planning_error_response(exc)
+
+
+@api_view(["PUT"])
+@permission_classes([permissions.IsAuthenticated])
+def study_plan_availability(request, plan_id):
+    try:
+        plan = replace_plan_availability(request.user, plan_id, _study_object_payload(request))
+        return Response(study_plan_payload(plan))
+    except StudyPlanningError as exc:
+        return _study_planning_error_response(exc)
+
+
+@api_view(["PUT"])
+@permission_classes([permissions.IsAuthenticated])
+def study_plan_scopes(request, plan_id):
+    try:
+        plan = replace_plan_scopes(request.user, plan_id, _study_object_payload(request))
+        return Response(study_plan_payload(plan))
+    except StudyPlanningError as exc:
+        return _study_planning_error_response(exc)
+
+
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def study_plan_archive(request, plan_id):
+    try:
+        plan = transition_study_plan(request.user, plan_id, "archive")
+        return Response(study_plan_payload(plan))
+    except StudyPlanningError as exc:
+        return _study_planning_error_response(exc)
+
+
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def study_plan_pause(request, plan_id):
+    try:
+        plan = transition_study_plan(request.user, plan_id, "pause")
+        return Response(study_plan_payload(plan))
+    except StudyPlanningError as exc:
+        return _study_planning_error_response(exc)
+
+
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def study_plan_activate(request, plan_id):
+    try:
+        plan = transition_study_plan(request.user, plan_id, "activate")
+        return Response(study_plan_payload(plan))
+    except StudyPlanningError as exc:
+        return _study_planning_error_response(exc)

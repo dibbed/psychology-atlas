@@ -1,10 +1,29 @@
 # Psychology Atlas Product Spec
 
-## Current release: v0.7.5 — Clinical Case Integrity Patch
+## Current release: v0.8.1 — Study Planning Foundation
 
-The v0.7 Clinical Case line is frozen through **v0.7.5 — Clinical Case Integrity Patch**. v0.7.5 is a post-release correctness/concurrency patch, not a new feature slice. The next planned feature release is **v0.8 — Study Mode + Exam Planning + Advanced Recommendations**.
+The v0.7 Clinical Case line remains frozen through v0.7.5. **v0.8.1 — Study Planning Foundation** begins the v0.8 Study Mode line by adding user-owned plan intent/configuration only. StudyBlock scheduling, Recommendation V2, Study Sessions and the Today endpoint remain later v0.8 slices.
 
 Psychology Atlas is an interactive educational system for psychology students. It should behave as a connected learning system, not as a psychology blog and not as a diagnostic product.
+
+### v0.8.1 Study Planning Foundation invariants
+
+- `UserStudySettings` is lazy one-row-per-user state. `study_timezone` must be a valid IANA zone; default daily/session minute bounds and `week_starts_on` are validated in service/model/database layers where applicable.
+- Study timezone is authoritative for StudyPlan date defaults only. The established Daily Challenge app-timezone/date semantics remain unchanged in v0.8.1 and historical DailyChallengeAttempt dates are not migrated.
+- `StudyPlan` is user-owned intent/configuration. It supports `general` and `exam` kinds plus `draft`, `active`, `paused`, `completed`, `archived` status values. Exam plans require `target_date >= start_date`; general plans may omit target date.
+- Existing users receive no fabricated StudyPlan or UserStudySettings rows during migration. Settings are created lazily on first Study Planning use.
+- `StudyPlanAvailability` uses seven deterministic weekday rows after save; weekday uses Python convention Monday=0..Sunday=6 and 0 minutes explicitly means unavailable.
+- `StudyPlanScope` uses explicit protected FKs rather than GenericForeignKey for Disorder, Concept, Therapy, Theory, Psychologist, TimelineEvent, Quiz and ClinicalCase. Each row references exactly one target and duplicate target rows per plan are database-constrained.
+- Scope selection means inclusion in the learner's study plan only. Scope priority is scheduler input, not mastery, scientific importance, exam readiness, diagnosis or treatment recommendation.
+- Scope creation accepts only currently active/runnable targets. If content becomes inactive later, existing scope history remains preserved and its API payload exposes `is_active=false`; v0.8.1 does not silently retarget it.
+- Scope replacement resolves targets in bulk per target type rather than per row; a 40-Concept regression keeps the full authenticated replace request within <=12 database queries.
+- All personal Study Planning APIs are authenticated and owner-scoped from the first query. Cross-user plan reads/mutations return generic 404 semantics rather than leaking existence.
+- Plan Scope and Availability are mutable only in draft/paused state. Activation requires at least one scope and at least one positive-availability day. Archive is non-destructive and archived plans cannot silently reactivate.
+- `/api/study/overview/` is intentionally unchanged in v0.8.1. Existing StudyCenter/SRS/Quiz/Case/Daily Challenge contracts remain authoritative and no parallel mastery or completion state is created.
+- Frontend routes are `/study/plans`, `/study/plans/new` and `/study/plans/[id]`, Persian/RTL-first. New-plan default date is calculated from `UserStudySettings.study_timezone`, not the device timezone.
+- Migration `0028_v081_study_plan_foundation.py` is additive. Historical 0027→0028 regression preserves existing user progress and creates no personal planning intent; clean migration chains also reach 0028 successfully.
+- Final v0.8.1 validation is 28/28 focused Study Planning tests and 217/217 full backend tests. Django check, migration drift, compileall, pip check, scientific/research audits, SQLite integrity/FK checks, frontend typecheck, Next.js 16.3.5 production build (26/26), npm audit (0 vulnerabilities), and Chromium desktop/mobile overflow QA all pass.
+- Full release record: `docs/Psychology_Atlas_v0.8.1_Study_Planning_Foundation_2026-09-19.md`.
 
 ### v0.7.5 final v0.7 integrity patch invariants
 

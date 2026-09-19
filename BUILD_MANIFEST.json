@@ -1,8 +1,8 @@
 {
   "project": "Psychology Atlas",
-  "version": "0.7.5",
-  "release_name": "Clinical Case Integrity Patch",
-  "development_slice": "v0.7.5 Post-Release Audit + v0.7 Final Closure ✅",
+  "version": "0.8.1",
+  "release_name": "Study Planning Foundation",
+  "development_slice": "v0.8.1 Study Planning Foundation ✅",
   "stack": {
     "frontend": "Next.js 16.3.5 + React 19.3 + TypeScript",
     "backend": "Django 5.2 + Django REST Framework",
@@ -285,7 +285,18 @@
     "v075_sqlite_decision_idempotency_retry",
     "v075_runner_auth_expiry_recovery",
     "v075_pinned_revision_resume_notice",
-    "v075_v07_final_patch_freeze"
+    "v075_v07_final_patch_freeze",
+    "v081_user_study_settings",
+    "v081_iana_study_timezone",
+    "v081_study_plan_model",
+    "v081_study_plan_availability",
+    "v081_study_plan_scope_explicit_fk_integrity",
+    "v081_study_plan_owner_scoped_api",
+    "v081_study_scope_catalog",
+    "v081_study_plan_lifecycle",
+    "v081_study_plan_rtl_ui",
+    "v081_study_plan_migration_regression",
+    "v081_study_plan_browser_qa"
   ],
   "content": {
     "categories": 21,
@@ -355,7 +366,7 @@
       "live_techniques": 35,
       "promoted_research_relationships": 479,
       "staging_policy": "future-domain and unsupported/lower-confidence records remain lossless staging-only",
-      "version_boundary": "v0.6 scientific/research corpus remains frozen; v0.7.1–v0.7.4 built revision-safe branching, stateful attempts, educational scoring and personal analytics; v0.7.5 is a post-release integrity/concurrency patch and does not alter protected research content",
+      "version_boundary": "v0.6 scientific/research corpus remains frozen; v0.7 completed revision-safe Clinical Cases + personal analytics; v0.8.1 adds personal Study Planning intent/configuration only and does not alter protected research content",
       "staged_psychologists": 130,
       "staged_theories": 53,
       "staged_timeline_events": 63,
@@ -427,17 +438,18 @@
     "0024_v071_case_revision_integrity.py",
     "0025_v072_attempt_state_engine.py",
     "0026_v073_multidimensional_case_scoring.py",
-    "0027_v075_case_attempt_concurrency_guard.py"
+    "0027_v075_case_attempt_concurrency_guard.py",
+    "0028_v081_study_plan_foundation.py"
   ],
   "validation": {
     "django_check": "pass",
-    "backend_tests": "189/189 passed · final v0.7.5 code after full revision-safety closure",
+    "backend_tests": "217/217 passed · final v0.8.1 code",
     "python_compileall": "pass",
     "pip_check": "pass · backend/.venv has no broken requirements; system-global Python conflicts are unrelated to the project release environment",
     "migration_drift_check": "pass · no changes detected",
     "seed_idempotency": "pass · repeated seed runs preserve imported seed_managed=False entities and relations while seed-owned relations remain independently managed",
-    "typescript_typecheck": "pass · frontend 0.7.5",
-    "next_production_build": "pass · frontend 0.7.5 · Next.js 16.3.5 Turbopack · 24/24 static-generation units including /case-analytics and /case-analytics/[slug]",
+    "typescript_typecheck": "pass · frontend 0.8.1",
+    "next_production_build": "pass · frontend 0.8.1 · Next.js 16.3.5 Turbopack · 26/26 generation units including /study/plans, /study/plans/new and /study/plans/[id]",
     "npm_audit_low": "0 vulnerabilities",
     "frontend_route_smoke_test": "pass · v0.7.2 production Chromium E2E covered register, Case start, branch decision, refresh/resume, immutable reached-path history, terminal completion, new attempt, and safe login return-to-case",
     "dsm_master_source_sha256": "9680d7b1e85ae4ef58efa58f7c76bfcc04c7b317f1fbd40cbb2e27be02542694",
@@ -454,7 +466,7 @@
     "temporary_audit_user_cleanup": "pass · both v0.5.5 runtime-audit users deleted; 0 remaining",
     "therapy_foundation_tests": "3 targeted schema/provenance tests included in full suite",
     "canonical_module_cleanup": "pass · versioned backend runtime modules consolidated into views.py / serializers.py / seed_mvp.py",
-    "current_release": "v0.7.5 Clinical Case Integrity Patch",
+    "current_release": "v0.8.1 Study Planning Foundation",
     "v071_case_graph_audit": "pass · 6 current cases / 6 revisions / 18 nodes / 54 explicit transitions / 0 structural failures",
     "v071_case_seed_revision_idempotency": "pass · unchanged repeated seed remains 6 revisions / 18 nodes / 54 transitions; changed content publishes a new revision without mutating historical attempts",
     "v071_attempt_history_binding": "pass · legacy submit stores CaseAttempt.revision and prior attempts remain pinned after later case revisions",
@@ -652,7 +664,28 @@
     "v075_fresh_install": "pass · clean migrations through 0027 + two seed runs under SQLite IMMEDIATE · 6 active Cases / 6 fresh revisions / 17 dimensions / 54 transitions / graph audit 0 failures",
     "v075_case_graph_audit": "pass · development runtime 6 Cases / 12 revisions / 17 dimensions / 0 attempts / 0 events / 0 answers / 0 failures after QA cleanup and repeated seed",
     "v075_browser_qa": "pass · historical revision resume notice + current public revision + invalid-refresh auth recovery + token cleanup + 320x800 horizontal overflow=false",
-    "v075_sqlite_integrity": "pass · development DB integrity_check ok · foreign_key_check 0 · transaction_mode=IMMEDIATE · active-attempt partial unique index present"
+    "v075_sqlite_integrity": "pass · development DB integrity_check ok · foreign_key_check 0 · transaction_mode=IMMEDIATE · active-attempt partial unique index present",
+    "v081_focused_study_planning_tests": "pass · 28/28 model/API/ownership/timezone/scope/availability/runnability/lifecycle/malformed-payload/migration/query-budget tests",
+    "v081_full_backend_suite": "pass · 217/217",
+    "v081_schema_migration": "pass · 0028_v081_study_plan_foundation applied on development runtime; no automatic StudyPlan/UserStudySettings rows fabricated",
+    "v081_historical_upgrade": "pass · MigrationExecutor 0027 -> 0028 preserves existing user progress and creates no personal planning intent",
+    "v081_fresh_install": "pass · clean SQLite migration chain through 0028",
+    "v081_migration_drift": "pass · makemigrations --check --dry-run reports no changes detected",
+    "v081_owner_isolation": "pass · Study Settings/Plans/Scope/Availability endpoints are authenticated and cross-user plan reads/mutations return 404",
+    "v081_scope_integrity": "pass · explicit FKs for Disorder/Concept/Therapy/Theory/Psychologist/Timeline/Quiz/Case; exactly-one-target + duplicate-target + priority guards",
+    "v081_timezone_boundary": "pass · IANA study_timezone drives StudyPlan date defaults; established Daily Challenge app-timezone behavior remains unchanged",
+    "v081_browser_qa": "pass · real Chromium auth/create/scope/activate flow; 1280x800 and 390x844 list/detail both horizontal overflow=0",
+    "v081_qa_cleanup": "pass · temporary QA user deleted; runtime UserStudySettings/StudyPlan/Availability/Scope rows returned to 0",
+    "v081_sqlite_integrity": "pass · integrity_check ok · foreign_key_check 0",
+    "v081_case_graph_regression": "pass · 6 cases / 12 revisions / 17 dimensions / 0 failures",
+    "v081_scientific_regression": "pass · v0.6 scientific audit unchanged: 0 active provenance gaps · 59 weak-only entities · 52 weak-only relations · 0 timeline precision issues",
+    "v081_research_archive": "pass · 2 datasets / 1918 records / exact stored hashes verified",
+    "v081_compileall": "pass",
+    "v081_pip_check": "pass · no broken requirements",
+    "v081_scope_replace_query_budget": "pass · 40 Concept targets replace within <=12 queries; target resolution is bulked per target type instead of per Scope row",
+    "v081_activation_integrity": "pass · activation requires all 7 availability rows, positive capacity, and scopes that remain active/runnable at activation time",
+    "v081_case_scope_runnability": "pass · ClinicalCase scope catalog matches v0.7.5 public runnability guards including revision/entry ownership and active revision primary disorder",
+    "v081_plan_write_serialization": "hardened · metadata, scope, availability and lifecycle mutations acquire the same StudyPlan row lock inside atomic write paths"
   },
   "release_notes": {
     "graph_layers": [
@@ -690,12 +723,13 @@
       "0.7.4.1": "Personal Case Analytics Foundation ✅",
       "0.7.4.2": "Persian/RTL Personal Case Analytics UI ✅",
       "0.7.4.3": "Analytics Hardening + v0.7.4 Release Freeze ✅",
-      "0.7.5": "Clinical Case Integrity Patch + v0.7 Final Closure ✅"
+      "0.7.5": "Clinical Case Integrity Patch + v0.7 Final Closure ✅",
+      "0.8.1": "Study Planning Foundation ✅"
     },
     "deliberately_deferred": [
       "Brain Atlas",
       "Assessment Atlas",
-      "exam planning",
+      "StudyBlock generation + automatic exam scheduling beyond v0.8.1",
       "XP and achievements",
       "advanced recommendation engine",
       "content admin CMS",
@@ -714,7 +748,9 @@
       "cognitive distortion practice attempts",
       "therapy bookmarks",
       "therapy notes",
-      "clinical case attempts and immutable attempt events"
+      "clinical case attempts and immutable attempt events",
+      "study settings",
+      "study plans, availability and scopes"
     ],
     "therapy_foundation": {
       "entity_boundary": "Therapy and Technique are separate entities",
@@ -929,6 +965,15 @@
       "schema": "no migration",
       "release_doc": "docs/Psychology_Atlas_v0.7.4_Personal_Case_Analytics_Release_2026-09-17.md",
       "next": "v0.8 Study Mode + Exam Planning + Advanced Recommendations"
+    },
+    "study_planning_foundation": {
+      "scope": "v0.8.1 stores user intent/configuration only; no StudyBlock scheduler or Recommendation V2 is introduced",
+      "settings": "lazy one-row-per-user settings with valid IANA study timezone, daily-minute/session-minute bounds and explicit week start",
+      "plans": "multiple general/exam plans per user with draft/active/paused/completed/archived lifecycle; exam target date is required and cannot precede start date",
+      "availability": "seven deterministic weekday rows; 0 minutes means unavailable; replacement is atomic",
+      "scope_targets": "explicit protected FKs across Disorder, Concept, Therapy, Theory, Psychologist, TimelineEvent, Quiz and ClinicalCase with exactly-one-target and per-plan duplicate guards",
+      "compatibility": "existing /api/study/overview/ and Daily Challenge semantics remain unchanged in v0.8.1",
+      "frontend": "Persian/RTL /study/plans, /study/plans/new and /study/plans/[id] management surfaces; active plans must be paused before scope/availability edits"
     }
   }
 }

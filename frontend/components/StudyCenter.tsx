@@ -59,6 +59,18 @@ export default function StudyCenter() {
         <div className="study-stat"><span>✓</span><strong>{faNumber(data.concepts.mastered)}</strong><small>مفهوم تسلط‌یافته</small></div>
       </div>
 
+      <section className="card study-planning-entry">
+        <div>
+          <div className="meta">Study Planning · v0.8.1</div>
+          <h2>هدف و ظرفیت مطالعه را مشخص کن</h2>
+          <p className="muted">برنامه‌های مطالعه فعلاً فقط هدف، محدوده و زمان آزاد هفتگی را نگه می‌دارند. زمان‌بندی روزانه در مرحله بعد اضافه می‌شود.</p>
+        </div>
+        <div className="actions">
+          <Link className="button primary" href="/study/plans">برنامه‌های من</Link>
+          <Link className="button" href="/study/plans/new">برنامه جدید</Link>
+        </div>
+      </section>
+
       <div className="grid-2">
         <section className="card">
           <div className="meta">۴۲ روز اخیر</div>
