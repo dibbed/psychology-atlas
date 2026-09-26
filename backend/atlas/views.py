@@ -102,6 +102,15 @@ from .study_planning import (
     update_study_plan,
     update_study_settings,
 )
+from .study_scheduler import (
+    complete_study_block,
+    generate_study_plan,
+    get_study_plan_schedule,
+    reschedule_study_block,
+    skip_study_block,
+    study_block_payload,
+    unlock_study_block,
+)
 from .validation import positive_int
 
 
@@ -3766,5 +3775,105 @@ def study_plan_activate(request, plan_id):
     try:
         plan = transition_study_plan(request.user, plan_id, "activate")
         return Response(study_plan_payload(plan))
+    except StudyPlanningError as exc:
+        return _study_planning_error_response(exc)
+
+
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def study_plan_generate(request, plan_id):
+    try:
+        payload = _study_object_payload(request)
+        if payload:
+            raise StudyPlanningError(
+                "study_plan_generation_conflict",
+                "تولید برنامه در این نسخه پارامتر اختیاری نمی‌پذیرد.",
+                errors={"unknown_fields": sorted(payload)},
+            )
+        plan, summary = generate_study_plan(request.user, plan_id)
+        return Response({
+            "plan": study_plan_payload(plan),
+            "generation": summary,
+        })
+    except StudyPlanningError as exc:
+        return _study_planning_error_response(exc)
+
+
+@api_view(["GET"])
+@permission_classes([permissions.IsAuthenticated])
+def study_plan_schedule(request, plan_id):
+    try:
+        payload = get_study_plan_schedule(
+            request.user,
+            plan_id,
+            start=request.query_params.get("start"),
+            end=request.query_params.get("end"),
+        )
+        return Response(payload)
+    except StudyPlanningError as exc:
+        return _study_planning_error_response(exc)
+
+
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def study_block_reschedule(request, block_id):
+    try:
+        block = reschedule_study_block(
+            request.user,
+            block_id,
+            _study_object_payload(request),
+        )
+        return Response(study_block_payload(block))
+    except StudyPlanningError as exc:
+        return _study_planning_error_response(exc)
+
+
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def study_block_skip(request, block_id):
+    try:
+        payload = _study_object_payload(request)
+        if payload:
+            raise StudyPlanningError(
+                "study_block_not_actionable",
+                "رد کردن بلوک پارامتر اضافی نمی‌پذیرد.",
+                errors={"unknown_fields": sorted(payload)},
+            )
+        block = skip_study_block(request.user, block_id)
+        return Response(study_block_payload(block))
+    except StudyPlanningError as exc:
+        return _study_planning_error_response(exc)
+
+
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def study_block_complete(request, block_id):
+    try:
+        payload = _study_object_payload(request)
+        if payload:
+            raise StudyPlanningError(
+                "study_block_not_actionable",
+                "تکمیل بلوک پارامتر اضافی نمی‌پذیرد.",
+                errors={"unknown_fields": sorted(payload)},
+            )
+        block = complete_study_block(request.user, block_id)
+        return Response(study_block_payload(block))
+    except StudyPlanningError as exc:
+        return _study_planning_error_response(exc)
+
+
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def study_block_unlock(request, block_id):
+    try:
+        payload = _study_object_payload(request)
+        if payload:
+            raise StudyPlanningError(
+                "study_block_not_actionable",
+                "آزاد کردن بلوک پارامتر اضافی نمی‌پذیرد.",
+                errors={"unknown_fields": sorted(payload)},
+            )
+        block = unlock_study_block(request.user, block_id)
+        return Response(study_block_payload(block))
     except StudyPlanningError as exc:
         return _study_planning_error_response(exc)

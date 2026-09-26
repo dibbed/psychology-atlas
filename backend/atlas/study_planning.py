@@ -346,6 +346,8 @@ def study_plan_payload(plan):
         "target_date": plan.target_date.isoformat() if plan.target_date else None,
         "notes": plan.notes,
         "generation_version": plan.generation_version,
+        "schedule_stale": bool(plan.generation_version and not plan.generation_fingerprint),
+        "last_generation_summary": plan.last_generation_summary or {},
         "last_generated_at": plan.last_generated_at.isoformat() if plan.last_generated_at else None,
         "archived_at": plan.archived_at.isoformat() if plan.archived_at else None,
         "completed_at": plan.completed_at.isoformat() if plan.completed_at else None,
@@ -452,11 +454,18 @@ def update_study_plan(user, plan_id, payload):
         notes = _optional_notes(payload["notes"])
 
     _validate_plan_values(plan_kind=plan_kind, start_date=start, target_date=target)
+    schedule_changed = (
+        plan.plan_kind != plan_kind
+        or plan.start_date != start
+        or plan.target_date != target
+    )
     plan.name = name
     plan.plan_kind = plan_kind
     plan.start_date = start
     plan.target_date = target
     plan.notes = notes
+    if schedule_changed:
+        plan.generation_fingerprint = ""
     plan.full_clean()
     plan.save()
     return get_user_plan(user, plan.id)
@@ -529,12 +538,18 @@ def replace_plan_availability(user, plan_id, payload):
             errors={"availability": "missing_weekday"},
         )
 
+    existing = dict(
+        plan.availability.values_list("weekday", "available_minutes")
+    )
     for weekday, minutes in parsed.items():
         models.StudyPlanAvailability.objects.update_or_create(
             plan=plan,
             weekday=weekday,
             defaults={"available_minutes": minutes},
         )
+    if existing != parsed and plan.generation_fingerprint:
+        plan.generation_fingerprint = ""
+        plan.save(update_fields=("generation_fingerprint", "updated_at"))
     return get_user_plan(user, plan.id)
 
 
@@ -801,6 +816,9 @@ def replace_plan_scopes(user, plan_id, payload):
     plan.scopes.all().delete()
     if resolved:
         models.StudyPlanScope.objects.bulk_create(resolved)
+    if plan.generation_fingerprint:
+        plan.generation_fingerprint = ""
+        plan.save(update_fields=("generation_fingerprint", "updated_at"))
     return get_user_plan(user, plan.id)
 
 
