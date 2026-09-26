@@ -1,10 +1,23 @@
 # Psychology Atlas Product Spec
 
-## Current release: v0.8.1 — Study Planning Foundation
+## Current release: v0.8.2 — Study Blocks + Deterministic Scheduler
 
-The v0.7 Clinical Case line remains frozen through v0.7.5. **v0.8.1 — Study Planning Foundation** begins the v0.8 Study Mode line by adding user-owned plan intent/configuration only. StudyBlock scheduling, Recommendation V2, Study Sessions and the Today endpoint remain later v0.8 slices.
+The v0.7 Clinical Case line remains frozen through v0.7.5. v0.8.1 established user-owned plan intent/configuration; **v0.8.2** adds deterministic, history-safe StudyBlock scheduling. StudySession and Recommendation V2 remain deferred.
 
 Psychology Atlas is an interactive educational system for psychology students. It should behave as a connected learning system, not as a psychology blog and not as a diagnostic product.
+
+### v0.8.2 Study Blocks + Deterministic Scheduler invariants
+
+- `StudyBlock` is a scheduled intention/adherence record, never a mastery, psychometric, exam-probability or clinical-competence measure. Canonical SRS, QuizAttempt, CaseAttempt, Distortion Practice and other learning evidence remain authoritative.
+- Blocks have an explicit target FK compatible with `block_kind`, optional same-plan scope, status/origin, scheduled date/sequence, bounded estimated minutes, generation version, lock, title/subtitle snapshots, metadata and lifecycle timestamps. Database constraints and model validation reject invalid target cardinality, ownership relationships and timestamps.
+- Identical scheduler inputs produce identical candidate ordering and output. Unchanged regeneration is a no-op and does not advance `generation_version`. Generation is serialized on the plan; SQLite retries are bounded and PostgreSQL retains row-lock semantics.
+- Regeneration only supersedes future generated pending unlocked candidates. Completed, in-progress, manual, past, user-locked and other meaningful history remains. Skipped candidate history prevents silent recreation.
+- Daily capacity is never silently exceeded within a plan. Backlog, shortfall, inactive/unavailable scopes and cross-plan daily overcapacity are explicit reports. General horizons are bounded; exam generation ends no later than target date.
+- Every schedule/action endpoint is authenticated and owner-scoped. Cross-user access has generic not-found behavior. Reschedule only accepts actionable blocks on valid plan dates and locks them; unlock only applies to generated pending blocks.
+- Flashcard review blocks reserve capacity and resolve due cards from canonical SRS at runtime; snoozing or moving a StudyBlock never changes SRS due dates. Quiz/Case/Distortion completion requires real owner- and target-matched evidence created at or after the scheduled day; Case evidence must satisfy the v0.7.5 published revision/runnability boundary. Reading confirmation represents adherence only.
+- `audit_study_plans` is read-only and reports corruption, invalid timezone/capacity/availability, target and scope mismatches, invalid blocks, future generation versions and duplicate active generated candidates.
+- Migrations 0029 and 0030 are additive. 0028→0029 MigrationExecutor validation preserves settings, availability, scope and generation metadata and creates no StudyBlocks. Fresh migration and repeated seed are deterministic; no automatic plans or blocks are created.
+- v0.8.2 validation: 26 focused / 243 full backend tests; migration drift, fresh install/repeated seed, runtime SQLite integrity/FK, Case/scientific/research audits, Python checks, frontend typecheck/build, npm audit and real Chromium desktop/mobile flow pass. Full evidence: `docs/Psychology_Atlas_v0.8.2_Study_Blocks_Deterministic_Scheduler_2026-09-26.md`.
 
 ### v0.8.1 Study Planning Foundation invariants
 

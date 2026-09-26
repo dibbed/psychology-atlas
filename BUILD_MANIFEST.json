@@ -1,8 +1,8 @@
 {
   "project": "Psychology Atlas",
-  "version": "0.8.1",
-  "release_name": "Study Planning Foundation",
-  "development_slice": "v0.8.1 Study Planning Foundation ✅",
+  "version": "0.8.2",
+  "release_name": "Study Blocks + Deterministic Scheduler",
+  "development_slice": "v0.8.2 Study Blocks + Deterministic Scheduler ✅",
   "stack": {
     "frontend": "Next.js 16.3.5 + React 19.3 + TypeScript",
     "backend": "Django 5.2 + Django REST Framework",
@@ -296,7 +296,17 @@
     "v081_study_plan_lifecycle",
     "v081_study_plan_rtl_ui",
     "v081_study_plan_migration_regression",
-    "v081_study_plan_browser_qa"
+    "v081_study_plan_browser_qa",
+    "v082_study_block_explicit_target_integrity",
+    "v082_deterministic_bounded_scheduler",
+    "v082_generation_noop_and_concurrency",
+    "v082_history_safe_regeneration",
+    "v082_schedule_staleness_tracking",
+    "v082_owner_scoped_block_actions",
+    "v082_canonical_evidence_completion",
+    "v082_capacity_backlog_and_unavailable_reporting",
+    "v082_study_plan_audit_command",
+    "v082_schedule_management_rtl_ui"
   ],
   "content": {
     "categories": 21,
@@ -439,13 +449,15 @@
     "0025_v072_attempt_state_engine.py",
     "0026_v073_multidimensional_case_scoring.py",
     "0027_v075_case_attempt_concurrency_guard.py",
-    "0028_v081_study_plan_foundation.py"
+    "0028_v081_study_plan_foundation.py",
+    "0029_v082_study_blocks.py",
+    "0030_studyblock_ck_study_block_started_status_and_more.py"
   ],
   "validation": {
     "django_check": "pass",
-    "backend_tests": "217/217 passed · final v0.8.1 code",
+    "backend_tests": "243/243 passed · final v0.8.2 backend code",
     "python_compileall": "pass",
-    "pip_check": "pass · backend/.venv has no broken requirements; system-global Python conflicts are unrelated to the project release environment",
+    "pip_check": "pass · no broken requirements",
     "migration_drift_check": "pass · no changes detected",
     "seed_idempotency": "pass · repeated seed runs preserve imported seed_managed=False entities and relations while seed-owned relations remain independently managed",
     "typescript_typecheck": "pass · frontend 0.8.1",
@@ -466,7 +478,7 @@
     "temporary_audit_user_cleanup": "pass · both v0.5.5 runtime-audit users deleted; 0 remaining",
     "therapy_foundation_tests": "3 targeted schema/provenance tests included in full suite",
     "canonical_module_cleanup": "pass · versioned backend runtime modules consolidated into views.py / serializers.py / seed_mvp.py",
-    "current_release": "v0.8.1 Study Planning Foundation",
+    "current_release": "v0.8.2 Study Blocks + Deterministic Scheduler",
     "v071_case_graph_audit": "pass · 6 current cases / 6 revisions / 18 nodes / 54 explicit transitions / 0 structural failures",
     "v071_case_seed_revision_idempotency": "pass · unchanged repeated seed remains 6 revisions / 18 nodes / 54 transitions; changed content publishes a new revision without mutating historical attempts",
     "v071_attempt_history_binding": "pass · legacy submit stores CaseAttempt.revision and prior attempts remain pinned after later case revisions",
@@ -685,7 +697,20 @@
     "v081_scope_replace_query_budget": "pass · 40 Concept targets replace within <=12 queries; target resolution is bulked per target type instead of per Scope row",
     "v081_activation_integrity": "pass · activation requires all 7 availability rows, positive capacity, and scopes that remain active/runnable at activation time",
     "v081_case_scope_runnability": "pass · ClinicalCase scope catalog matches v0.7.5 public runnability guards including revision/entry ownership and active revision primary disorder",
-    "v081_plan_write_serialization": "hardened · metadata, scope, availability and lifecycle mutations acquire the same StudyPlan row lock inside atomic write paths"
+    "v081_plan_write_serialization": "hardened · metadata, scope, availability and lifecycle mutations acquire the same StudyPlan row lock inside atomic write paths",
+    "focused_v082_tests": "26/26 passed · deterministic scheduling, concurrency, stale inputs, owner isolation, block lifecycle, migration preservation, audit read-only behavior and query budgets",
+    "v082_historical_migration": "pass · 0028→0029 MigrationExecutor fixture preserved UserStudySettings, seven availability rows, scope, generation_version=7 and last_generated_at; created zero StudyBlocks",
+    "v082_fresh_install": "pass · empty SQLite migrated through 0030; seed_mvp repeated; final repeated snapshots identical across 108 atlas tables / 1133 rows",
+    "v082_frontend_typecheck": "pass · frontend 0.8.2",
+    "v082_next_build": "pass · Next.js 16.3.5 Turbopack · 26/26 generation units",
+    "v082_npm_audit": "pass · 0 vulnerabilities at low threshold",
+    "v082_runtime_sqlite": "pass · integrity_check=ok · foreign_key_check=0 rows after migrations and QA cleanup",
+    "v082_audit_study_plans": "pass · runtime and fresh DB, 0 failures; corrupted-value read-only regression confirms no mutation",
+    "v082_case_audit": "pass · runtime 6 Cases / 12 revisions / 17 dimensions; zero failures",
+    "v082_scientific_regression": "pass · audit_v06_release; 0 provenance gaps, 59 weak-only entities, 52 weak-only relations",
+    "v082_research_archive": "pass · 2 datasets / 1918 records / stored hashes verified on runtime DB",
+    "v082_browser_qa": "pass · real production frontend + backend Chromium; plan CRUD/scope/availability/generate/no-op/reschedule-lock/regenerate/unlock/skip/reading completion/evidence rejection; 390x844 and 1280x800 no overflow; reduced motion, keyboard, auth expiry checked",
+    "v082_qa_cleanup": "pass · temporary user and plan/scope/availability/block/settings rows removed; no QA user remains"
   },
   "release_notes": {
     "graph_layers": [
@@ -974,6 +999,18 @@
       "scope_targets": "explicit protected FKs across Disorder, Concept, Therapy, Theory, Psychologist, TimelineEvent, Quiz and ClinicalCase with exactly-one-target and per-plan duplicate guards",
       "compatibility": "existing /api/study/overview/ and Daily Challenge semantics remain unchanged in v0.8.1",
       "frontend": "Persian/RTL /study/plans, /study/plans/new and /study/plans/[id] management surfaces; active plans must be paused before scope/availability edits"
+    },
+    "study_blocks_deterministic_scheduler": {
+      "scope": "v0.8.2 adds scheduled StudyBlock intentions and a deterministic bounded scheduler; no StudySession or Recommendation V2",
+      "models": "StudyBlock has explicit plan/scope/target references, typed status/origin, generation metadata, snapshots, user lock, bounded duration and lifecycle timestamps; migration 0030 enforces lifecycle timestamp/status consistency",
+      "scheduler": "Stable ordering and input fingerprinting; unchanged generation is a no-op; plan-row serialization and bounded SQLite retry prevent duplicate concurrent generation; PostgreSQL keeps row-lock semantics",
+      "regeneration": "Only future generated pending unlocked candidates are superseded; completed, in-progress, manual, past, locked and other meaningful history is preserved",
+      "capacity": "Reports backlog, unavailable scopes, capacity shortfall and cross-plan daily overcapacity explicitly; bounded general horizon and exam target-date cap",
+      "evidence": "Flashcards remain runtime SRS due-card selections; Quiz/Case/Distortion completion requires owner-matched canonical evidence; reading confirmation records adherence only",
+      "ownership": "Personal endpoints and block actions are owner-scoped; cross-owner access returns generic not-found behavior",
+      "validation": "26 focused / 243 full backend tests; fresh and historical migration checks; repeat-seed snapshot stable; check/drift/compile/pip pass; Next typecheck/build pass; npm audit zero; runtime SQLite and case/scientific/research audits pass; Chromium workflow pass",
+      "release_doc": "docs/Psychology_Atlas_v0.8.2_Study_Blocks_Deterministic_Scheduler_2026-09-26.md",
+      "next": "v0.8.3 roadmap slice; v0.8.2 foundations remain frozen except defect fixes"
     }
   }
 }

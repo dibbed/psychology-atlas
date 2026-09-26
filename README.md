@@ -1,10 +1,10 @@
-# Psychology Atlas — v0.8.1 · Study Planning Foundation
+# Psychology Atlas — v0.8.2 · Study Blocks + Deterministic Scheduler
 
 [![CI](https://github.com/dibbed/psychology-atlas/actions/workflows/ci.yml/badge.svg)](https://github.com/dibbed/psychology-atlas/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/dibbed/psychology-atlas/actions/workflows/codeql.yml/badge.svg)](https://github.com/dibbed/psychology-atlas/actions/workflows/codeql.yml)
 [![Latest release](https://img.shields.io/github/v/release/dibbed/psychology-atlas?display_name=tag)](https://github.com/dibbed/psychology-atlas/releases)
 
-یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.8.1 اولین slice از خط **Study Mode + Exam Planning + Advanced Recommendations** است و فقط foundation برنامه‌ریزی را اضافه می‌کند: تنظیمات شخصی مطالعه با timezone معتبر IANA، StudyPlan عمومی/امتحان، ظرفیت هفتگی، Scope صریح روی دامنه‌های اطلس و lifecycle امن Draft/Active/Pause/Archive. این نسخه عمداً هنوز StudyBlock scheduler یا Recommendation V2 نمی‌سازد و قرارداد قدیمی `/api/study/overview/` و رفتار Daily Challenge را تغییر نمی‌دهد.
+یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.8.2 خط Study Mode را با StudyBlock و scheduler قطعی، محدود و تاریخچه‌محور گسترش می‌دهد. StudyPlan همچنان intent/configuration است؛ بلوک‌ها برنامه‌ریزی و adherence را نمایش می‌دهند و mastery یا آمادگی امتحان را اندازه نمی‌گیرند. `/api/study/overview/`، رفتار Daily Challenge و موتورهای canonical یادگیری حفظ شده‌اند.
 
 > این نرم‌افزار آموزشی است و ابزار تشخیص، درمان، ارزیابی صلاحیت بالینی یا جایگزین ارزیابی حرفه‌ای نیست.
 
@@ -15,6 +15,29 @@
 **No open-source license is granted.** مگر با اجازه کتبی جداگانه از صاحب حقوق، مجوز عمومی برای استفاده، کپی، تغییر، بازتوزیع، sublicense یا ساخت derivative work از کد اعطا نشده است؛ به‌جز دسترسی‌ها و قابلیت‌هایی که Terms of Service خود GitHub برای میزبانی، مشاهده و قابلیت‌های پلتفرم مانند fork الزاماً فراهم می‌کند.
 
 اگر برای استفاده‌ای خارج از این محدوده به مجوز نیاز داری، ابتدا باید اجازه صریح صاحب repository را دریافت کنی.
+
+## v0.8.2 — Study Blocks + Deterministic Scheduler
+
+```text
+StudyBlock explicit target and lifecycle integrity         ✅
+deterministic bounded scheduling and no-op regeneration   ✅
+concurrent generation convergence and stale-input tracking ✅
+history-safe superseding; locked/manual/past work preserved ✅
+capacity shortfall, backlog, unavailable scopes reported    ✅
+owner-scoped reschedule / lock / unlock / skip / complete   ✅
+canonical evidence required for quiz/case/distortion blocks ✅
+read-only audit_study_plans command                         ✅
+0028→0029 historical preservation + additive 0030 guards    ✅
+focused backend tests: 26/26 PASS                          ✅
+full backend suite: 243/243 PASS                            ✅
+Next.js 16.3.5 production build: 26/26 PASS                 ✅
+npm audit: 0 vulnerabilities                                ✅
+Chromium workflow + mobile/desktop overflow: PASS           ✅
+```
+
+StudyBlock فقط یک planned intention برای برنامه مطالعه است. Flashcardهای runtime را SRS انتخاب می‌کند؛ Quiz و Case فقط با attempt واقعی و متعلق به همان کاربر کامل می‌شوند. Reading confirmation فقط adherence را ثبت می‌کند. این release StudySession یا Recommendation V2 اضافه نمی‌کند.
+
+سند کامل release: `docs/Psychology_Atlas_v0.8.2_Study_Blocks_Deterministic_Scheduler_2026-09-26.md`.
 
 ## v0.8.1 — Study Planning Foundation
 
