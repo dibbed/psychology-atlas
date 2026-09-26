@@ -1316,6 +1316,8 @@ export type StudyPlan = {
   target_date: string | null;
   notes: string;
   generation_version: number;
+  schedule_stale: boolean;
+  last_generation_summary: StudyGenerationSummary | Record<string, never>;
   last_generated_at: string | null;
   archived_at: string | null;
   completed_at: string | null;
@@ -1324,6 +1326,122 @@ export type StudyPlan = {
   scopes: StudyPlanScope[];
   created_at: string;
   updated_at: string;
+};
+
+export type StudyGenerationBacklogItem = {
+  key: string;
+  block_kind: string;
+  title: string;
+  estimated_minutes: number;
+  priority: number;
+  earliest_date: string;
+};
+
+export type StudyGenerationUnavailableScope = {
+  scope_id: number;
+  target_type: StudyScopeTargetType | null;
+  target_slug: string | null;
+  title: string;
+};
+
+export type StudyGenerationSummary = {
+  scheduler_version: string;
+  generation_version: number;
+  no_op: boolean;
+  schedule_start: string;
+  schedule_end: string;
+  plan_target_date: string | null;
+  available_minutes: number;
+  preserved_minutes: number;
+  candidate_minutes: number;
+  scheduled_minutes: number;
+  scheduled_blocks: number;
+  preserved_blocks: number;
+  unscheduled_candidates: number;
+  capacity_shortfall_minutes: number;
+  superseded_blocks: number;
+  unavailable_scopes: StudyGenerationUnavailableScope[];
+  backlog: StudyGenerationBacklogItem[];
+};
+
+export type StudyBlockStatus =
+  | "pending"
+  | "in_progress"
+  | "completed"
+  | "skipped"
+  | "superseded";
+
+export type StudyBlockKind =
+  | "flashcard_review"
+  | "concept_review"
+  | "disorder_review"
+  | "therapy_reading"
+  | "theory_reading"
+  | "psychologist_reading"
+  | "timeline_review"
+  | "quiz_practice"
+  | "case_practice"
+  | "distortion_practice"
+  | "notes_review"
+  | "daily_challenge_optional";
+
+export type StudyBlock = {
+  id: number;
+  plan_id: number;
+  scope_id: number | null;
+  block_kind: StudyBlockKind;
+  status: StudyBlockStatus;
+  origin: "generated" | "manual" | "recommendation";
+  scheduled_date: string;
+  sequence: number;
+  estimated_minutes: number;
+  generation_version: number;
+  locked_by_user: boolean;
+  snapshot_title: string;
+  snapshot_subtitle: string;
+  metadata: Record<string, unknown>;
+  target_type: StudyScopeTargetType | null;
+  target_slug: string | null;
+  target_active: boolean;
+  action_href: string;
+  evidence_required: boolean;
+  started_at: string | null;
+  completed_at: string | null;
+  skipped_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type StudyScheduleResponse = {
+  plan_id: number;
+  generation_version: number;
+  last_generated_at: string | null;
+  last_generation_summary: StudyGenerationSummary | Record<string, never>;
+  range: {
+    start: string;
+    end: string;
+    truncated: boolean;
+  };
+  summary: {
+    block_count: number;
+    scheduled_minutes: number;
+    completed_minutes: number;
+    overdue_blocks: number;
+    cross_plan_overcapacity: {
+      date: string;
+      scheduled_minutes: number;
+      default_daily_minutes: number;
+    }[];
+  };
+  days: {
+    date: string;
+    blocks: StudyBlock[];
+  }[];
+};
+
+export type StudyGenerationResponse = {
+  plan: StudyPlan;
+  generation: StudyGenerationSummary;
 };
 
 export type StudyPlanListResponse = {

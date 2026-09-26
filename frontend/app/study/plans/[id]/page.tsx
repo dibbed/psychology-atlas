@@ -7,9 +7,15 @@ import { ApiError, api } from "@/lib/api";
 import { hasToken } from "@/lib/auth";
 import { faNumber } from "@/lib/fa";
 import type {
+  StudyBlock,
+  StudyBlockKind,
+  StudyBlockStatus,
+  StudyGenerationResponse,
+  StudyGenerationSummary,
   StudyPlan,
   StudyPlanAvailability,
   StudyPlanScope,
+  StudyScheduleResponse,
   StudyScopeCatalogItem,
   StudyScopeCatalogResponse,
   StudyScopeTargetType,
@@ -23,6 +29,29 @@ const statusLabel: Record<StudyPlan["status"], string> = {
   paused: "متوقف",
   completed: "تکمیل‌شده",
   archived: "بایگانی",
+};
+
+const blockKindLabel: Record<StudyBlockKind, string> = {
+  flashcard_review: "مرور فلش‌کارت",
+  concept_review: "مرور مفهوم",
+  disorder_review: "مرور اختلال",
+  therapy_reading: "مطالعه درمان",
+  theory_reading: "مطالعه نظریه",
+  psychologist_reading: "مطالعه روان‌شناس",
+  timeline_review: "مرور خط زمانی",
+  quiz_practice: "تمرین آزمون",
+  case_practice: "تمرین کیس",
+  distortion_practice: "تمرین تحریف شناختی",
+  notes_review: "مرور یادداشت",
+  daily_challenge_optional: "چالش روزانه اختیاری",
+};
+
+const blockStatusLabel: Record<StudyBlockStatus, string> = {
+  pending: "در انتظار",
+  in_progress: "در حال انجام",
+  completed: "تکمیل‌شده",
+  skipped: "ردشده",
+  superseded: "جایگزین‌شده",
 };
 
 const targetTypeOptions: { value: StudyScopeTargetType; label: string }[] = [
@@ -56,6 +85,22 @@ function targetTypeLabel(type: StudyScopeTargetType) {
   return targetTypeOptions.find((item) => item.value === type)?.label ?? type;
 }
 
+function displayDate(value: string) {
+  const parts = value.split("-").map(Number);
+  if (parts.length !== 3 || parts.some(Number.isNaN)) return value;
+  return new Intl.DateTimeFormat("fa-IR", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    weekday: "short",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(parts[0], parts[1] - 1, parts[2])));
+}
+
+function generationSummary(value: StudyPlan["last_generation_summary"]) {
+  return "scheduler_version" in value ? value as StudyGenerationSummary : null;
+}
+
 export default function StudyPlanDetailPage() {
   const params = useParams<{ id: string }>();
   const planId = Number(params.id);
@@ -75,6 +120,9 @@ export default function StudyPlanDetailPage() {
   const [scopeQuery, setScopeQuery] = useState("");
   const [catalog, setCatalog] = useState<StudyScopeCatalogItem[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
+  const [schedule, setSchedule] = useState<StudyScheduleResponse | null>(null);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [rescheduleDates, setRescheduleDates] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -109,8 +157,19 @@ export default function StudyPlanDetailPage() {
     setLoading(true);
     setError("");
     try {
-      const response = await api<StudyPlan>(`/study/plans/${planId}/`, {}, true);
-      syncPlan(response);
+      const [planResponse, scheduleResponse] = await Promise.all([
+        api<StudyPlan>(`/study/plans/${planId}/`, {}, true),
+        api<StudyScheduleResponse>(`/study/plans/${planId}/schedule/`, {}, true),
+      ]);
+      syncPlan(planResponse);
+      setSchedule(scheduleResponse);
+      setRescheduleDates(
+        Object.fromEntries(
+          scheduleResponse.days.flatMap((day) =>
+            day.blocks.map((block) => [block.id, block.scheduled_date]),
+          ),
+        ),
+      );
     } catch (reason: unknown) {
       if (reason instanceof ApiError && reason.status === 401) {
         redirectToLogin(pagePath);
@@ -125,6 +184,34 @@ export default function StudyPlanDetailPage() {
   useEffect(() => {
     void loadPlan();
   }, [loadPlan]);
+
+  const loadSchedule = useCallback(async () => {
+    if (!Number.isInteger(planId) || planId <= 0 || !hasToken()) return;
+    setScheduleLoading(true);
+    try {
+      const response = await api<StudyScheduleResponse>(
+        `/study/plans/${planId}/schedule/`,
+        {},
+        true,
+      );
+      setSchedule(response);
+      setRescheduleDates(
+        Object.fromEntries(
+          response.days.flatMap((day) =>
+            day.blocks.map((block) => [block.id, block.scheduled_date]),
+          ),
+        ),
+      );
+    } catch (reason: unknown) {
+      if (reason instanceof ApiError && reason.status === 401) {
+        redirectToLogin(pagePath);
+        return;
+      }
+      setError(planError(reason, "برنامه زمان‌بندی دریافت نشد."));
+    } finally {
+      setScheduleLoading(false);
+    }
+  }, [pagePath, planId]);
 
   useEffect(() => {
     if (!hasToken() || !configurationEditable) {
@@ -172,6 +259,16 @@ export default function StudyPlanDetailPage() {
   const selectedKeys = useMemo(
     () => new Set(scopes.map((scope) => `${scope.target_type}:${scope.target_slug}`)),
     [scopes],
+  );
+
+  const latestGeneration = useMemo(
+    () => plan ? generationSummary(plan.last_generation_summary) : null,
+    [plan],
+  );
+
+  const scheduleBlocks = useMemo(
+    () => schedule?.days.flatMap((day) => day.blocks) ?? [],
+    [schedule],
   );
 
   async function saveCore() {
@@ -286,6 +383,95 @@ export default function StudyPlanDetailPage() {
     }
   }
 
+  async function generateSchedule() {
+    if (!plan) return;
+    const confirmed = plan.generation_version === 0 || window.confirm(
+      "زمان‌بندی دوباره ساخته شود؟ فقط بلوک‌های generated، pending، آینده و بدون قفل جایگزین می‌شوند؛ تاریخچه و جابه‌جایی‌های قفل‌شده حفظ می‌شوند.",
+    );
+    if (!confirmed) return;
+    setBusy("generate");
+    setError("");
+    setNotice("");
+    try {
+      const response = await api<StudyGenerationResponse>(
+        `/study/plans/${plan.id}/generate/`,
+        { method: "POST", body: JSON.stringify({}) },
+        true,
+      );
+      syncPlan(response.plan);
+      await loadSchedule();
+      setNotice(
+        response.generation.no_op
+          ? "ورودی برنامه تغییری نکرده بود؛ زمان‌بندی قبلی بدون بازنویسی حفظ شد."
+          : `نسخه ${faNumber(response.generation.generation_version)} زمان‌بندی ساخته شد.`,
+      );
+    } catch (reason: unknown) {
+      if (reason instanceof ApiError && reason.status === 401) {
+        redirectToLogin(pagePath);
+        return;
+      }
+      setError(planError(reason, "تولید زمان‌بندی انجام نشد."));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function rescheduleBlock(block: StudyBlock) {
+    const scheduledDate = rescheduleDates[block.id] ?? block.scheduled_date;
+    if (scheduledDate === block.scheduled_date && block.locked_by_user) return;
+    setBusy(`block-${block.id}-move`);
+    setError("");
+    setNotice("");
+    try {
+      await api<StudyBlock>(
+        `/study/blocks/${block.id}/reschedule/`,
+        {
+          method: "POST",
+          body: JSON.stringify({ scheduled_date: scheduledDate }),
+        },
+        true,
+      );
+      await Promise.all([loadPlan(), loadSchedule()]);
+      setNotice("بلوک جابه‌جا و در برابر regenerate قفل شد.");
+    } catch (reason: unknown) {
+      setError(planError(reason, "جابه‌جایی بلوک انجام نشد."));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function blockAction(block: StudyBlock, action: "skip" | "complete" | "unlock") {
+    setBusy(`block-${block.id}-${action}`);
+    setError("");
+    setNotice("");
+    try {
+      await api<StudyBlock>(
+        `/study/blocks/${block.id}/${action}/`,
+        { method: "POST", body: JSON.stringify({}) },
+        true,
+      );
+      await Promise.all([loadPlan(), loadSchedule()]);
+      setNotice(
+        action === "skip"
+          ? "بلوک رد شد و در regenerate دوباره ساخته نمی‌شود."
+          : action === "unlock"
+            ? "قفل دستی برداشته شد؛ regenerate بعدی می‌تواند این بلوک را دوباره بچیند."
+            : block.evidence_required
+              ? "فعالیت واقعی مرتبط پیدا شد و بلوک تکمیل شد."
+              : "بلوک به‌عنوان انجام‌شده ثبت شد؛ این فقط پایبندی به برنامه است، نه سنجش تسلط.",
+      );
+    } catch (reason: unknown) {
+      setError(planError(
+        reason,
+        action === "complete"
+          ? "برای این بلوک هنوز شواهد واقعی لازم پیدا نشد."
+          : "تغییر بلوک انجام نشد.",
+      ));
+    } finally {
+      setBusy("");
+    }
+  }
+
   function addScope(item: StudyScopeCatalogItem) {
     const key = `${item.target_type}:${item.target_slug}`;
     if (selectedKeys.has(key)) return;
@@ -351,10 +537,19 @@ export default function StudyPlanDetailPage() {
               ? "برنامه فعال است. برای تغییر محدوده یا ظرفیت، اول آن را متوقف کن."
               : plan.status === "archived"
                 ? "این برنامه فقط برای سابقه نگه داشته شده و قابل ویرایش یا فعال‌سازی نیست."
-                : "مشخصات، موضوع‌ها و ظرفیت هفتگی را تنظیم کن. این نسخه هنوز بلوک روزانه تولید نمی‌کند."}
+                : "هدف، محدوده و ظرفیت را تنظیم کن؛ زمان‌بند قطعی v0.8.2 آن‌ها را به بلوک‌های روزانه قابل بازتولید تبدیل می‌کند."}
           </p>
         </div>
         <div className="actions">
+          {!["archived", "completed"].includes(plan.status) && (
+            <button className="button primary" type="button" disabled={!!busy || scheduleLoading} onClick={() => void generateSchedule()}>
+              {busy === "generate"
+                ? "در حال زمان‌بندی..."
+                : plan.generation_version > 0
+                  ? "بازچینی زمان‌بندی"
+                  : "ساخت زمان‌بندی"}
+            </button>
+          )}
           {plan.status === "active" && (
             <button className="button" type="button" disabled={!!busy} onClick={() => void transition("pause")}>
               {busy === "pause" ? "در حال توقف..." : "توقف برنامه"}
@@ -380,7 +575,11 @@ export default function StudyPlanDetailPage() {
         <div><span>موضوع‌ها</span><strong>{faNumber(scopes.length)}</strong></div>
         <div><span>ظرفیت هفتگی</span><strong>{faNumber(weeklyMinutes)} دقیقه</strong></div>
         <div><span>روزهای فعال</span><strong>{faNumber(availability.filter((row) => row.available_minutes > 0).length)}</strong></div>
-        <div><span>نسخه تولید</span><strong>{faNumber(plan.generation_version)}</strong><small>هنوز زمان‌بندی نشده</small></div>
+        <div>
+          <span>نسخه زمان‌بندی</span>
+          <strong>{faNumber(plan.generation_version)}</strong>
+          <small>{plan.last_generated_at ? "آخرین تولید ثبت شده" : "هنوز تولید نشده"}</small>
+        </div>
       </section>
 
       <section className="card study-plan-editor-section">
@@ -613,10 +812,238 @@ export default function StudyPlanDetailPage() {
         )}
       </section>
 
+      <section className="card study-plan-editor-section study-schedule-section">
+        <div className="study-plan-section-head">
+          <div>
+            <div className="meta">۴ · زمان‌بندی قطعی</div>
+            <h2>Study Blocks</h2>
+            <p className="muted small">
+              بلوک‌ها قصد زمان‌بندی‌شده‌اند. زمان تخمینی یک heuristic محصول است و تکمیل بلوک به معنی تسلط یا آمادگی امتحان نیست.
+            </p>
+          </div>
+          <div className="actions">
+            {scheduleLoading && <span className="study-readonly-badge">در حال تازه‌سازی...</span>}
+            {!["archived", "completed"].includes(plan.status) && (
+              <button className="button primary" type="button" disabled={!!busy || scheduleLoading} onClick={() => void generateSchedule()}>
+                {busy === "generate"
+                  ? "در حال زمان‌بندی..."
+                  : plan.generation_version > 0
+                    ? "بازچینی"
+                    : "ساخت زمان‌بندی"}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {plan.schedule_stale && plan.generation_version > 0 && (
+          <div className="study-schedule-warning" role="status">
+            <strong>ورودی برنامه بعد از آخرین generation تغییر کرده است.</strong>
+            <p>زمان‌بندی فعلی برای حفظ تاریخچه نمایش داده می‌شود، اما برای همگام‌سازی Scope، ظرفیت یا تاریخ‌ها باید بازچینی را اجرا کنی.</p>
+          </div>
+        )}
+
+        {latestGeneration ? (
+          <>
+            <div className="study-generation-metrics">
+              <div>
+                <span>نسخه</span>
+                <strong>{faNumber(latestGeneration.generation_version)}</strong>
+              </div>
+              <div>
+                <span>ظرفیت بازه</span>
+                <strong>{faNumber(latestGeneration.available_minutes)} دقیقه</strong>
+              </div>
+              <div>
+                <span>زمان‌بندی‌شده</span>
+                <strong>{faNumber(latestGeneration.scheduled_minutes)} دقیقه</strong>
+              </div>
+              <div>
+                <span>حفظ‌شده</span>
+                <strong>{faNumber(latestGeneration.preserved_minutes)} دقیقه</strong>
+              </div>
+              <div>
+                <span>Backlog</span>
+                <strong>{faNumber(latestGeneration.capacity_shortfall_minutes)} دقیقه</strong>
+              </div>
+            </div>
+
+            <div className="study-generation-meta">
+              <span>
+                بازه: <b>{displayDate(latestGeneration.schedule_start)}</b> تا <b>{displayDate(latestGeneration.schedule_end)}</b>
+              </span>
+              <span>{faNumber(latestGeneration.scheduled_blocks)} بلوک جدید</span>
+              <span>{faNumber(latestGeneration.preserved_blocks)} بلوک حفظ‌شده</span>
+              {latestGeneration.superseded_blocks > 0 && (
+                <span>{faNumber(latestGeneration.superseded_blocks)} بلوک قدیمی superseded شد</span>
+              )}
+            </div>
+
+            {latestGeneration.capacity_shortfall_minutes > 0 && (
+              <div className="study-schedule-warning" role="status">
+                <strong>ظرفیت این بازه برای همه کارها کافی نیست.</strong>
+                <p>
+                  {faNumber(latestGeneration.capacity_shortfall_minutes)} دقیقه از candidateها عمداً خارج از تقویم مانده‌اند. زمان‌بند ظرفیت روزها را نشکسته و چیزی را پنهانی بعد از تاریخ هدف نبرده است.
+                </p>
+                {latestGeneration.backlog.length > 0 && (
+                  <div className="study-backlog-list">
+                    {latestGeneration.backlog.slice(0, 8).map((item) => (
+                      <span key={item.key}>
+                        {item.title} · {faNumber(item.estimated_minutes)} دقیقه
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {latestGeneration.unavailable_scopes.length > 0 && (
+              <div className="study-schedule-warning muted-warning">
+                <strong>بخشی از Scope فعلاً قابل زمان‌بندی نیست.</strong>
+                <p>محتوای غیرفعال جایگزین یا حدس زده نشده است.</p>
+                <div className="study-backlog-list">
+                  {latestGeneration.unavailable_scopes.map((item) => (
+                    <span key={item.scope_id}>{item.title || item.target_slug || "Scope نامعتبر"}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="study-schedule-empty">
+            <strong>هنوز StudyBlock ساخته نشده است.</strong>
+            <p>بعد از تنظیم Scope و ظرفیت، «ساخت زمان‌بندی» را بزن. تولید دوباره تاریخچه، بلوک‌های دستی، بلوک‌های قفل‌شده و کارهای انجام‌شده را حذف نمی‌کند.</p>
+          </div>
+        )}
+
+        {schedule && schedule.summary.cross_plan_overcapacity.length > 0 && (
+          <div className="study-schedule-warning muted-warning">
+            <strong>فشار هم‌زمان چند برنامه</strong>
+            <p>
+              این هشدار فقط مجموع بلوک‌های برنامه‌های فعال را با ظرفیت روزانه پیش‌فرض مقایسه می‌کند؛ امتیاز آمادگی یا پیش‌بینی موفقیت نیست.
+            </p>
+            <div className="study-backlog-list">
+              {schedule.summary.cross_plan_overcapacity.slice(0, 8).map((row) => (
+                <span key={row.date}>
+                  {displayDate(row.date)} · {faNumber(row.scheduled_minutes)} / {faNumber(row.default_daily_minutes)} دقیقه
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {scheduleBlocks.length > 0 ? (
+          <div className="study-schedule-days">
+            {schedule?.days.map((day) => (
+              <section className="study-schedule-day" key={day.date}>
+                <header>
+                  <div>
+                    <span className="meta">{day.date}</span>
+                    <h3>{displayDate(day.date)}</h3>
+                  </div>
+                  <strong>
+                    {faNumber(day.blocks.reduce((sum, block) => sum + block.estimated_minutes, 0))} دقیقه
+                  </strong>
+                </header>
+
+                <div className="study-block-list">
+                  {day.blocks.map((block) => (
+                    <article className={`study-block-row ${block.status} ${block.locked_by_user ? "locked" : ""}`} key={block.id}>
+                      <div className="study-block-main">
+                        <div className="study-block-title-line">
+                          <span className={`study-block-status ${block.status}`}>{blockStatusLabel[block.status]}</span>
+                          <span className="study-block-kind">{blockKindLabel[block.block_kind]}</span>
+                          {block.locked_by_user && <span className="study-block-lock">قفل دستی</span>}
+                        </div>
+                        <strong>{block.snapshot_title}</strong>
+                        {block.snapshot_subtitle && <p>{block.snapshot_subtitle}</p>}
+                        <small>
+                          {faNumber(block.estimated_minutes)} دقیقه · generation {faNumber(block.generation_version)}
+                          {block.evidence_required ? " · تکمیل با شواهد موتور اصلی" : " · تکمیل با تأیید کاربر"}
+                        </small>
+                      </div>
+
+                      <div className="study-block-actions">
+                        <Link className="button" href={block.action_href}>
+                          {block.evidence_required ? "انجام فعالیت" : "باز کردن محتوا"}
+                        </Link>
+
+                        {block.status === "pending" && !["archived", "completed"].includes(plan.status) && (
+                          <>
+                            <div className="study-block-move">
+                              <input
+                                aria-label={`تاریخ جدید برای ${block.snapshot_title}`}
+                                type="date"
+                                min={plan.start_date}
+                                max={plan.target_date ?? undefined}
+                                value={rescheduleDates[block.id] ?? block.scheduled_date}
+                                onChange={(event) => setRescheduleDates((current) => ({
+                                  ...current,
+                                  [block.id]: event.target.value,
+                                }))}
+                              />
+                              <button
+                                className="button"
+                                type="button"
+                                disabled={!!busy}
+                                onClick={() => void rescheduleBlock(block)}
+                              >
+                                {busy === `block-${block.id}-move` ? "..." : "ثبت تاریخ"}
+                              </button>
+                            </div>
+
+                            {block.locked_by_user && block.origin === "generated" && (
+                              <button
+                                className="button"
+                                type="button"
+                                disabled={!!busy}
+                                onClick={() => void blockAction(block, "unlock")}
+                              >
+                                {busy === `block-${block.id}-unlock` ? "..." : "آزاد کردن قفل"}
+                              </button>
+                            )}
+
+                            <button
+                              className="button"
+                              type="button"
+                              disabled={!!busy}
+                              onClick={() => void blockAction(block, "complete")}
+                            >
+                              {busy === `block-${block.id}-complete`
+                                ? "در حال بررسی..."
+                                : block.evidence_required
+                                  ? "بررسی تکمیل"
+                                  : "ثبت انجام"}
+                            </button>
+
+                            <button
+                              className="button danger-ghost"
+                              type="button"
+                              disabled={!!busy}
+                              onClick={() => void blockAction(block, "skip")}
+                            >
+                              {busy === `block-${block.id}-skip` ? "..." : "رد کردن"}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        ) : latestGeneration ? (
+          <div className="study-schedule-empty">
+            <strong>در این بازه بلوک فعالی وجود ندارد.</strong>
+            <p>ممکن است ظرفیت صفر، Scope غیرفعال یا همه candidateها قبلاً تکمیل/رد شده باشند. summary بالا علت را بدون حدس‌زدن نگه می‌دارد.</p>
+          </div>
+        ) : null}
+      </section>
+
       <aside className="study-plan-boundary">
-        <strong>مرز v0.8.1</strong>
+        <strong>مرز v0.8.2</strong>
         <p>
-          generation_version این برنامه هنوز صفر است. فعال‌سازی در این نسخه فقط یعنی برنامه برای مرحله زمان‌بندی آماده است؛ هیچ StudyBlock، due date فلش‌کارت یا نتیجه Quiz/Case در این صفحه ساخته یا تغییر داده نمی‌شود.
+          StudyBlock فقط قصد زمان‌بندی‌شده و سابقه پایبندی است. فلش‌کارت از SRS canonical، آزمون از QuizAttempt و کیس از CaseAttempt استفاده می‌کند؛ زمان‌بند due date، score، mastery یا نتیجه امتحان را بازنویسی و پیش‌بینی نمی‌کند. Study Session و Recommendation V2 در sliceهای بعدی می‌آیند.
         </p>
       </aside>
     </main>
