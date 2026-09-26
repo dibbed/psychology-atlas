@@ -2892,5 +2892,3 @@ a.scientific-source-card:hover { border-color: rgba(128,225,193,.36); background
   .study-block-actions { grid-template-columns: 1fr; }
   .study-block-move { grid-column: auto; grid-template-columns: 1fr; }
 }
-
-\n

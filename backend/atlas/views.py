@@ -3877,5 +3877,3 @@ def study_block_unlock(request, block_id):
         return Response(study_block_payload(block))
     except StudyPlanningError as exc:
         return _study_planning_error_response(exc)
-
-\n
