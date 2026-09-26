@@ -1115,6 +1115,8 @@ class StudyPlan(TimeStampedModel):
     target_date = models.DateField(null=True, blank=True)
     notes = models.TextField(blank=True)
     generation_version = models.PositiveIntegerField(default=0)
+    generation_fingerprint = models.CharField(max_length=64, blank=True, db_index=True)
+    last_generation_summary = models.JSONField(default=dict, blank=True)
     last_generated_at = models.DateTimeField(null=True, blank=True)
     archived_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
@@ -1358,6 +1360,313 @@ class StudyPlanScope(TimeStampedModel):
         )
         if sum(getattr(self, field) is not None for field in target_fields) != 1:
             raise ValidationError("Study plan scope must reference exactly one target.")
+
+
+class StudyBlock(TimeStampedModel):
+    class Kind(models.TextChoices):
+        FLASHCARD_REVIEW = "flashcard_review", "Flashcard review"
+        CONCEPT_REVIEW = "concept_review", "Concept review"
+        DISORDER_REVIEW = "disorder_review", "Disorder review"
+        THERAPY_READING = "therapy_reading", "Therapy reading"
+        THEORY_READING = "theory_reading", "Theory reading"
+        PSYCHOLOGIST_READING = "psychologist_reading", "Psychologist reading"
+        TIMELINE_REVIEW = "timeline_review", "Timeline review"
+        QUIZ_PRACTICE = "quiz_practice", "Quiz practice"
+        CASE_PRACTICE = "case_practice", "Case practice"
+        DISTORTION_PRACTICE = "distortion_practice", "Cognitive distortion practice"
+        NOTES_REVIEW = "notes_review", "Notes review"
+        DAILY_CHALLENGE_OPTIONAL = "daily_challenge_optional", "Daily challenge optional"
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        IN_PROGRESS = "in_progress", "In progress"
+        COMPLETED = "completed", "Completed"
+        SKIPPED = "skipped", "Skipped"
+        SUPERSEDED = "superseded", "Superseded"
+
+    class Origin(models.TextChoices):
+        GENERATED = "generated", "Generated"
+        MANUAL = "manual", "Manual"
+        RECOMMENDATION = "recommendation", "Recommendation"
+
+    plan = models.ForeignKey(StudyPlan, on_delete=models.CASCADE, related_name="blocks")
+    scope = models.ForeignKey(
+        StudyPlanScope,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="blocks",
+    )
+    block_kind = models.CharField(max_length=32, choices=Kind.choices, db_index=True)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING, db_index=True)
+    origin = models.CharField(max_length=20, choices=Origin.choices, default=Origin.GENERATED, db_index=True)
+    scheduled_date = models.DateField(db_index=True)
+    sequence = models.PositiveIntegerField(default=0)
+    estimated_minutes = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1), MaxValueValidator(1440)]
+    )
+    generation_version = models.PositiveIntegerField(default=0)
+    locked_by_user = models.BooleanField(default=False, db_index=True)
+    snapshot_title = models.CharField(max_length=255)
+    snapshot_subtitle = models.CharField(max_length=255, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    disorder = models.ForeignKey(
+        Disorder,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="study_blocks",
+    )
+    concept = models.ForeignKey(
+        Concept,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="study_blocks",
+    )
+    therapy = models.ForeignKey(
+        "Therapy",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="study_blocks",
+    )
+    theory = models.ForeignKey(
+        "Theory",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="study_blocks",
+    )
+    psychologist = models.ForeignKey(
+        "Psychologist",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="study_blocks",
+    )
+    timeline_event = models.ForeignKey(
+        "TimelineEvent",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="study_blocks",
+    )
+    quiz = models.ForeignKey(
+        Quiz,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="study_blocks",
+    )
+    clinical_case = models.ForeignKey(
+        ClinicalCase,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="study_blocks",
+    )
+
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    skipped_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ("scheduled_date", "sequence", "id")
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(estimated_minutes__gte=1) & Q(estimated_minutes__lte=1440),
+                name="ck_study_block_minutes",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    (
+                        Q(block_kind__in=["flashcard_review", "notes_review", "daily_challenge_optional"])
+                        & Q(disorder__isnull=True)
+                        & Q(concept__isnull=True)
+                        & Q(therapy__isnull=True)
+                        & Q(theory__isnull=True)
+                        & Q(psychologist__isnull=True)
+                        & Q(timeline_event__isnull=True)
+                        & Q(quiz__isnull=True)
+                        & Q(clinical_case__isnull=True)
+                    )
+                    | (
+                        Q(block_kind="concept_review")
+                        & Q(concept__isnull=False)
+                        & Q(disorder__isnull=True)
+                        & Q(therapy__isnull=True)
+                        & Q(theory__isnull=True)
+                        & Q(psychologist__isnull=True)
+                        & Q(timeline_event__isnull=True)
+                        & Q(quiz__isnull=True)
+                        & Q(clinical_case__isnull=True)
+                    )
+                    | (
+                        Q(block_kind="distortion_practice")
+                        & Q(concept__isnull=False)
+                        & Q(disorder__isnull=True)
+                        & Q(therapy__isnull=True)
+                        & Q(theory__isnull=True)
+                        & Q(psychologist__isnull=True)
+                        & Q(timeline_event__isnull=True)
+                        & Q(quiz__isnull=True)
+                        & Q(clinical_case__isnull=True)
+                    )
+                    | (
+                        Q(block_kind="disorder_review")
+                        & Q(disorder__isnull=False)
+                        & Q(concept__isnull=True)
+                        & Q(therapy__isnull=True)
+                        & Q(theory__isnull=True)
+                        & Q(psychologist__isnull=True)
+                        & Q(timeline_event__isnull=True)
+                        & Q(quiz__isnull=True)
+                        & Q(clinical_case__isnull=True)
+                    )
+                    | (
+                        Q(block_kind="therapy_reading")
+                        & Q(therapy__isnull=False)
+                        & Q(disorder__isnull=True)
+                        & Q(concept__isnull=True)
+                        & Q(theory__isnull=True)
+                        & Q(psychologist__isnull=True)
+                        & Q(timeline_event__isnull=True)
+                        & Q(quiz__isnull=True)
+                        & Q(clinical_case__isnull=True)
+                    )
+                    | (
+                        Q(block_kind="theory_reading")
+                        & Q(theory__isnull=False)
+                        & Q(disorder__isnull=True)
+                        & Q(concept__isnull=True)
+                        & Q(therapy__isnull=True)
+                        & Q(psychologist__isnull=True)
+                        & Q(timeline_event__isnull=True)
+                        & Q(quiz__isnull=True)
+                        & Q(clinical_case__isnull=True)
+                    )
+                    | (
+                        Q(block_kind="psychologist_reading")
+                        & Q(psychologist__isnull=False)
+                        & Q(disorder__isnull=True)
+                        & Q(concept__isnull=True)
+                        & Q(therapy__isnull=True)
+                        & Q(theory__isnull=True)
+                        & Q(timeline_event__isnull=True)
+                        & Q(quiz__isnull=True)
+                        & Q(clinical_case__isnull=True)
+                    )
+                    | (
+                        Q(block_kind="timeline_review")
+                        & Q(timeline_event__isnull=False)
+                        & Q(disorder__isnull=True)
+                        & Q(concept__isnull=True)
+                        & Q(therapy__isnull=True)
+                        & Q(theory__isnull=True)
+                        & Q(psychologist__isnull=True)
+                        & Q(quiz__isnull=True)
+                        & Q(clinical_case__isnull=True)
+                    )
+                    | (
+                        Q(block_kind="quiz_practice")
+                        & Q(quiz__isnull=False)
+                        & Q(disorder__isnull=True)
+                        & Q(concept__isnull=True)
+                        & Q(therapy__isnull=True)
+                        & Q(theory__isnull=True)
+                        & Q(psychologist__isnull=True)
+                        & Q(timeline_event__isnull=True)
+                        & Q(clinical_case__isnull=True)
+                    )
+                    | (
+                        Q(block_kind="case_practice")
+                        & Q(clinical_case__isnull=False)
+                        & Q(disorder__isnull=True)
+                        & Q(concept__isnull=True)
+                        & Q(therapy__isnull=True)
+                        & Q(theory__isnull=True)
+                        & Q(psychologist__isnull=True)
+                        & Q(timeline_event__isnull=True)
+                        & Q(quiz__isnull=True)
+                    )
+                ),
+                name="ck_study_block_target_kind",
+            ),
+            models.CheckConstraint(
+                condition=~Q(status="in_progress") | Q(started_at__isnull=False),
+                name="ck_study_block_in_progress_started",
+            ),
+            models.CheckConstraint(
+                condition=Q(started_at__isnull=True)
+                | Q(status__in=("in_progress", "completed")),
+                name="ck_study_block_started_status",
+            ),
+            models.CheckConstraint(
+                condition=~Q(status="completed") | Q(completed_at__isnull=False),
+                name="ck_study_block_completed_at",
+            ),
+            models.CheckConstraint(
+                condition=Q(completed_at__isnull=True) | Q(status="completed"),
+                name="ck_study_block_completed_status",
+            ),
+            models.CheckConstraint(
+                condition=~Q(status="skipped") | Q(skipped_at__isnull=False),
+                name="ck_study_block_skipped_at",
+            ),
+            models.CheckConstraint(
+                condition=Q(skipped_at__isnull=True) | Q(status="skipped"),
+                name="ck_study_block_skipped_status",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=("plan", "status", "scheduled_date")),
+            models.Index(fields=("plan", "generation_version")),
+            models.Index(fields=("plan", "origin", "status")),
+            models.Index(fields=("plan", "scheduled_date", "sequence")),
+        ]
+
+    def clean(self):
+        super().clean()
+        target_fields = {
+            "disorder_review": ("disorder_id",),
+            "concept_review": ("concept_id",),
+            "distortion_practice": ("concept_id",),
+            "therapy_reading": ("therapy_id",),
+            "theory_reading": ("theory_id",),
+            "psychologist_reading": ("psychologist_id",),
+            "timeline_review": ("timeline_event_id",),
+            "quiz_practice": ("quiz_id",),
+            "case_practice": ("clinical_case_id",),
+            "flashcard_review": (),
+            "notes_review": (),
+            "daily_challenge_optional": (),
+        }
+        expected = target_fields.get(self.block_kind)
+        all_fields = (
+            "disorder_id",
+            "concept_id",
+            "therapy_id",
+            "theory_id",
+            "psychologist_id",
+            "timeline_event_id",
+            "quiz_id",
+            "clinical_case_id",
+        )
+        if expected is not None:
+            for field in all_fields:
+                should_exist = field in expected
+                if (getattr(self, field) is not None) != should_exist:
+                    raise ValidationError("Study block target does not match block kind.")
+        if self.scope_id and self.plan_id and self.scope.plan_id != self.plan_id:
+            raise ValidationError({"scope": "Study block scope must belong to its plan."})
+        if self.started_at and self.status not in {self.Status.IN_PROGRESS, self.Status.COMPLETED}:
+            raise ValidationError({"started_at": "Only in-progress or completed blocks may have a start time."})
+        if self.completed_at and self.status != self.Status.COMPLETED:
+            raise ValidationError({"completed_at": "Only completed blocks may have a completion time."})
+        if self.skipped_at and self.status != self.Status.SKIPPED:
+            raise ValidationError({"skipped_at": "Only skipped blocks may have a skip time."})
 
 
 class ConceptBookmark(models.Model):

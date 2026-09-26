@@ -6627,6 +6627,11 @@ class V081StudyPlanningMigrationTests(TransactionTestCase):
 
     migrate_from = ("atlas", "0027_v075_case_attempt_concurrency_guard")
     migrate_to = ("atlas", "0028_v081_study_plan_foundation")
+    restore_to = ("atlas", "0030_studyblock_ck_study_block_started_status_and_more")
+
+    def tearDown(self):
+        MigrationExecutor(connection).migrate([self.restore_to])
+        super().tearDown()
 
     def test_v081_upgrade_preserves_existing_user_progress_and_creates_no_personal_planning_rows(self):
         executor = MigrationExecutor(connection)
@@ -6675,3 +6680,1093 @@ class V081StudyPlanningMigrationTests(TransactionTestCase):
         )
         self.assertEqual(StudyPlanModel.objects.count(), 0)
         self.assertEqual(StudySettingsModel.objects.count(), 0)
+
+
+class V082StudyBlockSchedulerTests(APITestCase):
+    TODAY = date(2026, 9, 19)
+
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(
+            username="v082@example.com",
+            email="v082@example.com",
+            password="ComplexPass123!",
+        )
+        self.other_user = User.objects.create_user(
+            username="v082-other@example.com",
+            email="v082-other@example.com",
+            password="ComplexPass123!",
+        )
+        self.client.force_authenticate(self.user)
+        atlas_models.UserStudySettings.objects.create(
+            user=self.user,
+            study_timezone="UTC",
+            default_daily_minutes=60,
+            default_session_minutes=25,
+            week_starts_on=0,
+        )
+        atlas_models.UserStudySettings.objects.create(
+            user=self.other_user,
+            study_timezone="UTC",
+            default_daily_minutes=60,
+            default_session_minutes=25,
+            week_starts_on=0,
+        )
+
+        self.category = Category.objects.create(slug="v082-category", name_en="v0.8.2")
+        self.disorder = Disorder.objects.create(
+            category=self.category,
+            slug="v082-disorder",
+            name_en="v0.8.2 Disorder",
+            name_fa="اختلال آزمایشی ۰.۸.۲",
+            is_active=True,
+        )
+        self.concept = Concept.objects.create(
+            slug="v082-concept",
+            name_en="v0.8.2 Concept",
+            name_fa="مفهوم آزمایشی ۰.۸.۲",
+            simple_definition="Scheduler concept.",
+            is_active=True,
+        )
+        self.distortion_concept = Concept.objects.create(
+            slug="v082-distortion",
+            name_en="v0.8.2 Distortion",
+            name_fa="تحریف آزمایشی ۰.۸.۲",
+            simple_definition="Scheduler distortion.",
+            subtype=Concept.Subtype.COGNITIVE_DISTORTION,
+            is_active=True,
+        )
+        self.family = atlas_models.TherapyFamily.objects.create(
+            slug="v082-family",
+            name_en="v0.8.2 Family",
+            name_fa="خانواده درمانی آزمایشی",
+            is_active=True,
+        )
+        self.therapy = atlas_models.Therapy.objects.create(
+            family=self.family,
+            slug="v082-therapy",
+            name_en="v0.8.2 Therapy",
+            name_fa="درمان آزمایشی ۰.۸.۲",
+            is_active=True,
+        )
+        self.theory = atlas_models.Theory.objects.create(
+            slug="v082-theory",
+            name_en="v0.8.2 Theory",
+            name_fa="نظریه آزمایشی ۰.۸.۲",
+            is_active=True,
+        )
+        self.psychologist = atlas_models.Psychologist.objects.create(
+            slug="v082-psychologist",
+            name_en="v0.8.2 Psychologist",
+            name_fa="روان‌شناس آزمایشی ۰.۸.۲",
+            is_active=True,
+        )
+        self.timeline_event = atlas_models.TimelineEvent.objects.create(
+            slug="v082-timeline",
+            title_en="v0.8.2 Timeline",
+            title_fa="رویداد آزمایشی ۰.۸.۲",
+            is_active=True,
+        )
+        self.quiz = Quiz.objects.create(
+            slug="v082-quiz",
+            title="آزمون آزمایشی ۰.۸.۲",
+            disorder=self.disorder,
+            is_active=True,
+        )
+        self.case = ClinicalCase.objects.create(
+            slug="v082-case",
+            title="کیس آزمایشی ۰.۸.۲",
+            patient_summary="summary",
+            primary_disorder=self.disorder,
+            structure_mode=ClinicalCase.StructureMode.BRANCHING,
+            is_active=True,
+        )
+        self.case_revision = CaseRevision.objects.create(
+            case=self.case,
+            version=1,
+            title=self.case.title,
+            patient_summary=self.case.patient_summary,
+            primary_disorder=self.disorder,
+            status=CaseRevision.Status.PUBLISHED,
+        )
+        self.case_entry = CaseStep.objects.create(
+            case=self.case,
+            revision=self.case_revision,
+            stable_key="entry",
+            node_kind=CaseStep.NodeKind.TERMINAL,
+            title="پایان",
+            narrative="terminal",
+            sort_order=1,
+            is_active=True,
+        )
+        self.case_revision.entry_step = self.case_entry
+        self.case_revision.save(update_fields=("entry_step", "updated_at"))
+        self.case.current_revision = self.case_revision
+        self.case.save(update_fields=("current_revision", "updated_at"))
+
+        self.flashcard = Flashcard.objects.create(
+            slug="v082-flashcard",
+            front="front",
+            back="back",
+            concept=self.concept,
+            is_active=True,
+        )
+        self.practice_item = CognitiveDistortionPracticeItem.objects.create(
+            slug="v082-practice",
+            prompt="prompt",
+            explanation="explanation",
+            target_concept=self.distortion_concept,
+            is_active=True,
+        )
+        self.practice_choice = CognitiveDistortionPracticeChoice.objects.create(
+            item=self.practice_item,
+            concept=self.distortion_concept,
+            text="correct",
+            is_correct=True,
+            is_active=True,
+        )
+
+    def _scope_target_kwargs(self, target_type, target):
+        return {target_type: target} if target_type != "clinical_case" else {"clinical_case": target}
+
+    def _plan(
+        self,
+        rows,
+        *,
+        minutes=60,
+        target_date=date(2026, 10, 10),
+        status=atlas_models.StudyPlan.Status.DRAFT,
+        user=None,
+        plan_kind=atlas_models.StudyPlan.Kind.EXAM,
+        start_date=None,
+    ):
+        owner = user or self.user
+        plan = atlas_models.StudyPlan.objects.create(
+            user=owner,
+            name=f"Plan {atlas_models.StudyPlan.objects.count() + 1}",
+            plan_kind=plan_kind,
+            status=status,
+            start_date=start_date or self.TODAY,
+            target_date=target_date if plan_kind == atlas_models.StudyPlan.Kind.EXAM else None,
+        )
+        atlas_models.StudyPlanAvailability.objects.bulk_create(
+            [
+                atlas_models.StudyPlanAvailability(
+                    plan=plan,
+                    weekday=weekday,
+                    available_minutes=minutes,
+                )
+                for weekday in range(7)
+            ]
+        )
+        for index, row in enumerate(rows):
+            target_type, target, priority, include_practice = row
+            atlas_models.StudyPlanScope.objects.create(
+                plan=plan,
+                priority=priority,
+                include_practice=include_practice,
+                sort_order=index,
+                **self._scope_target_kwargs(target_type, target),
+            )
+        return plan
+
+    def _generate(self, plan):
+        with patch("atlas.study_scheduler.local_date_for_user", return_value=self.TODAY):
+            return self.client.post(
+                f"/api/study/plans/{plan.id}/generate/",
+                {},
+                format="json",
+            )
+
+    def _schedule(self, plan, **params):
+        with patch("atlas.study_scheduler.local_date_for_user", return_value=self.TODAY):
+            return self.client.get(
+                f"/api/study/plans/{plan.id}/schedule/",
+                params,
+            )
+
+    def test_v082_model_target_kind_and_scope_plan_integrity(self):
+        plan = self._plan([("concept", self.concept, 1, False)])
+        wrong = atlas_models.StudyBlock(
+            plan=plan,
+            block_kind=atlas_models.StudyBlock.Kind.CONCEPT_REVIEW,
+            scheduled_date=self.TODAY,
+            estimated_minutes=20,
+            snapshot_title="wrong",
+        )
+        with self.assertRaises(ValidationError):
+            wrong.full_clean()
+
+        other_plan = self._plan([("theory", self.theory, 1, False)])
+        foreign_scope = other_plan.scopes.get()
+        cross_plan = atlas_models.StudyBlock(
+            plan=plan,
+            scope=foreign_scope,
+            block_kind=atlas_models.StudyBlock.Kind.CONCEPT_REVIEW,
+            concept=self.concept,
+            scheduled_date=self.TODAY,
+            estimated_minutes=20,
+            snapshot_title="cross",
+        )
+        with self.assertRaises(ValidationError):
+            cross_plan.full_clean()
+
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                atlas_models.StudyBlock.objects.create(
+                    plan=plan,
+                    block_kind=atlas_models.StudyBlock.Kind.CONCEPT_REVIEW,
+                    scheduled_date=self.TODAY,
+                    estimated_minutes=20,
+                    snapshot_title="db guard",
+                )
+
+    def test_v082_block_timestamps_are_consistent_with_status(self):
+        plan = self._plan([("theory", self.theory, 1, False)])
+        invalid_started = atlas_models.StudyBlock(
+            plan=plan,
+            block_kind=atlas_models.StudyBlock.Kind.THEORY_READING,
+            theory=self.theory,
+            status=atlas_models.StudyBlock.Status.PENDING,
+            scheduled_date=self.TODAY,
+            estimated_minutes=20,
+            snapshot_title="pending with start time",
+            started_at=timezone.now(),
+        )
+        with self.assertRaises(ValidationError):
+            invalid_started.full_clean()
+
+        for timestamp_field in ("completed_at", "skipped_at"):
+            with self.subTest(timestamp_field=timestamp_field):
+                with self.assertRaises(IntegrityError):
+                    with transaction.atomic():
+                        atlas_models.StudyBlock.objects.create(
+                            plan=plan,
+                            block_kind=atlas_models.StudyBlock.Kind.THEORY_READING,
+                            theory=self.theory,
+                            status=atlas_models.StudyBlock.Status.PENDING,
+                            scheduled_date=self.TODAY,
+                            estimated_minutes=20,
+                            snapshot_title="pending with terminal timestamp",
+                            **{timestamp_field: timezone.now()},
+                        )
+
+    def test_v082_generation_maps_all_explicit_scope_domains(self):
+        plan = self._plan(
+            [
+                ("disorder", self.disorder, 1, False),
+                ("concept", self.concept, 1, False),
+                ("therapy", self.therapy, 1, False),
+                ("theory", self.theory, 1, False),
+                ("psychologist", self.psychologist, 1, False),
+                ("timeline_event", self.timeline_event, 1, False),
+                ("quiz", self.quiz, 1, False),
+                ("clinical_case", self.case, 1, False),
+            ],
+            minutes=300,
+        )
+        response = self._generate(plan)
+        self.assertEqual(response.status_code, 200, response.content)
+        kinds = set(
+            atlas_models.StudyBlock.objects.filter(
+                plan=plan,
+                status=atlas_models.StudyBlock.Status.PENDING,
+            ).values_list("block_kind", flat=True)
+        )
+        self.assertTrue(
+            {
+                "disorder_review",
+                "concept_review",
+                "therapy_reading",
+                "theory_reading",
+                "psychologist_reading",
+                "timeline_review",
+                "quiz_practice",
+                "case_practice",
+                "flashcard_review",
+            }.issubset(kinds)
+        )
+        self.assertEqual(response.json()["generation"]["generation_version"], 1)
+
+    def test_v082_generation_expands_only_explicit_practice_and_srs_capacity(self):
+        plan = self._plan(
+            [
+                ("disorder", self.disorder, 4, True),
+                ("concept", self.distortion_concept, 4, True),
+                ("concept", self.concept, 1, False),
+            ],
+            minutes=120,
+        )
+        response = self._generate(plan)
+        self.assertEqual(response.status_code, 200, response.content)
+        blocks = list(atlas_models.StudyBlock.objects.filter(plan=plan))
+        self.assertTrue(any(block.block_kind == "quiz_practice" and block.quiz_id == self.quiz.id for block in blocks))
+        self.assertTrue(any(block.block_kind == "case_practice" and block.clinical_case_id == self.case.id for block in blocks))
+        self.assertTrue(any(block.block_kind == "distortion_practice" and block.concept_id == self.distortion_concept.id for block in blocks))
+        flashcard_blocks = [block for block in blocks if block.block_kind == "flashcard_review"]
+        self.assertTrue(flashcard_blocks)
+        self.assertTrue(all("candidate_key" in block.metadata for block in blocks))
+        self.assertTrue(all("flashcard_ids" not in block.metadata for block in flashcard_blocks))
+
+    def test_v082_generation_is_idempotent_noop_for_unchanged_input(self):
+        plan = self._plan([("concept", self.concept, 3, False)], minutes=40)
+        first = self._generate(plan)
+        self.assertEqual(first.status_code, 200, first.content)
+        first_rows = list(
+            atlas_models.StudyBlock.objects.filter(plan=plan)
+            .order_by("scheduled_date", "sequence", "id")
+            .values_list("id", "scheduled_date", "sequence", "block_kind", "concept_id")
+        )
+        second = self._generate(plan)
+        self.assertEqual(second.status_code, 200, second.content)
+        self.assertTrue(second.json()["generation"]["no_op"])
+        self.assertEqual(second.json()["generation"]["generation_version"], 1)
+        self.assertEqual(
+            list(
+                atlas_models.StudyBlock.objects.filter(plan=plan)
+                .order_by("scheduled_date", "sequence", "id")
+                .values_list("id", "scheduled_date", "sequence", "block_kind", "concept_id")
+            ),
+            first_rows,
+        )
+        plan.refresh_from_db()
+        self.assertEqual(plan.generation_version, 1)
+
+    def test_v082_exact_fit_and_capacity_shortfall_are_explicit(self):
+        exact = self._plan(
+            [("theory", self.theory, 1, False)],
+            minutes=25,
+            target_date=self.TODAY,
+        )
+        exact_response = self._generate(exact)
+        self.assertEqual(exact_response.status_code, 200)
+        exact_summary = exact_response.json()["generation"]
+        self.assertEqual(exact_summary["scheduled_minutes"], 25)
+        self.assertEqual(exact_summary["capacity_shortfall_minutes"], 0)
+        self.assertEqual(exact_summary["unscheduled_candidates"], 0)
+
+        short = self._plan(
+            [
+                ("theory", self.theory, 1, False),
+                ("psychologist", self.psychologist, 1, False),
+            ],
+            minutes=30,
+            target_date=self.TODAY,
+        )
+        short_response = self._generate(short)
+        self.assertEqual(short_response.status_code, 200)
+        short_summary = short_response.json()["generation"]
+        self.assertEqual(short_summary["available_minutes"], 30)
+        self.assertEqual(short_summary["scheduled_minutes"], 25)
+        self.assertEqual(short_summary["capacity_shortfall_minutes"], 20)
+        self.assertEqual(short_summary["unscheduled_candidates"], 1)
+
+    def test_v082_zero_capacity_and_past_exam_are_rejected(self):
+        zero = self._plan([("theory", self.theory, 1, False)], minutes=0)
+        response = self._generate(zero)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["code"], "study_plan_no_availability")
+
+        past = self._plan(
+            [("theory", self.theory, 1, False)],
+            start_date=self.TODAY - timedelta(days=10),
+            target_date=self.TODAY - timedelta(days=1),
+        )
+        with patch("atlas.study_scheduler.local_date_for_user", return_value=self.TODAY):
+            response = self.client.post(
+                f"/api/study/plans/{past.id}/generate/",
+                {},
+                format="json",
+            )
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["code"], "study_plan_invalid_date_range")
+
+    def test_v082_scheduler_never_creates_dates_after_exam_target(self):
+        target = self.TODAY + timedelta(days=1)
+        plan = self._plan(
+            [
+                ("concept", self.concept, 5, False),
+                ("theory", self.theory, 5, False),
+            ],
+            minutes=20,
+            target_date=target,
+        )
+        response = self._generate(plan)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(
+            atlas_models.StudyBlock.objects.filter(
+                plan=plan,
+                scheduled_date__gt=target,
+            ).exists()
+        )
+
+    def test_v082_regeneration_preserves_history_manual_locks_and_past_rows(self):
+        plan = self._plan(
+            [
+                ("concept", self.concept, 5, False),
+                ("disorder", self.disorder, 5, True),
+                ("theory", self.theory, 4, False),
+            ],
+            minutes=120,
+        )
+        self.assertEqual(self._generate(plan).status_code, 200)
+        pending = list(
+            atlas_models.StudyBlock.objects.filter(
+                plan=plan,
+                status=atlas_models.StudyBlock.Status.PENDING,
+            ).order_by("scheduled_date", "sequence", "id")
+        )
+        self.assertGreaterEqual(len(pending), 6)
+
+        completed, active, locked, past, unlocked = pending[:5]
+        completed.status = atlas_models.StudyBlock.Status.COMPLETED
+        completed.completed_at = timezone.now()
+        completed.save(update_fields=("status", "completed_at", "updated_at"))
+
+        active.status = atlas_models.StudyBlock.Status.IN_PROGRESS
+        active.started_at = timezone.now()
+        active.save(update_fields=("status", "started_at", "updated_at"))
+
+        locked.locked_by_user = True
+        locked.save(update_fields=("locked_by_user", "updated_at"))
+
+        past.scheduled_date = self.TODAY - timedelta(days=1)
+        past.save(update_fields=("scheduled_date", "updated_at"))
+
+        manual = atlas_models.StudyBlock.objects.create(
+            plan=plan,
+            block_kind=atlas_models.StudyBlock.Kind.NOTES_REVIEW,
+            status=atlas_models.StudyBlock.Status.PENDING,
+            origin=atlas_models.StudyBlock.Origin.MANUAL,
+            scheduled_date=self.TODAY + timedelta(days=2),
+            sequence=99,
+            estimated_minutes=10,
+            generation_version=0,
+            locked_by_user=True,
+            snapshot_title="یادداشت دستی",
+        )
+        unlocked_id = unlocked.id
+
+        atlas_models.StudyPlanAvailability.objects.filter(plan=plan, weekday=0).update(
+            available_minutes=90
+        )
+        response = self._generate(plan)
+        self.assertEqual(response.status_code, 200, response.content)
+
+        for obj, expected_status in [
+            (completed, atlas_models.StudyBlock.Status.COMPLETED),
+            (active, atlas_models.StudyBlock.Status.IN_PROGRESS),
+            (locked, atlas_models.StudyBlock.Status.PENDING),
+            (past, atlas_models.StudyBlock.Status.PENDING),
+            (manual, atlas_models.StudyBlock.Status.PENDING),
+        ]:
+            obj.refresh_from_db()
+            self.assertEqual(obj.status, expected_status)
+
+        self.assertTrue(atlas_models.StudyBlock.objects.get(pk=locked.id).locked_by_user)
+        self.assertEqual(
+            atlas_models.StudyBlock.objects.get(pk=unlocked_id).status,
+            atlas_models.StudyBlock.Status.SUPERSEDED,
+        )
+        self.assertEqual(
+            atlas_models.StudyBlock.objects.filter(plan=plan, origin="manual").count(),
+            1,
+        )
+
+    def test_v082_inactive_scope_supersedes_old_future_work_without_substitution(self):
+        plan = self._plan([("concept", self.concept, 1, False)], minutes=60)
+        first = self._generate(plan)
+        self.assertEqual(first.status_code, 200)
+        old_ids = list(
+            atlas_models.StudyBlock.objects.filter(
+                plan=plan,
+                block_kind="concept_review",
+                status="pending",
+            ).values_list("id", flat=True)
+        )
+        self.assertTrue(old_ids)
+
+        self.concept.is_active = False
+        self.concept.save(update_fields=("is_active", "updated_at"))
+        response = self._generate(plan)
+        self.assertEqual(response.status_code, 200, response.content)
+        summary = response.json()["generation"]
+        self.assertTrue(summary["unavailable_scopes"])
+        self.assertFalse(
+            atlas_models.StudyBlock.objects.filter(
+                plan=plan,
+                block_kind="concept_review",
+                status="pending",
+                concept=self.concept,
+            ).exists()
+        )
+        self.assertTrue(
+            atlas_models.StudyBlock.objects.filter(
+                id__in=old_ids,
+                status="superseded",
+            ).exists()
+        )
+
+    def test_v082_skipped_or_completed_candidate_is_not_recreated(self):
+        skipped_plan = self._plan([("theory", self.theory, 1, False)], minutes=60)
+        self.assertEqual(self._generate(skipped_plan).status_code, 200)
+        block = atlas_models.StudyBlock.objects.get(plan=skipped_plan, block_kind="theory_reading")
+        skipped = self.client.post(f"/api/study/blocks/{block.id}/skip/", {}, format="json")
+        self.assertEqual(skipped.status_code, 200)
+        regen = self._generate(skipped_plan)
+        self.assertEqual(regen.status_code, 200)
+        self.assertFalse(
+            atlas_models.StudyBlock.objects.filter(
+                plan=skipped_plan,
+                block_kind="theory_reading",
+                status="pending",
+            ).exists()
+        )
+
+        complete_plan = self._plan([("psychologist", self.psychologist, 1, False)], minutes=60)
+        self.assertEqual(self._generate(complete_plan).status_code, 200)
+        block = atlas_models.StudyBlock.objects.get(plan=complete_plan, block_kind="psychologist_reading")
+        completed = self.client.post(f"/api/study/blocks/{block.id}/complete/", {}, format="json")
+        self.assertEqual(completed.status_code, 200)
+        regen = self._generate(complete_plan)
+        self.assertEqual(regen.status_code, 200)
+        self.assertFalse(
+            atlas_models.StudyBlock.objects.filter(
+                plan=complete_plan,
+                block_kind="psychologist_reading",
+                status="pending",
+            ).exists()
+        )
+
+    def test_v082_reschedule_locks_block_and_unlock_restores_regeneration_control(self):
+        plan = self._plan([("theory", self.theory, 1, False)], minutes=60)
+        self.assertEqual(self._generate(plan).status_code, 200)
+        block = atlas_models.StudyBlock.objects.get(plan=plan, block_kind="theory_reading")
+        new_date = self.TODAY + timedelta(days=2)
+        with patch("atlas.study_scheduler.local_date_for_user", return_value=self.TODAY):
+            moved = self.client.post(
+                f"/api/study/blocks/{block.id}/reschedule/",
+                {"scheduled_date": new_date.isoformat()},
+                format="json",
+            )
+        self.assertEqual(moved.status_code, 200, moved.content)
+        self.assertTrue(moved.json()["locked_by_user"])
+        self.assertEqual(moved.json()["scheduled_date"], new_date.isoformat())
+
+        unlocked = self.client.post(
+            f"/api/study/blocks/{block.id}/unlock/",
+            {},
+            format="json",
+        )
+        self.assertEqual(unlocked.status_code, 200)
+        self.assertFalse(unlocked.json()["locked_by_user"])
+
+        with patch("atlas.study_scheduler.local_date_for_user", return_value=self.TODAY):
+            invalid = self.client.post(
+                f"/api/study/blocks/{block.id}/reschedule/",
+                {"scheduled_date": (self.TODAY - timedelta(days=1)).isoformat()},
+                format="json",
+            )
+        self.assertEqual(invalid.status_code, 400)
+        self.assertEqual(invalid.json()["code"], "study_plan_invalid_date_range")
+
+    def test_v082_quiz_completion_requires_owner_canonical_evidence(self):
+        plan = self._plan([("quiz", self.quiz, 1, False)], minutes=60)
+        self.assertEqual(self._generate(plan).status_code, 200)
+        block = atlas_models.StudyBlock.objects.get(plan=plan, block_kind="quiz_practice")
+
+        missing = self.client.post(f"/api/study/blocks/{block.id}/complete/", {}, format="json")
+        self.assertEqual(missing.status_code, 409)
+        self.assertEqual(missing.json()["code"], "study_block_evidence_missing")
+
+        atlas_models.QuizAttempt.objects.create(
+            user=self.other_user,
+            quiz=self.quiz,
+            status=atlas_models.QuizAttempt.Status.COMPLETED,
+            score=100,
+            completed_at=timezone.now(),
+        )
+        foreign = self.client.post(f"/api/study/blocks/{block.id}/complete/", {}, format="json")
+        self.assertEqual(foreign.status_code, 409)
+
+        attempt = atlas_models.QuizAttempt.objects.create(
+            user=self.user,
+            quiz=self.quiz,
+            status=atlas_models.QuizAttempt.Status.COMPLETED,
+            score=100,
+            completed_at=timezone.now(),
+        )
+        done = self.client.post(f"/api/study/blocks/{block.id}/complete/", {}, format="json")
+        self.assertEqual(done.status_code, 200, done.content)
+        self.assertEqual(done.json()["metadata"]["completion_evidence"]["attempt_id"], attempt.id)
+
+    def test_v082_case_completion_requires_matching_completed_attempt(self):
+        plan = self._plan([("clinical_case", self.case, 1, False)], minutes=60)
+        self.assertEqual(self._generate(plan).status_code, 200)
+        block = atlas_models.StudyBlock.objects.get(plan=plan, block_kind="case_practice")
+        missing = self.client.post(f"/api/study/blocks/{block.id}/complete/", {}, format="json")
+        self.assertEqual(missing.status_code, 409)
+
+        attempt = CaseAttempt.objects.create(
+            user=self.user,
+            case=self.case,
+            revision=self.case_revision,
+            current_step=None,
+            status=CaseAttempt.Status.COMPLETED,
+            completed_at=timezone.now(),
+        )
+        done = self.client.post(f"/api/study/blocks/{block.id}/complete/", {}, format="json")
+        self.assertEqual(done.status_code, 200)
+        self.assertEqual(done.json()["metadata"]["completion_evidence"]["attempt_id"], attempt.id)
+        self.assertEqual(done.json()["metadata"]["completion_evidence"]["revision_id"], self.case_revision.id)
+
+    def test_v082_flashcard_and_distortion_blocks_use_canonical_activity_evidence(self):
+        flash_plan = self._plan([("concept", self.concept, 1, False)], minutes=60)
+        self.assertEqual(self._generate(flash_plan).status_code, 200)
+        flash_block = atlas_models.StudyBlock.objects.filter(
+            plan=flash_plan,
+            block_kind="flashcard_review",
+        ).first()
+        self.assertIsNotNone(flash_block)
+        missing = self.client.post(
+            f"/api/study/blocks/{flash_block.id}/complete/",
+            {},
+            format="json",
+        )
+        self.assertEqual(missing.status_code, 409)
+        activity = StudyActivity.objects.create(
+            user=self.user,
+            activity_type=StudyActivity.Kind.FLASHCARD_REVIEW,
+            flashcard=self.flashcard,
+            concept=self.concept,
+            occurred_at=timezone.now(),
+        )
+        done = self.client.post(
+            f"/api/study/blocks/{flash_block.id}/complete/",
+            {},
+            format="json",
+        )
+        self.assertEqual(done.status_code, 200)
+        self.assertEqual(done.json()["metadata"]["completion_evidence"]["activity_id"], activity.id)
+
+        distortion_plan = self._plan(
+            [("concept", self.distortion_concept, 1, True)],
+            minutes=60,
+        )
+        self.assertEqual(self._generate(distortion_plan).status_code, 200)
+        distortion_block = atlas_models.StudyBlock.objects.get(
+            plan=distortion_plan,
+            block_kind="distortion_practice",
+        )
+        missing = self.client.post(
+            f"/api/study/blocks/{distortion_block.id}/complete/",
+            {},
+            format="json",
+        )
+        self.assertEqual(missing.status_code, 409)
+        attempt = CognitiveDistortionPracticeAttempt.objects.create(
+            user=self.user,
+            item=self.practice_item,
+            selected_choice=self.practice_choice,
+            is_correct=True,
+        )
+        done = self.client.post(
+            f"/api/study/blocks/{distortion_block.id}/complete/",
+            {},
+            format="json",
+        )
+        self.assertEqual(done.status_code, 200)
+        self.assertEqual(done.json()["metadata"]["completion_evidence"]["attempt_id"], attempt.id)
+
+    def test_v082_schedule_excludes_superseded_and_reports_cross_plan_overcapacity(self):
+        settings_obj = atlas_models.UserStudySettings.objects.get(user=self.user)
+        settings_obj.default_daily_minutes = 30
+        settings_obj.default_session_minutes = 20
+        settings_obj.save(update_fields=("default_daily_minutes", "default_session_minutes", "updated_at"))
+
+        first = self._plan(
+            [("theory", self.theory, 1, False)],
+            minutes=25,
+            target_date=self.TODAY,
+            status=atlas_models.StudyPlan.Status.ACTIVE,
+        )
+        second = self._plan(
+            [("psychologist", self.psychologist, 1, False)],
+            minutes=20,
+            target_date=self.TODAY,
+            status=atlas_models.StudyPlan.Status.ACTIVE,
+        )
+        self.assertEqual(self._generate(first).status_code, 200)
+        self.assertEqual(self._generate(second).status_code, 200)
+
+        stale = atlas_models.StudyBlock.objects.create(
+            plan=first,
+            block_kind=atlas_models.StudyBlock.Kind.NOTES_REVIEW,
+            status=atlas_models.StudyBlock.Status.SUPERSEDED,
+            origin=atlas_models.StudyBlock.Origin.GENERATED,
+            scheduled_date=self.TODAY,
+            sequence=99,
+            estimated_minutes=10,
+            snapshot_title="stale",
+        )
+        response = self._schedule(first)
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()
+        ids = [
+            block["id"]
+            for day in payload["days"]
+            for block in day["blocks"]
+        ]
+        self.assertNotIn(stale.id, ids)
+        self.assertEqual(payload["summary"]["scheduled_minutes"], 25)
+        self.assertEqual(
+            payload["summary"]["cross_plan_overcapacity"][0]["scheduled_minutes"],
+            45,
+        )
+
+    def test_v082_owner_scope_applies_to_generation_schedule_and_block_actions(self):
+        own = self._plan([("theory", self.theory, 1, False)], minutes=60)
+        self.assertEqual(self._generate(own).status_code, 200)
+        own_block = atlas_models.StudyBlock.objects.get(plan=own, block_kind="theory_reading")
+
+        foreign = self._plan(
+            [("theory", self.theory, 1, False)],
+            minutes=60,
+            user=self.other_user,
+        )
+        foreign_block = atlas_models.StudyBlock.objects.create(
+            plan=foreign,
+            scope=foreign.scopes.get(),
+            block_kind=atlas_models.StudyBlock.Kind.THEORY_READING,
+            theory=self.theory,
+            scheduled_date=self.TODAY,
+            estimated_minutes=25,
+            snapshot_title="foreign",
+        )
+
+        for method, path, body in [
+            ("post", f"/api/study/plans/{foreign.id}/generate/", {}),
+            ("get", f"/api/study/plans/{foreign.id}/schedule/", None),
+            ("post", f"/api/study/blocks/{foreign_block.id}/reschedule/", {"scheduled_date": self.TODAY.isoformat()}),
+            ("post", f"/api/study/blocks/{foreign_block.id}/skip/", {}),
+            ("post", f"/api/study/blocks/{foreign_block.id}/complete/", {}),
+            ("post", f"/api/study/blocks/{foreign_block.id}/unlock/", {}),
+        ]:
+            call = getattr(self.client, method)
+            if body is None:
+                response = call(path)
+            else:
+                response = call(path, body, format="json")
+            self.assertEqual(response.status_code, 404, (method, path, response.content))
+
+        own_block.refresh_from_db()
+        self.assertEqual(own_block.status, atlas_models.StudyBlock.Status.PENDING)
+
+    def test_v082_generation_rejects_archived_plan_and_schedule_range_validation_is_stable(self):
+        plan = self._plan(
+            [("theory", self.theory, 1, False)],
+            status=atlas_models.StudyPlan.Status.ARCHIVED,
+        )
+        response = self._generate(plan)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["code"], "study_plan_not_actionable")
+
+        active = self._plan([("theory", self.theory, 1, False)])
+        invalid = self._schedule(
+            active,
+            start="2026-10-10",
+            end="2026-09-19",
+        )
+        self.assertEqual(invalid.status_code, 400)
+        self.assertEqual(invalid.json()["code"], "study_plan_invalid_date_range")
+
+    def test_v082_generation_query_count_is_bounded_for_many_scopes(self):
+        concepts = [
+            Concept.objects.create(
+                slug=f"v082-many-{index}",
+                name_en=f"Many {index}",
+                simple_definition="bulk",
+                is_active=True,
+            )
+            for index in range(40)
+        ]
+        plan = self._plan(
+            [("concept", concept, 1, False) for concept in concepts],
+            minutes=720,
+            target_date=self.TODAY + timedelta(days=7),
+        )
+        with patch("atlas.study_scheduler.local_date_for_user", return_value=self.TODAY):
+            with CaptureQueriesContext(connection) as queries:
+                response = self.client.post(
+                    f"/api/study/plans/{plan.id}/generate/",
+                    {},
+                    format="json",
+                )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertLessEqual(len(queries), 35)
+
+
+    def test_v082_configuration_mutation_marks_existing_schedule_stale(self):
+        plan = self._plan([("theory", self.theory, 1, False)], minutes=60)
+        first = self._generate(plan)
+        self.assertEqual(first.status_code, 200)
+        self.assertFalse(first.json()["plan"]["schedule_stale"])
+
+        rows = [
+            {"weekday": weekday, "available_minutes": 45 if weekday == 0 else 60}
+            for weekday in range(7)
+        ]
+        changed = self.client.put(
+            f"/api/study/plans/{plan.id}/availability/",
+            {"availability": rows},
+            format="json",
+        )
+        self.assertEqual(changed.status_code, 200, changed.content)
+        self.assertTrue(changed.json()["schedule_stale"])
+
+        regenerated = self._generate(plan)
+        self.assertEqual(regenerated.status_code, 200)
+        self.assertFalse(regenerated.json()["plan"]["schedule_stale"])
+        self.assertEqual(regenerated.json()["generation"]["generation_version"], 2)
+
+    def test_v082_completion_ignores_canonical_evidence_before_scheduled_day(self):
+        plan = self._plan([("quiz", self.quiz, 1, False)], minutes=60)
+        self.assertEqual(self._generate(plan).status_code, 200)
+        block = atlas_models.StudyBlock.objects.get(plan=plan, block_kind="quiz_practice")
+        old_attempt = atlas_models.QuizAttempt.objects.create(
+            user=self.user,
+            quiz=self.quiz,
+            status=atlas_models.QuizAttempt.Status.COMPLETED,
+            score=100,
+            completed_at=timezone.now() - timedelta(days=2),
+        )
+        self.assertIsNotNone(old_attempt.id)
+        response = self.client.post(
+            f"/api/study/blocks/{block.id}/complete/",
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["code"], "study_block_evidence_missing")
+
+
+    def test_v082_audit_study_plans_passes_for_valid_scheduler_state(self):
+        plan = self._plan(
+            [("theory", self.theory, 2, False)],
+            minutes=60,
+            status=atlas_models.StudyPlan.Status.ACTIVE,
+        )
+        self.assertEqual(self._generate(plan).status_code, 200)
+        output = StringIO()
+        call_command("audit_study_plans", stdout=output)
+        text = output.getvalue()
+        self.assertIn("Study plan audit PASS", text)
+        self.assertIn("failures=0", text)
+
+    def test_v082_audit_study_plans_fails_read_only_on_active_plan_without_scope(self):
+        broken = atlas_models.StudyPlan.objects.create(
+            user=self.user,
+            name="Broken audit fixture",
+            plan_kind=atlas_models.StudyPlan.Kind.GENERAL,
+            status=atlas_models.StudyPlan.Status.ACTIVE,
+            start_date=self.TODAY,
+        )
+        atlas_models.StudyPlanAvailability.objects.bulk_create(
+            [
+                atlas_models.StudyPlanAvailability(
+                    plan=broken,
+                    weekday=weekday,
+                    available_minutes=30,
+                )
+                for weekday in range(7)
+            ]
+        )
+        before_updated = broken.updated_at
+        with self.assertRaises(CommandError):
+            call_command("audit_study_plans", stdout=StringIO())
+        broken.refresh_from_db()
+        self.assertEqual(broken.updated_at, before_updated)
+        self.assertEqual(broken.scopes.count(), 0)
+
+    def test_v082_audit_study_plans_reports_invalid_block_status_without_mutating_it(self):
+        plan = self._plan([("theory", self.theory, 1, False)])
+        block = atlas_models.StudyBlock.objects.create(
+            plan=plan,
+            block_kind=atlas_models.StudyBlock.Kind.THEORY_READING,
+            theory=self.theory,
+            scheduled_date=self.TODAY,
+            estimated_minutes=20,
+            snapshot_title="Corrupt status fixture",
+        )
+        atlas_models.StudyBlock.objects.filter(pk=block.pk).update(status="corrupt")
+
+        with self.assertRaises(CommandError):
+            call_command("audit_study_plans", stdout=StringIO())
+
+        block.refresh_from_db()
+        self.assertEqual(block.status, "corrupt")
+
+
+class V082StudyBlockMigrationTests(TransactionTestCase):
+    reset_sequences = True
+    migrate_from = ("atlas", "0028_v081_study_plan_foundation")
+    migrate_to = ("atlas", "0029_v082_study_blocks")
+    restore_to = ("atlas", "0030_studyblock_ck_study_block_started_status_and_more")
+
+    def tearDown(self):
+        MigrationExecutor(connection).migrate([self.restore_to])
+        super().tearDown()
+
+    def test_v082_upgrade_preserves_plan_scope_and_creates_no_blocks(self):
+        executor = MigrationExecutor(connection)
+        executor.migrate([self.migrate_from])
+        old_apps = executor.loader.project_state([self.migrate_from]).apps
+
+        UserModel = old_apps.get_model("auth", "User")
+        ConceptModel = old_apps.get_model("atlas", "Concept")
+        SettingsModel = old_apps.get_model("atlas", "UserStudySettings")
+        PlanModel = old_apps.get_model("atlas", "StudyPlan")
+        AvailabilityModel = old_apps.get_model("atlas", "StudyPlanAvailability")
+        ScopeModel = old_apps.get_model("atlas", "StudyPlanScope")
+
+        user = UserModel.objects.create(
+            username="v082-migration@example.com",
+            email="v082-migration@example.com",
+            password="!",
+        )
+        concept = ConceptModel.objects.create(
+            slug="v082-migration-concept",
+            name_en="Migration Concept",
+            simple_definition="migration",
+        )
+        settings_row = SettingsModel.objects.create(
+            user_id=user.id,
+            study_timezone="Asia/Tehran",
+            default_daily_minutes=50,
+            default_session_minutes=25,
+            week_starts_on=5,
+        )
+        plan = PlanModel.objects.create(
+            user_id=user.id,
+            name="Migration Plan",
+            plan_kind="exam",
+            status="active",
+            start_date=date(2026, 9, 19),
+            target_date=date(2026, 10, 19),
+            generation_version=7,
+            last_generated_at=timezone.now(),
+        )
+        for weekday in range(7):
+            AvailabilityModel.objects.create(
+                plan_id=plan.id,
+                weekday=weekday,
+                available_minutes=45,
+            )
+        scope = ScopeModel.objects.create(
+            plan_id=plan.id,
+            concept_id=concept.id,
+            priority=4,
+            include_practice=True,
+            sort_order=0,
+        )
+
+        executor = MigrationExecutor(connection)
+        executor.migrate([self.migrate_to])
+        new_apps = executor.loader.project_state([self.migrate_to]).apps
+
+        NewPlan = new_apps.get_model("atlas", "StudyPlan")
+        NewScope = new_apps.get_model("atlas", "StudyPlanScope")
+        StudyBlockModel = new_apps.get_model("atlas", "StudyBlock")
+
+        upgraded = NewPlan.objects.get(pk=plan.id)
+        self.assertEqual(upgraded.name, "Migration Plan")
+        self.assertEqual(upgraded.generation_version, 7)
+        self.assertEqual(upgraded.last_generated_at, plan.last_generated_at)
+        self.assertEqual(upgraded.generation_fingerprint, "")
+        self.assertEqual(upgraded.last_generation_summary, {})
+        self.assertEqual(NewScope.objects.filter(pk=scope.id, concept_id=concept.id).count(), 1)
+        self.assertEqual(StudyBlockModel.objects.count(), 0)
+        self.assertEqual(AvailabilityModel.objects.filter(plan_id=plan.id).count(), 7)
+        new_settings = new_apps.get_model("atlas", "UserStudySettings").objects.get(
+            user_id=user.id
+        )
+        self.assertEqual(new_settings.study_timezone, settings_row.study_timezone)
+        self.assertEqual(new_settings.default_daily_minutes, settings_row.default_daily_minutes)
+        self.assertEqual(new_settings.default_session_minutes, settings_row.default_session_minutes)
+
+
+class V082SchedulerConcurrencyTests(TransactionTestCase):
+    reset_sequences = True
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="v082-concurrency@example.com",
+            email="v082-concurrency@example.com",
+            password="ComplexPass123!",
+        )
+        atlas_models.UserStudySettings.objects.create(
+            user=self.user,
+            study_timezone="UTC",
+            default_daily_minutes=60,
+            default_session_minutes=25,
+            week_starts_on=0,
+        )
+        self.concept = Concept.objects.create(
+            slug="v082-concurrency-concept",
+            name_en="Concurrency Concept",
+            simple_definition="concurrency",
+            is_active=True,
+        )
+        self.plan = atlas_models.StudyPlan.objects.create(
+            user=self.user,
+            name="Concurrency Plan",
+            plan_kind=atlas_models.StudyPlan.Kind.EXAM,
+            status=atlas_models.StudyPlan.Status.ACTIVE,
+            start_date=date(2026, 9, 19),
+            target_date=date(2026, 9, 30),
+        )
+        atlas_models.StudyPlanAvailability.objects.bulk_create(
+            [
+                atlas_models.StudyPlanAvailability(
+                    plan=self.plan,
+                    weekday=weekday,
+                    available_minutes=60,
+                )
+                for weekday in range(7)
+            ]
+        )
+        atlas_models.StudyPlanScope.objects.create(
+            plan=self.plan,
+            concept=self.concept,
+            priority=3,
+            include_practice=False,
+        )
+
+    def _generate_thread(self):
+        close_old_connections()
+        try:
+            from atlas.study_scheduler import generate_study_plan
+
+            user = User.objects.get(pk=self.user.pk)
+            _, summary = generate_study_plan(user, self.plan.pk)
+            return summary
+        finally:
+            close_old_connections()
+
+    def test_v082_concurrent_generation_converges_without_duplicate_generation(self):
+        with patch("atlas.study_scheduler.local_date_for_user", return_value=date(2026, 9, 19)):
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                results = list(executor.map(lambda _: self._generate_thread(), range(2)))
+
+        self.plan.refresh_from_db()
+        self.assertEqual(self.plan.generation_version, 1)
+        self.assertEqual({row["generation_version"] for row in results}, {1})
+        self.assertIn(True, {row["no_op"] for row in results})
+        metadata_rows = list(
+            atlas_models.StudyBlock.objects.filter(
+                plan=self.plan,
+                status=atlas_models.StudyBlock.Status.PENDING,
+            ).values_list("metadata", flat=True)
+        )
+        keys = [row["candidate_key"] for row in metadata_rows]
+        self.assertEqual(len(keys), len(set(keys)))
