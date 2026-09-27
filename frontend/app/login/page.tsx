@@ -53,9 +53,9 @@ export default function LoginPage() {
     <main className="shell page">
       <form className="form card" onSubmit={submit}>
         <div><div className="meta">حساب کاربری</div><h1>ورود</h1></div>
-        <div className="field"><label>ایمیل</label><input type="email" dir="ltr" required value={email} onChange={e => setEmail(e.target.value)} disabled={busy} /></div>
-        <div className="field"><label>رمز عبور</label><input type="password" dir="ltr" required value={password} onChange={e => setPassword(e.target.value)} disabled={busy} /></div>
-        {error && <p className="error">{error}</p>}
+        <div className="field"><label htmlFor="login-email">ایمیل</label><input id="login-email" type="email" dir="ltr" autoComplete="username" required value={email} onChange={e => setEmail(e.target.value)} disabled={busy} /></div>
+        <div className="field"><label htmlFor="login-password">رمز عبور</label><input id="login-password" type="password" dir="ltr" autoComplete="current-password" required value={password} onChange={e => setPassword(e.target.value)} disabled={busy} /></div>
+        {error && <p className="error" role="alert">{error}</p>}
         <button className="button primary" disabled={busy}>{busy ? "در حال ورود..." : "ورود به حساب"}</button>
         <p className="muted small">حساب نداری؟ <Link href="/register">ثبت‌نام کن</Link></p>
       </form>

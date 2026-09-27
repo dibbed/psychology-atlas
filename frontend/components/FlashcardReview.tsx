@@ -72,6 +72,22 @@ export default function FlashcardReview({ conceptSlug, disorderSlug }: { concept
     }
   }
 
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.altKey || event.ctrlKey || event.metaKey || busy || !items.length) return;
+      const target = event.target as HTMLElement;
+      if (target.closest("input, textarea, select, [contenteditable=true]")) return;
+      if (!revealed && event.code === "Space") {
+        event.preventDefault();
+        setRevealed(true);
+      } else if (revealed && ["1", "2", "3", "4"].includes(event.key)) {
+        void rate(ratings[Number(event.key) - 1][0]);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [busy, items, revealed]);
+
   if (authenticated === null || loading) return <div className="card"><p className="muted">در حال ساخت صف مرور...</p></div>;
   if (!authenticated) {
     return <div className="card"><h3>مرور شخصی نیاز به حساب دارد</h3><p>زمان‌بندی SRS برای هر کاربر جدا ذخیره می‌شود.</p><Link className="button primary" href="/login">ورود به حساب</Link></div>;
@@ -99,6 +115,9 @@ export default function FlashcardReview({ conceptSlug, disorderSlug }: { concept
         <span>مرور این جلسه: {faNumber(reviewed)}</span>
         <span>باقی‌مانده: {faNumber(items.length)}</span>
       </div>
+      <div className="review-session-progress" aria-label={`پیشرفت جلسه: ${faNumber(reviewed)} کارت از ${faNumber(reviewed + items.length)} کارت`}>
+        <span style={{ width: `${reviewed / (reviewed + items.length) * 100}%` }} />
+      </div>
 
       <article className={`flashcard-stage ${revealed ? "revealed" : ""}`}>
         <div className="flashcard-meta">
@@ -111,25 +130,25 @@ export default function FlashcardReview({ conceptSlug, disorderSlug }: { concept
           {card.hint && <p className="muted small">راهنما: {card.hint}</p>}
         </div>
         {revealed ? (
-          <div className="flashcard-answer">
+          <div className="flashcard-answer" aria-live="polite">
             <div className="meta">پشت کارت</div>
             <p>{card.back}</p>
           </div>
         ) : (
-          <button className="button primary reveal-button" onClick={() => setRevealed(true)}>نمایش پاسخ</button>
+          <button className="button primary reveal-button" onClick={() => setRevealed(true)}>نمایش پاسخ <small>کلید فاصله</small></button>
         )}
       </article>
 
       {revealed && (
         <div className="rating-grid" aria-label="کیفیت یادآوری">
           {ratings.map(([value, label, hint]) => (
-            <button className="rating-button" key={value} onClick={() => rate(value)} disabled={busy}>
-              <strong>{label}</strong><span>{hint}</span>
+            <button className="rating-button" key={value} onClick={() => rate(value)} disabled={busy} aria-label={`${label}، کلید ${faNumber(ratings.findIndex(row => row[0] === value) + 1)}`}>
+              <strong>{label}</strong><span>{hint}</span><kbd>{faNumber(ratings.findIndex(row => row[0] === value) + 1)}</kbd>
             </button>
           ))}
         </div>
       )}
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error" role="alert">{error}</p>}
     </div>
   );
 }

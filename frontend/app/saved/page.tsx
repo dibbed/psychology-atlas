@@ -17,6 +17,7 @@ type SavedData = {
 export default function SavedPage() {
   const [data, setData] = useState<SavedData | null>(null);
   const [error, setError] = useState("");
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     if (!hasToken()) { location.href = "/login"; return; }
@@ -43,33 +44,42 @@ export default function SavedPage() {
   }
 
   if (!data) return <main className="shell page"><p className="muted">در حال بارگذاری کتابخانه خصوصی...</p></main>;
+  const match = (name: string) => name.toLocaleLowerCase("fa").includes(query.trim().toLocaleLowerCase("fa"));
+  const visible = {
+    disorders: data.disorders.filter(item => match(`${item.disorder.name_fa} ${item.disorder.name_en}`)),
+    concepts: data.concepts.filter(item => match(`${item.concept.name_fa} ${item.concept.name_en}`)),
+    therapies: data.therapies.filter(item => match(`${item.therapy.name_fa} ${item.therapy.name_en}`)),
+  };
   const empty = !data.disorders.length && !data.concepts.length && !data.therapies.length;
+  const noMatch = !empty && !visible.disorders.length && !visible.concepts.length && !visible.therapies.length;
 
   return (
     <main className="shell page stack">
       <div>
-        <div className="meta">ذخیره‌شده‌ها · Private Library</div>
-        <h1 className="section-title" style={{ fontSize: 44 }}>اختلال، مفهوم و درمان را در یک کتابخانه خصوصی نگه دار.</h1>
-        <p className="section-copy">ذخیره‌کردن Therapy فقط یک ابزار مطالعه شخصی است و به معنی توصیه یا انتخاب درمان برای یک فرد نیست.</p>
+        <div className="eyebrow">کتابخانهٔ من</div>
+        <h1 className="section-title">ذخیره‌شده‌ها</h1>
+        <p className="section-copy">ذخیره‌کردن درمان فقط برای مطالعهٔ شخصی است و به معنی توصیه یا انتخاب درمان برای فردی خاص نیست.</p>
       </div>
-      {empty ? <div className="card"><h3>هنوز چیزی ذخیره نکرده‌ای</h3><p>در صفحه Disorder، Concept یا Therapy گزینه ذخیره را بزن.</p></div> : (
+      {!empty && <div className="library-filter"><label htmlFor="saved-query">جست‌وجو در ذخیره‌شده‌ها</label><input id="saved-query" className="search" type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="نام اختلال، مفهوم یا درمان…" /></div>}
+      {noMatch && <div className="card"><h2>موردی پیدا نشد</h2><p>عبارت جست‌وجو را تغییر بده.</p><button className="button" onClick={() => setQuery("")}>پاک‌کردن جست‌وجو</button></div>}
+      {empty ? <div className="card"><h3>هنوز چیزی ذخیره نکرده‌ای</h3><p>در صفحهٔ یک اختلال، مفهوم یا درمان گزینهٔ ذخیره را بزن.</p></div> : (
         <>
           <section className="stack">
-            <div className="search-section-head"><h2>درمان‌ها</h2><span>{data.therapies.length.toLocaleString("fa-IR")}</span></div>
+            <div className="search-section-head"><h2>درمان‌ها</h2><span>{visible.therapies.length.toLocaleString("fa-IR")}</span></div>
             <div className="grid">
-              {data.therapies.map(item => <Link className="card" href={`/therapies/${item.therapy.slug}`} key={`t-${item.id}`}><div className="meta">{item.therapy.family.name_fa || item.therapy.family.name_en}</div><h3>{item.therapy.name_fa || item.therapy.name_en}</h3><div className="latin-label">{item.therapy.name_en}</div><p>{item.therapy.summary}</p></Link>)}
+              {visible.therapies.map(item => <Link className="card" href={`/therapies/${item.therapy.slug}`} key={`t-${item.id}`}><div className="meta">{item.therapy.family.name_fa || item.therapy.family.name_en}</div><h3>{item.therapy.name_fa || item.therapy.name_en}</h3><div className="latin-label">{item.therapy.name_en}</div><p>{item.therapy.summary}</p></Link>)}
             </div>
-            {!data.therapies.length && <p className="muted">درمان ذخیره‌شده‌ای نداری.</p>}
+            {!visible.therapies.length && !query && <p className="muted">درمان ذخیره‌شده‌ای نداری.</p>}
           </section>
           <section className="stack">
-            <div className="search-section-head"><h2>اختلالات</h2><span>{data.disorders.length.toLocaleString("fa-IR")}</span></div>
-            <div className="grid">{data.disorders.map(item => <Link className="card" href={`/disorders/${item.disorder.slug}`} key={`d-${item.id}`}><div className="meta">{item.disorder.category}</div><h3>{item.disorder.name_fa || item.disorder.name_en}</h3><p>{item.disorder.short_description}</p></Link>)}</div>
-            {!data.disorders.length && <p className="muted">اختلال ذخیره‌شده‌ای نداری.</p>}
+            <div className="search-section-head"><h2>اختلالات</h2><span>{visible.disorders.length.toLocaleString("fa-IR")}</span></div>
+            <div className="grid">{visible.disorders.map(item => <Link className="card" href={`/disorders/${item.disorder.slug}`} key={`d-${item.id}`}><div className="meta">{item.disorder.category}</div><h3>{item.disorder.name_fa || item.disorder.name_en}</h3><p>{item.disorder.short_description}</p></Link>)}</div>
+            {!visible.disorders.length && !query && <p className="muted">اختلال ذخیره‌شده‌ای نداری.</p>}
           </section>
           <section className="stack">
-            <div className="search-section-head"><h2>مفاهیم</h2><span>{data.concepts.length.toLocaleString("fa-IR")}</span></div>
-            <div className="grid">{data.concepts.map(item => <Link className="card" href={`/concepts/${item.concept.slug}`} key={`c-${item.id}`}><div className="meta">مفهوم</div><h3>{item.concept.name_fa || item.concept.name_en}</h3><p>{item.concept.simple_definition}</p></Link>)}</div>
-            {!data.concepts.length && <p className="muted">مفهوم ذخیره‌شده‌ای نداری.</p>}
+            <div className="search-section-head"><h2>مفاهیم</h2><span>{visible.concepts.length.toLocaleString("fa-IR")}</span></div>
+            <div className="grid">{visible.concepts.map(item => <Link className="card" href={`/concepts/${item.concept.slug}`} key={`c-${item.id}`}><div className="meta">مفهوم</div><h3>{item.concept.name_fa || item.concept.name_en}</h3><p>{item.concept.simple_definition}</p></Link>)}</div>
+            {!visible.concepts.length && !query && <p className="muted">مفهوم ذخیره‌شده‌ای نداری.</p>}
           </section>
         </>
       )}

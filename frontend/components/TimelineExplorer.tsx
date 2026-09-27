@@ -110,11 +110,11 @@ export default function TimelineExplorer({ items }: { items: TimelineEvent[] }) 
 
   return (
     <div className="stack timeline-explorer">
-      <section className="timeline-overview" aria-label="خلاصه Timeline">
-        <div><strong>{faNumber(items.length)}</strong><span>رویداد canonical</span></div>
+      <section className="timeline-overview" aria-label="خلاصهٔ خط زمانی">
+        <div><strong>{faNumber(items.length)}</strong><span>رویداد ثبت‌شده</span></div>
         <div><strong>{minYear && maxYear ? `${faNumber(minYear)}—${faNumber(maxYear)}` : "—"}</strong><span>بازه سال‌های ثبت‌شده</span></div>
-        <div><strong>{faNumber(sourcedCount)}</strong><span>source-checked / reviewed</span></div>
-        <div><strong>{faNumber(crossLinkedCount)}</strong><span>دارای اتصال cross-domain</span></div>
+        <div><strong>{faNumber(sourcedCount)}</strong><span>دارای منبع یا بازبینی</span></div>
+        <div><strong>{faNumber(crossLinkedCount)}</strong><span>دارای پیوند با اطلس</span></div>
       </section>
 
       <div className="atlas-filters timeline-filter-grid">
@@ -131,11 +131,11 @@ export default function TimelineExplorer({ items }: { items: TimelineEvent[] }) 
         </select>
         <select className="filter-select" value={linkFilter} onChange={event => setLinkFilter(event.target.value as LinkFilter)} aria-label="نوع اتصال رویداد">
           <option value="">همه اتصال‌ها</option>
-          <option value="psychologist">دارای Psychologist</option>
-          <option value="theory">دارای Theory</option>
-          <option value="therapy">دارای Therapy</option>
-          <option value="technique">دارای Technique</option>
-          <option value="concept">دارای Concept</option>
+          <option value="psychologist">دارای پیوند با روان‌شناس</option>
+          <option value="theory">دارای پیوند با نظریه</option>
+          <option value="therapy">دارای پیوند با درمان</option>
+          <option value="technique">دارای پیوند با تکنیک</option>
+          <option value="concept">دارای پیوند با مفهوم</option>
         </select>
         <select className="filter-select" value={review} onChange={event => setReview(event.target.value)} aria-label="وضعیت بازبینی رویداد">
           <option value="">همه وضعیت‌های بازبینی</option>
@@ -181,7 +181,7 @@ export default function TimelineExplorer({ items }: { items: TimelineEvent[] }) 
                         {item.therapy_count > 0 && <span>{faNumber(item.therapy_count)} درمان</span>}
                         {item.technique_count > 0 && <span>{faNumber(item.technique_count)} تکنیک</span>}
                         {item.concept_count > 0 && <span>{faNumber(item.concept_count)} مفهوم</span>}
-                        {linkCount(item) === 0 && <span>بدون اتصال cross-domain در runtime</span>}
+                        {linkCount(item) === 0 && <span>بدون پیوند ثبت‌شده با بخش‌های دیگر</span>}
                       </div>
                       <div className="timeline-event-footer">
                         <span>{item.date_precision_label || humanizeCode(item.date_precision)}</span>

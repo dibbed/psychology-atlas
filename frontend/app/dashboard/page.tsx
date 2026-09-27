@@ -1,153 +1,70 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
+import { ArrowUpLeft, Bookmark, BookOpen, CalendarDays, FileText, RotateCcw } from "lucide-react";
+import { useEffect, useState } from "react";
+import StudyHeatmap from "@/components/StudyHeatmap";
+import StudyRecommendationsV2 from "@/components/StudyRecommendationsV2";
 import { api } from "@/lib/api";
 import { clearTokens, hasToken } from "@/lib/auth";
-import { faNumber, faPercent } from "@/lib/fa";
-import StudyHeatmap from "@/components/StudyHeatmap";
+import { faNumber } from "@/lib/fa";
+
+type Topic = { slug: string; name_fa?: string; name_en?: string; progress_percent: number };
+type Attempt = { id: number; slug: string; title: string; score: number; max_score?: number };
+type Dashboard = {
+  streak: number; study_days: number; review_due: number; review_new: number;
+  saved_topics: number; notes_count: number; topics_studied: number;
+  heatmap: { date: string; count: number }[];
+  continue_learning: Topic[]; continue_concepts: Topic[];
+  recent_quizzes: Attempt[]; recent_cases: Attempt[];
+};
 
 export default function DashboardPage() {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<Dashboard | null>(null);
   const [error, setError] = useState("");
-
   useEffect(() => {
     if (!hasToken()) { location.href = "/login"; return; }
-    api("/dashboard/", {}, true)
-      .then(setData)
-      .catch((e: any) => {
-        setError(e.message || "دریافت داشبورد انجام نشد.");
-        if (!hasToken()) setTimeout(() => { location.href = "/login"; }, 500);
-      });
+    const controller = new AbortController();
+    api<Dashboard>("/dashboard/", { signal: controller.signal }, true).then(setData).catch((reason: unknown) => {
+      if (controller.signal.aborted) return;
+      setError(reason instanceof Error ? reason.message : "دریافت داشبورد انجام نشد.");
+      if (!hasToken()) location.href = "/login";
+    });
+    return () => controller.abort();
   }, []);
-
-  if (error) {
-    return (
-      <main className="shell page">
-        <div className="card error-state">
-          <h2>داشبورد بارگذاری نشد</h2><p>{error}</p>
-          <div className="actions" style={{ marginTop: 16 }}>
-            <button className="button primary" onClick={() => location.reload()}>تلاش دوباره</button>
-            <button className="button" onClick={() => { clearTokens(); location.href = "/login"; }}>ورود دوباره</button>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
-  if (!data) return <main className="shell page"><p className="muted">در حال بارگذاری داشبورد...</p></main>;
-
-  return (
-    <main className="shell page stack">
-      <div className="dashboard-v3-head">
-        <div><div className="meta">Dashboard V3</div><h1 className="section-title" style={{ fontSize: 44 }}>فعالیت را به تصمیم بعدی مطالعه وصل کن.</h1><p className="section-copy">Progress، Streak، Heatmap، SRS و Recommendation همگی از داده ثبت‌شده حساب تو ساخته می‌شوند.</p></div>
-        <div className="actions analytics-head-actions">
-          <Link className="button primary" href="/study">باز کردن مرکز مطالعه</Link>
-          <Link className="button" href="/case-analytics">تحلیل کیس‌های من</Link>
-        </div>
+  if (error) return <main className="shell page"><div className="card error-state"><h1>داشبورد بارگذاری نشد</h1><p>{error}</p><div className="actions"><button className="button primary" onClick={() => location.reload()}>تلاش دوباره</button><button className="button" onClick={() => { clearTokens(); location.href = "/login"; }}>ورود دوباره</button></div></div></main>;
+  if (!data) return <main className="shell page dashboard-page"><div className="dashboard-skeleton" role="status">در حال آماده‌کردن داشبورد…</div></main>;
+  const recent = [
+    ...data.continue_learning.slice(0, 2).map(item => ({ ...item, href: `/disorders/${item.slug}`, kind: "اختلال" })),
+    ...data.continue_concepts.slice(0, 2).map(item => ({ ...item, href: `/concepts/${item.slug}`, kind: "مفهوم" })),
+  ].slice(0, 3);
+  return <main className="shell page stack dashboard-page">
+    <header className="dashboard-head"><div><span className="eyebrow">فضای من</span><h1>مسیر یادگیری تو</h1><p>فعالیت ثبت‌شده را مرور کن و قدم بعدی را انتخاب کن.</p></div><Link href="/study" className="button primary">مرکز مطالعه <ArrowUpLeft size={16} aria-hidden="true" /></Link></header>
+    <section className="dashboard-priority" aria-label="اقدام‌های مهم">
+      <div className="dashboard-next">
+        <span className="eyebrow">ادامهٔ مطالعه</span>
+        {recent.length ? <><h2>{recent[0].name_fa || recent[0].name_en}</h2><p>{recent[0].kind}ی که اخیراً مطالعه کرده‌ای.</p><Link className="button primary" href={recent[0].href}>ادامه دادن <ArrowUpLeft size={16} /></Link></> : <><h2>از یک موضوع شروع کن</h2><p>هنوز موضوعی در پیشرفت مطالعه‌ات ثبت نشده است.</p><Link className="button primary" href="/disorders">کاوش اختلالات</Link></>}
       </div>
-
-      <div className="stats stats-8">
-        <div className="stat"><strong>{faNumber(data.streak)}</strong><span>روز Streak</span></div>
-        <div className="stat"><strong>{faNumber(data.topics_studied)}</strong><span>موضوع مطالعه‌شده</span></div>
-        <div className="stat"><strong>{faNumber(data.concepts_mastered)}</strong><span>مفهوم تسلط‌یافته</span></div>
-        <div className="stat"><strong>{faNumber(data.review_due)}</strong><span>کارت موعدرسیده</span></div>
-        <div className="stat"><strong>{faPercent(data.quiz_accuracy)}</strong><span>میانگین آزمون</span></div>
-        <div className="stat"><strong>{faPercent(data.case_accuracy)}</strong><span>میانگین کیس</span></div>
-        <div className="stat"><strong>{faNumber(data.saved_topics)}</strong><span>ذخیره‌شده</span></div>
-        <div className="stat"><strong>{faNumber(data.notes_count)}</strong><span>یادداشت</span></div>
-      </div>
-
-      <div className="grid-2">
-        <section className="card">
-          <div className="meta">۴۲ روز اخیر</div><h2>Study Heatmap</h2>
-          <StudyHeatmap days={data.heatmap || []} />
-          <p className="muted small" style={{ marginTop: 12 }}>{faNumber(data.study_days)} روز دارای فعالیت ثبت‌شده در تاریخچه فعلی.</p>
-        </section>
-        <section className="card">
-          <div className="meta">Review Queue</div><h2>{faNumber(data.review_due)} مرور موعدرسیده</h2>
-          <p>{faNumber(data.review_new)} کارت جدید هم هنوز وارد چرخه مرور نشده است.</p>
-          <Link className="button primary" href="/flashcards">شروع مرور</Link>
-        </section>
-      </div>
-
-      <section className="card">
-        <div className="meta">پیشنهادهای مطالعه</div>
-        <div className="recommendation-list" style={{ marginTop: 12 }}>
-          {data.recommendations?.length ? data.recommendations.map((item: any) => (
-            <Link className="recommendation-item" href={item.href} key={`${item.type}-${item.href}`}>
-              <div><strong>{item.title}</strong><p>{item.reason}</p></div><span>مرور ←</span>
-            </Link>
-          )) : <p>با چند فعالیت بیشتر، پیشنهادهای شخصی اینجا ظاهر می‌شوند.</p>}
+      <Link href="/flashcards" className="dashboard-review"><RotateCcw size={20} aria-hidden="true" /><span>صف مرور</span><strong>{faNumber(data.review_due)}</strong><small>فلش‌کارت موعدرسیده</small><span className="dashboard-action">باز کردن صف <ArrowUpLeft size={15} aria-hidden="true" /></span></Link>
+    </section>
+    <div className="dashboard-summary" aria-label="خلاصهٔ فعالیت">
+      <div><CalendarDays size={18} aria-hidden="true" /><strong>{faNumber(data.study_days)}</strong><span>روز دارای فعالیت</span></div>
+      <div><BookOpen size={18} aria-hidden="true" /><strong>{faNumber(data.topics_studied)}</strong><span>موضوع مطالعه‌شده</span></div>
+      <div><Bookmark size={18} aria-hidden="true" /><strong>{faNumber(data.saved_topics)}</strong><span>ذخیره‌شده</span></div>
+      <div><FileText size={18} aria-hidden="true" /><strong>{faNumber(data.notes_count)}</strong><span>یادداشت</span></div>
+    </div>
+    <div className="dashboard-content-grid">
+      <section className="card dashboard-activity"><div className="dashboard-section-head"><div><span className="eyebrow">۴۲ روز اخیر</span><h2>فعالیت مطالعه</h2></div><span>{faNumber(data.streak)} روز زنجیرهٔ فعلی</span></div><StudyHeatmap days={data.heatmap || []} /><p className="muted small">هر خانه، تعداد فعالیت‌های ثبت‌شده در همان روز را نشان می‌دهد.</p></section>
+      <section className="card"><div className="dashboard-section-head"><div><span className="eyebrow">سنجش و تمرین</span><h2>آخرین فعالیت‌ها</h2></div><Link href="/case-analytics" className="text-link">تحلیل کیس‌ها</Link></div>
+        <div className="dashboard-activity-list">
+          {data.recent_quizzes.slice(0, 2).map(item => <Link href={`/quizzes/${item.slug}`} key={`q-${item.id}`}><span>آزمون</span><strong>{item.title}</strong><ArrowUpLeft size={16} aria-hidden="true" /></Link>)}
+          {data.recent_cases.slice(0, 2).map(item => <Link href={`/cases/${item.slug}`} key={`c-${item.id}`}><span>کیس</span><strong>{item.title}</strong><ArrowUpLeft size={16} aria-hidden="true" /></Link>)}
+          {!data.recent_quizzes.length && !data.recent_cases.length && <p className="muted">هنوز آزمون یا کیس تکمیل‌شده‌ای ثبت نشده است. <Link href="/cases">کیس‌ها را ببین</Link></p>}
         </div>
       </section>
-
-      <div className="grid-2">
-        <section className="card">
-          <div className="meta">ادامه اختلالات</div>
-          <div className="stack" style={{ marginTop: 14, gap: 14 }}>
-            {data.continue_learning.length ? data.continue_learning.map((item: any) => (
-              <Link className="progress-item" href={`/disorders/${item.slug}`} key={item.slug}>
-                <div className="progress-item-head"><strong>{item.name_fa || item.name_en}</strong><span>{faPercent(item.progress_percent)}</span></div>
-                <div className="progress-bar"><span style={{ width: `${Math.min(100, item.progress_percent)}%` }} /></div>
-              </Link>
-            )) : <p>هنوز اختلالی در Progress ثبت نشده است.</p>}
-          </div>
-        </section>
-        <section className="card">
-          <div className="meta">ادامه مفاهیم</div>
-          <div className="stack" style={{ marginTop: 14, gap: 14 }}>
-            {data.continue_concepts?.length ? data.continue_concepts.map((item: any) => (
-              <Link className="progress-item" href={`/concepts/${item.slug}`} key={item.slug}>
-                <div className="progress-item-head"><strong>{item.name_fa || item.name_en}</strong><span>{faPercent(item.progress_percent)}</span></div>
-                <div className="progress-bar"><span style={{ width: `${Math.min(100, item.progress_percent)}%` }} /></div>
-              </Link>
-            )) : <p>هنوز مفهومی مطالعه نکرده‌ای.</p>}
-          </div>
-        </section>
-      </div>
-
-      <div className="grid-2">
-        <section className="card">
-          <div className="meta">موضوعات نیازمند مرور</div>
-          <div className="stack" style={{ marginTop: 14, gap: 12 }}>
-            {data.weak_topics.length ? data.weak_topics.map((item: any) => (
-              <Link href={`/disorders/${item.slug}`} className="resource-link" key={item.slug}>
-                <strong>{item.name_fa || item.name_en}</strong><span>{faPercent(item.progress_percent)} پیشرفت</span>
-              </Link>
-            )) : <p>فعلاً موضوع Disorder با پیشرفت پایین ثبت نشده است.</p>}
-          </div>
-        </section>
-        <section className="card">
-          <div className="meta">آخرین فعالیت سنجشی</div>
-          <div className="stack" style={{ marginTop: 14, gap: 12 }}>
-            {data.recent_quizzes.map((item: any) => <Link href={`/quizzes/${item.slug}`} className="resource-link" key={`q-${item.id}`}><strong>{item.title}</strong><span>{faPercent(item.score)}</span></Link>)}
-            {data.recent_cases.map((item: any) => <Link href={`/cases/${item.slug}`} className="resource-link" key={`c-${item.id}`}><strong>{item.title}</strong><span>{faNumber(item.score)} / {faNumber(item.max_score)}</span></Link>)}
-            {!data.recent_quizzes.length && !data.recent_cases.length && <p>هنوز Quiz یا Case تکمیل نشده است.</p>}
-          </div>
-        </section>
-      </div>
-
-      <div className="grid-2">
-        <section className="card">
-          <div className="meta">آخرین یادداشت‌ها</div>
-          <div className="stack" style={{ marginTop: 14, gap: 12 }}>
-            {data.recent_notes.map((item: any) => <Link href={`/disorders/${item.disorder.slug}`} key={`dn-${item.id}`}><strong>{item.disorder.name_fa || item.disorder.name_en}</strong><p className="muted small note-preview">{item.body}</p></Link>)}
-            {data.recent_concept_notes?.map((item: any) => <Link href={`/concepts/${item.slug}`} key={`cn-${item.id}`}><strong>{item.name_fa || item.name_en}</strong><p className="muted small note-preview">{item.body}</p></Link>)}
-            {data.recent_therapy_notes?.map((item: any) => <Link href={`/therapies/${item.slug}`} key={`tn-${item.id}`}><strong>{item.name_fa || item.name_en}</strong><p className="muted small note-preview">{item.body}</p></Link>)}
-            {!data.recent_notes.length && !data.recent_concept_notes?.length && !data.recent_therapy_notes?.length && <p>هنوز یادداشتی ثبت نکرده‌ای.</p>}
-          </div>
-        </section>
-        <section className="card">
-          <div className="meta">آخرین ذخیره‌ها</div>
-          <div className="stack" style={{ marginTop: 14, gap: 12 }}>
-            {data.recent_saved.map((item: any) => <Link href={`/disorders/${item.disorder.slug}`} className="resource-link" key={`db-${item.id}`}><strong>{item.disorder.name_fa || item.disorder.name_en}</strong><span>اختلال</span></Link>)}
-            {data.recent_concept_saved?.map((item: any) => <Link href={`/concepts/${item.slug}`} className="resource-link" key={`cb-${item.id}`}><strong>{item.name_fa || item.name_en}</strong><span>مفهوم</span></Link>)}
-            {data.recent_therapy_saved?.map((item: any) => <Link href={`/therapies/${item.slug}`} className="resource-link" key={`tb-${item.id}`}><strong>{item.name_fa || item.name_en}</strong><span>درمان</span></Link>)}
-            {!data.recent_saved.length && !data.recent_concept_saved?.length && !data.recent_therapy_saved?.length && <p>هنوز چیزی ذخیره نکرده‌ای.</p>}
-          </div>
-        </section>
-      </div>
-    </main>
-  );
+    </div>
+    {recent.length > 1 && <section className="dashboard-recent"><div className="dashboard-section-head"><div><span className="eyebrow">مسیرهای باز</span><h2>موضوع‌های اخیر</h2></div></div><div>{recent.slice(1).map(item => <Link href={item.href} key={item.href}><span>{item.kind}</span><strong>{item.name_fa || item.name_en}</strong><ArrowUpLeft size={16} aria-hidden="true" /></Link>)}</div></section>}
+    <StudyRecommendationsV2 dueCards={data.review_due} />
+    <section className="dashboard-library-links"><Link href="/saved"><Bookmark size={18} aria-hidden="true" /> ذخیره‌شده‌ها <ArrowUpLeft size={15} aria-hidden="true" /></Link><Link href="/notes"><FileText size={18} aria-hidden="true" /> یادداشت‌ها <ArrowUpLeft size={15} aria-hidden="true" /></Link></section>
+  </main>;
 }

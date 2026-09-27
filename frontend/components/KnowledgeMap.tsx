@@ -164,6 +164,8 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
   const [minDegree, setMinDegree] = useState(0);
   const [edgeKind, setEdgeKind] = useState("all");
   const [history, setHistory] = useState<string[]>(preferred ? [preferred.id] : []);
+  const [visibleLimit, setVisibleLimit] = useState(60);
+  const [pathOpen, setPathOpen] = useState(false);
 
   const nodeById = useMemo(() => new Map(data.nodes.map(node => [node.id, node])), [data.nodes]);
   const selected = nodeById.get(selectedId) || preferred;
@@ -267,17 +269,19 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
       <section className="graph-overview" aria-label="آمار شبکه">
         <div><strong>{data.meta.node_count.toLocaleString("fa-IR")}</strong><span>گره</span></div>
         <div><strong>{data.meta.edge_count.toLocaleString("fa-IR")}</strong><span>رابطه</span></div>
-        <div><strong>{data.meta.node_types.concept.toLocaleString("fa-IR")}</strong><span>مفهوم</span></div>
-        <div><strong>{data.meta.node_types.disorder.toLocaleString("fa-IR")}</strong><span>اختلال</span></div>
-        <div><strong>{data.meta.node_types.symptom.toLocaleString("fa-IR")}</strong><span>نشانه</span></div>
-        <div><strong>{data.meta.node_types.therapy.toLocaleString("fa-IR")}</strong><span>درمان</span></div>
-        <div><strong>{data.meta.node_types.technique.toLocaleString("fa-IR")}</strong><span>تکنیک</span></div>
-        <div><strong>{data.meta.node_types.psychologist.toLocaleString("fa-IR")}</strong><span>روان‌شناس</span></div>
-        <div><strong>{data.meta.node_types.theory.toLocaleString("fa-IR")}</strong><span>نظریه</span></div>
-        <div><strong>{data.meta.node_types.timeline.toLocaleString("fa-IR")}</strong><span>رویداد</span></div>
+        <details className="graph-overview-more"><summary>آمار دامنه‌ها</summary><div>
+          <span>مفهوم: {data.meta.node_types.concept.toLocaleString("fa-IR")}</span>
+          <span>اختلال: {data.meta.node_types.disorder.toLocaleString("fa-IR")}</span>
+          <span>نشانه: {data.meta.node_types.symptom.toLocaleString("fa-IR")}</span>
+          <span>درمان: {data.meta.node_types.therapy.toLocaleString("fa-IR")}</span>
+          <span>تکنیک: {data.meta.node_types.technique.toLocaleString("fa-IR")}</span>
+          <span>روان‌شناس: {data.meta.node_types.psychologist.toLocaleString("fa-IR")}</span>
+          <span>نظریه: {data.meta.node_types.theory.toLocaleString("fa-IR")}</span>
+          <span>رویداد: {data.meta.node_types.timeline.toLocaleString("fa-IR")}</span>
+        </div></details>
       </section>
 
-      <GraphPathFinder nodes={data.nodes} initialFrom={selected?.id} />
+      <details className="map-path-tool" onToggle={event => setPathOpen(event.currentTarget.open)}><summary>پیدا کردن مسیر میان دو گره</summary>{pathOpen && <GraphPathFinder nodes={data.nodes} initialFrom={selected?.id} />}</details>
 
       <div className="knowledge-map-layout knowledge-map-layout-v2">
         <aside className="card map-browser map-browser-v2">
@@ -288,16 +292,18 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
           <input
             className="search"
             value={query}
-            onChange={event => setQuery(event.target.value)}
-            placeholder="نام، slug یا توضیح..."
+            onChange={event => { setQuery(event.target.value); setVisibleLimit(60); }}
+            placeholder="نام یا توضیح گره..."
             aria-label="جست‌وجوی گره‌های نقشه"
           />
           <div className="category-chips compact-chips">
             {(["all", "concept", "disorder", "symptom", "therapy", "technique", "psychologist", "theory", "timeline"] as const).map(value => (
               <button
                 className={`chip ${type === value ? "active" : ""}`}
+                aria-pressed={type === value}
                 onClick={() => {
                   setType(value);
+                  setVisibleLimit(60);
                   if (value !== "concept") { setDomain(""); setSubtype(""); }
                   if (value !== "theory") setTheoryDomain("");
                   if (value !== "timeline") setTimelineCategory("");
@@ -308,7 +314,7 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
               </button>
             ))}
           </div>
-          <div className="map-advanced-filters">
+          <details className="map-filter-details"><summary>فیلترهای پیشرفته</summary><div className="map-advanced-filters">
             <select className="filter-select" value={domain} onChange={event => { setDomain(event.target.value); if (event.target.value) setType("concept"); }} aria-label="حوزه مفهومی">
               <option value="">همه حوزه‌های Concept</option>
               {conceptDomains.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
@@ -336,19 +342,20 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
               <span>حداقل اتصال: {minDegree.toLocaleString("fa-IR")}</span>
               <input type="range" min="0" max="10" value={minDegree} onChange={event => setMinDegree(Number(event.target.value))} />
             </label>
-          </div>
+          </div></details>
           <div className="map-list-summary">
             <span>{filteredNodes.length.toLocaleString("fa-IR")} نتیجه</span>
-            <span>مرتب‌شده بر اساس اتصال</span>
+            <span>نمایش {Math.min(visibleLimit, filteredNodes.length).toLocaleString("fa-IR")} مورد، به ترتیب تعداد رابطه</span>
           </div>
           <div className="map-node-list map-node-list-v2">
-            {filteredNodes.map(node => (
-              <button className={`map-list-node ${selected.id === node.id ? "active" : ""}`} onClick={() => selectNode(node.id)} key={node.id}>
+            {filteredNodes.slice(0, visibleLimit).map(node => (
+              <button className={`map-list-node ${selected.id === node.id ? "active" : ""}`} aria-pressed={selected.id === node.id} onClick={() => selectNode(node.id)} key={node.id}>
                 <div><span>{node.label}</span><small>{node.name_en}</small></div>
                 <b>{node.degree.toLocaleString("fa-IR")}</b>
               </button>
             ))}
           </div>
+          {visibleLimit < filteredNodes.length && <button className="button map-show-more" type="button" onClick={() => setVisibleLimit(count => count + 60)}>نمایش گره‌های بیشتر</button>}
           <div className="map-hotspots">
             <div className="map-list-summary"><strong>گره‌های پراتصال</strong><span>Degree واقعی</span></div>
             {topConnected.map(node => (

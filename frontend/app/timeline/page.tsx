@@ -31,33 +31,29 @@ export default async function TimelinePage({ searchParams }: { searchParams: Sea
     <main className="shell page stack timeline-page v6-atlas-page">
       <header className="v6-atlas-head timeline-page-head">
         <div className="v6-atlas-copy">
-          <div className="meta">Psychology Timeline · v0.6.4</div>
-          <h1>تاریخ روان‌شناسی را روی یک محور زمانی provenance-aware دنبال کن.</h1>
-          <p>رویدادها به Psychologist، Theory، Therapy، Technique و Concept فقط وقتی متصل می‌شوند که edge صریح runtime وجود داشته باشد. دقت سال/بازه/تاریخ نیز عین API حفظ می‌شود.</p>
+          <div className="eyebrow">تاریخ روان‌شناسی</div>
+          <h1>خط زمانی</h1>
+          <p>رویدادها را به ترتیب زمان مرور کن و پیوندهای ثبت‌شدهٔ آن‌ها با اشخاص، نظریه‌ها و مفاهیم را ببین.</p>
           <div className="actions">
             <Link className="button primary" href="/psychologists">اطلس روان‌شناسان</Link>
             <Link className="button" href="/theories">اطلس نظریه‌ها</Link>
           </div>
         </div>
         <aside className="v6-atlas-head-stat timeline-head-stat">
-          <strong>{data.count.toLocaleString("fa-IR")}</strong><span>{scope.length ? "رویداد در نمای محدود فعلی" : "رویداد canonical"}</span>
-          <div><b>{totalCount.toLocaleString("fa-IR")}</b><small>کل رویدادهای فعال Timeline</small></div>
+          <strong>{data.count.toLocaleString("fa-IR")}</strong><span>{scope.length ? "رویداد در نمای فعلی" : "رویداد ثبت‌شده"}</span>
+          <div><b>{totalCount.toLocaleString("fa-IR")}</b><small>کل رویدادهای فعال</small></div>
         </aside>
       </header>
 
       {scope.length > 0 && (
         <section className="card timeline-scope-banner">
-          <div><div className="meta">Server-side relation scope</div><strong>این نما قبل از رندر روی relation مشخص محدود شده است.</strong></div>
+          <div><div className="meta">نمای مرتبط</div><strong>رویدادهای مرتبط با موضوع انتخاب‌شده نمایش داده می‌شوند.</strong></div>
           <div className="timeline-scope-values">{scope.map(item => <code key={item.key}>{item.key}:{item.value}</code>)}</div>
           <Link className="button ghost" href="/timeline">خروج از نمای محدود</Link>
         </section>
       )}
 
-      <section className="v6-principles timeline-principles">
-        <div className="card"><span>01</span><strong>Precision first</strong><p>سال تنها، سال تقریبی، بازه و تاریخ دقیق چهار حالت متفاوت‌اند و UI آن‌ها را یکی نمی‌کند.</p></div>
-        <div className="card"><span>02</span><strong>Cross-domain milestones</strong><p>Milestoneهای نظریه، درمان و تکنیک با roleهای مستقل روی event نگه‌داری می‌شوند.</p></div>
-        <div className="card"><span>03</span><strong>No inferred history</strong><p>وجود هم‌زمان دو entity در یک دوره باعث ساخت edge تاریخی نمی‌شود؛ فقط relationهای explicit نمایش داده می‌شوند.</p></div>
-      </section>
+      <p className="atlas-method-note">سال تقریبی، بازه و تاریخ دقیق از هم جدا می‌مانند؛ تنها پیوندهای ثبت‌شده نمایش داده می‌شوند.</p>
 
       <TimelineExplorer items={data.results} />
     </main>

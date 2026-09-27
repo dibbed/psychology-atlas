@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { CalendarDays, Layers3, RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { hasToken } from "@/lib/auth";
@@ -42,9 +43,9 @@ export default function StudyCenter() {
   if (!authenticated) {
     return (
       <div className="stack">
+        <div className="card"><h3>برای ساخت مسیر مطالعهٔ شخصی وارد شو</h3><p>برنامه، صف مرور و پیشنهادها بر پایهٔ فعالیت ثبت‌شدهٔ حساب تو نمایش داده می‌شوند.</p><Link href="/login" className="button primary">ورود به حساب</Link></div>
         <DailyChallengeCard />
         <DSMStudyPanel />
-        <div className="card"><h3>برای ساخت برنامه مرور شخصی وارد شو</h3><p>Streak، Heatmap، Review Queue و پیشنهادها به فعالیت حساب کاربری وابسته‌اند.</p><Link href="/login" className="button primary">ورود به حساب</Link></div>
       </div>
     );
   }
@@ -53,10 +54,9 @@ export default function StudyCenter() {
   return (
     <div className="stack">
       <div className="study-stats">
-        <div className="study-stat"><span>🔥</span><strong>{faNumber(data.streak)}</strong><small>روز Streak</small></div>
-        <div className="study-stat"><span>🃏</span><strong>{faNumber(data.review.due)}</strong><small>مرور موعدرسیده</small></div>
-        <div className="study-stat"><span>🧠</span><strong>{faNumber(data.concepts.studied)}</strong><small>مفهوم مطالعه‌شده</small></div>
-        <div className="study-stat"><span>✓</span><strong>{faNumber(data.concepts.mastered)}</strong><small>مفهوم تسلط‌یافته</small></div>
+        <div className="study-stat"><CalendarDays size={20} aria-hidden="true" /><strong>{faNumber(data.streak)}</strong><small>روز زنجیرهٔ مطالعه</small></div>
+        <div className="study-stat"><RotateCcw size={20} aria-hidden="true" /><strong>{faNumber(data.review.due)}</strong><small>فلش‌کارت موعدرسیده</small></div>
+        <div className="study-stat"><Layers3 size={20} aria-hidden="true" /><strong>{faNumber(data.concepts.studied)}</strong><small>مفهوم مطالعه‌شده</small></div>
       </div>
 
       <section className="card study-planning-entry">
@@ -71,10 +71,12 @@ export default function StudyCenter() {
         </div>
       </section>
 
+      <StudyRecommendationsV2 dueCards={data.review.due} />
+
       <div className="grid-2">
         <section className="card">
           <div className="meta">۴۲ روز اخیر</div>
-          <h2>Study Heatmap</h2>
+          <h2>فعالیت ۴۲ روز اخیر</h2>
           <p className="muted small">شدت هر خانه تعداد فعالیت‌های ثبت‌شده در آن روز را نشان می‌دهد.</p>
           <StudyHeatmap days={data.heatmap} />
         </section>
@@ -102,7 +104,6 @@ export default function StudyCenter() {
 
       <DSMStudyPanel />
 
-      <StudyRecommendationsV2 dueCards={data.review.due} />
     </div>
   );
 }

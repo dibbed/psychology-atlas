@@ -9,6 +9,7 @@ import ProgressTracker from "./ProgressTracker";
 import { StructuredValue } from "./DSMRecordView";
 import type { DSMRecordDetail, DisorderDetail } from "@/lib/types";
 import { rememberDisorder } from "@/lib/recentlyViewed";
+import AtlasTabs from "./AtlasTabs";
 
 const tabs = [
   ["overview", "معرفی"],
@@ -67,21 +68,9 @@ export default function DisorderDetailClient({ disorder: d, dsmMaster = null }: 
         </div>
       </header>
 
-      <div className="tabs" role="tablist" aria-label="بخش‌های صفحه اختلال">
-        {tabs.map(([id, label]) => (
-          <button
-            className={`tab ${active === id ? "active" : ""}`}
-            key={id}
-            onClick={() => setActive(id)}
-            role="tab"
-            aria-selected={active === id}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <AtlasTabs tabs={tabs} active={active} onChange={setActive} label="بخش‌های صفحه اختلال" idPrefix="disorder-tab" />
 
-      <section className="tab-panel">
+      <section className="tab-panel" role="tabpanel" id="disorder-tab-panel" aria-labelledby={`disorder-tab-${active}`}>
         {active === "overview" && (
           <div className="grid-2">
             <article className="prose card">

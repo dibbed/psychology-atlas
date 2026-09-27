@@ -14,10 +14,10 @@ export default async function TherapiesPage() {
     <main className="shell page stack therapies-page">
       <header className="therapies-page-head">
         <div className="therapies-page-copy">
-          <div className="meta">Therapy Atlas</div>
-          <h1>درمان را به‌عنوان یک ساختار علمی یاد بگیر، نه یک لیست «بهترین درمان‌ها».</h1>
+          <div className="eyebrow">اطلس درمان</div>
+          <h1>رویکردهای درمانی را در زمینهٔ علمی‌شان ببین.</h1>
           <p>
-            هر Therapy خانواده، تکنیک‌ها، زمینه‌های بالینی، مفاهیم و provenance خودش را دارد. Technique هم یک Entity مستقل است تا روش‌های مشترک بین چند رویکرد گم نشوند.
+            خانواده‌ها، تکنیک‌ها، زمینه‌های کاربرد و پشتوانهٔ منابع را جداگانه بررسی کن. این بخش برای یادگیری ساختار رویکردهاست.
           </p>
           <div className="actions" style={{ marginTop: 16 }}>
             <Link className="button primary" href="/compare?type=therapy">مقایسه ساختاریافته درمان‌ها</Link>
@@ -32,17 +32,7 @@ export default async function TherapiesPage() {
         </div>
       </header>
 
-      <section className="therapy-atlas-principles">
-        <div className="card">
-          <span>01</span><strong>Family ≠ Classification</strong><p>هر درمان یک خانواده اصلی دارد، اما برچسب‌هایی مثل trauma-focused یا exposure-based می‌توانند هم‌زمان روی چند درمان بنشینند.</p>
-        </div>
-        <div className="card">
-          <span>02</span><strong>Clinical Role ≠ Evidence Basis</strong><p>نقش بالینی با نوع پشتوانه شواهد یکی نیست و در API و UI جدا نمایش داده می‌شود.</p>
-        </div>
-        <div className="card">
-          <span>03</span><strong>Source-backed Relations</strong><p>رابطه‌های Therapy با Disorder، Concept و Technique منبع مستقل خودشان را نگه می‌دارند.</p>
-        </div>
-      </section>
+      <p className="atlas-method-note">خانواده، نقش بالینی و پشتوانهٔ شواهد هر رویکرد جداگانه نمایش داده می‌شوند؛ این اطلس درمان‌ها را رتبه‌بندی نمی‌کند.</p>
 
       <TherapyExplorer therapies={therapyData.results} techniques={techniqueData.results} taxonomy={taxonomy} />
     </main>
