@@ -8,11 +8,11 @@ import { faNumber } from "@/lib/fa";
 import DailyChallengeCard from "./DailyChallengeCard";
 import DSMStudyPanel from "./DSMStudyPanel";
 import StudyHeatmap from "./StudyHeatmap";
+import StudyRecommendationsV2 from "./StudyRecommendationsV2";
 
 type Overview = {
   streak: number;
   heatmap: { date: string; count: number }[];
-  recommendations: { type: string; title: string; reason: string; href: string; priority: number }[];
   review: { due: number; new: number; reviewed: number };
   concepts: { studied: number; mastered: number };
   daily_challenge_completed: boolean;
@@ -61,9 +61,9 @@ export default function StudyCenter() {
 
       <section className="card study-planning-entry">
         <div>
-          <div className="meta">Study Planning · v0.8.1</div>
+          <div className="meta">برنامه‌ریزی مطالعه</div>
           <h2>هدف و ظرفیت مطالعه را مشخص کن</h2>
-          <p className="muted">برنامه‌های مطالعه فعلاً فقط هدف، محدوده و زمان آزاد هفتگی را نگه می‌دارند. زمان‌بندی روزانه در مرحله بعد اضافه می‌شود.</p>
+          <p className="muted">برای هدف مطالعه‌ات موضوع‌ها و ظرفیت هفتگی را مشخص کن، سپس زمان‌بندی بلوک‌های مطالعه را در همان برنامه بساز و بازبینی کن.</p>
         </div>
         <div className="actions">
           <Link className="button primary" href="/study/plans">برنامه‌های من</Link>
@@ -102,17 +102,7 @@ export default function StudyCenter() {
 
       <DSMStudyPanel />
 
-      <section className="card">
-        <div className="meta">پیشنهادهای مطالعه</div>
-        <h2>بر اساس فعالیت ثبت‌شده</h2>
-        <div className="recommendation-list">
-          {data.recommendations.length ? data.recommendations.map(item => (
-            <Link className="recommendation-item" href={item.href} key={`${item.type}-${item.href}`}>
-              <div><strong>{item.title}</strong><p>{item.reason}</p></div><span>ادامه ←</span>
-            </Link>
-          )) : <p>برای ساخت پیشنهاد شخصی، چند مفهوم یا اختلال را مطالعه کن و یک آزمون یا فلش‌کارت انجام بده.</p>}
-        </div>
-      </section>
+      <StudyRecommendationsV2 dueCards={data.review.due} />
     </div>
   );
 }

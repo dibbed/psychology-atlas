@@ -472,6 +472,27 @@ a.card:hover { transform: translateY(-2px); }
 .recommendation-item:hover { border-color: rgba(128,225,193,.4); }
 .recommendation-item p { margin: 5px 0 0; color: var(--muted); font-size: 13px; }
 .recommendation-item > span { color: var(--accent); white-space: nowrap; }
+.study-recommendations { display: grid; gap: 20px; }
+.study-recommendations-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.study-recommendations-head h2 { margin: 5px 0 7px; }
+.study-recommendations-head p { margin: 0; }
+.study-recommendation-item { display: block; }
+.study-recommendation-copy { min-width: 0; }
+.study-recommendation-category { color: var(--accent-2); font-size: 12px; }
+.study-recommendation-item h3 { margin: 7px 0 0; font-size: 18px; line-height: 1.6; }
+.study-recommendation-item p { font-size: 13px; line-height: 1.9; }
+.study-recommendation-item p strong { color: var(--text); font-weight: 600; }
+.study-recommendation-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 15px; }
+.study-recommendation-actions .button { min-height: 36px; font-size: 12px; }
+.study-recommendation-actions [aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.study-recommendations-empty { border: 1px dashed var(--border); border-radius: 12px; padding: 20px; }
+.study-recommendations-empty strong { font-size: 15px; }
+.study-recommendations-empty p { margin: 7px 0 0; }
+.study-recommendations-next { border-top: 1px solid var(--border); padding-top: 16px; }
+.study-recommendations-next h3 { margin: 0 0 10px; font-size: 15px; }
+.study-recommendations-next ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.study-recommendations-next li { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 12px; line-height: 1.8; }
+.study-recommendations-next a { color: var(--accent); flex: 0 0 auto; }
 
 /* v0.7.4.2 personal Case analytics */
 .case-analytics-page { gap: 30px; }
@@ -1043,6 +1064,8 @@ a.card:hover { transform: translateY(-2px); }
   .compare-picker { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 900px) {
+  .study-recommendations-head { flex-direction: column; }
+  .study-recommendations-next li { display: grid; gap: 2px; }
   .hero { grid-template-columns: 1fr; gap: 24px; }
   .hero-aside { border-right: 0; padding-right: 0; border-top: 1px solid var(--border); padding-top: 20px; }
   .grid { grid-template-columns: 1fr 1fr; }
