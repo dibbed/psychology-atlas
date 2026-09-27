@@ -6627,7 +6627,7 @@ class V081StudyPlanningMigrationTests(TransactionTestCase):
 
     migrate_from = ("atlas", "0027_v075_case_attempt_concurrency_guard")
     migrate_to = ("atlas", "0028_v081_study_plan_foundation")
-    restore_to = ("atlas", "0030_studyblock_ck_study_block_started_status_and_more")
+    restore_to = ("atlas", "0031_v083_recommendation_feedback")
 
     def tearDown(self):
         MigrationExecutor(connection).migrate([self.restore_to])
@@ -7611,7 +7611,7 @@ class V082StudyBlockMigrationTests(TransactionTestCase):
     reset_sequences = True
     migrate_from = ("atlas", "0028_v081_study_plan_foundation")
     migrate_to = ("atlas", "0029_v082_study_blocks")
-    restore_to = ("atlas", "0030_studyblock_ck_study_block_started_status_and_more")
+    restore_to = ("atlas", "0031_v083_recommendation_feedback")
 
     def tearDown(self):
         MigrationExecutor(connection).migrate([self.restore_to])

@@ -1,7 +1,7 @@
 from django.urls import path
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from . import dsm_views, views
+from . import dsm_views, recommendation_views, views
 
 urlpatterns = [
     path("auth/register/", views.RegisterView.as_view()),
@@ -49,6 +49,8 @@ urlpatterns = [
     path("flashcards/<slug:slug>/review/", views.flashcard_review),
     path("daily-challenge/", views.daily_challenge),
     path("study/overview/", views.study_overview),
+    path("study/recommendations/", recommendation_views.recommendations),
+    path("study/recommendations/<str:key>/feedback/", recommendation_views.recommendation_feedback),
     path("study/settings/", views.study_settings),
     path("study/scope-catalog/", views.study_scope_catalog_view),
     path("study/plans/", views.study_plans),

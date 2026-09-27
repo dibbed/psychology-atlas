@@ -1,10 +1,22 @@
 # Psychology Atlas Product Spec
 
-## Current release: v0.8.2 — Study Blocks + Deterministic Scheduler
+## Current release: v0.8.3 — Advanced Recommendations V2
 
-The v0.7 Clinical Case line remains frozen through v0.7.5. v0.8.1 established user-owned plan intent/configuration; **v0.8.2** adds deterministic, history-safe StudyBlock scheduling. StudySession and Recommendation V2 remain deferred.
+The v0.7 Clinical Case line remains frozen through v0.7.5. v0.8.1 established user-owned plan intent/configuration; v0.8.2 added deterministic, history-safe StudyBlock scheduling; **v0.8.3** adds explainable, bounded recommendations and owner-scoped feedback. StudySession remains deferred to v0.8.4.
 
 Psychology Atlas is an interactive educational system for psychology students. It should behave as a connected learning system, not as a psychology blog and not as a diagnostic product.
+
+### v0.8.3 Advanced Recommendations V2 invariants
+
+- V2 reads canonical StudyPlan/StudyBlock, SRS, QuizAttempt, CaseAttempt, progress and reviewed graph evidence. It never changes those systems, infers mastery, estimates exam readiness or makes clinical claims.
+- Active, owner-visible targets and usable Case revisions gate candidate creation. Draft, paused, completed and archived Plans do not produce plan recommendations. Deleted or inactive targets do not yield live actions.
+- Priority and tie-break ordering are deterministic. Source windows, candidate count and response limit are bounded; blocks already due or overdue suppress duplicate generic actions even when the overdue advice cap is reached.
+- The SHA-256 recommendation key encodes type, target, reason and context. Equivalent generation preserves keys; changed schedule versions or attempt context yields a new key.
+- `RecommendationFeedback` is owner-scoped, append-only, and unique by `(user, client_event_id)`. Identical event replay is idempotent; conflicting reuse returns 409. Helpful and not-helpful persist as labels; dismissal suppresses only that key for seven days, then expires. Feedback does not train or modify ranking.
+- GET `/api/study/recommendations/` accepts at most one `limit` from 1 through 20. POST `/api/study/recommendations/<key>/feedback/` accepts a bounded JSON body with `value` and UUID `client_event_id`. Both require authentication; candidate membership is checked for the current owner before writing feedback.
+- Owner study timezone determines calendar-day comparisons. Flashcard due instants use canonical SRS timestamps. Missing/corrupt study timezone falls back to application timezone without creating settings during a GET.
+- Migration 0031 only adds feedback storage, indexes and constraints; it creates no recommendations or user feedback rows. `/api/study/overview/`, legacy Study Center consumers, v0.8.2 scheduler behavior, v0.7 Case invariants and v0.6 scientific audits remain compatible.
+- The v0.8.3 release record is `docs/Psychology_Atlas_v0.8.3_Advanced_Recommendations_V2_2026-09-27.md`.
 
 ### v0.8.2 Study Blocks + Deterministic Scheduler invariants
 

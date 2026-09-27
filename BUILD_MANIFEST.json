@@ -1,8 +1,8 @@
 {
   "project": "Psychology Atlas",
-  "version": "0.8.2",
-  "release_name": "Study Blocks + Deterministic Scheduler",
-  "development_slice": "v0.8.2 Study Blocks + Deterministic Scheduler ✅",
+  "version": "0.8.3",
+  "release_name": "Advanced Recommendations V2",
+  "development_slice": "v0.8.3 Advanced Recommendations V2 ✅",
   "stack": {
     "frontend": "Next.js 16.3.5 + React 19.3 + TypeScript",
     "backend": "Django 5.2 + Django REST Framework",
@@ -306,7 +306,12 @@
     "v082_canonical_evidence_completion",
     "v082_capacity_backlog_and_unavailable_reporting",
     "v082_study_plan_audit_command",
-    "v082_schedule_management_rtl_ui"
+    "v082_schedule_management_rtl_ui",
+    "v083_deterministic_explainable_recommendations",
+    "v083_recommendation_feedback",
+    "v083_owner_scoped_recommendation_api",
+    "v083_study_center_recommendations_ui",
+    "v083_recommendation_feedback_audit"
   ],
   "content": {
     "categories": 21,
@@ -451,17 +456,18 @@
     "0027_v075_case_attempt_concurrency_guard.py",
     "0028_v081_study_plan_foundation.py",
     "0029_v082_study_blocks.py",
-    "0030_studyblock_ck_study_block_started_status_and_more.py"
+    "0030_studyblock_ck_study_block_started_status_and_more.py",
+    "0031_v083_recommendation_feedback.py"
   ],
   "validation": {
     "django_check": "pass",
-    "backend_tests": "243/243 passed · final v0.8.2 backend code",
+    "backend_tests": "280/280 passed · final v0.8.3 precommit backend code",
     "python_compileall": "pass",
     "pip_check": "pass · no broken requirements",
     "migration_drift_check": "pass · no changes detected",
     "seed_idempotency": "pass · repeated seed runs preserve imported seed_managed=False entities and relations while seed-owned relations remain independently managed",
-    "typescript_typecheck": "pass · frontend 0.8.1",
-    "next_production_build": "pass · frontend 0.8.1 · Next.js 16.3.5 Turbopack · 26/26 generation units including /study/plans, /study/plans/new and /study/plans/[id]",
+    "typescript_typecheck": "pass · frontend 0.8.3",
+    "next_production_build": "pass · frontend 0.8.3 · Next.js 16.3.5 Turbopack · 26/26 generation units including Study Center and Plan routes",
     "npm_audit_low": "0 vulnerabilities",
     "frontend_route_smoke_test": "pass · v0.7.2 production Chromium E2E covered register, Case start, branch decision, refresh/resume, immutable reached-path history, terminal completion, new attempt, and safe login return-to-case",
     "dsm_master_source_sha256": "9680d7b1e85ae4ef58efa58f7c76bfcc04c7b317f1fbd40cbb2e27be02542694",
@@ -478,7 +484,7 @@
     "temporary_audit_user_cleanup": "pass · both v0.5.5 runtime-audit users deleted; 0 remaining",
     "therapy_foundation_tests": "3 targeted schema/provenance tests included in full suite",
     "canonical_module_cleanup": "pass · versioned backend runtime modules consolidated into views.py / serializers.py / seed_mvp.py",
-    "current_release": "v0.8.2 Study Blocks + Deterministic Scheduler",
+    "current_release": "v0.8.3 Advanced Recommendations V2",
     "v071_case_graph_audit": "pass · 6 current cases / 6 revisions / 18 nodes / 54 explicit transitions / 0 structural failures",
     "v071_case_seed_revision_idempotency": "pass · unchanged repeated seed remains 6 revisions / 18 nodes / 54 transitions; changed content publishes a new revision without mutating historical attempts",
     "v071_attempt_history_binding": "pass · legacy submit stores CaseAttempt.revision and prior attempts remain pinned after later case revisions",
@@ -710,7 +716,18 @@
     "v082_scientific_regression": "pass · audit_v06_release; 0 provenance gaps, 59 weak-only entities, 52 weak-only relations",
     "v082_research_archive": "pass · 2 datasets / 1918 records / stored hashes verified on runtime DB",
     "v082_browser_qa": "pass · real production frontend + backend Chromium; plan CRUD/scope/availability/generate/no-op/reschedule-lock/regenerate/unlock/skip/reading completion/evidence rejection; 390x844 and 1280x800 no overflow; reduced motion, keyboard, auth expiry checked",
-    "v082_qa_cleanup": "pass · temporary user and plan/scope/availability/block/settings rows removed; no QA user remains"
+    "v082_qa_cleanup": "pass · temporary user and plan/scope/availability/block/settings rows removed; no QA user remains",
+    "focused_v083_tests": "37/37 passed · deterministic candidate, exclusion, API, feedback, migration and large-fixture query-budget regressions",
+    "v083_query_budget": "pass · 21 Plans, 51 Blocks, 20 QuizAttempts, 20 CaseAttempts, 80 flashcards and 22 low-progress records; <=25 queries and <=20 returned items",
+    "v083_historical_migration": "pass · additive 0031 RecommendationFeedback migration preserves prior user/planning/learning data",
+    "v083_fresh_install": "pass · empty SQLite migration through 0031 with no fabricated feedback rows",
+    "v083_audit_recommendation_feedback": "pass · runtime read-only feedback integrity audit",
+    "v083_legacy_regression": "pass · /api/study/overview/ and Study Center existing behavior, v0.8.2 scheduler, v0.7 Case and v0.6 scientific tests remain green",
+    "v083_frontend_typecheck": "pass · frontend 0.8.3",
+    "v083_next_build": "pass · Next.js 16.3.5 Turbopack production build",
+    "v083_npm_audit": "pass · 0 vulnerabilities at low threshold",
+    "v083_browser_qa": "pass · real authenticated desktop 1280x800 and mobile 390x844; empty, generated/stale/backlog/overdue, feedback persistence and expiry, canonical links, auth isolation, zero overflow",
+    "v083_qa_cleanup": "pass · temporary users 35 and 36 plus dependent Plan/Block/Feedback/QuizAttempt/CaseAttempt rows deleted and verified absent"
   },
   "release_notes": {
     "graph_layers": [
@@ -749,14 +766,16 @@
       "0.7.4.2": "Persian/RTL Personal Case Analytics UI ✅",
       "0.7.4.3": "Analytics Hardening + v0.7.4 Release Freeze ✅",
       "0.7.5": "Clinical Case Integrity Patch + v0.7 Final Closure ✅",
-      "0.8.1": "Study Planning Foundation ✅"
+      "0.8.1": "Study Planning Foundation ✅",
+      "0.8.2": "Study Blocks + Deterministic Scheduler ✅",
+      "0.8.3": "Advanced Recommendations V2 ✅",
+      "0.8.4": "Today Study Mode + Study Sessions + UI"
     },
     "deliberately_deferred": [
       "Brain Atlas",
       "Assessment Atlas",
-      "StudyBlock generation + automatic exam scheduling beyond v0.8.1",
+      "Today Study Mode + Study Sessions + UI (v0.8.4)",
       "XP and achievements",
-      "advanced recommendation engine",
       "content admin CMS",
       "claim-level citation graph",
       "Therapy user progress/mastery until learning evidence exists",
@@ -1011,6 +1030,18 @@
       "validation": "26 focused / 243 full backend tests; fresh and historical migration checks; repeat-seed snapshot stable; check/drift/compile/pip pass; Next typecheck/build pass; npm audit zero; runtime SQLite and case/scientific/research audits pass; Chromium workflow pass",
       "release_doc": "docs/Psychology_Atlas_v0.8.2_Study_Blocks_Deterministic_Scheduler_2026-09-26.md",
       "next": "v0.8.3 roadmap slice; v0.8.2 foundations remain frozen except defect fixes"
+    },
+    "advanced_recommendations_v2": {
+      "scope": "v0.8.3 adds owner-scoped, deterministic, explainable recommendations to Study Center without changing canonical learning evidence or legacy study overview",
+      "signals": "12 types from active Plans and Blocks, SRS, Quiz/Case attempts, low progress, explicit distortion practice and reviewed sourced graph relations",
+      "identity": "stable SHA-256 key from type, target, reason and context; deterministic priority and tie breaks; equivalent actions deduplicated",
+      "feedback": "append-only RecommendationFeedback; helpful and not_helpful labels, seven-day dismissal, idempotent client event IDs and bounded daily writes",
+      "api": "GET /api/study/recommendations/ with limit 1..20; POST /api/study/recommendations/<key>/feedback/; both authenticated and owner-scoped",
+      "migration": "0031 adds feedback model, owner/event unique constraint, value/suppression checks and lookup indexes without backfill",
+      "performance": "bounded source windows and 200-candidate cap; realistic volume fixture asserts <=25 queries and 20-item response cap",
+      "validation": "37 focused / 280 full backend tests; migration and fresh-install checks; legacy scheduler/Case/scientific/research audits; frontend typecheck/build, npm audit zero and real desktop/mobile browser QA pass",
+      "release_doc": "docs/Psychology_Atlas_v0.8.3_Advanced_Recommendations_V2_2026-09-27.md",
+      "next": "v0.8.4 Today Study Mode + Study Sessions + UI; not implemented in v0.8.3"
     }
   }
 }

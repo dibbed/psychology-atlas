@@ -1043,7 +1043,7 @@ export default function StudyPlanDetailPage() {
       <aside className="study-plan-boundary">
         <strong>مرز v0.8.2</strong>
         <p>
-          StudyBlock فقط قصد زمان‌بندی‌شده و سابقه پایبندی است. فلش‌کارت از SRS canonical، آزمون از QuizAttempt و کیس از CaseAttempt استفاده می‌کند؛ زمان‌بند due date، score، mastery یا نتیجه امتحان را بازنویسی و پیش‌بینی نمی‌کند. Study Session و Recommendation V2 در sliceهای بعدی می‌آیند.
+          StudyBlock فقط قصد زمان‌بندی‌شده و سابقه پایبندی است. فلش‌کارت از SRS canonical، آزمون از QuizAttempt و کیس از CaseAttempt استفاده می‌کند؛ زمان‌بند due date، score، mastery یا نتیجه امتحان را بازنویسی و پیش‌بینی نمی‌کند. پیشنهادهای مطالعه فقط از داده‌های ثبت‌شده راهنمایی می‌دهند و فعالیت یا بلوک تازه‌ای به‌طور خودکار نمی‌سازند.
         </p>
       </aside>
     </main>

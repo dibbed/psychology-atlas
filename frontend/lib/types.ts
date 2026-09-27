@@ -1448,6 +1448,30 @@ export type StudyPlanListResponse = {
   plans: StudyPlan[];
 };
 
+export type StudyRecommendationV2 = {
+  key: string;
+  type: string;
+  target: { type: string; id: number | null; slug: string | null };
+  order: number;
+  priority: number;
+  title: string;
+  description: string;
+  reason_codes: string[];
+  reasons: string[];
+  signals: { kind: string; [key: string]: unknown }[];
+  action: { href: string; label: string };
+  feedback: { value: "helpful" | "not_helpful" | "dismissed" | null; suppressed_until: string | null };
+};
+
+export type StudyRecommendationsV2Response = {
+  version: "v2";
+  as_of: string;
+  items: StudyRecommendationV2[];
+  returned_count: number;
+  suppressed_count: number;
+  truncated_sources: boolean;
+};
+
 export type StudyScopeCatalogItem = {
   target_type: StudyScopeTargetType;
   target_slug: string;

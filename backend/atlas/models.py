@@ -1669,6 +1669,70 @@ class StudyBlock(TimeStampedModel):
             raise ValidationError({"skipped_at": "Only skipped blocks may have a skip time."})
 
 
+class RecommendationFeedback(models.Model):
+    class Type(models.TextChoices):
+        OVERDUE_BLOCK = "overdue_block", "Overdue block"
+        PLAN_SCHEDULE_STALE = "plan_schedule_stale", "Stale plan schedule"
+        PLAN_GENERATE = "plan_generate", "Generate plan schedule"
+        SRS_REVIEW = "srs_review", "SRS review"
+        PLAN_CAPACITY = "plan_capacity", "Plan capacity"
+        CASE_RESUME = "case_resume", "Resume case"
+        QUIZ_RETRY = "quiz_retry", "Retry quiz"
+        DISTORTION_PRACTICE = "distortion_practice", "Distortion practice"
+        CONCEPT_REVIEW = "concept_review", "Concept review"
+        DISORDER_REVIEW = "disorder_review", "Disorder review"
+        GRAPH_EXPLORE = "graph_explore", "Explore graph"
+        SRS_START = "srs_start", "Start SRS"
+
+    class TargetType(models.TextChoices):
+        REVIEW_QUEUE = "review_queue", "Review queue"
+        STUDY_PLAN = "study_plan", "Study plan"
+        STUDY_BLOCK = "study_block", "Study block"
+        QUIZ = "quiz", "Quiz"
+        CLINICAL_CASE = "clinical_case", "Clinical case"
+        CONCEPT = "concept", "Concept"
+        DISORDER = "disorder", "Disorder"
+
+    class Value(models.TextChoices):
+        HELPFUL = "helpful", "Helpful"
+        NOT_HELPFUL = "not_helpful", "Not helpful"
+        DISMISSED = "dismissed", "Dismissed"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="recommendation_feedback",
+    )
+    recommendation_key = models.CharField(max_length=67)
+    recommendation_type = models.CharField(max_length=32, choices=Type.choices)
+    target_type = models.CharField(max_length=32, choices=TargetType.choices)
+    target_id = models.PositiveBigIntegerField(null=True, blank=True)
+    reason_code = models.CharField(max_length=48)
+    context_ref = models.CharField(max_length=96)
+    value = models.CharField(max_length=16, choices=Value.choices)
+    client_event_id = models.UUIDField()
+    suppressed_until = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("user", "client_event_id"), name="uq_recommendation_feedback_event"),
+            models.CheckConstraint(
+                condition=Q(value__in=("helpful", "not_helpful", "dismissed")),
+                name="ck_recommendation_feedback_value",
+            ),
+            models.CheckConstraint(
+                condition=(Q(value="dismissed") & Q(suppressed_until__isnull=False))
+                | (~Q(value="dismissed") & Q(suppressed_until__isnull=True)),
+                name="ck_recommendation_feedback_suppression",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=("user", "recommendation_key", "-created_at", "-id"), name="idx_rec_feedback_latest"),
+            models.Index(fields=("user", "-created_at"), name="idx_rec_feedback_history"),
+        ]
+
+
 class ConceptBookmark(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="concept_bookmarks")
     concept = models.ForeignKey(Concept, on_delete=models.CASCADE, related_name="bookmarked_by")
