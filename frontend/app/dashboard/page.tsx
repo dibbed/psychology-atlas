@@ -34,7 +34,7 @@ export default function DashboardPage() {
   }, []);
   if (error) return <main className="shell page"><div className="card error-state"><h1>داشبورد بارگذاری نشد</h1><p>{error}</p><div className="actions"><button className="button primary" onClick={() => location.reload()}>تلاش دوباره</button><button className="button" onClick={() => { clearTokens(); location.href = "/login"; }}>ورود دوباره</button></div></div></main>;
   if (!data) return <main className="shell page dashboard-page"><div className="dashboard-skeleton" role="status">در حال آماده‌کردن داشبورد…</div></main>;
-  const recent = [
+  const continueTopics = [
     ...data.continue_learning.slice(0, 2).map(item => ({ ...item, href: `/disorders/${item.slug}`, kind: "اختلال" })),
     ...data.continue_concepts.slice(0, 2).map(item => ({ ...item, href: `/concepts/${item.slug}`, kind: "مفهوم" })),
   ].slice(0, 3);
@@ -43,7 +43,7 @@ export default function DashboardPage() {
     <section className="dashboard-priority" aria-label="اقدام‌های مهم">
       <div className="dashboard-next">
         <span className="eyebrow">ادامهٔ مطالعه</span>
-        {recent.length ? <><h2>{recent[0].name_fa || recent[0].name_en}</h2><p>{recent[0].kind}ی که اخیراً مطالعه کرده‌ای.</p><Link className="button primary" href={recent[0].href}>ادامه دادن <ArrowUpLeft size={16} /></Link></> : <><h2>از یک موضوع شروع کن</h2><p>هنوز موضوعی در پیشرفت مطالعه‌ات ثبت نشده است.</p><Link className="button primary" href="/disorders">کاوش اختلالات</Link></>}
+        {continueTopics.length ? <><h2>{continueTopics[0].name_fa || continueTopics[0].name_en}</h2><p>به مطالعهٔ این موضوع برگرد.</p><Link className="button primary" href={continueTopics[0].href}>ادامه دادن <ArrowUpLeft size={16} /></Link></> : <><h2>از یک موضوع شروع کن</h2><p>هنوز موضوعی در پیشرفت مطالعه‌ات ثبت نشده است.</p><Link className="button primary" href="/disorders">کاوش اختلالات</Link></>}
       </div>
       <Link href="/flashcards" className="dashboard-review"><RotateCcw size={20} aria-hidden="true" /><span>صف مرور</span><strong>{faNumber(data.review_due)}</strong><small>فلش‌کارت موعدرسیده</small><span className="dashboard-action">باز کردن صف <ArrowUpLeft size={15} aria-hidden="true" /></span></Link>
     </section>
@@ -63,7 +63,7 @@ export default function DashboardPage() {
         </div>
       </section>
     </div>
-    {recent.length > 1 && <section className="dashboard-recent"><div className="dashboard-section-head"><div><span className="eyebrow">مسیرهای باز</span><h2>موضوع‌های اخیر</h2></div></div><div>{recent.slice(1).map(item => <Link href={item.href} key={item.href}><span>{item.kind}</span><strong>{item.name_fa || item.name_en}</strong><ArrowUpLeft size={16} aria-hidden="true" /></Link>)}</div></section>}
+    {continueTopics.length > 1 && <section className="dashboard-recent"><div className="dashboard-section-head"><div><span className="eyebrow">مسیرهای باز</span><h2>موضوع‌های قابل ادامه</h2></div></div><div>{continueTopics.slice(1).map(item => <Link href={item.href} key={item.href}><span>{item.kind}</span><strong>{item.name_fa || item.name_en}</strong><ArrowUpLeft size={16} aria-hidden="true" /></Link>)}</div></section>}
     <StudyRecommendationsV2 dueCards={data.review_due} />
     <section className="dashboard-library-links"><Link href="/saved"><Bookmark size={18} aria-hidden="true" /> ذخیره‌شده‌ها <ArrowUpLeft size={15} aria-hidden="true" /></Link><Link href="/notes"><FileText size={18} aria-hidden="true" /> یادداشت‌ها <ArrowUpLeft size={15} aria-hidden="true" /></Link></section>
   </main>;

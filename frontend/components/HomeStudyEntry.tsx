@@ -22,7 +22,7 @@ export default function HomeStudyEntry() {
   }, []);
   const recentDisorder = data?.continue_learning?.[0];
   const recentConcept = data?.continue_concepts?.[0];
-  const recent = recentDisorder || recentConcept;
+  const topic = recentDisorder || recentConcept;
   const href = recentDisorder ? `/disorders/${recentDisorder.slug}` : recentConcept ? `/concepts/${recentConcept.slug}` : "/study";
   return <section className="home-continue" aria-labelledby="home-continue-title">
     <div className="home-continue-top"><div><span className="eyebrow">مسیر شخصی</span><h2 id="home-continue-title">ادامهٔ یادگیری</h2></div><BookOpen size={20} aria-hidden="true" /></div>
@@ -31,10 +31,10 @@ export default function HomeStudyEntry() {
     {state === "error" && <><p>مسیر شخصی اکنون در دسترس نیست.</p><Link href="/study" className="button">رفتن به مرکز مطالعه</Link></>}
     {state === "ready" && data && <div className="home-continue-body">
       <div className="home-continue-feature">
-        <span className="home-feature-label">{recent ? "آخرین موضوع مطالعه‌شده" : "شروع مسیر مطالعه"}</span>
-        <h3>{recent ? recent.name_fa || recent.name_en : "یک موضوع را انتخاب و مطالعه را آغاز کن"}</h3>
-        <p>{recent ? "از همین موضوع ادامه بده یا برای مرورهای امروز به مرکز مطالعه برو." : "از اطلس کاوش کن؛ بعد مرور و تمرین‌ها در مسیر شخصی‌ات ثبت می‌شوند."}</p>
-        <Link href={href} className="button primary">{recent ? "ادامهٔ مطالعه" : "شروع مطالعه"} <ArrowUpLeft size={16} aria-hidden="true" /></Link>
+        <span className="home-feature-label">{topic ? "موضوعی برای ادامهٔ مطالعه" : "شروع مسیر مطالعه"}</span>
+        <h3>{topic ? topic.name_fa || topic.name_en : "یک موضوع را انتخاب و مطالعه را آغاز کن"}</h3>
+        <p>{topic ? "به مطالعهٔ این موضوع برگرد یا برای مرورهای امروز به مرکز مطالعه برو." : "از اطلس کاوش کن؛ بعد مرور و تمرین‌ها در مسیر شخصی‌ات ثبت می‌شوند."}</p>
+        <Link href={href} className="button primary">{topic ? "ادامهٔ مطالعه" : "شروع مطالعه"} <ArrowUpLeft size={16} aria-hidden="true" /></Link>
       </div>
       <div className="home-continue-meta"><span><RotateCcw size={17} aria-hidden="true" /><strong>{faNumber(data.review_due)}</strong> فلش‌کارت موعدرسیده</span><Link href="/flashcards">باز کردن صف مرور <ArrowUpLeft size={15} aria-hidden="true" /></Link></div>
     </div>}
