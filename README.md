@@ -1,10 +1,10 @@
-# Psychology Atlas — v0.8.2 · Study Blocks + Deterministic Scheduler
+# Psychology Atlas — v0.8.3 · Advanced Recommendations V2
 
 [![CI](https://github.com/dibbed/psychology-atlas/actions/workflows/ci.yml/badge.svg)](https://github.com/dibbed/psychology-atlas/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/dibbed/psychology-atlas/actions/workflows/codeql.yml/badge.svg)](https://github.com/dibbed/psychology-atlas/actions/workflows/codeql.yml)
 [![Latest release](https://img.shields.io/github/v/release/dibbed/psychology-atlas?display_name=tag)](https://github.com/dibbed/psychology-atlas/releases)
 
-یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.8.2 خط Study Mode را با StudyBlock و scheduler قطعی، محدود و تاریخچه‌محور گسترش می‌دهد. StudyPlan همچنان intent/configuration است؛ بلوک‌ها برنامه‌ریزی و adherence را نمایش می‌دهند و mastery یا آمادگی امتحان را اندازه نمی‌گیرند. `/api/study/overview/`، رفتار Daily Challenge و موتورهای canonical یادگیری حفظ شده‌اند.
+یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.8.3 پیشنهادهای مطالعه توضیح‌پذیر و قطعی را از StudyPlan، StudyBlock و شواهد یادگیری موجود می‌سازد. بازخورد کاربر، از جمله پنهان‌سازی هفت‌روزه، در مدل مستقل و متعلق به خود کاربر ذخیره می‌شود. پیشنهادها شاخص مهارت یا آمادگی امتحان نیستند؛ `/api/study/overview/`، رفتار Daily Challenge و موتورهای canonical یادگیری حفظ شده‌اند.
 
 > این نرم‌افزار آموزشی است و ابزار تشخیص، درمان، ارزیابی صلاحیت بالینی یا جایگزین ارزیابی حرفه‌ای نیست.
 
@@ -15,6 +15,20 @@
 **No open-source license is granted.** مگر با اجازه کتبی جداگانه از صاحب حقوق، مجوز عمومی برای استفاده، کپی، تغییر، بازتوزیع، sublicense یا ساخت derivative work از کد اعطا نشده است؛ به‌جز دسترسی‌ها و قابلیت‌هایی که Terms of Service خود GitHub برای میزبانی، مشاهده و قابلیت‌های پلتفرم مانند fork الزاماً فراهم می‌کند.
 
 اگر برای استفاده‌ای خارج از این محدوده به مجوز نیاز داری، ابتدا باید اجازه صریح صاحب repository را دریافت کنی.
+
+## v0.8.3 — Advanced Recommendations V2
+
+```text
+12 deterministic, explainable recommendation types           ✅
+owner-scoped feedback; helpful / not helpful / 7-day dismiss ✅
+stable fingerprint, deduplication and bounded response       ✅
+additive RecommendationFeedback migration 0031              ✅
+37/37 focused V2 backend tests                               ✅
+280/280 full backend tests                                   ✅
+real desktop 1280x800 and mobile 390x844 browser QA          ✅
+```
+
+The V2 endpoint is `GET /api/study/recommendations/?limit=8` (1–20); feedback is `POST /api/study/recommendations/<key>/feedback/`. The existing Study Center overview endpoint and legacy recommendation behavior remain available to existing consumers. See [the v0.8.3 release record](docs/Psychology_Atlas_v0.8.3_Advanced_Recommendations_V2_2026-09-27.md) for signals, exclusions, API semantics and verification evidence.
 
 ## v0.8.2 — Study Blocks + Deterministic Scheduler
 
