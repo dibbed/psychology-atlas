@@ -32,8 +32,8 @@ export function StructuredValue({ value, depth = 0 }: { value: unknown; depth?: 
     <div className={`dsm-key-value depth-${Math.min(depth, 3)}`}>
       {entries.map(([key, item]) => (
         <div className="dsm-key-value-row" key={key}>
-          <dt>{key.replaceAll("_", " ")}</dt>
-          <dd><StructuredValue value={item} depth={depth + 1} /></dd>
+          <strong className="dsm-key-name">{key.replaceAll("_", " ")}</strong>
+          <div className="dsm-key-content"><StructuredValue value={item} depth={depth + 1} /></div>
         </div>
       ))}
     </div>

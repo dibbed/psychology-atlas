@@ -1227,13 +1227,14 @@ button { cursor: pointer; }
 .dsm-page-hero h1 {
   margin: 8px 0 16px;
   max-width: 900px;
-  font-size: clamp(42px,6.2vw,72px);
-  line-height: 1.12;
+  font-size: clamp(36px,4.1vw,54px);
+  line-height: 1.25;
 }
 .dsm-page-hero p { max-width: 880px; margin: 0 0 24px; color: #c4ced9; line-height: 2; font-size: 16px; }
 .dsm-page-manifest {
   min-height: 210px;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-content: end;
   gap: 6px;
   border-right: 1px solid var(--border);
@@ -1241,6 +1242,7 @@ button { cursor: pointer; }
   background: linear-gradient(180deg, transparent, rgba(182,167,255,.035));
 }
 .dsm-page-manifest > span, .dsm-page-manifest small { color: var(--muted); font-size: 11px; }
+.dsm-page-manifest small { overflow-wrap: anywhere; }
 .dsm-page-manifest strong { font-size: 42px; color: var(--accent); }
 .dsm-page-manifest code { direction: ltr; text-align: left; font-size: 10px; color: var(--muted); overflow-wrap: anywhere; }
 .dsm-stats-grid { display: grid; grid-template-columns: repeat(6,1fr); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
@@ -1366,9 +1368,9 @@ button { cursor: pointer; }
 .dsm-structured-list .dsm-structured-list { margin-top: 8px; }
 .dsm-key-value { display: grid; border-top: 1px solid var(--border); }
 .dsm-key-value-row { display: grid; grid-template-columns: minmax(150px,.35fr) 1fr; gap: 18px; padding: 12px 0; border-bottom: 1px solid var(--border); }
-.dsm-key-value-row dt { color: var(--muted); font-size: 10px; line-height: 1.7; }
-.dsm-key-value-row dd { margin: 0; color: #ccd5df; line-height: 1.8; font-size: 12px; min-width: 0; }
-.dsm-key-value-row dd > span { white-space: pre-wrap; }
+.dsm-key-name { color: var(--muted); font-size: 10px; line-height: 1.7; font-weight: 400; }
+.dsm-key-content { color: #ccd5df; line-height: 1.8; font-size: 12px; min-width: 0; }
+.dsm-key-content > span { white-space: pre-wrap; }
 .dsm-subsection { margin-top: 22px; }
 .dsm-subsection h3 { font-size: 14px; }
 .dsm-nearby-links { display: flex; flex-wrap: wrap; gap: 7px; }

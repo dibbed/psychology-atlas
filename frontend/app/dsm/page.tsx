@@ -46,7 +46,7 @@ export default async function DSMPage({
           </div>
         </div>
         <aside className="dsm-page-manifest">
-          <span>Dataset integrity</span>
+          <span>صحت داده‌ها</span>
           <strong>{overview.health_check["نتیجه"] === "PASS" ? "PASS" : "ثبت شده"}</strong>
           <small>{overview.corpus.source_filename}</small>
           <code>{overview.corpus.source_sha256.slice(0, 16)}…</code>
