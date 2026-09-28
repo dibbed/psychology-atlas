@@ -2,12 +2,12 @@ import StudyCenter from "@/components/StudyCenter";
 
 export default function StudyPage() {
   return (
-    <main className="shell page stack">
-      <div>
-        <div className="meta">Study Engine</div>
-        <h1 className="section-title" style={{ fontSize: 44 }}>مطالعه را به یک چرخه قابل‌اندازه‌گیری تبدیل کن.</h1>
-        <p className="section-copy">مرورهای موعدرسیده، Streak، Heatmap، چالش روزانه، پیشنهادها و ورودی برنامه‌های مطالعه در یک مرکز واحد جمع شده‌اند.</p>
-      </div>
+    <main className="shell page stack study-command-page">
+      <header>
+        <div className="eyebrow">مرکز مطالعه</div>
+        <h1 className="section-title">امروز از کجا ادامه می‌دهی؟</h1>
+        <p className="section-copy">برنامه، مرورهای موعدرسیده و پیشنهادهای مبتنی بر فعالیت خودت را در یک جا ببین.</p>
+      </header>
       <StudyCenter />
     </main>
   );

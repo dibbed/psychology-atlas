@@ -73,6 +73,17 @@ const v6PathPrefixes: [string, string][] = [
   ["timeline_concept_", "رویداد → مفهوم"],
 ];
 
+const nodeTypeLabels: Record<string, string> = {
+  concept: "مفهوم",
+  disorder: "اختلال",
+  symptom: "نشانه",
+  therapy: "درمان",
+  technique: "تکنیک",
+  psychologist: "روان‌شناس",
+  theory: "نظریه",
+  timeline: "رویداد",
+};
+
 function pathEdgeLabel(kind: string) {
   if (edgeLabels[kind]) return edgeLabels[kind];
   for (const [prefix, label] of v6PathPrefixes) {
@@ -128,34 +139,34 @@ export default function GraphPathFinder({ nodes, initialFrom }: { nodes: Knowled
   return (
     <section className="card graph-path-finder stack">
       <div>
-        <div className="meta">Structured Path Finder</div>
+        <div className="meta">مسیر میان گره‌ها</div>
         <h3>دو گره را انتخاب کن و کوتاه‌ترین مسیر واقعی را پیدا کن.</h3>
-        <p className="muted">مسیر فقط از edgeهای ثبت‌شده در Atlas ساخته می‌شود؛ Psychologist، Theory و Timeline نیز همراه Therapy و Technique فقط از relationهای واقعی DB وارد مسیر می‌شوند. اتصال ساختاری «عنوان نزدیک DSM» به‌طور پیش‌فرض shortcut مسیر مفهومی نیست.</p>
+        <p className="muted">مسیر فقط از رابطه‌های ثبت‌شدهٔ اطلس ساخته می‌شود. پیوندهای صرفاً ساختاریِ مرجع DSM میان‌بُر مسیر مفهومی نیستند.</p>
       </div>
       <div className="graph-path-controls">
         <label>
           <span>شروع</span>
           <select className="filter-select" value={from} disabled={loading} onChange={event => { setFrom(event.target.value); setResult(null); setError(""); }}>
-            {options.map(node => <option value={node.id} key={node.id}>{node.label} · {node.type}</option>)}
+            {options.map(node => <option value={node.id} key={node.id}>{node.label} · {nodeTypeLabels[node.type] || node.type}</option>)}
           </select>
         </label>
         <label>
           <span>پایان</span>
           <select className="filter-select" value={to} disabled={loading} onChange={event => { setTo(event.target.value); setResult(null); setError(""); }}>
-            {options.map(node => <option value={node.id} key={node.id}>{node.label} · {node.type}</option>)}
+            {options.map(node => <option value={node.id} key={node.id}>{node.label} · {nodeTypeLabels[node.type] || node.type}</option>)}
           </select>
         </label>
         <button className="button primary" onClick={findPath} disabled={loading}>{loading ? "در حال محاسبه..." : "پیدا کردن مسیر"}</button>
       </div>
       {error && <div className="error-state"><p>{error}</p></div>}
-      {result && !result.found && <div className="empty-relation">بین این دو گره در graph فعلی مسیر ساختاریافته‌ای پیدا نشد.</div>}
+      {result && !result.found && <div className="empty-relation">بین این دو گره در نقشهٔ فعلی مسیری پیدا نشد.</div>}
       {result?.found && (
         <div className="graph-path-result">
-          <div className="graph-path-summary"><strong>{result.hops?.toLocaleString("fa-IR")}</strong><span>edge در کوتاه‌ترین مسیر</span></div>
+          <div className="graph-path-summary"><strong>{result.hops?.toLocaleString("fa-IR")}</strong><span>رابطه در کوتاه‌ترین مسیر</span></div>
           <div className="graph-path-chain">
             {result.nodes.map((node, index) => (
               <div className="graph-path-step" key={node.id}>
-                <Link href={node.href}><span>{node.label}</span><small>{node.type}</small></Link>
+                <Link href={node.href}><span>{node.label}</span><small>{nodeTypeLabels[node.type] || node.type}</small></Link>
                 {index < result.edges.length && (
                   <div className="graph-path-edge">
                     {result.edges[index].traversal_direction === "reverse"

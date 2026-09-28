@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { SourceReference, TherapyDetail } from "@/lib/types";
 import TherapyBookmarkButton from "./TherapyBookmarkButton";
 import TherapyNoteEditor from "./TherapyNoteEditor";
+import AtlasTabs from "./AtlasTabs";
 
 const tabs = [
   ["overview", "معرفی"],
@@ -101,15 +102,9 @@ export default function TherapyDetailView({ therapy }: { therapy: TherapyDetail 
         </div>
       </header>
 
-      <div className="tabs therapy-tabs" role="tablist" aria-label="بخش‌های پروفایل درمان">
-        {tabs.map(([id, label]) => (
-          <button className={`tab ${active === id ? "active" : ""}`} key={id} onClick={() => setActive(id)} role="tab" aria-selected={active === id}>
-            {label}
-          </button>
-        ))}
-      </div>
+      <AtlasTabs tabs={tabs} active={active} onChange={setActive} label="بخش‌های پروفایل درمان" idPrefix="therapy-tab" className="therapy-tabs" />
 
-      <section className="tab-panel therapy-tab-panel">
+      <section className="tab-panel therapy-tab-panel" role="tabpanel" id="therapy-tab-panel" aria-labelledby={`therapy-tab-${active}`}>
         {active === "overview" && <Overview therapy={therapy} />}
         {active === "techniques" && <Techniques therapy={therapy} />}
         {active === "disorders" && <Disorders therapy={therapy} />}

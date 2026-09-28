@@ -14,14 +14,14 @@ export default async function DisordersPage() {
     <main className="shell page stack">
       <header className="disorders-page-head">
         <div>
-          <div className="meta">Psychology Atlas · Disorders Explorer</div>
-          <h1 className="section-title" style={{ fontSize: 44 }}>۲۴۱ اختلال را مثل یک کاتالوگ علمی مرور کن.</h1>
-          <p className="section-copy">فصل DSM را انتخاب کن، با نام فارسی یا انگلیسی و داده‌های آموزشی عمیق جست‌وجو کن، بین نمای کارت و فهرست فشرده جابه‌جا شو و مطالعه را از اختلالات اخیراً دیده‌شده ادامه بده.</p>
+          <div className="eyebrow">اطلس بالینی</div>
+          <h1 className="section-title">اختلالات را فصل‌به‌فصل کاوش کن.</h1>
+          <p className="section-copy">با جست‌وجو یا انتخاب فصل، مدخل‌ها را پیدا کن و از هر اختلال به نشانه‌ها، مفاهیم و منابع مرتبط برس.</p>
         </div>
         {overview && (
           <div className="disorders-live-count">
             <strong>{overview.counts.disorders.toLocaleString("fa-IR")}</strong>
-            <span>صفحه اختلال canonical</span>
+            <span>اختلال فعال</span>
             <small>{overview.counts.categories.toLocaleString("fa-IR")} فصل / دسته فعال</small>
           </div>
         )}

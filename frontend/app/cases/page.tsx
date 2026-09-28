@@ -15,8 +15,8 @@ export default async function CasesPage() {
     <main className="shell page stack">
       <div className="analytics-page-head">
         <div>
-          <div className="meta">کیس‌های بالینی</div>
-          <h1 className="section-title" style={{ fontSize: 44 }}>اطلاعات را مرحله‌به‌مرحله بررسی کن.</h1>
+          <div className="eyebrow">استدلال بالینی آموزشی</div>
+          <h1 className="section-title">کیس‌های بالینی</h1>
           <p className="section-copy">در هر کیس، مرحله بعد فقط پس از تصمیم‌گیری درباره مرحله فعلی نمایش داده می‌شود. این تمرین آموزشی است و شبیه‌ساز تشخیص بیمار واقعی نیست.</p>
         </div>
         <Link className="button" href="/case-analytics">تحلیل کیس‌های من</Link>

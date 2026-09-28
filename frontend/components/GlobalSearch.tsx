@@ -71,19 +71,22 @@ export default function GlobalSearch({ initialQuery = "" }: { initialQuery?: str
         className="search global-search-input"
         value={query}
         onChange={event => setQuery(event.target.value)}
-        placeholder="اختلال، مفهوم، درمان، روان‌شناس، نظریه، رویداد تاریخی یا DSM MASTER..."
+        placeholder="اختلال، مفهوم، درمان، روان‌شناس، نظریه، رویداد یا مرجع DSM..."
         aria-label="جست‌وجوی سراسری اطلس"
       />
-      {query.trim().length < 2 && <div className="card"><p>حداقل دو حرف بنویس. جست‌وجو همزمان Atlas و رکوردهای DSM MASTER را بررسی می‌کند.</p></div>}
-      {loading && <p className="muted">در حال جست‌وجوی اطلس و DSM MASTER...</p>}
-      {error && <div className="card error-state"><p>{error}</p></div>}
+      {query.trim().length < 2 && <div className="card"><p>برای جست‌وجو در اطلس و مرجع DSM دست‌کم دو حرف بنویس.</p></div>}
+      {loading && <p className="muted" role="status">در حال جست‌وجو…</p>}
+      {error && <div className="card error-state" role="alert"><p>{error}</p></div>}
       {data && dsmData && !loading && (
         <>
-          <div className="results-count">{total.toLocaleString("fa-IR")} نتیجه در Atlas و DSM MASTER پیدا شد.</div>
+          <div className="results-count" role="status">{total.toLocaleString("fa-IR")} نتیجه پیدا شد.</div>
+          {total > 0 && <nav className="search-domain-jumps" aria-label="رفتن به دستهٔ نتایج">
+            {([["search-dsm", "مرجع DSM", dsmData.count], ["search-disorders", "اختلالات", data.disorders.length], ["search-concepts", "مفاهیم", data.concepts.length], ["search-therapies", "درمان‌ها", data.therapies.length], ["search-techniques", "تکنیک‌ها", data.techniques.length], ["search-symptoms", "نشانه‌ها", data.symptoms.length], ["search-psychologists", "روان‌شناسان", data.psychologists.length], ["search-theories", "نظریه‌ها", data.theories.length], ["search-timeline", "تاریخ", data.timeline_events.length]] as const).filter(([, , count]) => count > 0).map(([id, label, count]) => <a href={`#${id}`} key={id}>{label} <span>{count.toLocaleString("fa-IR")}</span></a>)}
+          </nav>}
 
-          <section className="search-section dsm-search-results">
+          <section className="search-section dsm-search-results" id="search-dsm">
             <div className="search-section-head">
-              <div><div className="meta">DSM MASTER · audited educational dataset</div><h2>مرجع DSM-5-TR فارسی</h2></div>
+              <div><div className="meta">مرجع آموزشی DSM</div><h2>مرجع DSM-5-TR فارسی</h2></div>
               <span>{dsmData.count.toLocaleString("fa-IR")}</span>
             </div>
             <div className="dsm-search-result-list">
@@ -94,13 +97,13 @@ export default function GlobalSearch({ initialQuery = "" }: { initialQuery?: str
                   <p>{item.summary}</p>
                 </Link>
               ))}
-              {!dsmData.results.length && <div className="card muted">نتیجه‌ای در DSM MASTER نیست.</div>}
+              {!dsmData.results.length && <div className="card muted">نتیجه‌ای در مرجع DSM نیست.</div>}
             </div>
             {dsmData.count > dsmData.results.length && <Link className="button ghost" href={`/dsm?q=${encodeURIComponent(query.trim())}`}>دیدن همه {dsmData.count.toLocaleString("fa-IR")} نتیجه DSM</Link>}
           </section>
 
-          <section className="search-section">
-            <div className="search-section-head"><div><div className="meta">Disorders</div><h2>اختلالات Atlas</h2></div><span>{data.disorders.length.toLocaleString("fa-IR")}</span></div>
+          <section className="search-section" id="search-disorders">
+            <div className="search-section-head"><div><div className="meta">اختلالات</div><h2>اختلالات اطلس</h2></div><span>{data.disorders.length.toLocaleString("fa-IR")}</span></div>
             <div className="grid">
               {data.disorders.map(item => (
                 <Link className="card" href={`/disorders/${item.slug}`} key={item.slug}>
@@ -114,20 +117,20 @@ export default function GlobalSearch({ initialQuery = "" }: { initialQuery?: str
             </div>
           </section>
 
-          <section className="search-section">
-            <div className="search-section-head"><div><div className="meta">Concepts</div><h2>مفاهیم</h2></div><span>{data.concepts.length.toLocaleString("fa-IR")}</span></div>
+          <section className="search-section" id="search-concepts">
+            <div className="search-section-head"><div><div className="meta">اطلس مفاهیم</div><h2>مفاهیم</h2></div><span>{data.concepts.length.toLocaleString("fa-IR")}</span></div>
             <div className="grid">
               {data.concepts.map(item => <ConceptCard concept={item} key={item.slug} />)}
               {!data.concepts.length && <div className="card muted">نتیجه‌ای در مفاهیم نیست.</div>}
             </div>
           </section>
 
-          <section className="search-section">
-            <div className="search-section-head"><div><div className="meta">Psychologists</div><h2>روان‌شناسان و پژوهشگران</h2></div><span>{data.psychologists.length.toLocaleString("fa-IR")}</span></div>
+          <section className="search-section" id="search-psychologists">
+            <div className="search-section-head"><div><div className="meta">افراد</div><h2>روان‌شناسان و پژوهشگران</h2></div><span>{data.psychologists.length.toLocaleString("fa-IR")}</span></div>
             <div className="grid">
               {data.psychologists.map(item => (
                 <Link className="card" href={`/psychologists/${item.slug}`} key={item.slug}>
-                  <div className="meta">{item.role_fa || item.role_en || "Psychologist"}</div>
+                  <div className="meta">{item.role_fa || item.role_en || "روان‌شناس"}</div>
                   <h3>{item.name_fa || item.name_en}</h3>
                   {item.name_fa && <div className="latin-label">{item.name_en}</div>}
                   {item.summary_fa || item.summary_en ? <p>{item.summary_fa || item.summary_en}</p> : <p className="muted">خلاصه مستقیمی ثبت نشده است.</p>}
@@ -141,8 +144,8 @@ export default function GlobalSearch({ initialQuery = "" }: { initialQuery?: str
             </div>
           </section>
 
-          <section className="search-section">
-            <div className="search-section-head"><div><div className="meta">Theories</div><h2>نظریه‌ها و مدل‌ها</h2></div><span>{data.theories.length.toLocaleString("fa-IR")}</span></div>
+          <section className="search-section" id="search-theories">
+            <div className="search-section-head"><div><div className="meta">اندیشه‌ها</div><h2>نظریه‌ها و مدل‌ها</h2></div><span>{data.theories.length.toLocaleString("fa-IR")}</span></div>
             <div className="grid">
               {data.theories.map(item => (
                 <Link className="card" href={`/theories/${item.slug}`} key={item.slug}>
@@ -160,8 +163,8 @@ export default function GlobalSearch({ initialQuery = "" }: { initialQuery?: str
             </div>
           </section>
 
-          <section className="search-section">
-            <div className="search-section-head"><div><div className="meta">Timeline</div><h2>رویدادهای تاریخی</h2></div><span>{data.timeline_events.length.toLocaleString("fa-IR")}</span></div>
+          <section className="search-section" id="search-timeline">
+            <div className="search-section-head"><div><div className="meta">خط زمانی</div><h2>رویدادهای تاریخی</h2></div><span>{data.timeline_events.length.toLocaleString("fa-IR")}</span></div>
             <div className="grid">
               {data.timeline_events.map(item => (
                 <Link className="card" href={`/timeline/${item.slug}`} key={item.slug}>
@@ -174,12 +177,12 @@ export default function GlobalSearch({ initialQuery = "" }: { initialQuery?: str
                   </div>
                 </Link>
               ))}
-              {!data.timeline_events.length && <div className="card muted">نتیجه‌ای در Timeline نیست.</div>}
+              {!data.timeline_events.length && <div className="card muted">نتیجه‌ای در رویدادها نیست.</div>}
             </div>
           </section>
 
-          <section className="search-section">
-            <div className="search-section-head"><div><div className="meta">Therapies</div><h2>رویکردهای درمانی</h2></div><span>{data.therapies.length.toLocaleString("fa-IR")}</span></div>
+          <section className="search-section" id="search-therapies">
+            <div className="search-section-head"><div><div className="meta">اطلس درمان</div><h2>رویکردهای درمانی</h2></div><span>{data.therapies.length.toLocaleString("fa-IR")}</span></div>
             <div className="grid">
               {data.therapies.map(item => (
                 <Link className="card" href={`/therapies/${item.slug}`} key={item.slug}>
@@ -194,12 +197,12 @@ export default function GlobalSearch({ initialQuery = "" }: { initialQuery?: str
             </div>
           </section>
 
-          <section className="search-section">
-            <div className="search-section-head"><div><div className="meta">Techniques</div><h2>تکنیک‌های درمانی</h2></div><span>{data.techniques.length.toLocaleString("fa-IR")}</span></div>
+          <section className="search-section" id="search-techniques">
+            <div className="search-section-head"><div><div className="meta">روش‌ها</div><h2>تکنیک‌های درمانی</h2></div><span>{data.techniques.length.toLocaleString("fa-IR")}</span></div>
             <div className="grid">
               {data.techniques.map(item => (
                 <Link className="card" href={`/techniques/${item.slug}`} key={item.slug}>
-                  <div className="meta">Technique</div>
+                  <div className="meta">تکنیک</div>
                   <h3>{item.name_fa || item.name_en}</h3>
                   <div className="latin-label">{item.name_en}</div>
                   <p>{item.summary}</p>
@@ -210,8 +213,8 @@ export default function GlobalSearch({ initialQuery = "" }: { initialQuery?: str
             </div>
           </section>
 
-          <section className="search-section">
-            <div className="search-section-head"><div><div className="meta">Symptoms</div><h2>نشانه‌ها</h2></div><span>{data.symptoms.length.toLocaleString("fa-IR")}</span></div>
+          <section className="search-section" id="search-symptoms">
+            <div className="search-section-head"><div><div className="meta">نشانه‌ها</div><h2>نشانه‌ها</h2></div><span>{data.symptoms.length.toLocaleString("fa-IR")}</span></div>
             <div className="grid">
               {data.symptoms.map(item => (
                 <div className="card symptom-search-card" key={item.slug}>

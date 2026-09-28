@@ -14,9 +14,9 @@ export default async function ConceptsPage() {
     <main className="shell page stack concepts-page">
       <header className="concepts-page-head">
         <div>
-          <div className="meta">Concepts Atlas</div>
-          <h1>مفهوم را مستقل یاد بگیر، بعد اتصالش را ببین.</h1>
-          <p>هر Concept یک واحد یادگیری مستقل است، اما ارزش اصلی اطلس وقتی دیده می‌شود که رابطه آن با اختلال‌ها، مفاهیم دیگر و فلش‌کارت‌ها روشن باشد.</p>
+          <div className="eyebrow">اطلس مفاهیم</div>
+          <h1>از تعریف تا رابطهٔ مفهومی</h1>
+          <p>هر مفهوم را با تعریف و مثال بشناس؛ سپس ارتباط آن را با مفاهیم دیگر، اختلالات و ابزارهای مطالعه دنبال کن.</p>
         </div>
         {overview && (
           <div className="concepts-summary">

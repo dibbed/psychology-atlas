@@ -5,9 +5,9 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   return (
     <main className="shell page stack">
       <div>
-        <div className="meta">Global Search</div>
+        <div className="meta">جست‌وجوی اطلس</div>
         <h1 className="section-title" style={{ fontSize: 44 }}>در کل اطلس جست‌وجو کن.</h1>
-        <p className="section-copy">یک عبارت می‌تواند همزمان میان اختلالات، مفاهیم، درمان‌ها، تکنیک‌ها، روان‌شناسان، نظریه‌ها، رویدادهای تاریخی، نشانه‌ها و DSM MASTER جست‌وجو شود.</p>
+        <p className="section-copy">یک عبارت را همزمان میان اختلالات، مفاهیم، درمان‌ها، تکنیک‌ها، روان‌شناسان، نظریه‌ها، رویدادهای تاریخی، نشانه‌ها و مرجع DSM جست‌وجو کن.</p>
       </div>
       <GlobalSearch initialQuery={q || ""} />
     </main>

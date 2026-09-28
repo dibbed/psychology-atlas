@@ -8,6 +8,7 @@ import ConceptNoteEditor from "./ConceptNoteEditor";
 import ConceptNeighborhood from "./ConceptNeighborhood";
 import ConceptProgressTracker from "./ConceptProgressTracker";
 import { conceptKindLabel } from "./ConceptCard";
+import AtlasTabs from "./AtlasTabs";
 
 const tabs = [
   ["overview", "تعریف"],
@@ -79,15 +80,9 @@ export default function ConceptDetailClient({ concept }: { concept: ConceptDetai
         </div>
       </header>
 
-      <div className="tabs" role="tablist" aria-label="بخش‌های مفهوم">
-        {tabs.map(([id, label]) => (
-          <button className={`tab ${active === id ? "active" : ""}`} key={id} onClick={() => setActive(id)} role="tab" aria-selected={active === id}>
-            {label}
-          </button>
-        ))}
-      </div>
+      <AtlasTabs tabs={tabs} active={active} onChange={setActive} label="بخش‌های مفهوم" idPrefix="concept-tab" />
 
-      <section className="tab-panel">
+      <section className="tab-panel" role="tabpanel" id="concept-tab-panel" aria-labelledby={`concept-tab-${active}`}>
         {active === "overview" && (
           <div className="grid-2">
             <article className="prose card">
@@ -122,7 +117,7 @@ export default function ConceptDetailClient({ concept }: { concept: ConceptDetai
             <div className="meta">مثال آموزشی</div>
             <blockquote>{concept.example || "برای این مفهوم هنوز مثال آموزشی ثبت نشده است."}</blockquote>
             {concept.counterexample && (
-              <div className="card" style={{ marginTop: 16 }}>
+              <div className="concept-counterexample">
                 <div className="meta">نمونه متوازن / غیرتحریف‌شده</div>
                 <p>{concept.counterexample}</p>
               </div>

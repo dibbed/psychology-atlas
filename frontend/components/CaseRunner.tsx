@@ -187,10 +187,7 @@ export default function CaseRunner({ item }: { item: ClinicalCase }) {
     <div className="case-runner">
       <section className="case-attempt-bar" aria-label="وضعیت کیس">
         <div>
-          <span className="meta">
-            نسخه کیس {faNumber(attempt.case.revision_number)}
-            {attempt.case.rubric_version > 0 ? ` · rubric ${faNumber(attempt.case.rubric_version)}` : ""}
-          </span>
+          <span className="meta">مسیر استدلال آموزشی</span>
           <strong>{completed ? "مسیر تکمیل‌شده" : `گام جاری ${faNumber(attempt.history.length + 1)}`}</strong>
         </div>
         <div className="case-attempt-stats">
@@ -198,7 +195,7 @@ export default function CaseRunner({ item }: { item: ClinicalCase }) {
           {attempt.dimension_feedback.available && (
             <span>ابعاد ثبت‌شده <strong>{faNumber(attempt.dimension_feedback.dimensions.length)}</strong></span>
           )}
-          <span>امتیاز مسیر <strong>{faNumber(attempt.score)} / {faNumber(attempt.max_score)}</strong></span>
+          {completed && <span>امتیاز همین تلاش <strong>{faNumber(attempt.score)} / {faNumber(attempt.max_score)}</strong></span>}
         </div>
       </section>
 
@@ -217,14 +214,14 @@ export default function CaseRunner({ item }: { item: ClinicalCase }) {
       )}
 
       {attempt.history.length > 0 && (
-        <section className="case-history" aria-labelledby="case-history-title">
-          <div className="section-heading-row">
+        <details className="case-history" aria-labelledby="case-history-title">
+          <summary className="section-heading-row">
             <div>
               <div className="meta">مسیر ثبت‌شده</div>
-              <h2 id="case-history-title">تاریخچه تصمیم‌ها و مراحل طی‌شده</h2>
+              <h2 id="case-history-title">دیدن تصمیم‌ها و مراحل پیشین</h2>
             </div>
-            <span className="muted small">فقط مسیر واقعی این تلاش نمایش داده می‌شود.</span>
-          </div>
+            <span className="muted small">{faNumber(attempt.history.length)} مرحله ثبت‌شده</span>
+          </summary>
 
           <div className="case-history-list">
             {attempt.history.map((event, index) => (
@@ -255,7 +252,7 @@ export default function CaseRunner({ item }: { item: ClinicalCase }) {
               </article>
             ))}
           </div>
-        </section>
+        </details>
       )}
 
       {completed ? (
@@ -274,7 +271,7 @@ export default function CaseRunner({ item }: { item: ClinicalCase }) {
             <section className="card case-dimension-summary" aria-labelledby="case-dimension-summary-title">
               <div className="section-heading-row">
                 <div>
-                  <div className="meta">rubric چندبعدی همین مسیر</div>
+                  <div className="meta">ارزیابی همین مسیر</div>
                   <h2 id="case-dimension-summary-title">خلاصه ابعاد آموزشی</h2>
                 </div>
                 <span className="muted small">فقط تصمیم‌های واقعاً طی‌شده محاسبه شده‌اند.</span>
@@ -313,10 +310,9 @@ export default function CaseRunner({ item }: { item: ClinicalCase }) {
         <section className="card case-stage case-stage-stateful" aria-labelledby="case-current-step-title">
           <div className="case-stage-heading">
             <div>
-              <div className="meta">{nodeLabel(step.node_kind)} · state {faNumber(attempt.state_version)}</div>
+              <div className="meta">{nodeLabel(step.node_kind)} · گام {faNumber(attempt.history.length + 1)}</div>
               <h2 id="case-current-step-title" ref={stageHeadingRef} tabIndex={-1}>{step.title}</h2>
             </div>
-            <span className="case-node-key">{step.stable_key}</span>
           </div>
           <p className="case-narrative">{step.narrative}</p>
 
@@ -342,7 +338,7 @@ export default function CaseRunner({ item }: { item: ClinicalCase }) {
 
           {step.node_kind === "information" && (
             <div className="case-node-hint">
-              این مرحله انتخابی ندارد. با ادامه، backend transition معتبر بعدی را تعیین می‌کند.
+              این مرحله اطلاعات تازه‌ای به سناریو اضافه می‌کند. برای دیدن مرحلهٔ بعد ادامه بده.
             </div>
           )}
 

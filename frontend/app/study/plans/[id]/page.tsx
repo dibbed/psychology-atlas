@@ -65,6 +65,16 @@ const targetTypeOptions: { value: StudyScopeTargetType; label: string }[] = [
   { value: "clinical_case", label: "کیس آموزشی" },
 ];
 
+const catalogCategoryLabels: Record<string, string> = {
+  Behavioral: "رفتاری",
+  Clinical: "بالینی",
+  Cognitive: "شناختی",
+  Emotional: "هیجانی",
+  General: "عمومی",
+  Interpersonal: "بین‌فردی",
+  Treatment: "درمان",
+};
+
 function redirectToLogin(path: string) {
   location.href = `/login?next=${encodeURIComponent(path)}`;
 }
@@ -513,7 +523,7 @@ export default function StudyPlanDetailPage() {
     return (
       <main className="shell page">
         <section className="card error-state study-plan-state-card" role="alert">
-          <div className="meta">Study Planning</div>
+          <div className="meta">برنامه‌ریزی مطالعه</div>
           <h1>برنامه پیدا نشد</h1>
           <p>{error || "این برنامه وجود ندارد یا متعلق به حساب فعلی نیست."}</p>
           <Link className="button primary" href="/study/plans">برنامه‌های من</Link>
@@ -529,7 +539,7 @@ export default function StudyPlanDetailPage() {
           <Link className="study-plan-back" href="/study/plans">← برنامه‌های مطالعه</Link>
           <div className="study-plan-heading-line">
             <span className={`study-plan-status ${plan.status}`}>{statusLabel[plan.status]}</span>
-            <span className="meta">{plan.plan_kind === "exam" ? "Exam plan" : "General study"}</span>
+            <span className="meta">{plan.plan_kind === "exam" ? "آمادگی امتحان" : "مطالعه عمومی"}</span>
           </div>
           <h1 className="section-title">{plan.name}</h1>
           <p className="section-copy">
@@ -537,7 +547,7 @@ export default function StudyPlanDetailPage() {
               ? "برنامه فعال است. برای تغییر محدوده یا ظرفیت، اول آن را متوقف کن."
               : plan.status === "archived"
                 ? "این برنامه فقط برای سابقه نگه داشته شده و قابل ویرایش یا فعال‌سازی نیست."
-                : "هدف، محدوده و ظرفیت را تنظیم کن؛ زمان‌بند قطعی v0.8.2 آن‌ها را به بلوک‌های روزانه قابل بازتولید تبدیل می‌کند."}
+                : "هدف، موضوع‌ها و ظرفیت را تنظیم کن؛ سپس زمان‌بندی روزانه را بساز و بازبینی کن."}
           </p>
         </div>
         <div className="actions">
@@ -746,7 +756,7 @@ export default function StudyPlanDetailPage() {
                   >
                     <span>
                       <strong>{item.title}</strong>
-                      <small>{item.subtitle || targetTypeLabel(item.target_type)}</small>
+                      <small>{catalogCategoryLabels[item.subtitle] || item.subtitle || targetTypeLabel(item.target_type)}</small>
                     </span>
                     <b>{selected ? "اضافه شده" : "+ افزودن"}</b>
                   </button>
@@ -816,9 +826,9 @@ export default function StudyPlanDetailPage() {
         <div className="study-plan-section-head">
           <div>
             <div className="meta">۴ · زمان‌بندی قطعی</div>
-            <h2>Study Blocks</h2>
+            <h2>بلوک‌های مطالعه</h2>
             <p className="muted small">
-              بلوک‌ها قصد زمان‌بندی‌شده‌اند. زمان تخمینی یک heuristic محصول است و تکمیل بلوک به معنی تسلط یا آمادگی امتحان نیست.
+              بلوک‌ها فقط برنامهٔ پیشنهادی برای زمان مطالعه‌اند. زمان‌ها تخمینی هستند و تکمیل بلوک به معنی تسلط یا آمادگی امتحان نیست.
             </p>
           </div>
           <div className="actions">
@@ -837,8 +847,8 @@ export default function StudyPlanDetailPage() {
 
         {plan.schedule_stale && plan.generation_version > 0 && (
           <div className="study-schedule-warning" role="status">
-            <strong>ورودی برنامه بعد از آخرین generation تغییر کرده است.</strong>
-            <p>زمان‌بندی فعلی برای حفظ تاریخچه نمایش داده می‌شود، اما برای همگام‌سازی Scope، ظرفیت یا تاریخ‌ها باید بازچینی را اجرا کنی.</p>
+            <strong>برنامه پس از آخرین زمان‌بندی تغییر کرده است.</strong>
+            <p>زمان‌بندی قبلی برای حفظ سابقه نمایش داده می‌شود. برای اعمال موضوع‌ها، ظرفیت یا تاریخ‌های جدید، آن را بازچینی کن.</p>
           </div>
         )}
 
@@ -862,7 +872,7 @@ export default function StudyPlanDetailPage() {
                 <strong>{faNumber(latestGeneration.preserved_minutes)} دقیقه</strong>
               </div>
               <div>
-                <span>Backlog</span>
+                <span>خارج از ظرفیت</span>
                 <strong>{faNumber(latestGeneration.capacity_shortfall_minutes)} دقیقه</strong>
               </div>
             </div>
@@ -874,7 +884,7 @@ export default function StudyPlanDetailPage() {
               <span>{faNumber(latestGeneration.scheduled_blocks)} بلوک جدید</span>
               <span>{faNumber(latestGeneration.preserved_blocks)} بلوک حفظ‌شده</span>
               {latestGeneration.superseded_blocks > 0 && (
-                <span>{faNumber(latestGeneration.superseded_blocks)} بلوک قدیمی superseded شد</span>
+                <span>{faNumber(latestGeneration.superseded_blocks)} بلوک قدیمی جایگزین شد</span>
               )}
             </div>
 
@@ -882,7 +892,7 @@ export default function StudyPlanDetailPage() {
               <div className="study-schedule-warning" role="status">
                 <strong>ظرفیت این بازه برای همه کارها کافی نیست.</strong>
                 <p>
-                  {faNumber(latestGeneration.capacity_shortfall_minutes)} دقیقه از candidateها عمداً خارج از تقویم مانده‌اند. زمان‌بند ظرفیت روزها را نشکسته و چیزی را پنهانی بعد از تاریخ هدف نبرده است.
+                  {faNumber(latestGeneration.capacity_shortfall_minutes)} دقیقه از کارهای پیشنهادی خارج از تقویم مانده‌اند. زمان‌بندی از ظرفیت روزانه یا تاریخ هدف عبور نکرده است.
                 </p>
                 {latestGeneration.backlog.length > 0 && (
                   <div className="study-backlog-list">
@@ -898,11 +908,11 @@ export default function StudyPlanDetailPage() {
 
             {latestGeneration.unavailable_scopes.length > 0 && (
               <div className="study-schedule-warning muted-warning">
-                <strong>بخشی از Scope فعلاً قابل زمان‌بندی نیست.</strong>
+                <strong>بخشی از موضوع‌های برنامه فعلاً قابل زمان‌بندی نیست.</strong>
                 <p>محتوای غیرفعال جایگزین یا حدس زده نشده است.</p>
                 <div className="study-backlog-list">
                   {latestGeneration.unavailable_scopes.map((item) => (
-                    <span key={item.scope_id}>{item.title || item.target_slug || "Scope نامعتبر"}</span>
+                    <span key={item.scope_id}>{item.title || item.target_slug || "موضوع نامعتبر"}</span>
                   ))}
                 </div>
               </div>
@@ -910,8 +920,8 @@ export default function StudyPlanDetailPage() {
           </>
         ) : (
           <div className="study-schedule-empty">
-            <strong>هنوز StudyBlock ساخته نشده است.</strong>
-            <p>بعد از تنظیم Scope و ظرفیت، «ساخت زمان‌بندی» را بزن. تولید دوباره تاریخچه، بلوک‌های دستی، بلوک‌های قفل‌شده و کارهای انجام‌شده را حذف نمی‌کند.</p>
+            <strong>هنوز بلوک مطالعه‌ای ساخته نشده است.</strong>
+            <p>بعد از تنظیم موضوع‌ها و ظرفیت، «ساخت زمان‌بندی» را بزن. بازچینی، سابقه و بلوک‌های دستی، قفل‌شده یا انجام‌شده را حفظ می‌کند.</p>
           </div>
         )}
 
@@ -937,7 +947,6 @@ export default function StudyPlanDetailPage() {
               <section className="study-schedule-day" key={day.date}>
                 <header>
                   <div>
-                    <span className="meta">{day.date}</span>
                     <h3>{displayDate(day.date)}</h3>
                   </div>
                   <strong>
@@ -957,7 +966,7 @@ export default function StudyPlanDetailPage() {
                         <strong>{block.snapshot_title}</strong>
                         {block.snapshot_subtitle && <p>{block.snapshot_subtitle}</p>}
                         <small>
-                          {faNumber(block.estimated_minutes)} دقیقه · generation {faNumber(block.generation_version)}
+                          {faNumber(block.estimated_minutes)} دقیقه · نوبت زمان‌بندی {faNumber(block.generation_version)}
                           {block.evidence_required ? " · تکمیل با شواهد موتور اصلی" : " · تکمیل با تأیید کاربر"}
                         </small>
                       </div>
@@ -1035,15 +1044,15 @@ export default function StudyPlanDetailPage() {
         ) : latestGeneration ? (
           <div className="study-schedule-empty">
             <strong>در این بازه بلوک فعالی وجود ندارد.</strong>
-            <p>ممکن است ظرفیت صفر، Scope غیرفعال یا همه candidateها قبلاً تکمیل/رد شده باشند. summary بالا علت را بدون حدس‌زدن نگه می‌دارد.</p>
+            <p>ممکن است ظرفیت روزها صفر باشد، موضوع‌ها غیرفعال باشند، یا همهٔ کارهای پیشنهادی قبلاً انجام یا رد شده باشند. خلاصهٔ بالا وضعیت را نشان می‌دهد.</p>
           </div>
         ) : null}
       </section>
 
       <aside className="study-plan-boundary">
-        <strong>مرز v0.8.2</strong>
+        <strong>دربارهٔ این برنامه</strong>
         <p>
-          StudyBlock فقط قصد زمان‌بندی‌شده و سابقه پایبندی است. فلش‌کارت از SRS canonical، آزمون از QuizAttempt و کیس از CaseAttempt استفاده می‌کند؛ زمان‌بند due date، score، mastery یا نتیجه امتحان را بازنویسی و پیش‌بینی نمی‌کند. پیشنهادهای مطالعه فقط از داده‌های ثبت‌شده راهنمایی می‌دهند و فعالیت یا بلوک تازه‌ای به‌طور خودکار نمی‌سازند.
+          بلوک مطالعه فقط زمان پیشنهادی و سابقهٔ انجام آن را ثبت می‌کند. وضعیت مرور فلش‌کارت، نتیجهٔ آزمون و نتیجهٔ کیس در بخش‌های خودشان ثبت می‌شوند. زمان‌بندی آمادگی امتحان را پیش‌بینی نمی‌کند و پیشنهادهای مطالعه فعالیت تازه‌ای را خودکار ایجاد نمی‌کنند.
         </p>
       </aside>
     </main>
