@@ -1,10 +1,10 @@
-# Psychology Atlas — v0.8.3 · Advanced Recommendations V2
+# Psychology Atlas — v0.8.4 · Today Study Mode + Study Sessions
 
 [![CI](https://github.com/dibbed/psychology-atlas/actions/workflows/ci.yml/badge.svg)](https://github.com/dibbed/psychology-atlas/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/dibbed/psychology-atlas/actions/workflows/codeql.yml/badge.svg)](https://github.com/dibbed/psychology-atlas/actions/workflows/codeql.yml)
 [![Latest release](https://img.shields.io/github/v/release/dibbed/psychology-atlas?display_name=tag)](https://github.com/dibbed/psychology-atlas/releases)
 
-یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.8.3 پیشنهادهای مطالعه توضیح‌پذیر و قطعی را از StudyPlan، StudyBlock و شواهد یادگیری موجود می‌سازد. بازخورد کاربر، از جمله پنهان‌سازی هفت‌روزه، در مدل مستقل و متعلق به خود کاربر ذخیره می‌شود. پیشنهادها شاخص مهارت یا آمادگی امتحان نیستند؛ `/api/study/overview/`، رفتار Daily Challenge و موتورهای canonical یادگیری حفظ شده‌اند.
+یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.8.4 یک نمای خواندنی «امروز» و جلسه‌های مطالعهٔ متمرکز را به StudyPlan، StudyBlock و Recommendation V2 وصل می‌کند. جلسه فقط بازهٔ زمانی و پایبندی به برنامه را ثبت می‌کند؛ تکمیل آن یادگیری، تسلط یا تکمیل خودکار Block را اثبات نمی‌کند. `/api/study/overview/`، رفتار Daily Challenge و موتورهای اصلی یادگیری حفظ شده‌اند.
 
 > این نرم‌افزار آموزشی است و ابزار تشخیص، درمان، ارزیابی صلاحیت بالینی یا جایگزین ارزیابی حرفه‌ای نیست.
 
@@ -15,6 +15,23 @@
 **No open-source license is granted.** مگر با اجازه کتبی جداگانه از صاحب حقوق، مجوز عمومی برای استفاده، کپی، تغییر، بازتوزیع، sublicense یا ساخت derivative work از کد اعطا نشده است؛ به‌جز دسترسی‌ها و قابلیت‌هایی که Terms of Service خود GitHub برای میزبانی، مشاهده و قابلیت‌های پلتفرم مانند fork الزاماً فراهم می‌کند.
 
 اگر برای استفاده‌ای خارج از این محدوده به مجوز نیاز داری، ابتدا باید اجازه صریح صاحب repository را دریافت کنی.
+
+## v0.8.4 — Today Study Mode + Study Sessions
+
+```text
+one active, owner-scoped StudySession per user             ✅
+idempotent start and terminal lifecycle                    ✅
+read-only Today API and deterministic Next Action           ✅
+Persian/RTL Today Command Center and Focused Study Mode    ✅
+additive StudySession migration 0032                       ✅
+46/46 focused and 326/326 full backend tests               ✅
+31/40 measured Today SQL query budget                      ✅
+desktop 1280x800 and mobile 390x844 Chromium QA            ✅
+```
+
+`GET /api/study/today/` assembles study-local date, capacity, Plans, today/overdue Blocks, SRS review counts, current Session, Daily Challenge and the existing Recommendation V2 result. `POST /api/study/sessions/` starts a Block-anchored Session using a client UUID; current/detail/complete/abandon routes recover and end it. `/study` is the Today Command Center, and `/study/session/[id]` shows one focused Block action with a separate explicit Block-completion control. All personal routes require authentication and ownership. See [the v0.8.4 release record](docs/Psychology_Atlas_v0.8.4_Today_Study_Mode_Study_Sessions_2026-09-29.md) for contracts, migration and validation evidence.
+
+The v0.8 Study Mode + Exam Planning + Advanced Recommendations roadmap family is complete across v0.8.1–v0.8.4. The next roadmap boundary is **v0.9 — Brain Atlas + Assessments Atlas**.
 
 ## v0.8.3 — Advanced Recommendations V2
 
@@ -1565,8 +1582,12 @@ v0.5.5  Compare + Personal Features + Final Hardening ✅
         Research Dataset Ingestion + provenance-safe enrichment ✅ (same v0.5.5 baseline)
 v0.6    Psychologists + Theories + Timeline
 v0.7    Advanced Branching Clinical Cases + Analytics
-v0.8    Study Mode + Exam Planning + Advanced Recommendations
-v0.9    Brain Atlas + Assessments Atlas
+v0.8.1  Study Planning Foundation ✅
+v0.8.2  Study Blocks + Deterministic Scheduler ✅
+v0.8.3  Advanced Recommendations V2 ✅
+v0.8.4  Today Study Mode + Study Sessions + UI ✅
+v0.8    Study Mode + Exam Planning + Advanced Recommendations ✅ COMPLETE
+v0.9    Brain Atlas + Assessments Atlas (next)
 v1.0    Admin CMS + Scientific Review + Full cross-domain integration
 ```
 
