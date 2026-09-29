@@ -15,7 +15,7 @@ from django.conf import settings
 from django.db.models import Count, Exists, F, OuterRef, Prefetch, Q, Subquery
 
 from . import models
-from .learning import available_flashcards
+from .learning import available_flashcards, due_flashcard_progress, new_flashcards
 from .study_planning import _scope_target, _target_active
 from .study_scheduler import _block_queryset, study_block_payload
 
@@ -110,9 +110,7 @@ def _queue_candidates(user, now, today, suppressed):
     if ("review_queue", None, "flashcard_review") in suppressed:
         return []
     visible = available_flashcards()
-    due_count = models.UserFlashcardProgress.objects.filter(
-        user=user, flashcard__in=visible, due_at__lte=now,
-    ).count()
+    due_count = due_flashcard_progress(user, now, visible).count()
     if due_count:
         return [_candidate(
             "srs_review", "review_queue", None, None, "srs_due",
@@ -121,7 +119,7 @@ def _queue_candidates(user, now, today, suppressed):
             ["موعد مرور این فلش‌کارت‌ها طبق برنامه مرور ثبت‌شده رسیده است."],
             [{"kind": "srs_due", "count": due_count}], "/flashcards", "مرور فلش‌کارت‌ها",
         )]
-    new_count = visible.exclude(user_progress__user=user).count()
+    new_count = new_flashcards(user, visible).count()
     if new_count:
         return [_candidate(
             "srs_start", "review_queue", None, None, "srs_new",
@@ -133,13 +131,38 @@ def _queue_candidates(user, now, today, suppressed):
     return []
 
 
-def build_candidates(user, now):
+def resumable_case_attempts(user, now):
+    """Owner-scoped recent attempts whose case and pinned step can be resumed."""
+    return models.CaseAttempt.objects.filter(
+        user=user, status=models.CaseAttempt.Status.IN_PROGRESS,
+        updated_at__gte=now - timedelta(days=30),
+        case__is_active=True,
+        case__current_revision__status=models.CaseRevision.Status.PUBLISHED,
+        case__current_revision__entry_step__is_active=True,
+        case__current_revision__case_id=F("case_id"),
+        case__current_revision__entry_step__case_id=F("case_id"),
+        case__current_revision__entry_step__revision_id=F("case__current_revision_id"),
+        revision__case_id=F("case_id"),
+        revision__status=models.CaseRevision.Status.PUBLISHED,
+        current_step__is_active=True,
+        current_step__case_id=F("case_id"),
+        current_step__revision_id=F("revision_id"),
+    ).filter(
+        Q(case__current_revision__primary_disorder__isnull=True)
+        | Q(case__current_revision__primary_disorder__is_active=True),
+    ).select_related(
+        "case", "case__current_revision", "case__current_revision__entry_step",
+        "case__current_revision__primary_disorder", "revision", "current_step",
+    ).order_by("-updated_at", "-id")
+
+
+def build_candidates(user, now, *, today=None):
     """Return ordered, deduplicated pre-dismissal candidates and cap indicator.
 
     No write occurs here, including implicit settings creation. The API applies
     owner-key feedback and a response limit after this function returns.
     """
-    today = _owner_date(user, now)
+    today = today if today is not None else _owner_date(user, now)
     cutoff = now - timedelta(days=30)
     candidates = []
     truncated = False
@@ -272,21 +295,7 @@ def build_candidates(user, now):
 
     candidates.extend(_queue_candidates(user, now, today, suppressed_actions))
 
-    cases, hit = _capped(models.CaseAttempt.objects.filter(
-        user=user, status=models.CaseAttempt.Status.IN_PROGRESS, updated_at__gte=cutoff,
-        case__is_active=True,
-        case__current_revision__status=models.CaseRevision.Status.PUBLISHED,
-        case__current_revision__entry_step__is_active=True,
-        case__current_revision__case_id=F("case_id"),
-        case__current_revision__entry_step__case_id=F("case_id"),
-        case__current_revision__entry_step__revision_id=F("case__current_revision_id"),
-    ).filter(
-        Q(case__current_revision__primary_disorder__isnull=True)
-        | Q(case__current_revision__primary_disorder__is_active=True),
-    ).select_related(
-        "case", "case__current_revision", "case__current_revision__entry_step",
-        "case__current_revision__primary_disorder", "revision", "current_step",
-    ).order_by("-updated_at", "-id"), 20)
+    cases, hit = _capped(resumable_case_attempts(user, now), 20)
     truncated |= hit
     seen_cases = set()
     for attempt in cases:

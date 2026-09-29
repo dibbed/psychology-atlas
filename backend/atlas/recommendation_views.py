@@ -65,9 +65,13 @@ def recommendations(request):
     if not 1 <= limit <= 20:
         return _error("recommendation_invalid_query", "Invalid recommendation query.", 400)
 
-    now = timezone.now()
-    candidates, truncated = build_candidates(request.user, now)
-    latest = _latest_by_key(request.user, [item["key"] for item in candidates])
+    return Response(assemble_recommendations(request.user, timezone.now(), limit=limit))
+
+
+def assemble_recommendations(user, now, *, limit=8, local_date=None):
+    """The released V2 read assembly, shared by its endpoint and Today."""
+    candidates, truncated = build_candidates(user, now, today=local_date)
+    latest = _latest_by_key(user, [item["key"] for item in candidates])
     items = []
     suppressed_count = 0
     for candidate in candidates:
@@ -80,14 +84,14 @@ def recommendations(request):
             item["feedback"] = feedback
             item["order"] = len(items) + 1
             items.append(item)
-    return Response({
+    return {
         "version": "v2",
         "as_of": now.isoformat(),
         "items": items,
         "returned_count": len(items),
         "suppressed_count": suppressed_count,
         "truncated_sources": truncated,
-    })
+    }
 
 
 def _parse_feedback(request, key):

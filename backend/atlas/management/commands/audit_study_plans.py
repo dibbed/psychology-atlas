@@ -126,12 +126,55 @@ class Command(BaseCommand):
                     )
                 active_keys.add(key)
 
+        active_session_users = set()
+        sessions = models.StudySession.objects.select_related(
+            "plan", "primary_block", "primary_block__plan"
+        ).order_by("id")
+        for session in sessions.iterator():
+            counters["sessions"] += 1
+            if session.status == models.StudySession.Status.IN_PROGRESS:
+                if session.user_id in active_session_users:
+                    failures.append(f"session:{session.id}:duplicate_active_user")
+                active_session_users.add(session.user_id)
+            if session.plan.user_id != session.user_id:
+                failures.append(f"session:{session.id}:foreign_plan")
+            if session.primary_block_id is not None and (
+                session.primary_block.plan_id != session.plan_id
+                or session.primary_block.plan.user_id != session.user_id
+                or session.primary_block_id != session.block_id_at_start
+            ):
+                failures.append(f"session:{session.id}:block_plan_mismatch")
+            if not 5 <= session.planned_minutes <= 240 or not 0 <= session.actual_seconds <= 86400:
+                failures.append(f"session:{session.id}:invalid_duration")
+            if session.status == models.StudySession.Status.IN_PROGRESS:
+                valid = (session.completed_at is None and session.abandoned_at is None
+                         and session.actual_seconds == 0)
+            elif session.status == models.StudySession.Status.COMPLETED:
+                valid = (session.completed_at is not None and session.abandoned_at is None
+                         and session.completed_at >= session.started_at)
+                if valid:
+                    valid = session.actual_seconds == min(
+                        max(0, int((session.completed_at - session.started_at).total_seconds())), 86400
+                    )
+            elif session.status == models.StudySession.Status.ABANDONED:
+                valid = (session.abandoned_at is not None and session.completed_at is None
+                         and session.abandoned_at >= session.started_at)
+                if valid:
+                    valid = session.actual_seconds == min(
+                        max(0, int((session.abandoned_at - session.started_at).total_seconds())), 86400
+                    )
+            else:
+                valid = False
+            if not valid or session.block_id_at_start <= 0:
+                failures.append(f"session:{session.id}:invalid_lifecycle")
+
         self.stdout.write(
             "Study plan audit: "
             f"settings={counters['settings']} "
             f"plans={counters['plans']} "
             f"scopes={counters['scopes']} "
             f"blocks={counters['blocks']} "
+            f"sessions={counters['sessions']} "
             f"warnings={len(warnings)} "
             f"failures={len(failures)}"
         )

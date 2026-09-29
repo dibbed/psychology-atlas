@@ -93,7 +93,7 @@ class V083RecommendationFeedbackMigrationTests(TransactionTestCase):
     migrate_to = ("atlas", "0031_v083_recommendation_feedback")
 
     def tearDown(self):
-        MigrationExecutor(connection).migrate([self.migrate_to])
+        MigrationExecutor(connection).migrate([("atlas", "0032_v084_study_sessions")])
         super().tearDown()
 
     def test_historical_upgrade_preserves_canonical_state_without_backfill(self):
