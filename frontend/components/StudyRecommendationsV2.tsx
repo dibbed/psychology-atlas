@@ -71,10 +71,10 @@ function contextHints(context: StudyContext, dueCards: number) {
   return hints;
 }
 
-export default function StudyRecommendationsV2({ dueCards }: { dueCards: number }) {
-  const [recommendations, setRecommendations] = useState<StudyRecommendationsV2Response | null>(null);
+export default function StudyRecommendationsV2({ dueCards, initialData, onRefresh }: { dueCards: number; initialData?: StudyRecommendationsV2Response; onRefresh?: () => Promise<StudyRecommendationsV2Response> }) {
+  const [recommendations, setRecommendations] = useState<StudyRecommendationsV2Response | null>(initialData ?? null);
   const [context, setContext] = useState<StudyContext>({ plans: null, studyDays: null, quizzesCompleted: null, casesCompleted: null });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initialData);
   const [error, setError] = useState("");
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const retryEvent = useRef<{ key: string; value: FeedbackValue; id: string } | null>(null);
@@ -83,16 +83,19 @@ export default function StudyRecommendationsV2({ dueCards }: { dueCards: number 
     setLoading(true);
     setError("");
     try {
-      setRecommendations(await api<StudyRecommendationsV2Response>("/study/recommendations/?limit=8", {}, true));
+      setRecommendations(onRefresh ? await onRefresh() : await api<StudyRecommendationsV2Response>("/study/recommendations/?limit=8", {}, true));
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : "پیشنهادهای مطالعه بارگذاری نشد.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [onRefresh]);
 
   useEffect(() => {
-    void load();
+    if (!initialData) void load();
+  }, [initialData, load]);
+
+  useEffect(() => {
     void Promise.allSettled([
       api<StudyPlanListResponse>("/study/plans/", {}, true),
       api<{ study_days: number; quizzes_completed: number; cases_completed: number }>("/dashboard/", {}, true),
@@ -104,7 +107,11 @@ export default function StudyRecommendationsV2({ dueCards }: { dueCards: number 
         casesCompleted: dashboard.status === "fulfilled" ? dashboard.value.cases_completed : null,
       });
     });
-  }, [load]);
+  }, []);
+
+  useEffect(() => {
+    if (initialData) setRecommendations(initialData);
+  }, [initialData]);
 
   async function sendFeedback(item: StudyRecommendationV2, value: FeedbackValue) {
     if (pendingKey) return;
@@ -127,9 +134,9 @@ export default function StudyRecommendationsV2({ dueCards }: { dueCards: number 
           : current.items.map((candidate) => candidate.key === item.key ? { ...candidate, feedback: response.feedback } : candidate),
         suppressed_count: current.suppressed_count + (value === "dismissed" ? 1 : 0),
       }));
-      if (value === "dismissed") {
+      if (onRefresh || value === "dismissed") {
         try {
-          setRecommendations(await api<StudyRecommendationsV2Response>("/study/recommendations/?limit=8", {}, true));
+          setRecommendations(onRefresh ? await onRefresh() : await api<StudyRecommendationsV2Response>("/study/recommendations/?limit=8", {}, true));
         } catch {
           setError("بازخورد ثبت شد، اما فهرست به‌روز نشد. برای تازه‌سازی دوباره تلاش کن.");
         }
@@ -148,7 +155,7 @@ export default function StudyRecommendationsV2({ dueCards }: { dueCards: number 
         <div>
           <div className="meta">پیشنهادهای مطالعه</div>
           <h2 id="study-recommendations-title">قدم بعدی در مطالعه</h2>
-          <p className="muted small">پیشنهادها از برنامه و فعالیت ثبت‌شدهٔ تو می‌آیند و با تغییر آن‌ها تازه می‌شوند.</p>
+          <p className="muted small">پیشنهادها بر پایهٔ محتوای در دسترس و وضعیت فعلی مطالعه‌ات هستند و با تغییر آن‌ها تازه می‌شوند.</p>
         </div>
         <Link className="button" href="/study/plans">برنامه‌های من</Link>
       </div>

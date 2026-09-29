@@ -1472,6 +1472,72 @@ export type StudyRecommendationsV2Response = {
   truncated_sources: boolean;
 };
 
+export type StudySessionBlock = Pick<StudyBlock,
+  "id" | "plan_id" | "block_kind" | "status" | "scheduled_date" | "estimated_minutes" | "snapshot_title" | "target_active" | "evidence_required"
+> & { action_href: string | null };
+
+export type StudySession = {
+  id: number;
+  status: "in_progress" | "completed" | "abandoned";
+  plan_id: number;
+  primary_block_id: number | null;
+  block_id_at_start: number;
+  planned_minutes: number;
+  started_at: string;
+  completed_at: string | null;
+  abandoned_at: string | null;
+  actual_seconds: number;
+  elapsed_seconds: number;
+  elapsed_capped: boolean;
+  as_of: string;
+  created_at: string;
+  updated_at: string;
+  primary_block: StudySessionBlock | null;
+};
+
+export type TodayBlock = StudySessionBlock & {
+  sequence: number;
+  scope_priority: number | null;
+  action_href: string;
+  target_active: true;
+  can_start_session: true;
+};
+
+export type StudyToday = {
+  version: "v1";
+  as_of: string;
+  local_date: string;
+  timezone: string;
+  capacity: {
+    available_minutes: number;
+    scheduled_minutes: number;
+    completed_minutes: number;
+    remaining_minutes: number;
+    over_capacity_minutes: number;
+  };
+  active_session: StudySession | null;
+  review: { due: number; overdue: number; new: number };
+  active_plans: {
+    total: number;
+    truncated: boolean;
+    items: { id: number; name: string; plan_kind: "general" | "exam"; target_date: string | null; days_remaining: number | null; generation_version: number; schedule_stale: boolean; today_available_minutes: number }[];
+  };
+  today_blocks: { total: number; items: TodayBlock[]; truncated: boolean };
+  overdue_blocks: { total: number; items: TodayBlock[]; truncated: boolean };
+  daily_challenge: { challenge_date: string; available: boolean; completed: boolean; action: { href: string; label: string } | null };
+  next_action: {
+    kind: "resume_session" | "resume_case" | "overdue_block" | "today_block" | "srs_review" | "daily_challenge" | "recommendation" | "onboarding";
+    reason_code: string;
+    target: { type: string; id: number | null };
+    plan_id: number | null;
+    block_id: number | null;
+    recommendation_key: string | null;
+    can_start_session: boolean;
+    action: { href: string; label: string };
+  };
+  recommendations: StudyRecommendationsV2Response;
+};
+
 export type StudyScopeCatalogItem = {
   target_type: StudyScopeTargetType;
   target_slug: string;
