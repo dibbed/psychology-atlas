@@ -1756,6 +1756,107 @@ class ConceptNote(TimeStampedModel):
         ]
 
 
+class StudySession(TimeStampedModel):
+    class Status(models.TextChoices):
+        IN_PROGRESS = "in_progress", "In progress"
+        COMPLETED = "completed", "Completed"
+        ABANDONED = "abandoned", "Abandoned"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="study_sessions"
+    )
+    plan = models.ForeignKey(StudyPlan, on_delete=models.CASCADE, related_name="sessions")
+    primary_block = models.ForeignKey(
+        StudyBlock, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="study_sessions",
+    )
+    block_id_at_start = models.PositiveBigIntegerField()
+    client_event_id = models.UUIDField()
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.IN_PROGRESS)
+    planned_minutes = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(5), MaxValueValidator(240)]
+    )
+    started_at = models.DateTimeField()
+    completed_at = models.DateTimeField(null=True, blank=True)
+    abandoned_at = models.DateTimeField(null=True, blank=True)
+    actual_seconds = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("user",), condition=Q(status="in_progress"),
+                name="uq_study_session_active_user",
+            ),
+            models.UniqueConstraint(
+                fields=("user", "client_event_id"), name="uq_study_session_event"
+            ),
+            models.CheckConstraint(
+                condition=Q(block_id_at_start__gt=0), name="ck_study_session_block_id"
+            ),
+            models.CheckConstraint(
+                condition=Q(planned_minutes__gte=5) & Q(planned_minutes__lte=240),
+                name="ck_study_session_minutes",
+            ),
+            models.CheckConstraint(
+                condition=Q(actual_seconds__gte=0) & Q(actual_seconds__lte=86400),
+                name="ck_study_session_seconds",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(status="in_progress", completed_at__isnull=True,
+                      abandoned_at__isnull=True, actual_seconds=0)
+                    | (Q(status="completed", completed_at__isnull=False,
+                         completed_at__gte=F("started_at"))
+                       & Q(abandoned_at__isnull=True))
+                    | (Q(status="abandoned", abandoned_at__isnull=False,
+                         abandoned_at__gte=F("started_at"))
+                       & Q(completed_at__isnull=True))
+                ),
+                name="ck_study_session_lifecycle",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=("user", "-started_at", "-id"), name="idx_study_session_user_time"),
+            models.Index(fields=("plan", "-started_at", "-id"), name="idx_study_session_plan_time"),
+        ]
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.plan_id and self.user_id:
+            if not StudyPlan.objects.filter(pk=self.plan_id, user_id=self.user_id).exists():
+                errors["plan"] = "Plan must belong to the session owner."
+        if self.primary_block_id is not None:
+            if self.primary_block_id != self.block_id_at_start:
+                errors["block_id_at_start"] = "Original block ID must match the primary block."
+            if not StudyBlock.objects.filter(
+                pk=self.primary_block_id, plan_id=self.plan_id,
+                plan__user_id=self.user_id,
+            ).exists():
+                errors["primary_block"] = "Block must belong to the owner's plan."
+        original = None
+        if self.pk:
+            original = type(self).objects.filter(pk=self.pk).values(
+                "block_id_at_start", "client_event_id", "user_id", "plan_id",
+                "primary_block_id",
+            ).first()
+        if original:
+            for field in (
+                "block_id_at_start", "client_event_id", "user_id", "plan_id",
+                "primary_block_id",
+            ):
+                if getattr(self, field) != original[field]:
+                    errors[field] = "This session identity is immutable."
+        elif self.primary_block_id is None:
+            errors["primary_block"] = "A block is required when starting a session."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        return super().save(*args, **kwargs)
+
+
 class DailyChallenge(TimeStampedModel):
     prompt = models.TextField()
     explanation = models.TextField(blank=True)

@@ -1,10 +1,21 @@
 # Psychology Atlas Product Spec
 
-## Current release: v0.8.3 — Advanced Recommendations V2
+## Current release: v0.8.4 — Today Study Mode + Study Sessions
 
-The v0.7 Clinical Case line remains frozen through v0.7.5. v0.8.1 established user-owned plan intent/configuration; v0.8.2 added deterministic, history-safe StudyBlock scheduling; **v0.8.3** adds explainable, bounded recommendations and owner-scoped feedback. StudySession remains deferred to v0.8.4.
+The v0.7 Clinical Case line remains frozen through v0.7.5. v0.8.1 established user-owned plan intent/configuration; v0.8.2 added deterministic, history-safe StudyBlock scheduling; v0.8.3 added explainable, bounded recommendations and owner-scoped feedback; **v0.8.4** adds owner-scoped focused Sessions and read-only Today orchestration. The v0.8 family is complete; v0.9 Brain Atlas + Assessments Atlas is the next boundary.
 
 Psychology Atlas is an interactive educational system for psychology students. It should behave as a connected learning system, not as a psychology blog and not as a diagnostic product.
+
+### v0.8.4 Today Study Mode + Study Sessions invariants
+
+- `StudySession` is a user-owned, Block-anchored focus window with `in_progress`, `completed`, and `abandoned` lifecycle states. It records planned minutes and capped server wall-clock seconds; it is not proof of attention, mastery, exam readiness, Block completion, or clinical competence.
+- Migration 0032 adds only StudySession storage, integrity checks, unique owner/event identity, a partial unique constraint for one active Session per user, and lookup indexes. It performs no historical backfill. The original Block ID remains as a snapshot if a Block is hard deleted.
+- An owned active Plan and actionable owned Block are required to start. Exact client UUID replay is idempotent; equivalent active starts return the active Session; conflicting starts or terminal transitions are rejected. Owner row locking, a database uniqueness guard, and bounded SQLite lock retries protect concurrent starts and endings.
+- `GET /api/study/today/` is read-only, authenticated, and owner-scoped. It returns the study-local date, bounded Plan/Block lists with exact totals, capacity, canonical SRS and Daily Challenge context, active Session, deterministic Next Action, and the existing Recommendation V2 response. Study timezone determines Plan/Block dates; Daily Challenge retains application timezone. Missing or corrupt study settings fall back to application timezone without a GET write.
+- Next Action precedence is active Session, resumable Case, actionable overdue Block, actionable today Block, due SRS review, available Daily Challenge with capacity, visible Recommendation V2, then deterministic onboarding. These are workflow suggestions, not new evidence or clinical recommendations.
+- Session completion or abandonment never completes a StudyBlock or writes canonical SRS, Quiz, Case, distortion, Daily Challenge, progress, or mastery evidence. The existing explicit Block completion route continues to enforce target-matched canonical evidence or reading adherence confirmation.
+- `/study` is the Persian/RTL Today Command Center; `/study/session/[id]` is the recoverable focused Session page. Existing Plan management, legacy study overview, Dashboard, Recommendation V2 feedback, and canonical activity routes remain available.
+- Final branch local evidence: 47/47 focused and 327/327 full backend tests; 31/40 measured Today queries on a populated fixture; historical and fresh SQLite migration checks; Django, frontend, audit and browser gates passed. See `docs/Psychology_Atlas_v0.8.4_Today_Study_Mode_Study_Sessions_2026-09-29.md` for exact scope and unverified production boundaries.
 
 ### v0.8.3 Advanced Recommendations V2 invariants
 
@@ -784,9 +795,13 @@ v0.5.5  Compare + Personal Features + Final Hardening ✅
         Research Dataset Ingestion + provenance-safe enrichment ✅ (same v0.5.5 baseline)
 v0.6    Psychologists + Theories + Timeline
 v0.7  Advanced Branching Clinical Cases + Analytics
-v0.8  Study Mode + Exam Planning + Advanced Recommendations
-v0.9  Brain Atlas + Assessments Atlas
+v0.8.1  Study Planning Foundation ✅
+v0.8.2  Study Blocks + Deterministic Scheduler ✅
+v0.8.3  Advanced Recommendations V2 ✅
+v0.8.4  Today Study Mode + Study Sessions + UI ✅
+v0.8  Study Mode + Exam Planning + Advanced Recommendations ✅ COMPLETE
+v0.9  Brain Atlas + Assessments Atlas (next)
 v1.0  Admin CMS + Scientific Review + Full cross-domain integration
 ```
 
-The current product version is v0.5.5 Compare + Personal Features + Final Hardening.
+The current product version is v0.8.4 Today Study Mode + Study Sessions.

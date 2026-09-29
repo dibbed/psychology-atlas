@@ -26,6 +26,18 @@ def available_flashcards():
     )
 
 
+def due_flashcard_progress(user, now, visible=None):
+    visible = visible if visible is not None else available_flashcards()
+    return UserFlashcardProgress.objects.filter(
+        user=user, flashcard__in=visible, due_at__lte=now,
+    )
+
+
+def new_flashcards(user, visible=None):
+    visible = visible if visible is not None else available_flashcards()
+    return visible.exclude(user_progress__user=user)
+
+
 def record_activity(user, activity_type, **links):
     allowed = {"disorder", "concept", "quiz", "clinical_case", "flashcard", "therapy", "metadata", "occurred_at"}
     payload = {key: value for key, value in links.items() if key in allowed and value is not None}
@@ -174,9 +186,9 @@ def review_flashcard(*, user, flashcard: Flashcard, rating: str):
 
 def get_review_queue(user, *, limit=20, concept_slug=None, disorder_slug=None):
     now = timezone.now()
-    visible_ids = available_flashcards().values_list("id", flat=True)
-    due_qs = UserFlashcardProgress.objects.filter(user=user, flashcard_id__in=visible_ids, due_at__lte=now)
-    new_qs = available_flashcards()
+    visible = available_flashcards()
+    due_qs = due_flashcard_progress(user, now, visible)
+    new_qs = visible
     if concept_slug:
         due_qs = due_qs.filter(flashcard__concept__slug=concept_slug)
         new_qs = new_qs.filter(concept__slug=concept_slug)
@@ -189,9 +201,8 @@ def get_review_queue(user, *, limit=20, concept_slug=None, disorder_slug=None):
     )
     remaining = max(0, limit - len(due_rows))
     if remaining:
-        reviewed_ids = UserFlashcardProgress.objects.filter(user=user).values_list("flashcard_id", flat=True)
         new_cards = list(
-            new_qs.exclude(id__in=reviewed_ids)
+            new_flashcards(user, new_qs)
             .select_related("concept", "disorder", "disorder__category")
             .order_by("sort_order", "id")[:remaining]
         )
@@ -310,7 +321,7 @@ def get_recommendations(user, *, limit=6):
     return sorted(recommendations, key=lambda item: item["priority"], reverse=True)[:limit]
 
 
-def today_challenge():
+def today_challenge(activity_date=None):
     challenges = list(
         DailyChallenge.objects.filter(is_active=True)
         .filter(
@@ -329,13 +340,13 @@ def today_challenge():
         valid.append(challenge)
     if not valid:
         return None
-    index = timezone.localdate().toordinal() % len(valid)
+    index = (activity_date or timezone.localdate()).toordinal() % len(valid)
     return valid[index]
 
 
-def challenge_attempt_for_today(user):
+def challenge_attempt_for_today(user, activity_date=None):
     return (
-        DailyChallengeAttempt.objects.filter(user=user, activity_date=timezone.localdate())
+        DailyChallengeAttempt.objects.filter(user=user, activity_date=activity_date or timezone.localdate())
         .select_related("challenge", "challenge__concept", "challenge__disorder", "selected_choice")
         .first()
     )
