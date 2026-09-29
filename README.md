@@ -24,7 +24,7 @@ idempotent start and terminal lifecycle                    ✅
 read-only Today API and deterministic Next Action           ✅
 Persian/RTL Today Command Center and Focused Study Mode    ✅
 additive StudySession migration 0032                       ✅
-46/46 focused and 326/326 full backend tests               ✅
+47/47 focused and 327/327 full backend tests               ✅
 31/40 measured Today SQL query budget                      ✅
 desktop 1280x800 and mobile 390x844 Chromium QA            ✅
 ```

@@ -348,6 +348,38 @@ class TodayApiTests(APITestCase):
         self.assert_action(self.response(), "overdue_block", "block_overdue",
                            "study_block", overdue.id)
 
+    def test_retired_pinned_case_remains_resumable_in_today_and_v2(self):
+        attempt = self.case_attempt("retired-pinned-case")
+        case = attempt.case
+        attempt.revision.status = models.CaseRevision.Status.RETIRED
+        attempt.revision.save(update_fields=("status", "updated_at"))
+        current = models.CaseRevision.objects.create(
+            case=case, version=2, title="Current revision",
+            patient_summary="Updated educational case",
+            status=models.CaseRevision.Status.PUBLISHED,
+        )
+        entry = models.CaseStep.objects.create(
+            case=case, revision=current, stable_key="current-entry",
+            title="Current entry", narrative="Current content", sort_order=1,
+            is_active=True,
+        )
+        current.entry_step = entry
+        current.save(update_fields=("entry_step", "updated_at"))
+        case.current_revision = current
+        case.save(update_fields=("current_revision", "updated_at"))
+
+        resumed = self.client.post(f"/api/cases/{case.slug}/attempts/", {}, format="json")
+        self.assertEqual(resumed.status_code, 200, resumed.data)
+        self.assertTrue(resumed.data["resumed"])
+        self.assertEqual(resumed.data["id"], attempt.id)
+
+        today = self.response()
+        self.assert_action(today, "resume_case", "case_in_progress", "clinical_case", case.id)
+        self.assertTrue(any(
+            item["type"] == "case_resume" and item["target"]["id"] == case.id
+            for item in today["recommendations"]["items"]
+        ))
+
     def test_srs_due_overdue_new_and_visibility(self):
         self.card("overdue-card", due_at=NOW - timedelta(days=1))
         self.card("due-card", due_at=NOW - timedelta(minutes=1))

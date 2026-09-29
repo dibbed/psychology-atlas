@@ -467,7 +467,7 @@
   ],
   "validation": {
     "django_check": "pass",
-    "backend_tests": "326/326 passed · v0.8.4 Phase 6 local validation",
+    "backend_tests": "327/327 passed · final v0.8.4 branch local validation",
     "python_compileall": "pass",
     "pip_check": "pass · no broken requirements",
     "migration_drift_check": "pass · no changes detected",
@@ -734,7 +734,7 @@
     "v083_npm_audit": "pass · 0 vulnerabilities at low threshold",
     "v083_browser_qa": "pass · real authenticated desktop 1280x800 and mobile 390x844; empty, generated/stale/backlog/overdue, feedback persistence and expiry, canonical links, auth isolation, zero overflow",
     "v083_qa_cleanup": "pass · temporary users 35 and 36 plus dependent Plan/Block/Feedback/QuizAttempt/CaseAttempt rows deleted and verified absent",
-    "focused_v084_tests": "46/46 passed · lifecycle, concurrency, Today, evidence boundaries, owner isolation, timezone, migration and query-budget regressions",
+    "focused_v084_tests": "47/47 passed · lifecycle, concurrency, Today, retired pinned Case resume, evidence boundaries, owner isolation, timezone, migration and query-budget regressions",
     "v084_today_query_budget": "pass · 31/40 queries with 24 active Plans, 31 today Blocks, 43 overdue Blocks, 85 due cards and 13 Sessions",
     "v084_historical_migration": "pass · 0032 applied to development SQLite; preexisting counts preserved across 118 tables except expected content-type and permission rows; no Session backfill",
     "v084_fresh_install": "pass · empty SQLite migrated through 0032; seed_mvp twice kept 1133 Atlas rows; zero fabricated Sessions",
@@ -1068,7 +1068,7 @@
       "evidence": "Session time is adherence only; explicit StudyBlock completion retains canonical owner/target evidence rules",
       "frontend": "Persian/RTL Today Command Center at /study and Focused Study Mode at /study/session/[id]",
       "migration": "0032 additive StudySession storage; historical counts preserved and no fabricated Sessions; fresh install and repeated seed stable",
-      "validation": "46 focused / 326 full backend tests; 31/40 Today queries; Django and migration checks, SQLite integrity, study/Case/scientific/research audits, frontend typecheck/build/npm audit and desktop/mobile Chromium QA pass locally",
+      "validation": "47 focused / 327 full backend tests; 31/40 Today queries; Django and migration checks, SQLite integrity, study/Case/scientific/research audits, frontend typecheck/build/npm audit and desktop/mobile Chromium QA pass locally",
       "release_doc": "docs/Psychology_Atlas_v0.8.4_Today_Study_Mode_Study_Sessions_2026-09-29.md",
       "next": "v0.9 Brain Atlas + Assessments Atlas; not started in v0.8.4"
     }

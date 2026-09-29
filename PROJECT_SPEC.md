@@ -15,7 +15,7 @@ Psychology Atlas is an interactive educational system for psychology students. I
 - Next Action precedence is active Session, resumable Case, actionable overdue Block, actionable today Block, due SRS review, available Daily Challenge with capacity, visible Recommendation V2, then deterministic onboarding. These are workflow suggestions, not new evidence or clinical recommendations.
 - Session completion or abandonment never completes a StudyBlock or writes canonical SRS, Quiz, Case, distortion, Daily Challenge, progress, or mastery evidence. The existing explicit Block completion route continues to enforce target-matched canonical evidence or reading adherence confirmation.
 - `/study` is the Persian/RTL Today Command Center; `/study/session/[id]` is the recoverable focused Session page. Existing Plan management, legacy study overview, Dashboard, Recommendation V2 feedback, and canonical activity routes remain available.
-- Phase 6 local evidence: 46/46 focused and 326/326 full backend tests; 31/40 measured Today queries on a populated fixture; historical and fresh SQLite migration checks; Django, frontend, audit and browser gates passed. See `docs/Psychology_Atlas_v0.8.4_Today_Study_Mode_Study_Sessions_2026-09-29.md` for exact scope and unverified production boundaries.
+- Final branch local evidence: 47/47 focused and 327/327 full backend tests; 31/40 measured Today queries on a populated fixture; historical and fresh SQLite migration checks; Django, frontend, audit and browser gates passed. See `docs/Psychology_Atlas_v0.8.4_Today_Study_Mode_Study_Sessions_2026-09-29.md` for exact scope and unverified production boundaries.
 
 ### v0.8.3 Advanced Recommendations V2 invariants
 

@@ -143,7 +143,6 @@ def resumable_case_attempts(user, now):
         case__current_revision__entry_step__case_id=F("case_id"),
         case__current_revision__entry_step__revision_id=F("case__current_revision_id"),
         revision__case_id=F("case_id"),
-        revision__status=models.CaseRevision.Status.PUBLISHED,
         current_step__is_active=True,
         current_step__case_id=F("case_id"),
         current_step__revision_id=F("revision_id"),
