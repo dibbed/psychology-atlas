@@ -1,8 +1,9 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
-from django.db import models
+from django.db import models, transaction
 from django.db.models import F, Q
+from django.db.models.functions import Lower, Trim
 from django.utils import timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -3393,3 +3394,318 @@ class DSMRecordRelation(TimeStampedModel):
             models.Index(fields=("source", "relationship_type")),
             models.Index(fields=("target", "relationship_type")),
         ]
+
+
+class BrainCanonicalBase(TimeStampedModel):
+    """Common identity and review fields; anatomy and networks remain distinct tables."""
+
+    slug = models.SlugField(max_length=180, unique=True)
+    name_en = models.CharField(max_length=255)
+    name_fa = models.CharField(max_length=255, blank=True)
+    description_en = models.TextField(blank=True)
+    description_fa = models.TextField(blank=True)
+    review_status = models.CharField(
+        max_length=24,
+        choices=ScientificReviewStatus.choices,
+        default=ScientificReviewStatus.UNREVIEWED,
+        db_index=True,
+    )
+    is_active = models.BooleanField(default=True)
+    seed_managed = models.BooleanField(default=False)
+
+    class Meta:
+        abstract = True
+
+    def clean(self):
+        super().clean()
+        if self.slug != self.slug.strip().lower():
+            raise ValidationError({"slug": "Slug must be lowercase without surrounding whitespace."})
+        if self.name_en != " ".join(self.name_en.split()):
+            raise ValidationError({"name_en": "Canonical name must use normalized whitespace."})
+        if self.pk:
+            original_slug = type(self).objects.filter(pk=self.pk).values_list("slug", flat=True).first()
+            if original_slug is not None and original_slug != self.slug:
+                raise ValidationError({"slug": "Canonical slugs cannot be changed."})
+        if self.review_status != ScientificReviewStatus.UNREVIEWED and self.pk:
+            if not self.source_links.exists():
+                raise ValidationError({"review_status": "A checked or reviewed entity requires a source link."})
+        elif self.review_status != ScientificReviewStatus.UNREVIEWED:
+            raise ValidationError({"review_status": "Create an unreviewed entity and attach sources first."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name_en
+
+
+class BrainAnatomicalEntity(BrainCanonicalBase):
+    class Kind(models.TextChoices):
+        WHOLE_BRAIN = "whole_brain", "Whole brain"
+        HEMISPHERE = "hemisphere", "Hemisphere"
+        LOBE = "lobe", "Lobe"
+        CORTICAL_REGION = "cortical_region", "Cortical region"
+        SUBCORTICAL_STRUCTURE = "subcortical_structure", "Subcortical structure"
+        REGION = "region", "Other region"
+        STRUCTURE = "structure", "Other structure"
+
+    class Laterality(models.TextChoices):
+        LEFT = "left", "Left"
+        RIGHT = "right", "Right"
+        MIDLINE = "midline", "Midline"
+        BILATERAL = "bilateral", "Bilateral or unlateralized"
+        NOT_ESTABLISHED = "not_established", "Not established"
+
+    kind = models.CharField(max_length=32, choices=Kind.choices)
+    laterality = models.CharField(max_length=24, choices=Laterality.choices)
+
+    class Meta:
+        ordering = ("name_en", "id")
+        constraints = [models.UniqueConstraint(Lower(Trim("slug")), name="uq_brain_anatomy_slug_ci")]
+        indexes = [
+            models.Index(fields=("kind", "laterality", "is_active")),
+            models.Index(fields=("review_status", "is_active")),
+            models.Index(fields=("name_en",)),
+            models.Index(fields=("name_fa",)),
+        ]
+
+    def has_active_ancestry(self):
+        """An inactive ancestor hides the whole branch without erasing history."""
+        if self.pk is None:
+            return False
+        current_id = self.pk
+        visited = set()
+        while current_id is not None:
+            if current_id in visited:
+                return False
+            visited.add(current_id)
+            if not BrainAnatomicalEntity.objects.filter(pk=current_id, is_active=True).exists():
+                return False
+            parent_id = BrainHierarchyLink.objects.filter(
+                child_id=current_id, is_active=True
+            ).values_list("parent_id", flat=True).first()
+            if parent_id is None:
+                return True
+            current_id = parent_id
+        return True
+
+
+class BrainNetwork(BrainCanonicalBase):
+    class Kind(models.TextChoices):
+        FUNCTIONAL = "functional_network", "Distributed functional network"
+
+    kind = models.CharField(max_length=32, choices=Kind.choices, default=Kind.FUNCTIONAL)
+
+    class Meta:
+        ordering = ("name_en", "id")
+        constraints = [models.UniqueConstraint(Lower(Trim("slug")), name="uq_brain_network_slug_ci")]
+        indexes = [
+            models.Index(fields=("review_status", "is_active")),
+            models.Index(fields=("name_en",)),
+            models.Index(fields=("name_fa",)),
+        ]
+
+
+class BrainAnatomicalAlias(models.Model):
+    class Language(models.TextChoices):
+        EN = "en", "English"
+        FA = "fa", "Persian"
+
+    class AliasType(models.TextChoices):
+        ALTERNATIVE = "alternative", "Alternative"
+        ABBREVIATION = "abbreviation", "Abbreviation"
+        HISTORICAL = "historical", "Historical"
+        TRANSLITERATION = "transliteration", "Transliteration"
+
+    entity = models.ForeignKey(BrainAnatomicalEntity, on_delete=models.PROTECT, related_name="aliases")
+    text = models.CharField(max_length=255)
+    language = models.CharField(max_length=12, choices=Language.choices)
+    alias_type = models.CharField(max_length=24, choices=AliasType.choices, default=AliasType.ALTERNATIVE)
+
+    class Meta:
+        ordering = ("language", "text")
+        constraints = [
+            models.UniqueConstraint(
+                Lower(Trim("text")), F("entity"), F("language"), name="uq_brain_anatomy_alias_ci"
+            ),
+        ]
+        indexes = [models.Index(fields=("text",))]
+
+    def save(self, *args, **kwargs):
+        self.text = " ".join(self.text.split())
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+
+class BrainNetworkAlias(models.Model):
+    Language = BrainAnatomicalAlias.Language
+    AliasType = BrainAnatomicalAlias.AliasType
+
+    network = models.ForeignKey(BrainNetwork, on_delete=models.PROTECT, related_name="aliases")
+    text = models.CharField(max_length=255)
+    language = models.CharField(max_length=12, choices=Language.choices)
+    alias_type = models.CharField(max_length=24, choices=AliasType.choices, default=AliasType.ALTERNATIVE)
+
+    class Meta:
+        ordering = ("language", "text")
+        constraints = [
+            models.UniqueConstraint(
+                Lower(Trim("text")), F("network"), F("language"), name="uq_brain_network_alias_ci"
+            ),
+        ]
+        indexes = [models.Index(fields=("text",))]
+
+    def save(self, *args, **kwargs):
+        self.text = " ".join(self.text.split())
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+
+class BrainAnatomicalEntitySource(models.Model):
+    entity = models.ForeignKey(BrainAnatomicalEntity, on_delete=models.PROTECT, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="brain_anatomy_links")
+    note = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=("entity", "source"), name="uq_brain_anatomy_source")]
+
+
+class BrainNetworkSource(models.Model):
+    network = models.ForeignKey(BrainNetwork, on_delete=models.PROTECT, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="brain_network_links")
+    note = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=("network", "source"), name="uq_brain_network_source")]
+
+
+class BrainExternalIdentifier(models.Model):
+    """A versioned namespace key can identify one anatomy or one network."""
+
+    entity = models.ForeignKey(
+        BrainAnatomicalEntity, on_delete=models.PROTECT, related_name="external_identifiers",
+        null=True, blank=True,
+    )
+    network = models.ForeignKey(
+        BrainNetwork, on_delete=models.PROTECT, related_name="external_identifiers",
+        null=True, blank=True,
+    )
+    namespace = models.CharField(max_length=120)
+    identifier = models.CharField(max_length=255)
+    source_version = models.CharField(max_length=120)
+    url = models.URLField(max_length=1000, blank=True)
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="brain_identifier_links")
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=(Q(entity__isnull=False, network__isnull=True)
+                           | Q(entity__isnull=True, network__isnull=False)),
+                name="ck_brain_external_id_one_owner",
+            ),
+            models.UniqueConstraint(
+                Lower(Trim("namespace")), Trim("identifier"), Lower(Trim("source_version")),
+                name="uq_brain_external_id",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=("entity", "namespace")),
+            models.Index(fields=("network", "namespace")),
+        ]
+
+    def clean(self):
+        super().clean()
+        if (self.entity_id is None) == (self.network_id is None):
+            raise ValidationError("An external identifier must have exactly one owner.")
+
+    def save(self, *args, **kwargs):
+        self.namespace = self.namespace.strip()
+        self.identifier = self.identifier.strip()
+        self.source_version = self.source_version.strip()
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+
+class BrainHierarchyLink(ScientificRelationBase):
+    """The selected primary anatomical part-of hierarchy, with retained history."""
+
+    child = models.ForeignKey(BrainAnatomicalEntity, on_delete=models.PROTECT, related_name="parent_links")
+    parent = models.ForeignKey(BrainAnatomicalEntity, on_delete=models.PROTECT, related_name="child_links")
+    source_version = models.CharField(max_length=120)
+
+    class Meta:
+        ordering = ("sort_order", "id")
+        constraints = [
+            models.CheckConstraint(condition=~Q(child=F("parent")), name="ck_brain_hierarchy_not_self"),
+            models.UniqueConstraint(fields=("child",), condition=Q(is_active=True), name="uq_brain_active_parent"),
+        ]
+        indexes = [models.Index(fields=("parent", "is_active"))]
+
+    def clean(self):
+        super().clean()
+        if self.child_id is None or self.parent_id is None:
+            return
+        if self.child_id == self.parent_id:
+            raise ValidationError({"parent": "An entity cannot parent itself."})
+        if not self.source_version.strip():
+            raise ValidationError({"source_version": "A named source version is required."})
+        if self.review_status != ScientificReviewStatus.UNREVIEWED:
+            if self.pk is None or not self.source_links.exists():
+                raise ValidationError({"review_status": "A checked or reviewed link requires relation-level sources."})
+        if not self.is_active:
+            return
+        # Read current endpoint state; a previously cached relation may be stale.
+        child = BrainAnatomicalEntity.objects.filter(pk=self.child_id).first()
+        parent = BrainAnatomicalEntity.objects.filter(pk=self.parent_id).first()
+        if child is None or parent is None:
+            return  # Foreign-key validation reports the missing endpoint.
+        if not child.is_active or not parent.is_active:
+            raise ValidationError("An active hierarchy link requires active endpoints.")
+        if parent.laterality in {BrainAnatomicalEntity.Laterality.LEFT, BrainAnatomicalEntity.Laterality.RIGHT}:
+            if child.laterality in {
+                BrainAnatomicalEntity.Laterality.LEFT,
+                BrainAnatomicalEntity.Laterality.RIGHT,
+                BrainAnatomicalEntity.Laterality.MIDLINE,
+                BrainAnatomicalEntity.Laterality.BILATERAL,
+            } and child.laterality != parent.laterality:
+                raise ValidationError({"parent": "Child laterality conflicts with its parent."})
+        current_id = self.parent_id
+        seen = set()
+        while current_id is not None:
+            if current_id == self.child_id or current_id in seen:
+                raise ValidationError({"parent": "Hierarchy links cannot form a cycle."})
+            seen.add(current_id)
+            current_id = BrainHierarchyLink.objects.filter(
+                child_id=current_id, is_active=True
+            ).exclude(pk=self.pk).values_list("parent_id", flat=True).first()
+            if current_id is not None and not BrainAnatomicalEntity.objects.filter(pk=current_id, is_active=True).exists():
+                raise ValidationError({"parent": "An active link cannot have an inactive ancestor."})
+    def save(self, *args, **kwargs):
+        with transaction.atomic():
+            # Curator writes are rare. Lock the whole primary tree in a fixed
+            # order so two disjoint reparentings cannot jointly form a cycle.
+            list(BrainAnatomicalEntity.objects.select_for_update().order_by("pk").values_list("pk", flat=True))
+            self.full_clean()
+            return super().save(*args, **kwargs)
+
+
+class BrainHierarchyLinkSource(models.Model):
+    relationship = models.ForeignKey(BrainHierarchyLink, on_delete=models.PROTECT, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="brain_hierarchy_links")
+    note = models.TextField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("relationship", "source"), name="uq_brain_hierarchy_source"),
+            models.CheckConstraint(condition=~Q(note=""), name="ck_brain_hierarchy_source_note"),
+        ]
+
+    def clean(self):
+        super().clean()
+        if not self.note.strip():
+            raise ValidationError({"note": "Identify the supported part-of claim."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
