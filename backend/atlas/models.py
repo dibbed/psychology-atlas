@@ -3766,15 +3766,26 @@ class BrainHierarchyLink(ScientificRelationBase):
             ).exclude(pk=self.pk).values_list("parent_id", flat=True).first()
             if current_id is not None and not BrainAnatomicalEntity.objects.filter(pk=current_id, is_active=True).exists():
                 raise ValidationError({"parent": "An active link cannot have an inactive ancestor."})
-    def save(self, *args, **kwargs):
+    def save(self, force_insert=False, force_update=False, using=None, update_fields=None):
         with transaction.atomic():
             # Curator writes are rare. Lock the whole primary tree in a fixed
             # order so two disjoint reparentings cannot jointly form a cycle.
             list(BrainAnatomicalEntity.objects.select_for_update().order_by("pk").values_list("pk", flat=True))
+            candidate = self
             if self.pk is not None:
-                list(type(self).objects.select_for_update().filter(pk=self.pk).values_list("pk", flat=True))
-            self.full_clean()
-            return super().save(*args, **kwargs)
+                stored = type(self).objects.select_for_update().filter(pk=self.pk).first()
+                if stored is not None and update_fields is not None:
+                    # Validate the row this write will produce, including fields
+                    # whose in-memory edits are excluded from a partial save.
+                    update_fields = frozenset(update_fields)
+                    candidate = stored
+                    for name in update_fields:
+                        field = self._meta.get_field(name)
+                        setattr(candidate, field.attname, getattr(self, field.attname))
+            candidate.full_clean()
+            return super().save(
+                force_insert=force_insert, force_update=force_update, using=using, update_fields=update_fields,
+            )
 
 
 class BrainHierarchyLinkSource(BrainSourceLinkBase):

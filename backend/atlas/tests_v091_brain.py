@@ -235,6 +235,60 @@ class BrainFoundationTests(TestCase):
         parent.refresh_from_db()
         self.assertEqual(parent.laterality, BrainAnatomicalEntity.Laterality.LEFT)
 
+    def test_partial_hierarchy_saves_cannot_skip_active_graph_validation(self):
+        parent = self.anatomy("left-parent", laterality="left")
+        child = self.anatomy("left-child", laterality="left")
+        link = self.link(child, parent)
+        opposite = self.anatomy("opposite-parent", laterality="right")
+        descendant = self.anatomy("descendant", laterality="left")
+        self.link(descendant, child)
+        inactive = self.anatomy("inactive-parent", is_active=False)
+        ancestor = self.anatomy("inactive-ancestor")
+        hidden_branch = self.anatomy("hidden-branch", laterality="left")
+        self.link(hidden_branch, ancestor)
+        ancestor.is_active = False
+        ancestor.save()
+        for invalid_parent in (opposite, descendant, inactive, hidden_branch):
+            with self.subTest(parent=invalid_parent.slug):
+                link.is_active = False  # This field will not be persisted.
+                link.parent = invalid_parent
+                with self.assertRaises(ValidationError):
+                    link.save(update_fields=["parent"])
+                link.refresh_from_db()
+                self.assertTrue(link.is_active)
+                self.assertEqual(link.parent_id, parent.pk)
+
+        link.is_active = False
+        link.parent = opposite
+        with self.assertRaises(ValidationError):
+            link.save(False, False, None, ["parent"])
+        link.refresh_from_db()
+        self.assertTrue(link.is_active)
+        self.assertEqual(link.parent_id, parent.pk)
+
+    def test_partial_hierarchy_saves_validate_stored_endpoints_and_ignore_unwritten_edits(self):
+        left = self.anatomy("left", laterality="left")
+        right = self.anatomy("right", laterality="right")
+        child = self.anatomy("left-child", laterality="left")
+        link = self.link(child, left)
+        link.parent = right  # A metadata-only update must keep the stored valid parent.
+        link.source_version = "Fixture atlas v2"
+        link.save(update_fields=["source_version"])
+        link.refresh_from_db()
+        self.assertEqual(link.parent_id, left.pk)
+        self.assertEqual(link.source_version, "Fixture atlas v2")
+
+        link.is_active = False
+        link.parent = right
+        link.save()  # Historical inactive links may retain incompatible endpoints.
+        link.parent = left  # Not included in the activation write.
+        link.is_active = True
+        with self.assertRaises(ValidationError):
+            link.save(update_fields=["is_active"])
+        link.refresh_from_db()
+        self.assertFalse(link.is_active)
+        self.assertEqual(link.parent_id, right.pk)
+
     def test_deactivated_ancestor_hides_descendants_without_deleting_links(self):
         root = self.anatomy("root")
         middle = self.anatomy("middle")
