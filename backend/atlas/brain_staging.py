@@ -15,7 +15,7 @@ from django.db import transaction
 
 from .brain_publication import URL_PATTERN, source_is_resolved
 from .models import (
-    BrainAnatomicalAlias, BrainAnatomicalEntity, BrainHierarchyLink, BrainNetwork,
+    BrainAnatomicalAlias, BrainNetworkAlias, BrainAnatomicalEntity, BrainHierarchyLink, BrainNetwork,
     BrainNetworkMembership, BrainFunctionalAssociation, BrainExternalIdentifier,
     ResearchDataset, ResearchRecord, ScientificReviewStatus, SourceReference,
 )
@@ -112,8 +112,18 @@ def validate_brain_staging(dataset_key=None):
     all_identities = defaultdict(list)
     all_evidence = defaultdict(list)
     all_external_ids = defaultdict(list)
+    all_aliases = defaultdict(list)
     for dataset in datasets.prefetch_related("records"):
         _validate_dataset(dataset, report)
+    reported = {(row["dataset"], row["record"], row["code"]) for row in report["issues"]}
+
+    def issue(key, record, code):
+        if dataset_key and key != dataset_key:
+            return
+        identity = (key, record.external_id, code)
+        if identity not in reported:
+            report["issues"].append({"dataset": key, "record": record.external_id, "code": code})
+            reported.add(identity)
     # A dataset selector limits the report, not the scope of uniqueness checks:
     # another archived dossier can still conflict with a selected candidate.
     for dataset in all_datasets.prefetch_related("records"):
@@ -131,6 +141,12 @@ def validate_brain_staging(dataset_key=None):
                 identity = (text(row["namespace"]).strip().casefold(), text(row["identifier"]).strip(),
                             text(row["source_version"]).strip().casefold())
                 all_external_ids[identity].append((dataset.key, record))
+            if row.get("category") == "alias" and all(text(row.get(field)).strip() for field in (
+                "owner_type", "owner_slug", "language", "text",
+            )):
+                identity = (text(row["owner_type"]), text(row["owner_slug"]), text(row["language"]),
+                            " ".join(text(row["text"]).split()).casefold())
+                all_aliases[identity].append((dataset.key, record))
     for (category, evidence_key), group in all_evidence.items():
         model = BrainNetworkMembership if category == "network_membership" else BrainFunctionalAssociation
         codes = []
@@ -139,10 +155,8 @@ def validate_brain_staging(dataset_key=None):
         if model.objects.filter(evidence_key=evidence_key).exists():
             codes.append("canonical_evidence_key_conflict")
         for key, record in group:
-            if dataset_key and key != dataset_key:
-                continue
             for code in codes:
-                report["issues"].append({"dataset": key, "record": record.external_id, "code": code})
+                issue(key, record, code)
     for group in all_identities.values():
         if len({key for key, _ in group}) > 1:
             signatures = {json.dumps({field: row.payload.get(field) for field in (
@@ -150,11 +164,7 @@ def validate_brain_staging(dataset_key=None):
             )}, sort_keys=True) for _, row in group}
             code = "ambiguous_identity" if len(signatures) > 1 else "duplicate_candidate"
             for key, record in group:
-                if dataset_key and key != dataset_key:
-                    continue
-                entry = {"dataset": key, "record": record.external_id, "code": code}
-                if entry not in report["issues"]:
-                    report["issues"].append(entry)
+                issue(key, record, code)
     canonical_external_ids = {
         (namespace.strip().casefold(), identifier.strip(), version.strip().casefold())
         for namespace, identifier, version in BrainExternalIdentifier.objects.values_list(
@@ -168,12 +178,21 @@ def validate_brain_staging(dataset_key=None):
         if identity in canonical_external_ids:
             codes.append("canonical_external_identifier_conflict")
         for key, record in group:
-            if dataset_key and key != dataset_key:
-                continue
             for code in codes:
-                entry = {"dataset": key, "record": record.external_id, "code": code}
-                if entry not in report["issues"]:
-                    report["issues"].append(entry)
+                issue(key, record, code)
+    canonical_aliases = set()
+    for owner_type, model, owner_field in (("anatomy", BrainAnatomicalAlias, "entity"), ("network", BrainNetworkAlias, "network")):
+        for slug, language, alias in model.objects.values_list(f"{owner_field}__slug", "language", "text").iterator():
+            canonical_aliases.add((owner_type, slug, language, " ".join(alias.split()).casefold()))
+    for identity, group in all_aliases.items():
+        codes = []
+        if len(group) > 1:
+            codes.append("duplicate_alias")
+        if identity in canonical_aliases:
+            codes.append("canonical_alias_conflict")
+        for key, record in group:
+            for code in codes:
+                issue(key, record, code)
     report["issues"].sort(key=lambda row: (row["dataset"], row["record"], row["code"]))
     report["ready_for_curation"] = report["candidate_count"] - len({(row["dataset"], row["record"]) for row in report["issues"]})
     return report

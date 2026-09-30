@@ -242,6 +242,35 @@ class BrainStagingTests(TestCase):
         codes = {row["code"] for row in validate_brain_staging(dataset.key)["issues"] if row["record"] == "mapping-one"}
         self.assertEqual(codes, {"duplicate_external_identifier", "canonical_external_identifier_conflict"})
 
+    def test_alias_conflicts_include_other_dossiers_and_canonical_owners(self):
+        from .models import BrainAnatomicalAlias, BrainNetworkAlias
+
+        entity = BrainAnatomicalEntity.objects.create(slug="test-only-structure", name_en="Test Only Structure",
+                                                      kind="structure", laterality="bilateral")
+        network = BrainNetwork.objects.create(slug="synthetic-network", name_en="Synthetic Network")
+        for owner_type, owner, alias_model in (("anatomy", entity, BrainAnatomicalAlias),
+                                               ("network", network, BrainNetworkAlias)):
+            alias_model.objects.create(text="Synthetic Alias", language="en", **{alias_model.alias_owner_field: owner})
+            document = copy.deepcopy(self.document)
+            if owner_type == "network":
+                document["records"].append({"id": "network-one", "category": "network", "slug": network.slug,
+                    "name_en": network.name_en, "kind": network.kind, "source_version": "Test v1", "definition": "Synthetic definition",
+                    "method": "Synthetic method", "review_status": "unreviewed", "source_ids": ["source-one"],
+                    "source_notes": {"source-one": "Synthetic network identity"}})
+            record_id = f"alias-{owner_type}"
+            document["records"].append({"id": record_id, "category": "alias", "owner_type": owner_type,
+                "owner_slug": owner.slug, "text": "Synthetic Alias", "language": "en", "alias_type": "alternative",
+                "review_status": "unreviewed", "source_ids": ["source-one"], "source_notes": {"source-one": "Synthetic spelling"}})
+            dataset, _ = self.ingest(document)
+            self.assertIn("canonical_alias_conflict", {row["code"] for row in validate_brain_staging(dataset.key)["issues"]
+                                                       if row["record"] == record_id})
+            other = copy.deepcopy(document)
+            other["dataset_metadata"]["version"] = "v2"
+            other["records"][-1]["text"] = "synthetic   ALIAS"
+            self.ingest(other)
+            issues = [row["code"] for row in validate_brain_staging(dataset.key)["issues"] if row["record"] == record_id]
+            self.assertEqual(issues, ["canonical_alias_conflict", "duplicate_alias"])
+
     def test_existing_canonical_evidence_key_is_not_a_new_candidate(self):
         from .tests_v092_brain_api import BrainFixtureMixin
 

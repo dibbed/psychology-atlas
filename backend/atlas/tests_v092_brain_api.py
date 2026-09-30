@@ -213,7 +213,11 @@ class BrainAPITests(BrainFixtureMixin, TestCase):
         other = SourceReference.objects.create(title="Other test source", citation="Synthetic secondary evidence",
                                               url="https://example.org/other", verification_status="verified")
         BrainNetworkSource.objects.create(network=network, source=other)
+        membership.review_status = "unreviewed"
+        membership.save(update_fields=["review_status"])
         BrainNetworkMembershipSource.objects.create(relationship=membership, source=other, note="Second synthetic claim source")
+        membership.review_status = "reviewed"
+        membership.save(update_fields=["review_status"])
         response = self.client.get(f"/api/brain-anatomy/{self.child.slug}/")
         self.assertEqual(len(response.data["network_memberships"]), 1)
         self.assertEqual(len(response.data["network_memberships"][0]["sources"]), 2)

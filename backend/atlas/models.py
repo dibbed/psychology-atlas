@@ -3948,6 +3948,15 @@ class BrainEvidenceRelationBase(ScientificRelationBase):
             from .brain_publication import NONBLANK_PATTERN, resolved_sources
             if self.pk is None or not self.source_links.filter(source__in=resolved_sources(), note__regex=NONBLANK_PATTERN).exists():
                 raise ValidationError({"review_status": "Checked relations require resolved relation-level evidence."})
+            if self.pk:
+                fields = tuple(field.attname for field in self._meta.concrete_fields if not field.primary_key and field.name not in {
+                    "review_status", "is_active", "sort_order", "seed_managed", "created_at", "updated_at",
+                })
+                previous = type(self).objects.filter(pk=self.pk).values("review_status", *fields).first()
+                if previous and previous["review_status"] == ScientificReviewStatus.REVIEWED and any(
+                    previous[field] != getattr(self, field) for field in fields
+                ):
+                    raise ValidationError("Return a reviewed Brain relation to unreviewed before changing its claim or evidence context.")
         if self.is_active:
             for field in self.endpoint_fields:
                 endpoint_id = getattr(self, f"{field}_id")
@@ -4034,6 +4043,8 @@ class BrainEvidenceSourceQuerySet(BrainSourceLinkQuerySet):
             pk__in=removing.values("relationship_id"),
         ).exclude(review_status=ScientificReviewStatus.UNREVIEWED)
         for owner in owners:
+            if owner.review_status == ScientificReviewStatus.REVIEWED:
+                raise ProtectedError("Return a reviewed Brain relation to unreviewed before removing evidence.", [owner])
             if not self.model.objects.filter(relationship=owner, source__in=resolved_sources(), note__regex=NONBLANK_PATTERN).exclude(
                 pk__in=removing.values("pk"),
             ).exists():
@@ -4055,6 +4066,14 @@ class BrainEvidenceSourceBase(BrainSourceLinkBase):
         from .brain_publication import NONBLANK_PATTERN, resolved_sources
         owner_model = self._meta.get_field("relationship").remote_field.model
         owner = owner_model.objects.filter(pk=self.relationship_id).first()
+        previous = type(self).objects.filter(pk=self.pk).values("relationship_id", "source_id", "note").first() if self.pk else None
+        changed = previous is None or any(previous[field] != getattr(self, field) for field in ("relationship_id", "source_id", "note"))
+        if changed:
+            owner_ids = {self.relationship_id}
+            if previous:
+                owner_ids.add(previous["relationship_id"])
+            if owner_model.objects.filter(pk__in=owner_ids, review_status=ScientificReviewStatus.REVIEWED).exists():
+                raise ValidationError("Return a reviewed Brain relation to unreviewed before changing its source evidence.")
         if owner and owner.review_status != ScientificReviewStatus.UNREVIEWED:
             if not resolved_sources().filter(pk=self.source_id).exists() and not type(self).objects.filter(
                 relationship_id=owner.pk, source__in=resolved_sources(), note__regex=NONBLANK_PATTERN,

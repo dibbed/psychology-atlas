@@ -81,6 +81,57 @@ class BrainRelationTests(TestCase):
         with self.assertRaises(ValidationError):
             relation.save()
 
+    def test_reviewed_relation_context_and_endpoints_require_new_review(self):
+        other = BrainAnatomicalEntity.objects.create(slug="other-test-entity", name_en="Other Test Entity",
+                                                     kind="structure", laterality="bilateral")
+        for relation, source_model in ((self.membership(), BrainNetworkMembershipSource),
+                                       (self.association(), BrainFunctionalAssociationSource)):
+            source_model.objects.create(relationship=relation, source=self.source, note="Synthetic reviewed claim")
+            relation.review_status = "reviewed"
+            relation.save()
+            fields = relation.required_context + ("explanation_fa",)
+            for field in fields:
+                with self.subTest(model=type(relation).__name__, field=field):
+                    relation.refresh_from_db()
+                    setattr(relation, field, "Changed unreviewed scientific context")
+                    with self.assertRaises(ValidationError):
+                        relation.save()
+            relation.refresh_from_db()
+            relation.entity = other
+            with self.assertRaises(ValidationError):
+                relation.save()
+            relation.refresh_from_db()
+            relation.method = "Changed unreviewed method"
+            relation.review_status = "unreviewed"
+            with self.assertRaises(ValidationError):
+                relation.save(update_fields=["method"])
+            relation.save()
+            relation.refresh_from_db()
+            self.assertEqual(relation.review_status, "unreviewed")
+            self.assertEqual(relation.method, "Changed unreviewed method")
+
+    def test_reviewed_relation_source_evidence_cannot_change_until_approval_is_removed(self):
+        second = SourceReference.objects.create(title="Synthetic second citation", citation="Synthetic evidence",
+                                                url="https://example.org/second", verification_status="source_checked")
+        for relation, source_model in ((self.membership(), BrainNetworkMembershipSource),
+                                       (self.association(), BrainFunctionalAssociationSource)):
+            link = source_model.objects.create(relationship=relation, source=self.source, note="Synthetic claim")
+            source_model.objects.create(relationship=relation, source=second, note="Synthetic second claim")
+            relation.review_status = "reviewed"
+            relation.save()
+            link.note = "Changed evidence claim"
+            with self.assertRaises(ValidationError):
+                link.save(update_fields=["note"])
+            with self.assertRaises(ProtectedError):
+                link.delete()
+            with self.assertRaises(ProtectedError):
+                relation.source_links.filter(pk=link.pk).delete()
+            relation.review_status = "unreviewed"
+            relation.save(update_fields=["review_status"])
+            link.save(update_fields=["note"])
+            link.refresh_from_db()
+            self.assertEqual(link.note, "Changed evidence claim")
+
     def test_source_notes_identify_the_supported_claim(self):
         relation = self.membership()
         with self.assertRaises(ValidationError):
