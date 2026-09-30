@@ -1,9 +1,14 @@
 """Brain foundation invariants; all names and sources here are synthetic fixtures."""
 
+from queue import SimpleQueue
+from threading import Event, Thread
+from unittest import skipUnless
+from unittest.mock import patch
+
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, close_old_connections, connection, transaction
 from django.db.models.deletion import ProtectedError
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 
 from .models import (
     BrainAnatomicalAlias,
@@ -472,3 +477,64 @@ class BrainFoundationTests(TestCase):
         with self.assertRaises(ProtectedError):
             mapped.delete()
         self.anatomy("unused").delete()
+
+
+@skipUnless(connection.vendor == "postgresql", "Requires PostgreSQL row locks")
+class BrainLateralityConcurrencyTests(TransactionTestCase):
+    def test_incident_laterality_edits_serialize_before_validation(self):
+        parent = BrainAnatomicalEntity.objects.create(
+            slug="parent", name_en="Parent", kind="structure", laterality="bilateral",
+        )
+        child = BrainAnatomicalEntity.objects.create(
+            slug="child", name_en="Child", kind="structure", laterality="left",
+        )
+        BrainHierarchyLink.objects.create(child=child, parent=parent, source_version="Fixture v1")
+        child_validated, parent_attempted, parent_validated, release_child = (Event() for _ in range(4))
+        results = SimpleQueue()
+        original_clean = BrainAnatomicalEntity.clean
+
+        def controlled_clean(entity):
+            original_clean(entity)
+            if entity.pk == child.pk:
+                child_validated.set()
+                if not release_child.wait(10):
+                    raise RuntimeError("Timed out waiting to release the child write")
+            elif entity.pk == parent.pk:
+                parent_validated.set()
+
+        def edit(pk, laterality):
+            close_old_connections()
+            try:
+                entity = BrainAnatomicalEntity.objects.get(pk=pk)
+                entity.laterality = laterality
+                if pk == parent.pk:
+                    parent_attempted.set()
+                entity.save()
+                results.put((pk, "saved"))
+            except ValidationError:
+                results.put((pk, "rejected"))
+            except Exception as error:
+                results.put((pk, repr(error)))
+            finally:
+                connection.close()
+
+        threads = [Thread(target=edit, args=(child.pk, "right"), daemon=True),
+                   Thread(target=edit, args=(parent.pk, "left"), daemon=True)]
+        with patch.object(BrainAnatomicalEntity, "clean", controlled_clean):
+            try:
+                threads[0].start()
+                self.assertTrue(child_validated.wait(10))
+                threads[1].start()
+                self.assertTrue(parent_attempted.wait(10))
+                self.assertFalse(parent_validated.wait(1), "Parent validated before the child committed")
+            finally:
+                release_child.set()
+                for thread in threads:
+                    if thread.ident is not None:
+                        thread.join(10)
+        self.assertFalse(any(thread.is_alive() for thread in threads))
+        outcomes = dict(results.get_nowait() for _ in range(2))
+        self.assertEqual(outcomes, {child.pk: "saved", parent.pk: "rejected"})
+        parent.refresh_from_db()
+        child.refresh_from_db()
+        self.assertEqual((parent.laterality, child.laterality), ("bilateral", "right"))

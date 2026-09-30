@@ -9,6 +9,7 @@ from contextlib import closing
 from datetime import date
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
@@ -76,35 +77,39 @@ class BrainFoundationMigrationTests(TransactionTestCase):
             old_tables = sorted(t for t in connection.introspection.table_names(cursor) if t.startswith("atlas_"))
             before = {}
             for table in old_tables:
-                cursor.execute(f'SELECT * FROM "{table}" ORDER BY rowid')
-                before[table] = cursor.fetchall()
+                cursor.execute(f'SELECT * FROM "{table}"')
+                before[table] = sorted(cursor.fetchall(), key=repr)
 
         MigrationExecutor(connection).migrate([self.migrate_to])
         with connection.cursor() as cursor:
             for table, rows in before.items():
-                cursor.execute(f'SELECT * FROM "{table}" ORDER BY rowid')
-                self.assertEqual(cursor.fetchall(), rows, table)
+                cursor.execute(f'SELECT * FROM "{table}"')
+                self.assertEqual(sorted(cursor.fetchall(), key=repr), rows, table)
             for table in (
                 "atlas_brainanatomicalentity", "atlas_brainnetwork", "atlas_brainhierarchylink",
             ):
                 cursor.execute(f'SELECT COUNT(*) FROM "{table}"')
                 self.assertEqual(cursor.fetchone()[0], 0)
-            cursor.execute("PRAGMA integrity_check")
-            self.assertEqual(cursor.fetchone()[0], "ok")
-            cursor.execute("PRAGMA foreign_key_check")
-            self.assertEqual(cursor.fetchall(), [])
+            if connection.vendor == "sqlite":
+                cursor.execute("PRAGMA integrity_check")
+                self.assertEqual(cursor.fetchone()[0], "ok")
+                cursor.execute("PRAGMA foreign_key_check")
+                self.assertEqual(cursor.fetchall(), [])
 
         MigrationExecutor(connection).migrate([self.migrate_from])
         with connection.cursor() as cursor:
             for table, rows in before.items():
-                cursor.execute(f'SELECT * FROM "{table}" ORDER BY rowid')
-                self.assertEqual(cursor.fetchall(), rows, table)
+                cursor.execute(f'SELECT * FROM "{table}"')
+                self.assertEqual(sorted(cursor.fetchall(), key=repr), rows, table)
 
     def test_fresh_install_creates_empty_brain_tables(self):
         with TemporaryDirectory() as directory:
             database = Path(directory) / "fresh.sqlite3"
-            environment = os.environ.copy()
+            with patch.dict(os.environ, {"DB_ENGINE": "postgres"}):
+                environment = os.environ.copy()
+            environment["DB_ENGINE"] = "sqlite"
             environment["SQLITE_PATH"] = str(database)
+            self.assertEqual(environment["DB_ENGINE"], "sqlite")
             result = subprocess.run(
                 [sys.executable, "manage.py", "migrate", "--noinput", "--skip-checks", "--verbosity", "0"],
                 cwd=Path(__file__).resolve().parents[1], env=environment,

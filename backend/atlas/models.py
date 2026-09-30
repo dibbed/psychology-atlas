@@ -3512,6 +3512,13 @@ class BrainAnatomicalEntity(BrainCanonicalBase):
             current_id = parent_id
         return True
 
+    def save(self, *args, **kwargs):
+        with transaction.atomic():
+            # Match hierarchy writes: incident endpoints must not change while
+            # laterality is validated against their current committed state.
+            list(type(self).objects.select_for_update().order_by("pk").values_list("pk", flat=True))
+            return super().save(*args, **kwargs)
+
 
 class BrainNetwork(BrainCanonicalBase):
     class Kind(models.TextChoices):
