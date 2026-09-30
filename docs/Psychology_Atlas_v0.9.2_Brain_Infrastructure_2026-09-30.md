@@ -41,6 +41,10 @@ Raw UTF-8 text, parsed document, and SHA-256 are preserved. Exact repeated impor
 
 The alias review migration adds unreviewed-by-default review state, a protected optional source, and claim note to anatomical and network aliases. Checked/reviewed aliases require a resolved source and nonblank spelling note. Changing evidence or identity on a reviewed alias requires returning it to unreviewed. Existing aliases do not become public through the schema change.
 
+Migration 0036 adds individual review state and a mapping claim note to external identifiers. Existing identifiers retain their source and default to unreviewed with an empty note. Public identifiers require reviewed mapping approval, a resolved source, and a nonblank claim note. Changing a reviewed mapping requires returning it to unreviewed; partial saves validate the state that will persist.
+
+Identity, relation evidence-key, and external-identifier conflict checks compare selected candidates with all archived Brain dossiers. External-identifier keys are also compared with canonical mappings. Selecting one dataset limits report candidates; it does not narrow conflict detection. Identical findings are reported once.
+
 ## Approved empty relation support
 
 - `BrainNetworkMembership`: anatomy participates in a versioned network definition, with method and qualifier.
@@ -60,12 +64,12 @@ No connectivity, lesion, imaging, symptom, disorder, diagnosis, coordinate, or i
 
 ## VERIFICATION_EXECUTED
 
-- New focused tests: 56 passed on SQLite. Query measurements from populated **test-only** fixtures: list 4, detail 11, search 4, parent/kind filters 5. Regression budgets were frozen after measuring. Page size 1 uses the same list query count; nested children and maximum page size are bounded.
-- v0.9.1 regression tests: 27 passed, including 2 PostgreSQL-only skips on SQLite.
-- Full SQLite backend suite on finalized code: 410 tests passed, with 2 PostgreSQL-only skips. PostgreSQL focused verification on finalized code: all 83 v0.9.1 + v0.9.2 tests passed without skips, including foundation concurrency and alias-review migration checks; query measurements matched SQLite.
-- Disposable copy upgrade from 0032 through 0033, 0034, and 0035 preserved all 110 pre-existing Atlas table contents, including 2 datasets and 1,918 ResearchRecords. Migration 0035 leaves aliases unreviewed and source-less. Original database was not migrated.
+- New focused tests: 60 passed on SQLite. Query measurements from populated **test-only** fixtures: list 4, detail 11, search 4, parent/kind filters 5. Regression budgets were frozen after measuring. Page size 1 uses the same list query count; nested children and maximum page size are bounded.
+- v0.9.1 regression tests: 27 tests, OK, with 2 PostgreSQL-only skips on SQLite.
+- Full SQLite backend suite on finalized code: 414 tests, OK, with 2 PostgreSQL-only skips. PostgreSQL focused verification on finalized code: all 87 v0.9.1 + v0.9.2 tests passed without skips, including foundation concurrency and alias/identifier review migration checks; query measurements matched SQLite.
+- Disposable copy upgrade from 0032 through 0033, 0034, 0035, and 0036 preserved all 110 pre-existing Atlas table contents, including 2 datasets and 1,918 ResearchRecords. Migration 0035 leaves aliases unreviewed and source-less; migration 0036 leaves existing identifiers unreviewed while retaining their source. Original database was not migrated.
 - `check`, `makemigrations --check --dry-run`, `showmigrations atlas`, `verify_research_datasets`, `audit_brain_atlas`, `audit_v06_release`, `audit_study_plans`, `audit_recommendation_feedback`, and `audit_case_graphs` passed against the migrated copy. SQLite integrity_check returned `ok`; foreign_key_check returned no violations. Compilation and `git diff --check` passed.
-- Copy counts: anatomy 0, networks 0, hierarchy 0, memberships 0, functional associations 0, aliases 0. All Brain review/source distributions are empty; these are zero-content counts, not synthetic test counts.
+- Copy counts: anatomy 0, networks 0, hierarchy 0, memberships 0, functional associations 0, aliases 0, external identifiers 0. All Brain review/source distributions are empty; these are zero-content counts, not synthetic test counts.
 
 ## FAILED_OR_BLOCKED_CHECKS / UNVERIFIED_AREAS
 

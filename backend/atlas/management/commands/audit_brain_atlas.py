@@ -97,6 +97,14 @@ class Command(BaseCommand):
                                 else "weak_only" if row.source_id else "unsourced" for row in aliases)
         provenance["aliases"] = dict(sorted(alias_sources.items()))
 
+        identifiers = list(models.BrainExternalIdentifier.objects.order_by("pk").select_related("source"))
+        counts["external_identifiers"] = len(identifiers)
+        reviews["external_identifiers"] = dict(sorted(Counter(row.review_status for row in identifiers).items()))
+        provenance["external_identifiers"] = dict(sorted(Counter(
+            "resolved" if source_is_resolved(row.source) and row.source_note.strip() else "weak_only"
+            for row in identifiers
+        ).items()))
+
         parents = defaultdict(list)
         for link in models.BrainHierarchyLink.objects.filter(is_active=True).order_by("pk"):
             parents[link.child_id].append(link)

@@ -16,7 +16,7 @@ from django.db import transaction
 from .brain_publication import URL_PATTERN, source_is_resolved
 from .models import (
     BrainAnatomicalAlias, BrainAnatomicalEntity, BrainHierarchyLink, BrainNetwork,
-    BrainNetworkMembership, BrainFunctionalAssociation,
+    BrainNetworkMembership, BrainFunctionalAssociation, BrainExternalIdentifier,
     ResearchDataset, ResearchRecord, ScientificReviewStatus, SourceReference,
 )
 
@@ -111,6 +111,7 @@ def validate_brain_staging(dataset_key=None):
               "candidate_count": 0, "classifications": {key: 0 for key in "ABCDEFGH"}, "issues": []}
     all_identities = defaultdict(list)
     all_evidence = defaultdict(list)
+    all_external_ids = defaultdict(list)
     for dataset in datasets.prefetch_related("records"):
         _validate_dataset(dataset, report)
     # A dataset selector limits the report, not the scope of uniqueness checks:
@@ -124,6 +125,12 @@ def validate_brain_staging(dataset_key=None):
                 all_identities[(row["category"], row["slug"])].append((dataset.key, record))
             if row.get("category") in ("network_membership", "functional_association") and stable_slug(row.get("evidence_key")):
                 all_evidence[(row["category"], row["evidence_key"])].append((dataset.key, record))
+            if row.get("category") == "external_identifier" and all(
+                text(row.get(field)).strip() for field in ("namespace", "identifier", "source_version")
+            ):
+                identity = (text(row["namespace"]).strip().casefold(), text(row["identifier"]).strip(),
+                            text(row["source_version"]).strip().casefold())
+                all_external_ids[identity].append((dataset.key, record))
     for (category, evidence_key), group in all_evidence.items():
         model = BrainNetworkMembership if category == "network_membership" else BrainFunctionalAssociation
         codes = []
@@ -145,6 +152,25 @@ def validate_brain_staging(dataset_key=None):
             for key, record in group:
                 if dataset_key and key != dataset_key:
                     continue
+                entry = {"dataset": key, "record": record.external_id, "code": code}
+                if entry not in report["issues"]:
+                    report["issues"].append(entry)
+    canonical_external_ids = {
+        (namespace.strip().casefold(), identifier.strip(), version.strip().casefold())
+        for namespace, identifier, version in BrainExternalIdentifier.objects.values_list(
+            "namespace", "identifier", "source_version",
+        ).iterator()
+    }
+    for identity, group in all_external_ids.items():
+        codes = []
+        if len(group) > 1:
+            codes.append("duplicate_external_identifier")
+        if identity in canonical_external_ids:
+            codes.append("canonical_external_identifier_conflict")
+        for key, record in group:
+            if dataset_key and key != dataset_key:
+                continue
+            for code in codes:
                 entry = {"dataset": key, "record": record.external_id, "code": code}
                 if entry not in report["issues"]:
                     report["issues"].append(entry)

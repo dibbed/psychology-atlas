@@ -80,7 +80,8 @@ class BrainAnatomyDetailSerializer(BrainAnatomyListSerializer):
         return len(obj.public_children) > NESTED_LIMIT
 
     def get_external_identifiers(self, obj):
-        return [{**{key: getattr(row, key) for key in ("namespace", "identifier", "source_version", "url")},
+        return [{**{key: getattr(row, key) for key in ("namespace", "identifier", "source_version", "url",
+                                                        "review_status", "source_note")},
                  "source": ScientificSourceSerializer(row.source).data}
                 for row in obj.public_identifiers[:NESTED_LIMIT]]
 

@@ -46,3 +46,20 @@ class BrainRelationMigrationTests(TransactionTestCase):
         self.assertEqual(migrated.review_status, "unreviewed")
         self.assertIsNone(migrated.source_id)
         self.assertEqual(migrated.source_note, "")
+
+    def test_existing_external_identifiers_start_unreviewed_with_no_claim_note(self):
+        previous = ("atlas", "0035_v092_brain_alias_review")
+        current = ("atlas", "0036_v092_brain_identifier_review")
+        MigrationExecutor(connection).migrate([previous])
+        apps = MigrationExecutor(connection).loader.project_state([previous]).apps
+        entity = apps.get_model("atlas", "BrainAnatomicalEntity").objects.create(
+            slug="identifier-migration-test", name_en="Synthetic Identifier Owner", kind="structure", laterality="bilateral")
+        source = apps.get_model("atlas", "SourceReference").objects.create(title="Synthetic mapping source")
+        identifier = apps.get_model("atlas", "BrainExternalIdentifier").objects.create(
+            entity_id=entity.pk, namespace="Synthetic Atlas", identifier="S-17", source_version="Test v1", source_id=source.pk)
+        MigrationExecutor(connection).migrate([current])
+        migrated = MigrationExecutor(connection).loader.project_state([current]).apps.get_model(
+            "atlas", "BrainExternalIdentifier").objects.get(pk=identifier.pk)
+        self.assertEqual(migrated.review_status, "unreviewed")
+        self.assertEqual(migrated.source_note, "")
+        self.assertEqual(migrated.source_id, source.pk)

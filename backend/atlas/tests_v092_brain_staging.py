@@ -11,7 +11,7 @@ from django.core.management.base import CommandError
 from django.test import TestCase
 
 from .brain_staging import ingest_brain_document, validate_brain_staging
-from .models import BrainAnatomicalEntity, BrainHierarchyLink, BrainNetwork, ResearchDataset, ResearchRecord, SourceReference
+from .models import BrainAnatomicalEntity, BrainExternalIdentifier, BrainHierarchyLink, BrainNetwork, ResearchDataset, ResearchRecord, SourceReference
 
 
 class BrainStagingTests(TestCase):
@@ -217,6 +217,30 @@ class BrainStagingTests(TestCase):
         self.assertEqual(len([row for row in validate_brain_staging()["issues"] if row["code"] == "duplicate_evidence_key"]), 6)
         selected = validate_brain_staging(other_dataset.key)
         self.assertEqual(len([row for row in selected["issues"] if row["code"] == "duplicate_evidence_key"]), 2)
+
+    def test_external_mapping_conflicts_include_other_dossiers_and_canonical_rows(self):
+        document = copy.deepcopy(self.document)
+        document["records"].append({
+            "id": "mapping-one", "category": "external_identifier", "owner_type": "anatomy",
+            "owner_slug": "test-only-structure", "namespace": "Synthetic Atlas", "identifier": "S-17",
+            "source_version": "Test v1", "review_status": "unreviewed", "source_ids": ["source-one"],
+            "source_notes": {"source-one": "Synthetic mapping claim"},
+        })
+        dataset, _ = self.ingest(document)
+        self.assertEqual(validate_brain_staging(dataset.key)["issues"], [])
+        other = copy.deepcopy(document)
+        other["dataset_metadata"]["version"] = "v2"
+        other["records"][-1].update(namespace="synthetic atlas", source_version="test V1")
+        self.ingest(other)
+        selected = validate_brain_staging(dataset.key)
+        self.assertEqual([row["code"] for row in selected["issues"] if row["record"] == "mapping-one"],
+                         ["duplicate_external_identifier"])
+        entity = BrainAnatomicalEntity.objects.create(slug="canonical-mapping-test", name_en="Synthetic Mapping Owner",
+                                                      kind="structure", laterality="bilateral")
+        BrainExternalIdentifier.objects.create(entity=entity, namespace="SYNTHETIC ATLAS", identifier="S-17",
+                                               source_version="TEST V1", source=self.source)
+        codes = {row["code"] for row in validate_brain_staging(dataset.key)["issues"] if row["record"] == "mapping-one"}
+        self.assertEqual(codes, {"duplicate_external_identifier", "canonical_external_identifier_conflict"})
 
     def test_existing_canonical_evidence_key_is_not_a_new_candidate(self):
         from .tests_v092_brain_api import BrainFixtureMixin

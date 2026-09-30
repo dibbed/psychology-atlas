@@ -3748,6 +3748,9 @@ class BrainExternalIdentifier(models.Model):
     source_version = models.CharField(max_length=120)
     url = models.URLField(max_length=1000, blank=True)
     source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="brain_identifier_links")
+    review_status = models.CharField(max_length=24, choices=ScientificReviewStatus.choices,
+                                     default=ScientificReviewStatus.UNREVIEWED)
+    source_note = models.TextField(blank=True)
 
     class Meta:
         constraints = [
@@ -3770,13 +3773,44 @@ class BrainExternalIdentifier(models.Model):
         super().clean()
         if (self.entity_id is None) == (self.network_id is None):
             raise ValidationError("An external identifier must have exactly one owner.")
+        if self.review_status != ScientificReviewStatus.UNREVIEWED:
+            from .brain_publication import source_is_resolved
+            if not source_is_resolved(SourceReference.objects.filter(pk=self.source_id).first()) or not self.source_note.strip():
+                raise ValidationError("Checked or reviewed identifiers require a resolved source and claim note.")
+        if self.pk and self.review_status != ScientificReviewStatus.UNREVIEWED:
+            previous = type(self).objects.filter(pk=self.pk).values(
+                "entity_id", "network_id", "namespace", "identifier", "source_version", "url", "source_id",
+                "source_note", "review_status",
+            ).first()
+            if previous and previous["review_status"] == ScientificReviewStatus.REVIEWED and any(
+                previous[field] != getattr(self, field) for field in (
+                    "entity_id", "network_id", "namespace", "identifier", "source_version", "url", "source_id", "source_note",
+                )
+            ):
+                raise ValidationError("Return a reviewed external identifier to unreviewed before changing its identity or evidence.")
 
     def save(self, *args, **kwargs):
         self.namespace = self.namespace.strip()
         self.identifier = self.identifier.strip()
         self.source_version = self.source_version.strip()
-        self.full_clean()
-        return super().save(*args, **kwargs)
+        using = kwargs.get("using") or router.db_for_write(type(self), instance=self)
+        update_fields = kwargs.get("update_fields")
+        with transaction.atomic(using=using):
+            candidate = self
+            if self.pk:
+                stored = type(self).objects.using(using).select_for_update().filter(pk=self.pk).first()
+                if stored is not None and update_fields is not None:
+                    candidate = stored
+                    for name in update_fields:
+                        field = self._meta.get_field(name)
+                        setattr(candidate, field.attname, getattr(self, field.attname))
+            if candidate.entity_id:
+                list(BrainAnatomicalEntity.objects.using(using).select_for_update().filter(pk=candidate.entity_id).values_list("pk", flat=True))
+            if candidate.network_id:
+                list(BrainNetwork.objects.using(using).select_for_update().filter(pk=candidate.network_id).values_list("pk", flat=True))
+            list(SourceReference.objects.using(using).select_for_update().filter(pk=candidate.source_id).values_list("pk", flat=True))
+            candidate.full_clean()
+            return super().save(*args, **kwargs)
 
 
 class BrainHierarchyLink(ScientificRelationBase):

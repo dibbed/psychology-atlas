@@ -98,7 +98,9 @@ class BrainAnatomyDetailView(generics.RetrieveAPIView):
             Prefetch("parent_links", queryset=links.order_by("pk")[:1], to_attr="public_parents"),
             Prefetch("child_links", queryset=links.order_by("child__name_en", "child_id", "pk")[:NESTED_LIMIT + 1], to_attr="public_children"),
             Prefetch("external_identifiers", queryset=models.BrainExternalIdentifier.objects.filter(
-                source__in=resolved_sources(), namespace__regex=NONBLANK_PATTERN, identifier__regex=NONBLANK_PATTERN, source_version__regex=NONBLANK_PATTERN,
+                review_status=models.ScientificReviewStatus.REVIEWED, source__in=resolved_sources(),
+                source_note__regex=NONBLANK_PATTERN, namespace__regex=NONBLANK_PATTERN,
+                identifier__regex=NONBLANK_PATTERN, source_version__regex=NONBLANK_PATTERN,
             ).filter(Q(url="") | Q(url__regex=URL_PATTERN)).select_related("source")
                      .order_by("namespace", "source_version", "identifier", "pk")[:NESTED_LIMIT + 1], to_attr="public_identifiers"),
             Prefetch("network_memberships", queryset=memberships[:NESTED_LIMIT + 1], to_attr="public_memberships"),

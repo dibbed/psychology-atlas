@@ -1,6 +1,7 @@
 """Synthetic fixtures only; none of these names or claims are atlas content."""
 
 from django.test import TestCase
+from django.core.exceptions import ValidationError
 from django.db import connection
 from django.db.models.query import QuerySet
 from django.test.utils import CaptureQueriesContext
@@ -10,7 +11,7 @@ from .models import (
     BrainAnatomicalAlias, BrainAnatomicalEntity, BrainAnatomicalEntitySource,
     BrainHierarchyLink, BrainHierarchyLinkSource, ScientificReviewStatus, SourceReference,
     BrainNetwork, BrainNetworkSource, BrainNetworkMembership, BrainNetworkMembershipSource,
-    BrainFunctionalAssociation, BrainFunctionalAssociationSource, Concept,
+    BrainFunctionalAssociation, BrainFunctionalAssociationSource, BrainExternalIdentifier, Concept,
 )
 
 
@@ -125,6 +126,32 @@ class BrainAPITests(BrainFixtureMixin, TestCase):
         alias.save()
         self.assertEqual(self.client.get("/api/brain-anatomy/", {"q": alias.text}).data["count"], 1)
 
+    def test_external_identifiers_require_individual_review_and_mapping_provenance(self):
+        identifier = BrainExternalIdentifier.objects.create(
+            entity=self.child, namespace="Synthetic Atlas", identifier="S-17", source_version="Test v1", source=self.source,
+        )
+        url = f"/api/brain-anatomy/{self.child.slug}/"
+        self.assertEqual(self.client.get(url).data["external_identifiers"], [])
+        identifier.review_status = "reviewed"
+        with self.assertRaises(ValidationError):
+            identifier.save()
+        identifier.source_note = "Synthetic identifier mapping"
+        identifier.save()
+        published = self.client.get(url).data["external_identifiers"]
+        self.assertEqual(len(published), 1)
+        self.assertEqual(published[0]["review_status"], "reviewed")
+        self.assertEqual(published[0]["source_note"], "Synthetic identifier mapping")
+        identifier.identifier = "S-18"
+        with self.assertRaises(ValidationError):
+            identifier.save()
+        identifier.review_status = "unreviewed"
+        with self.assertRaises(ValidationError):
+            identifier.save(update_fields=["identifier"])
+        identifier.save()
+        self.assertEqual(self.client.get(url).data["external_identifiers"], [])
+        QuerySet.update(BrainExternalIdentifier.objects.filter(pk=identifier.pk), review_status="reviewed", source_note="\u00a0")
+        self.assertEqual(self.client.get(url).data["external_identifiers"], [])
+
     def test_hierarchy_provenance_excludes_blank_claim_links(self):
         other = SourceReference.objects.create(title="Synthetic second source", citation="Synthetic citation",
                                               url="https://example.org/second", verification_status="verified")
@@ -222,6 +249,12 @@ class BrainQueryProfileTests(BrainFixtureMixin, TestCase):
     def setUpTestData(cls):
         super().setUpTestData()
         cls.add_relations(cls.root)
+        for number in range(35):
+            BrainExternalIdentifier.objects.create(
+                entity=cls.root, namespace="Synthetic Profile Atlas", identifier=f"Profile-{number:03}",
+                source_version="Test v1", source=cls.source, review_status="reviewed",
+                source_note="Synthetic profiling mapping claim",
+            )
         for number in range(45):
             entity = cls.anatomy(f"profile-{number:03}", name_en=f"Profile Test {number:03}")
             BrainAnatomicalAlias.objects.create(entity=entity, text=f"Test Alias {number}", language="en",
@@ -246,6 +279,8 @@ class BrainQueryProfileTests(BrainFixtureMixin, TestCase):
             if label == "detail":
                 self.assertEqual(len(response.data["children"]), 30)
                 self.assertTrue(response.data["children_truncated"])
+                self.assertEqual(len(response.data["external_identifiers"]), 30)
+                self.assertTrue(response.data["external_identifiers_truncated"])
         print(f"Brain test-only fixture query measurements: {measurements}")
         # Budgets frozen after observing populated fixtures, including relation sources.
         for label, budget in {"list": 4, "detail": 11, "search": 4, "filters": 5}.items():
