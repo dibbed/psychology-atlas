@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
-from django.db import models, transaction
+from django.db import models, router, transaction
 from django.db.models import F, Q
 from django.db.models.deletion import ProtectedError
 from django.db.models.functions import Lower, Trim
@@ -3585,20 +3585,29 @@ class BrainNetworkAlias(models.Model):
 
 
 class BrainSourceLinkQuerySet(models.QuerySet):
-    def delete(self):
-        """Keep provenance until curation explicitly returns the owner to unreviewed."""
+    def _protect_required_sources(self):
+        """Called inside an atomic write before removing these rows from owners."""
         owner_field = self.model.owner_field
         owner_model = self.model._meta.get_field(owner_field).remote_field.model
+        owner_ids = list(self.values_list(f"{owner_field}_id", flat=True).distinct())
+        owners = owner_model.objects.using(self.db).select_for_update().filter(pk__in=owner_ids).order_by("pk")
+        for owner in owners:
+            if owner.review_status == ScientificReviewStatus.UNREVIEWED:
+                continue
+            owner_filter = {owner_field: owner.pk}
+            if self.model.objects.using(self.db).filter(**owner_filter).count() <= self.filter(**owner_filter).count():
+                raise ProtectedError("Checked or reviewed Brain records require a source link.", [owner])
+
+    def delete(self):
+        """Keep provenance until curation explicitly returns the owner to unreviewed."""
         with transaction.atomic(using=self.db):
-            owner_ids = list(self.values_list(f"{owner_field}_id", flat=True).distinct())
-            owners = owner_model.objects.using(self.db).select_for_update().filter(pk__in=owner_ids).order_by("pk")
-            for owner in owners:
-                if owner.review_status == ScientificReviewStatus.UNREVIEWED:
-                    continue
-                owner_filter = {owner_field: owner.pk}
-                if self.model.objects.using(self.db).filter(**owner_filter).count() <= self.filter(**owner_filter).count():
-                    raise ProtectedError("Checked or reviewed Brain records require a source link.", [owner])
+            self._protect_required_sources()
             return super().delete()
+
+    def update(self, **kwargs):
+        if self.model.owner_field in kwargs or f"{self.model.owner_field}_id" in kwargs:
+            raise ValidationError("Reassign Brain source owners with save() so provenance is validated.")
+        return super().update(**kwargs)
 
 
 class BrainSourceLinkBase(models.Model):
@@ -3607,6 +3616,19 @@ class BrainSourceLinkBase(models.Model):
 
     class Meta:
         abstract = True
+
+    def save(self, *args, **kwargs):
+        using = kwargs.get("using") or router.db_for_write(type(self), instance=self)
+        update_fields = kwargs.get("update_fields")
+        owner_id_field = f"{self.owner_field}_id"
+        writes_owner = update_fields is None or self.owner_field in update_fields or owner_id_field in update_fields
+        with transaction.atomic(using=using):
+            if self.pk is not None and writes_owner:
+                previous = type(self).objects.using(using).filter(pk=self.pk).exclude(
+                    **{owner_id_field: getattr(self, owner_id_field)}
+                )
+                previous._protect_required_sources()
+            return super().save(*args, **kwargs)
 
     def delete(self, using=None, keep_parents=False):
         if self.pk is None:

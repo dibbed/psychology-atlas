@@ -331,6 +331,67 @@ class BrainFoundationTests(TestCase):
         relation_source.delete()
         self.assertFalse(link.source_links.exists())
 
+    def test_source_reassignment_preserves_required_provenance(self):
+        source = self.source()
+        other_source = SourceReference.objects.create(title="Other synthetic source")
+        root = self.anatomy("root")
+        targets = (
+            (BrainAnatomicalEntitySource, "entity", self.anatomy("target")),
+            (BrainNetworkSource, "network", BrainNetwork.objects.create(slug="target-network", name_en="Target")),
+            (BrainHierarchyLinkSource, "relationship", self.link(self.anatomy("target-child"), root)),
+        )
+        for status in (ScientificReviewStatus.SOURCE_CHECKED, ScientificReviewStatus.REVIEWED):
+            for model, field, target in targets:
+                with self.subTest(model=model.__name__, status=status):
+                    suffix = f"{field}-{status}"
+                    if field == "entity":
+                        owner = self.anatomy(suffix)
+                    elif field == "network":
+                        owner = BrainNetwork.objects.create(slug=suffix, name_en=suffix)
+                    else:
+                        owner = self.link(self.anatomy(suffix), root)
+                    citation = model.objects.create(**{field: owner, "source": source, "note": "Fixture claim"})
+                    owner.review_status = status
+                    owner.save()
+                    setattr(citation, field, target)
+                    with self.assertRaises(ProtectedError):
+                        citation.save()
+                    citation.refresh_from_db()
+                    self.assertEqual(getattr(citation, f"{field}_id"), owner.pk)
+                    model.objects.create(**{field: owner, "source": other_source, "note": "Other fixture claim"})
+                    setattr(citation, field, target)
+                    citation.save()
+                    self.assertEqual(owner.source_links.count(), 1)
+                    citation.delete()  # Target remains unreviewed; free its unique source pair.
+
+    def test_source_bulk_reassignment_cannot_bypass_provenance_validation(self):
+        source = self.source()
+        root = self.anatomy("root")
+        other = self.anatomy("other")
+        network = BrainNetwork.objects.create(slug="network", name_en="Network")
+        other_network = BrainNetwork.objects.create(slug="other-network", name_en="Other network")
+        relation = self.link(self.anatomy("child"), root)
+        other_relation = self.link(self.anatomy("other-child"), root)
+        for model, field, owner, target in (
+            (BrainAnatomicalEntitySource, "entity", root, other),
+            (BrainNetworkSource, "network", network, other_network),
+            (BrainHierarchyLinkSource, "relationship", relation, other_relation),
+        ):
+            with self.subTest(model=model.__name__):
+                citation = model.objects.create(**{field: owner, "source": source, "note": "Fixture claim"})
+                owner.review_status = ScientificReviewStatus.SOURCE_CHECKED
+                owner.save()
+                with self.assertRaises(ValidationError):
+                    model.objects.filter(pk=citation.pk).update(**{f"{field}_id": target.pk})
+                setattr(citation, field, target)
+                with self.assertRaises(ValidationError), transaction.atomic():
+                    model.objects.bulk_update([citation], [field])
+                citation.note = "Updated fixture claim"
+                citation.save(update_fields=["note"])  # The pending owner change is not written.
+                citation.refresh_from_db()
+                self.assertEqual(getattr(citation, f"{field}_id"), owner.pk)
+                self.assertEqual(citation.note, "Updated fixture claim")
+
     def test_delete_protection_for_children_history_sources_aliases_and_identifiers(self):
         source = self.source()
         root = self.anatomy("root")
