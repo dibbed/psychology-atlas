@@ -3397,9 +3397,23 @@ class DSMRecordRelation(TimeStampedModel):
         ]
 
 
+class BrainValidatedQuerySet(models.QuerySet):
+    """Bulk persistence bypasses Brain identity, graph, and provenance validation."""
+
+    def update(self, **kwargs):
+        raise ValidationError("Brain records require individual validated saves.")
+
+    def bulk_update(self, objs, fields, batch_size=None):
+        raise ValidationError("Brain records require individual validated saves.")
+
+    def bulk_create(self, objs, *args, **kwargs):
+        raise ValidationError("Brain records require individual validated saves.")
+
+
 class BrainCanonicalBase(TimeStampedModel):
     """Common identity and review fields; anatomy and networks remain distinct tables."""
 
+    objects = BrainValidatedQuerySet.as_manager()
     slug = models.SlugField(max_length=180, unique=True)
     name_en = models.CharField(max_length=255)
     name_fa = models.CharField(max_length=255, blank=True)
@@ -3537,6 +3551,7 @@ class BrainNetwork(BrainCanonicalBase):
 
 
 class BrainAnatomicalAlias(models.Model):
+    objects = BrainValidatedQuerySet.as_manager()
     class Language(models.TextChoices):
         EN = "en", "English"
         FA = "fa", "Persian"
@@ -3568,6 +3583,7 @@ class BrainAnatomicalAlias(models.Model):
 
 
 class BrainNetworkAlias(models.Model):
+    objects = BrainValidatedQuerySet.as_manager()
     Language = BrainAnatomicalAlias.Language
     AliasType = BrainAnatomicalAlias.AliasType
 
@@ -3591,30 +3607,28 @@ class BrainNetworkAlias(models.Model):
         return super().save(*args, **kwargs)
 
 
-class BrainSourceLinkQuerySet(models.QuerySet):
+class BrainSourceLinkQuerySet(BrainValidatedQuerySet):
     def _protect_required_sources(self):
         """Called inside an atomic write before removing these rows from owners."""
         owner_field = self.model.owner_field
         owner_model = self.model._meta.get_field(owner_field).remote_field.model
-        owner_ids = list(self.values_list(f"{owner_field}_id", flat=True).distinct())
+        rows = list(self.select_for_update().order_by("pk").values_list("pk", f"{owner_field}_id"))
+        removing = self.filter(pk__in=[pk for pk, _ in rows])
+        owner_ids = {owner_id for _, owner_id in rows}
         owners = owner_model.objects.using(self.db).select_for_update().filter(pk__in=owner_ids).order_by("pk")
         for owner in owners:
             if owner.review_status == ScientificReviewStatus.UNREVIEWED:
                 continue
             owner_filter = {owner_field: owner.pk}
-            if self.model.objects.using(self.db).filter(**owner_filter).count() <= self.filter(**owner_filter).count():
+            if self.model.objects.using(self.db).filter(**owner_filter).count() <= removing.filter(**owner_filter).count():
                 raise ProtectedError("Checked or reviewed Brain records require a source link.", [owner])
+        return removing
 
     def delete(self):
         """Keep provenance until curation explicitly returns the owner to unreviewed."""
         with transaction.atomic(using=self.db):
-            self._protect_required_sources()
-            return super().delete()
-
-    def update(self, **kwargs):
-        if self.model.owner_field in kwargs or f"{self.model.owner_field}_id" in kwargs:
-            raise ValidationError("Reassign Brain source owners with save() so provenance is validated.")
-        return super().update(**kwargs)
+            removing = self._protect_required_sources()
+            return models.QuerySet.delete(removing)
 
 
 class BrainSourceLinkBase(models.Model):
@@ -3631,6 +3645,7 @@ class BrainSourceLinkBase(models.Model):
         writes_owner = update_fields is None or self.owner_field in update_fields or owner_id_field in update_fields
         with transaction.atomic(using=using):
             if self.pk is not None and writes_owner:
+                list(type(self).objects.using(using).select_for_update().filter(pk=self.pk).values_list("pk", flat=True))
                 previous = type(self).objects.using(using).filter(pk=self.pk).exclude(
                     **{owner_id_field: getattr(self, owner_id_field)}
                 )
@@ -3668,6 +3683,7 @@ class BrainNetworkSource(BrainSourceLinkBase):
 class BrainExternalIdentifier(models.Model):
     """A versioned namespace key can identify one anatomy or one network."""
 
+    objects = BrainValidatedQuerySet.as_manager()
     entity = models.ForeignKey(
         BrainAnatomicalEntity, on_delete=models.PROTECT, related_name="external_identifiers",
         null=True, blank=True,
@@ -3715,6 +3731,7 @@ class BrainExternalIdentifier(models.Model):
 class BrainHierarchyLink(ScientificRelationBase):
     """The selected primary anatomical part-of hierarchy, with retained history."""
 
+    objects = BrainValidatedQuerySet.as_manager()
     child = models.ForeignKey(BrainAnatomicalEntity, on_delete=models.PROTECT, related_name="parent_links")
     parent = models.ForeignKey(BrainAnatomicalEntity, on_delete=models.PROTECT, related_name="child_links")
     source_version = models.CharField(max_length=120)

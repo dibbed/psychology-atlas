@@ -1,13 +1,14 @@
 """Brain foundation invariants; all names and sources here are synthetic fixtures."""
 
 from queue import SimpleQueue
-from threading import Event, Thread
+from threading import Event, Thread, current_thread
 from unittest import skipUnless
 from unittest.mock import patch
 
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError, close_old_connections, connection, transaction
+from django.db import DatabaseError, IntegrityError, close_old_connections, connection, transaction
 from django.db.models.deletion import ProtectedError
+from django.db.models.query import QuerySet
 from django.test import TestCase, TransactionTestCase
 
 from .models import (
@@ -26,6 +27,7 @@ from .models import (
 
 
 class BrainFoundationTests(TestCase):
+    # Only DB-constraint tests use the deliberately unvalidated base manager.
     def anatomy(self, slug, *, kind=BrainAnatomicalEntity.Kind.STRUCTURE,
                 laterality=BrainAnatomicalEntity.Laterality.BILATERAL, **kwargs):
         return BrainAnatomicalEntity.objects.create(
@@ -50,6 +52,44 @@ class BrainFoundationTests(TestCase):
         self.assertTrue(entity.seed_managed)
         self.assertTrue(entity.has_active_ancestry())
 
+    def test_bulk_canonical_writes_cannot_bypass_provenance(self):
+        entity = self.anatomy("unsourced-entity")
+        network = BrainNetwork.objects.create(slug="unsourced-network", name_en="Unsourced Network")
+        for owner in (entity, network):
+            model = type(owner)
+            with self.subTest(model=model.__name__):
+                with self.assertRaises(ValidationError):
+                    model.objects.filter(pk=owner.pk).update(review_status=ScientificReviewStatus.REVIEWED)
+                owner.review_status = ScientificReviewStatus.SOURCE_CHECKED
+                with self.assertRaises(ValidationError), transaction.atomic():
+                    model.objects.bulk_update([owner], ["review_status"])
+                owner.refresh_from_db()
+                self.assertEqual(owner.review_status, ScientificReviewStatus.UNREVIEWED)
+                with self.assertRaises(ValidationError):
+                    model.objects.bulk_create([model(
+                        slug="bulk-unsourced", name_en="Bulk Unsourced", review_status=ScientificReviewStatus.REVIEWED,
+                    )])
+                self.assertFalse(model.objects.filter(slug="bulk-unsourced").exists())
+
+    def test_bulk_hierarchy_writes_cannot_bypass_graph_validation(self):
+        root = self.anatomy("root")
+        middle = self.anatomy("middle")
+        leaf = self.anatomy("leaf")
+        link = self.link(middle, root)
+        self.link(leaf, middle)
+        with self.assertRaises(ValidationError):
+            BrainHierarchyLink.objects.filter(pk=link.pk).update(parent=leaf)
+        link.parent = leaf
+        with self.assertRaises(ValidationError), transaction.atomic():
+            BrainHierarchyLink.objects.bulk_update([link], ["parent"])
+        link.refresh_from_db()
+        self.assertEqual(link.parent_id, root.pk)
+        with self.assertRaises(ValidationError):
+            BrainHierarchyLink.objects.bulk_create([
+                BrainHierarchyLink(child=root, parent=leaf, source_version="Fixture v1")
+            ])
+        self.assertFalse(root.parent_links.exists())
+
     def test_slug_is_stable_and_case_insensitively_unique(self):
         entity = self.anatomy("stable-slug")
         entity.name_en = "Renamed fixture"
@@ -63,7 +103,7 @@ class BrainFoundationTests(TestCase):
         with self.assertRaises(ValidationError):
             self.anatomy(" stable-slug ")
         with self.assertRaises(IntegrityError), transaction.atomic():
-            BrainAnatomicalEntity.objects.bulk_create([
+            BrainAnatomicalEntity._base_manager.bulk_create([
                 BrainAnatomicalEntity(
                     slug="Stable-Slug", name_en="Duplicate", kind="structure", laterality="bilateral"
                 )
@@ -94,7 +134,7 @@ class BrainFoundationTests(TestCase):
         BrainAnatomicalAlias.objects.create(entity=second, text="ABC", language="en", alias_type="abbreviation")
         BrainAnatomicalAlias.objects.create(entity=first, text="ABC", language="fa")
         with self.assertRaises(IntegrityError), transaction.atomic():
-            BrainAnatomicalAlias.objects.bulk_create([
+            BrainAnatomicalAlias._base_manager.bulk_create([
                 BrainAnatomicalAlias(entity=first, text=" Abc ", language="en")
             ])
 
@@ -122,7 +162,7 @@ class BrainFoundationTests(TestCase):
                 namespace="fixture", identifier="ownerless", source_version="v1", source=source
             )
         with self.assertRaises(IntegrityError), transaction.atomic():
-            BrainExternalIdentifier.objects.bulk_create([
+            BrainExternalIdentifier._base_manager.bulk_create([
                 BrainExternalIdentifier(
                     entity=first, network=network, namespace="fixture", identifier="both",
                     source_version="v1", source=source,
@@ -164,7 +204,7 @@ class BrainFoundationTests(TestCase):
         with self.assertRaises(ValidationError):
             self.link(child, other_root)
         with self.assertRaises(IntegrityError), transaction.atomic():
-            BrainHierarchyLink.objects.bulk_create([
+            BrainHierarchyLink._base_manager.bulk_create([
                 BrainHierarchyLink(child=child, parent=other_root, source_version="Fixture atlas v1")
             ])
         first.is_active = False
@@ -178,7 +218,7 @@ class BrainFoundationTests(TestCase):
         with self.assertRaises(ValidationError):
             self.link(entity, entity)
         with self.assertRaises(IntegrityError), transaction.atomic():
-            BrainHierarchyLink.objects.bulk_create([
+            BrainHierarchyLink._base_manager.bulk_create([
                 BrainHierarchyLink(child=entity, parent=entity, source_version="Fixture atlas v1")
             ])
 
@@ -480,7 +520,75 @@ class BrainFoundationTests(TestCase):
 
 
 @skipUnless(connection.vendor == "postgresql", "Requires PostgreSQL row locks")
-class BrainLateralityConcurrencyTests(TransactionTestCase):
+class BrainIntegrityConcurrencyTests(TransactionTestCase):
+    def test_source_deletion_locks_citation_before_checking_its_owner(self):
+        old_owner = BrainAnatomicalEntity.objects.create(
+            slug="old-owner", name_en="Old Owner", kind="structure", laterality="bilateral",
+        )
+        target = BrainAnatomicalEntity.objects.create(
+            slug="target", name_en="Target", kind="structure", laterality="bilateral",
+        )
+        source = SourceReference.objects.create(title="Synthetic concurrency source")
+        citation = BrainAnatomicalEntitySource.objects.create(entity=old_owner, source=source)
+        owner_read, release_delete, move_attempted, move_finished = (Event() for _ in range(4))
+        outcomes = SimpleQueue()
+        original_lock = QuerySet.select_for_update
+
+        def controlled_lock(queryset, *args, **kwargs):
+            if queryset.model is BrainAnatomicalEntity and current_thread().name == "source-deletion":
+                owner_read.set()
+                if not release_delete.wait(10):
+                    raise RuntimeError("Timed out releasing the source deletion")
+            return original_lock(queryset, *args, **kwargs)
+
+        def delete():
+            close_old_connections()
+            try:
+                BrainAnatomicalEntitySource.objects.filter(pk=citation.pk).delete()
+                outcomes.put(("delete", "deleted"))
+            except Exception as error:
+                outcomes.put(("delete", repr(error)))
+            finally:
+                connection.close()
+
+        def move():
+            close_old_connections()
+            try:
+                moving = BrainAnatomicalEntitySource.objects.get(pk=citation.pk)
+                moving.entity_id = target.pk
+                move_attempted.set()
+                moving.save(force_update=True)
+                owner = BrainAnatomicalEntity.objects.get(pk=target.pk)
+                owner.review_status = ScientificReviewStatus.SOURCE_CHECKED
+                owner.save()
+                outcomes.put(("move", "saved"))
+            except DatabaseError:
+                outcomes.put(("move", "lost-row"))
+            except Exception as error:
+                outcomes.put(("move", repr(error)))
+            finally:
+                move_finished.set()
+                connection.close()
+
+        threads = [Thread(target=delete, name="source-deletion", daemon=True),
+                   Thread(target=move, name="source-reassignment", daemon=True)]
+        with patch.object(QuerySet, "select_for_update", controlled_lock):
+            try:
+                threads[0].start()
+                self.assertTrue(owner_read.wait(10))
+                threads[1].start()
+                self.assertTrue(move_attempted.wait(10))
+                self.assertFalse(move_finished.wait(1), "Citation moved after deletion had read its old owner")
+            finally:
+                release_delete.set()
+                for thread in threads:
+                    if thread.ident is not None:
+                        thread.join(10)
+        self.assertFalse(any(thread.is_alive() for thread in threads))
+        self.assertEqual(dict(outcomes.get_nowait() for _ in range(2)), {"delete": "deleted", "move": "lost-row"})
+        target.refresh_from_db()
+        self.assertEqual(target.review_status, ScientificReviewStatus.UNREVIEWED)
+
     def test_incident_laterality_edits_serialize_before_validation(self):
         parent = BrainAnatomicalEntity.objects.create(
             slug="parent", name_en="Parent", kind="structure", laterality="bilateral",
