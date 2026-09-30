@@ -3,6 +3,7 @@ from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models, transaction
 from django.db.models import F, Q
+from django.db.models.deletion import ProtectedError
 from django.db.models.functions import Lower, Trim
 from django.utils import timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -3433,8 +3434,11 @@ class BrainCanonicalBase(TimeStampedModel):
             raise ValidationError({"review_status": "Create an unreviewed entity and attach sources first."})
 
     def save(self, *args, **kwargs):
-        self.full_clean()
-        return super().save(*args, **kwargs)
+        with transaction.atomic():
+            if self.pk is not None:
+                list(type(self).objects.select_for_update().filter(pk=self.pk).values_list("pk", flat=True))
+            self.full_clean()
+            return super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name_en
@@ -3469,6 +3473,24 @@ class BrainAnatomicalEntity(BrainCanonicalBase):
             models.Index(fields=("name_en",)),
             models.Index(fields=("name_fa",)),
         ]
+
+    def clean(self):
+        super().clean()
+        if self.pk is None:
+            return
+        previous_laterality = type(self).objects.filter(pk=self.pk).values_list("laterality", flat=True).first()
+        if previous_laterality == self.laterality:
+            return
+        if any(
+            BrainHierarchyLink.laterality_conflicts(self.laterality, parent_laterality)
+            for parent_laterality in self.parent_links.filter(is_active=True).values_list("parent__laterality", flat=True)
+        ):
+            raise ValidationError({"laterality": "Laterality conflicts with an active parent link."})
+        if any(
+            BrainHierarchyLink.laterality_conflicts(child_laterality, self.laterality)
+            for child_laterality in self.child_links.filter(is_active=True).values_list("child__laterality", flat=True)
+        ):
+            raise ValidationError({"laterality": "Laterality conflicts with an active child link."})
 
     def has_active_ancestry(self):
         """An inactive ancestor hides the whole branch without erasing history."""
@@ -3562,7 +3584,40 @@ class BrainNetworkAlias(models.Model):
         return super().save(*args, **kwargs)
 
 
-class BrainAnatomicalEntitySource(models.Model):
+class BrainSourceLinkQuerySet(models.QuerySet):
+    def delete(self):
+        """Keep provenance until curation explicitly returns the owner to unreviewed."""
+        owner_field = self.model.owner_field
+        owner_model = self.model._meta.get_field(owner_field).remote_field.model
+        with transaction.atomic(using=self.db):
+            owner_ids = list(self.values_list(f"{owner_field}_id", flat=True).distinct())
+            owners = owner_model.objects.using(self.db).select_for_update().filter(pk__in=owner_ids).order_by("pk")
+            for owner in owners:
+                if owner.review_status == ScientificReviewStatus.UNREVIEWED:
+                    continue
+                owner_filter = {owner_field: owner.pk}
+                if self.model.objects.using(self.db).filter(**owner_filter).count() <= self.filter(**owner_filter).count():
+                    raise ProtectedError("Checked or reviewed Brain records require a source link.", [owner])
+            return super().delete()
+
+
+class BrainSourceLinkBase(models.Model):
+    objects = BrainSourceLinkQuerySet.as_manager()
+    owner_field = None
+
+    class Meta:
+        abstract = True
+
+    def delete(self, using=None, keep_parents=False):
+        if self.pk is None:
+            raise ValueError("Cannot delete an unsaved Brain source link.")
+        result = type(self).objects.db_manager(using).filter(pk=self.pk).delete()
+        self.pk = None
+        return result
+
+
+class BrainAnatomicalEntitySource(BrainSourceLinkBase):
+    owner_field = "entity"
     entity = models.ForeignKey(BrainAnatomicalEntity, on_delete=models.PROTECT, related_name="source_links")
     source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="brain_anatomy_links")
     note = models.TextField(blank=True)
@@ -3571,7 +3626,8 @@ class BrainAnatomicalEntitySource(models.Model):
         constraints = [models.UniqueConstraint(fields=("entity", "source"), name="uq_brain_anatomy_source")]
 
 
-class BrainNetworkSource(models.Model):
+class BrainNetworkSource(BrainSourceLinkBase):
+    owner_field = "network"
     network = models.ForeignKey(BrainNetwork, on_delete=models.PROTECT, related_name="source_links")
     source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="brain_network_links")
     note = models.TextField(blank=True)
@@ -3642,6 +3698,19 @@ class BrainHierarchyLink(ScientificRelationBase):
         ]
         indexes = [models.Index(fields=("parent", "is_active"))]
 
+    @staticmethod
+    def laterality_conflicts(child_laterality, parent_laterality):
+        return (
+            parent_laterality in {BrainAnatomicalEntity.Laterality.LEFT, BrainAnatomicalEntity.Laterality.RIGHT}
+            and child_laterality in {
+                BrainAnatomicalEntity.Laterality.LEFT,
+                BrainAnatomicalEntity.Laterality.RIGHT,
+                BrainAnatomicalEntity.Laterality.MIDLINE,
+                BrainAnatomicalEntity.Laterality.BILATERAL,
+            }
+            and child_laterality != parent_laterality
+        )
+
     def clean(self):
         super().clean()
         if self.child_id is None or self.parent_id is None:
@@ -3662,14 +3731,8 @@ class BrainHierarchyLink(ScientificRelationBase):
             return  # Foreign-key validation reports the missing endpoint.
         if not child.is_active or not parent.is_active:
             raise ValidationError("An active hierarchy link requires active endpoints.")
-        if parent.laterality in {BrainAnatomicalEntity.Laterality.LEFT, BrainAnatomicalEntity.Laterality.RIGHT}:
-            if child.laterality in {
-                BrainAnatomicalEntity.Laterality.LEFT,
-                BrainAnatomicalEntity.Laterality.RIGHT,
-                BrainAnatomicalEntity.Laterality.MIDLINE,
-                BrainAnatomicalEntity.Laterality.BILATERAL,
-            } and child.laterality != parent.laterality:
-                raise ValidationError({"parent": "Child laterality conflicts with its parent."})
+        if self.laterality_conflicts(child.laterality, parent.laterality):
+            raise ValidationError({"parent": "Child laterality conflicts with its parent."})
         current_id = self.parent_id
         seen = set()
         while current_id is not None:
@@ -3686,11 +3749,14 @@ class BrainHierarchyLink(ScientificRelationBase):
             # Curator writes are rare. Lock the whole primary tree in a fixed
             # order so two disjoint reparentings cannot jointly form a cycle.
             list(BrainAnatomicalEntity.objects.select_for_update().order_by("pk").values_list("pk", flat=True))
+            if self.pk is not None:
+                list(type(self).objects.select_for_update().filter(pk=self.pk).values_list("pk", flat=True))
             self.full_clean()
             return super().save(*args, **kwargs)
 
 
-class BrainHierarchyLinkSource(models.Model):
+class BrainHierarchyLinkSource(BrainSourceLinkBase):
+    owner_field = "relationship"
     relationship = models.ForeignKey(BrainHierarchyLink, on_delete=models.PROTECT, related_name="source_links")
     source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="brain_hierarchy_links")
     note = models.TextField()

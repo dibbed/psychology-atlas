@@ -218,6 +218,23 @@ class BrainFoundationTests(TestCase):
         with self.assertRaises(ValidationError):
             self.link(inactive_child, right)
 
+    def test_laterality_edits_cannot_invalidate_active_hierarchy(self):
+        parent = self.anatomy("left-parent", laterality="left")
+        child = self.anatomy("left-child", laterality="left")
+        self.link(child, parent)
+
+        child.laterality = BrainAnatomicalEntity.Laterality.RIGHT
+        with self.assertRaises(ValidationError):
+            child.save()
+        child.refresh_from_db()
+        self.assertEqual(child.laterality, BrainAnatomicalEntity.Laterality.LEFT)
+
+        parent.laterality = BrainAnatomicalEntity.Laterality.RIGHT
+        with self.assertRaises(ValidationError):
+            parent.save()
+        parent.refresh_from_db()
+        self.assertEqual(parent.laterality, BrainAnatomicalEntity.Laterality.LEFT)
+
     def test_deactivated_ancestor_hides_descendants_without_deleting_links(self):
         root = self.anatomy("root")
         middle = self.anatomy("middle")
@@ -273,6 +290,46 @@ class BrainFoundationTests(TestCase):
         )
         root.save()
         link.save()
+
+    def test_checked_records_keep_their_last_source_link(self):
+        source = self.source()
+        other_source = SourceReference.objects.create(title="Other synthetic source")
+        entity = self.anatomy("sourced-entity")
+        first = BrainAnatomicalEntitySource.objects.create(entity=entity, source=source)
+        entity.review_status = ScientificReviewStatus.SOURCE_CHECKED
+        entity.save()
+        with self.assertRaises(ProtectedError):
+            first.delete()
+        BrainAnatomicalEntitySource.objects.create(entity=entity, source=other_source)
+        with self.assertRaises(ProtectedError):
+            BrainAnatomicalEntitySource.objects.filter(entity=entity).delete()
+        self.assertEqual(entity.source_links.count(), 2)
+        first.delete()
+        self.assertIsNone(first.pk)
+        with self.assertRaises(ProtectedError):
+            BrainAnatomicalEntitySource.objects.filter(entity=entity).delete()
+
+        network = BrainNetwork.objects.create(slug="sourced-network", name_en="Sourced Network")
+        BrainNetworkSource.objects.create(network=network, source=source)
+        network.review_status = ScientificReviewStatus.REVIEWED
+        network.save()
+        with self.assertRaises(ProtectedError):
+            BrainNetworkSource.objects.filter(network=network).delete()
+
+        child = self.anatomy("sourced-child")
+        link = self.link(child, entity)
+        relation_source = BrainHierarchyLinkSource.objects.create(
+            relationship=link, source=source, note="Synthetic part-of claim"
+        )
+        link.review_status = ScientificReviewStatus.SOURCE_CHECKED
+        link.save()
+        with self.assertRaises(ProtectedError):
+            relation_source.delete()
+
+        link.review_status = ScientificReviewStatus.UNREVIEWED
+        link.save()
+        relation_source.delete()
+        self.assertFalse(link.source_links.exists())
 
     def test_delete_protection_for_children_history_sources_aliases_and_identifiers(self):
         source = self.source()
