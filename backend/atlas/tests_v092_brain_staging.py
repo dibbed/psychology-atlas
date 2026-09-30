@@ -197,8 +197,10 @@ class BrainStagingTests(TestCase):
         other = copy.deepcopy(document)
         other["dataset_metadata"]["version"] = "v2"
         other["records"] = [row for row in other["records"] if not row["id"].endswith("-duplicate")]
-        self.ingest(other)
+        other_dataset, _ = self.ingest(other)
         self.assertEqual(len([row for row in validate_brain_staging()["issues"] if row["code"] == "duplicate_evidence_key"]), 6)
+        selected = validate_brain_staging(other_dataset.key)
+        self.assertEqual(len([row for row in selected["issues"] if row["code"] == "duplicate_evidence_key"]), 2)
 
     def test_existing_canonical_evidence_key_is_not_a_new_candidate(self):
         from .tests_v092_brain_api import BrainFixtureMixin

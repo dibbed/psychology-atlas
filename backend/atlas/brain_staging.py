@@ -101,7 +101,8 @@ def ingest_brain_document(raw_text, filename):
 
 
 def validate_brain_staging(dataset_key=None):
-    datasets = ResearchDataset.objects.filter(raw_document__schema_version=SCHEMA).order_by("key")
+    all_datasets = ResearchDataset.objects.filter(raw_document__schema_version=SCHEMA).order_by("key")
+    datasets = all_datasets
     if dataset_key:
         datasets = datasets.filter(key=dataset_key)
         if not datasets.exists():
@@ -112,6 +113,9 @@ def validate_brain_staging(dataset_key=None):
     all_evidence = defaultdict(list)
     for dataset in datasets.prefetch_related("records"):
         _validate_dataset(dataset, report)
+    # A dataset selector limits the report, not the scope of uniqueness checks:
+    # another archived dossier can still conflict with a selected candidate.
+    for dataset in all_datasets.prefetch_related("records"):
         for record in dataset.records.all():
             row = record.payload
             if not isinstance(row, dict):
@@ -128,6 +132,8 @@ def validate_brain_staging(dataset_key=None):
         if model.objects.filter(evidence_key=evidence_key).exists():
             codes.append("canonical_evidence_key_conflict")
         for key, record in group:
+            if dataset_key and key != dataset_key:
+                continue
             for code in codes:
                 report["issues"].append({"dataset": key, "record": record.external_id, "code": code})
     for group in all_identities.values():
@@ -137,6 +143,8 @@ def validate_brain_staging(dataset_key=None):
             )}, sort_keys=True) for _, row in group}
             code = "ambiguous_identity" if len(signatures) > 1 else "duplicate_candidate"
             for key, record in group:
+                if dataset_key and key != dataset_key:
+                    continue
                 report["issues"].append({"dataset": key, "record": record.external_id, "code": code})
     report["issues"].sort(key=lambda row: (row["dataset"], row["record"], row["code"]))
     report["ready_for_curation"] = report["candidate_count"] - len({(row["dataset"], row["record"]) for row in report["issues"]})
