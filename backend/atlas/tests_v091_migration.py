@@ -22,7 +22,8 @@ class BrainFoundationMigrationTests(TransactionTestCase):
     migrate_to = ("atlas", "0033_v091_brain_foundation")
 
     def tearDown(self):
-        MigrationExecutor(connection).migrate([self.migrate_to])
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
         super().tearDown()
 
     def test_v084_upgrade_and_reverse_preserve_all_legacy_atlas_rows(self):

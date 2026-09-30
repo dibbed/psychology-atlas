@@ -3832,3 +3832,183 @@ class BrainHierarchyLinkSource(BrainSourceLinkBase):
     def save(self, *args, **kwargs):
         self.full_clean()
         return super().save(*args, **kwargs)
+
+
+class BrainEvidenceRelationBase(ScientificRelationBase):
+    """Shared lifecycle for the two approved, method-specific Brain predicates."""
+
+    objects = BrainValidatedQuerySet.as_manager()
+    evidence_key = models.SlugField(max_length=180, unique=True)
+    source_version = models.CharField(max_length=120)
+    method = models.TextField()
+    limitations = models.TextField(blank=True)
+    required_context = ("source_version", "method")
+    endpoint_fields = ()
+
+    class Meta:
+        abstract = True
+
+    def clean(self):
+        super().clean()
+        for field in self.required_context:
+            if not getattr(self, field).strip():
+                raise ValidationError({field: "Explicit sourced evidence context is required."})
+        if self.evidence_key != self.evidence_key.strip().lower():
+            raise ValidationError({"evidence_key": "Evidence keys must be lowercase and stable."})
+        if self.pk:
+            original = type(self).objects.filter(pk=self.pk).values_list("evidence_key", flat=True).first()
+            if original is not None and original != self.evidence_key:
+                raise ValidationError({"evidence_key": "Evidence identity cannot be changed."})
+        if self.review_status != ScientificReviewStatus.UNREVIEWED:
+            from .brain_publication import resolved_sources
+            if self.pk is None or not self.source_links.filter(source__in=resolved_sources(), note__regex=r"\S").exists():
+                raise ValidationError({"review_status": "Checked relations require resolved relation-level evidence."})
+        if self.is_active:
+            for field in self.endpoint_fields:
+                endpoint_id = getattr(self, f"{field}_id")
+                model = self._meta.get_field(field).remote_field.model
+                if endpoint_id is not None and not model.objects.filter(pk=endpoint_id, is_active=True).exists():
+                    raise ValidationError({field: "An active relation requires active endpoints."})
+
+    def save(self, force_insert=False, force_update=False, using=None, update_fields=None):
+        using = using or router.db_for_write(type(self), instance=self)
+        with transaction.atomic(using=using):
+            candidate = self
+            if self.pk is not None:
+                stored = type(self).objects.using(using).select_for_update().filter(pk=self.pk).first()
+                if stored is not None and update_fields is not None:
+                    update_fields = frozenset(update_fields)
+                    candidate = stored
+                    for name in update_fields:
+                        field = self._meta.get_field(name)
+                        setattr(candidate, field.attname, getattr(self, field.attname))
+            for field in candidate.endpoint_fields:
+                model = candidate._meta.get_field(field).remote_field.model
+                list(model.objects.using(using).select_for_update().filter(
+                    pk=getattr(candidate, f"{field}_id"),
+                ).values_list("pk", flat=True))
+            candidate.full_clean()
+            return super().save(force_insert=force_insert, force_update=force_update,
+                                using=using, update_fields=update_fields)
+
+
+class BrainNetworkMembership(BrainEvidenceRelationBase):
+    """Participation under one versioned network definition; never parentage."""
+
+    predicate = "participates_in_network"
+    required_context = BrainEvidenceRelationBase.required_context + ("qualifier",)
+    endpoint_fields = ("entity", "network")
+    entity = models.ForeignKey(BrainAnatomicalEntity, on_delete=models.PROTECT, related_name="network_memberships")
+    network = models.ForeignKey(BrainNetwork, on_delete=models.PROTECT, related_name="anatomical_memberships")
+    qualifier = models.TextField()
+
+    class Meta:
+        ordering = ("sort_order", "evidence_key", "id")
+        indexes = [models.Index(fields=("entity", "is_active", "review_status")),
+                   models.Index(fields=("network", "is_active", "review_status"))]
+
+
+class BrainFunctionalAssociation(BrainEvidenceRelationBase):
+    """One exact anatomy/network-to-construct claim, with method and limitations."""
+
+    predicate = "functional_association"
+    required_context = BrainEvidenceRelationBase.required_context + (
+        "explanation_en", "task_context", "population_context", "limitations",
+    )
+    endpoint_fields = ("entity", "network", "concept")
+    entity = models.ForeignKey(BrainAnatomicalEntity, on_delete=models.PROTECT,
+                              related_name="functional_associations", null=True, blank=True)
+    network = models.ForeignKey(BrainNetwork, on_delete=models.PROTECT,
+                               related_name="functional_associations", null=True, blank=True)
+    concept = models.ForeignKey(Concept, on_delete=models.PROTECT, related_name="brain_functional_associations")
+    task_context = models.TextField()
+    population_context = models.TextField()
+
+    class Meta:
+        ordering = ("sort_order", "evidence_key", "id")
+        constraints = [models.CheckConstraint(
+            condition=(Q(entity__isnull=False, network__isnull=True)
+                       | Q(entity__isnull=True, network__isnull=False)),
+            name="ck_brain_function_one_subject",
+        )]
+        indexes = [models.Index(fields=("entity", "is_active", "review_status")),
+                   models.Index(fields=("network", "is_active", "review_status")),
+                   models.Index(fields=("concept", "is_active", "review_status"))]
+
+    def clean(self):
+        super().clean()
+        if (self.entity_id is None) == (self.network_id is None):
+            raise ValidationError("A functional association requires exactly one anatomy or network subject.")
+
+
+class BrainEvidenceSourceQuerySet(BrainSourceLinkQuerySet):
+    def _protect_required_sources(self):
+        removing = super()._protect_required_sources()
+        from .brain_publication import resolved_sources
+        owners = self.model._meta.get_field("relationship").remote_field.model.objects.filter(
+            pk__in=removing.values("relationship_id"),
+        ).exclude(review_status=ScientificReviewStatus.UNREVIEWED)
+        for owner in owners:
+            if not self.model.objects.filter(relationship=owner, source__in=resolved_sources(), note__regex=r"\S").exclude(
+                pk__in=removing.values("pk"),
+            ).exists():
+                raise ProtectedError("Checked Brain relations must retain resolved evidence.", [owner])
+        return removing
+
+
+class BrainEvidenceSourceBase(BrainSourceLinkBase):
+    objects = BrainEvidenceSourceQuerySet.as_manager()
+    note = models.TextField()
+
+    class Meta:
+        abstract = True
+
+    def clean(self):
+        super().clean()
+        if not self.note.strip():
+            raise ValidationError({"note": "Identify the exact supported scientific claim."})
+        from .brain_publication import resolved_sources
+        owner_model = self._meta.get_field("relationship").remote_field.model
+        owner = owner_model.objects.filter(pk=self.relationship_id).first()
+        if owner and owner.review_status != ScientificReviewStatus.UNREVIEWED:
+            if not resolved_sources().filter(pk=self.source_id).exists() and not type(self).objects.filter(
+                relationship_id=owner.pk, source__in=resolved_sources(), note__regex=r"\S",
+            ).exclude(pk=self.pk).exists():
+                raise ProtectedError("Checked Brain relations must retain resolved evidence.", [owner])
+
+    def save(self, *args, **kwargs):
+        using = kwargs.get("using") or router.db_for_write(type(self), instance=self)
+        with transaction.atomic(using=using):
+            candidate = self
+            stored = type(self).objects.using(using).select_for_update().filter(pk=self.pk).first() if self.pk else None
+            previous_owner_id = stored.relationship_id if stored else self.relationship_id
+            update_fields = kwargs.get("update_fields")
+            if stored is not None and update_fields is not None:
+                candidate = stored
+                for name in update_fields:
+                    field = self._meta.get_field(name)
+                    setattr(candidate, field.attname, getattr(self, field.attname))
+            owner_model = self._meta.get_field("relationship").remote_field.model
+            owner_ids = {candidate.relationship_id, previous_owner_id}
+            list(owner_model.objects.using(using).select_for_update().filter(pk__in=owner_ids).order_by("pk").values_list("pk", flat=True))
+            candidate.full_clean()
+            return super().save(*args, **kwargs)
+
+
+class BrainNetworkMembershipSource(BrainEvidenceSourceBase):
+    owner_field = "relationship"
+    relationship = models.ForeignKey(BrainNetworkMembership, on_delete=models.PROTECT, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="brain_membership_links")
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=("relationship", "source"), name="uq_brain_membership_source"),
+                       models.CheckConstraint(condition=~Q(note=""), name="ck_brain_membership_source_note")]
+
+class BrainFunctionalAssociationSource(BrainEvidenceSourceBase):
+    owner_field = "relationship"
+    relationship = models.ForeignKey(BrainFunctionalAssociation, on_delete=models.PROTECT, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="brain_functional_links")
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=("relationship", "source"), name="uq_brain_function_source"),
+                       models.CheckConstraint(condition=~Q(note=""), name="ck_brain_function_source_note")]

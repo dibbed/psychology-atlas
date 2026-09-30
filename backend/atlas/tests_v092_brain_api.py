@@ -1,0 +1,227 @@
+"""Synthetic fixtures only; none of these names or claims are atlas content."""
+
+from django.test import TestCase
+from django.db import connection
+from django.db.models.query import QuerySet
+from django.test.utils import CaptureQueriesContext
+from rest_framework.test import APIClient
+
+from .models import (
+    BrainAnatomicalAlias, BrainAnatomicalEntity, BrainAnatomicalEntitySource,
+    BrainHierarchyLink, BrainHierarchyLinkSource, ScientificReviewStatus, SourceReference,
+    BrainNetwork, BrainNetworkSource, BrainNetworkMembership, BrainNetworkMembershipSource,
+    BrainFunctionalAssociation, BrainFunctionalAssociationSource, Concept,
+)
+
+
+class BrainFixtureMixin:
+    @classmethod
+    def setUpTestData(cls):
+        cls.source = SourceReference.objects.create(
+            title="Synthetic API source", citation="Synthetic test citation, v1",
+            url="https://example.org/test-only", verification_status="source_checked",
+        )
+        cls.root = cls.anatomy("fixture-root", name_en="Fixture Root", kind="whole_brain")
+        cls.child = cls.anatomy("fixture-child", name_en="Fixture Child", name_fa="کانون یک")
+        cls.link = BrainHierarchyLink.objects.create(child=cls.child, parent=cls.root, source_version="Fixture v1")
+        BrainHierarchyLinkSource.objects.create(relationship=cls.link, source=cls.source, note="Synthetic part-of claim")
+        cls.link.review_status = ScientificReviewStatus.REVIEWED
+        cls.link.save()
+        BrainAnatomicalAlias.objects.create(entity=cls.child, text="FC", language="en", alias_type="abbreviation")
+
+    @classmethod
+    def anatomy(cls, slug, **kwargs):
+        entity = BrainAnatomicalEntity.objects.create(
+            slug=slug, kind=kwargs.pop("kind", "structure"), laterality=kwargs.pop("laterality", "bilateral"),
+            name_en=kwargs.pop("name_en", slug), **kwargs,
+        )
+        BrainAnatomicalEntitySource.objects.create(entity=entity, source=cls.source, note="Synthetic identity")
+        entity.review_status = ScientificReviewStatus.REVIEWED
+        entity.save()
+        return entity
+
+    def setUp(self):
+        self.client = APIClient()
+
+    @classmethod
+    def add_relations(cls, entity):
+        network = BrainNetwork.objects.create(slug="fixture-network", name_en="Fixture Network")
+        BrainNetworkSource.objects.create(network=network, source=cls.source)
+        network.review_status = "reviewed"
+        network.save()
+        concept = Concept.objects.create(slug="fixture-construct", name_en="Fixture Construct", simple_definition="Test only")
+        membership = BrainNetworkMembership.objects.create(evidence_key="fixture-membership", entity=entity, network=network,
+            source_version="Synthetic v1", method="Test method", qualifier="Test qualification")
+        association = BrainFunctionalAssociation.objects.create(evidence_key="fixture-function", entity=entity, concept=concept,
+            source_version="Synthetic v1", method="Test method", explanation_en="Test association only",
+            task_context="Test task", population_context="Test population", limitations="Association is not causation")
+        for row, source_model in ((membership, BrainNetworkMembershipSource), (association, BrainFunctionalAssociationSource)):
+            source_model.objects.create(relationship=row, source=cls.source, note="Synthetic supported claim")
+            row.review_status = "reviewed"
+            row.save()
+        return network, membership, association
+
+
+class BrainAPITests(BrainFixtureMixin, TestCase):
+    def test_public_list_pagination_order_and_provenance(self):
+        response = self.client.get("/api/brain-anatomy/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 2)
+        self.assertEqual([row["slug"] for row in response.data["results"]], [self.child.slug, self.root.slug])
+        self.assertEqual(response.data["results"][0]["sources"][0]["source"]["citation"], self.source.citation)
+
+    def test_detail_has_reviewed_part_of_and_missing_is_404(self):
+        response = self.client.get(f"/api/brain-anatomy/{self.child.slug}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["parent"]["predicate"], "part_of")
+        self.assertEqual(response.data["parent"]["entity"]["slug"], self.root.slug)
+        self.assertEqual(response.data["parent"]["sources"][0]["note"], "Synthetic part-of claim")
+        self.assertEqual(self.client.get("/api/brain-anatomy/absent/").status_code, 404)
+
+    def test_search_names_persian_variants_aliases_and_slug(self):
+        for query in ("Fixture Child", "کانون یک", "كانون يك", "FC", "fixture-child"):
+            with self.subTest(query=query):
+                response = self.client.get("/api/brain-anatomy/", {"q": query})
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual([row["slug"] for row in response.data["results"]], [self.child.slug])
+
+    def test_valid_and_malformed_filters(self):
+        response = self.client.get("/api/brain-anatomy/", {"kind": "structure", "laterality": "bilateral", "parent": self.root.slug})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 1)
+        for params in ({"kind": "brain"}, {"laterality": "both"}, {"parent": "bad/slug"}, {"parent": "absent"}, {"review_status": "unreviewed"}):
+            with self.subTest(params=params):
+                self.assertEqual(self.client.get("/api/brain-anatomy/", params).status_code, 400)
+
+    def test_inactive_or_unreviewed_ancestry_is_excluded(self):
+        for field, value in (("is_active", False), ("review_status", ScientificReviewStatus.UNREVIEWED)):
+            setattr(self.root, field, value)
+            self.root.save()
+            self.assertEqual(self.client.get(f"/api/brain-anatomy/{self.child.slug}/").status_code, 404)
+            self.assertEqual(self.client.get("/api/brain-anatomy/").data["count"], 0)
+            setattr(self.root, field, True if field == "is_active" else ScientificReviewStatus.REVIEWED)
+            self.root.save()
+
+    def test_unreviewed_hierarchy_and_weak_sources_cannot_be_public(self):
+        self.link.review_status = ScientificReviewStatus.SOURCE_CHECKED
+        self.link.save()
+        self.assertEqual(self.client.get(f"/api/brain-anatomy/{self.child.slug}/").status_code, 404)
+        self.source.verification_status = "citation_from_model_knowledge"
+        self.source.save()
+        self.assertEqual(self.client.get("/api/brain-anatomy/").data["count"], 0)
+
+    def test_public_api_is_read_only(self):
+        self.assertEqual(self.client.post("/api/brain-anatomy/", {}).status_code, 405)
+
+    def test_malformed_source_locator_cannot_pass_publication_gate(self):
+        from .brain_publication import source_is_resolved
+
+        self.source.url = ""
+        self.source.pmid = "12345\n"
+        self.source.save()
+        self.assertFalse(source_is_resolved(self.source))
+        self.assertEqual(self.client.get("/api/brain-anatomy/").data["count"], 0)
+
+    def test_multiple_alias_hits_do_not_duplicate_or_change_exact_rank(self):
+        BrainAnatomicalAlias.objects.create(entity=self.child, text="FC additional", language="en")
+        partial = self.anatomy("test-partial", name_en="AAA FC partial")
+        response = self.client.get("/api/brain-anatomy/", {"q": "FC"})
+        self.assertEqual(response.data["count"], 2)
+        self.assertEqual([row["slug"] for row in response.data["results"]], [self.child.slug, partial.slug])
+
+    def test_approved_relations_keep_distinct_context_and_exclude_inactive_endpoints(self):
+        network, membership, association = self.add_relations(self.child)
+        response = self.client.get(f"/api/brain-anatomy/{self.child.slug}/")
+        self.assertEqual(response.data["network_memberships"][0]["predicate"], "participates_in_network")
+        function = response.data["functional_associations"][0]
+        self.assertEqual(function["predicate"], "functional_association")
+        self.assertEqual(function["limitations"], "Association is not causation")
+        self.assertEqual(function["sources"][0]["note"], "Synthetic supported claim")
+        network.is_active = False
+        network.save()
+        association.concept.is_active = False
+        association.concept.save()
+        response = self.client.get(f"/api/brain-anatomy/{self.child.slug}/")
+        self.assertEqual(response.data["network_memberships"], [])
+        self.assertEqual(response.data["functional_associations"], [])
+
+    def test_relation_with_multiple_sources_is_serialized_once(self):
+        network, membership, association = self.add_relations(self.child)
+        other = SourceReference.objects.create(title="Other test source", citation="Synthetic secondary evidence",
+                                              url="https://example.org/other", verification_status="verified")
+        BrainNetworkSource.objects.create(network=network, source=other)
+        BrainNetworkMembershipSource.objects.create(relationship=membership, source=other, note="Second synthetic claim source")
+        response = self.client.get(f"/api/brain-anatomy/{self.child.slug}/")
+        self.assertEqual(len(response.data["network_memberships"]), 1)
+        self.assertEqual(len(response.data["network_memberships"][0]["sources"]), 2)
+
+    def test_pagination_cap_pages_and_no_staging_exposure(self):
+        response = self.client.get("/api/brain-anatomy/", {"page_size": 1})
+        self.assertEqual(len(response.data["results"]), 1)
+        self.assertIsNotNone(response.data["next"])
+        self.assertEqual(self.client.get("/api/brain-anatomy/", {"page": 999}).status_code, 404)
+        detail = self.client.get(f"/api/brain-anatomy/{self.child.slug}/").data
+        for field in ("raw_document", "raw_text", "payload", "seed_managed", "promoted_pk", "metadata"):
+            self.assertNotIn(field, detail)
+        self.assertEqual(self.client.get("/api/brain-networks/").status_code, 404)
+
+    def test_corrupt_cycle_unsourced_entity_and_blank_claim_fail_closed(self):
+        returning = BrainHierarchyLink.objects.create(child=self.root, parent=self.child, source_version="Test v1", is_active=False)
+        BrainHierarchyLinkSource.objects.create(relationship=returning, source=self.source, note="Synthetic cycle test")
+        returning.review_status = "reviewed"
+        returning.save()
+        QuerySet.update(BrainHierarchyLink.objects.filter(pk=returning.pk), is_active=True)
+        self.assertEqual(self.client.get("/api/brain-anatomy/").data["count"], 0)
+        QuerySet.update(BrainHierarchyLink.objects.filter(pk=returning.pk), is_active=False)
+        citation = self.link.source_links.get()
+        QuerySet.update(BrainHierarchyLinkSource.objects.filter(pk=citation.pk), note="\n\t")
+        self.assertEqual(self.client.get(f"/api/brain-anatomy/{self.child.slug}/").status_code, 404)
+        unsourced = BrainAnatomicalEntity.objects.create(slug="corrupt-unsourced", name_en="Test Unsourced", kind="structure", laterality="bilateral")
+        QuerySet.update(BrainAnatomicalEntity.objects.filter(pk=unsourced.pk), review_status="reviewed")
+        self.assertEqual(self.client.get(f"/api/brain-anatomy/{unsourced.slug}/").status_code, 404)
+
+
+class BrainQueryProfileTests(BrainFixtureMixin, TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.add_relations(cls.root)
+        for number in range(45):
+            entity = cls.anatomy(f"profile-{number:03}", name_en=f"Profile Test {number:03}")
+            BrainAnatomicalAlias.objects.create(entity=entity, text=f"Test Alias {number}", language="en")
+            link = BrainHierarchyLink.objects.create(child=entity, parent=cls.root, source_version="Test profile v1")
+            BrainHierarchyLinkSource.objects.create(relationship=link, source=cls.source, note="Synthetic profiling hierarchy")
+            link.review_status = "reviewed"
+            link.save()
+
+    def test_profile_and_nested_bounds(self):
+        measurements = {}
+        for label, url, params in (
+            ("list", "/api/brain-anatomy/", {}),
+            ("detail", f"/api/brain-anatomy/{self.root.slug}/", {}),
+            ("search", "/api/brain-anatomy/", {"q": "Test Alias"}),
+            ("filters", "/api/brain-anatomy/", {"parent": self.root.slug, "kind": "structure"}),
+        ):
+            with CaptureQueriesContext(connection) as queries:
+                response = self.client.get(url, params)
+                self.assertEqual(response.status_code, 200)
+            measurements[label] = len(queries)
+            if label == "detail":
+                self.assertEqual(len(response.data["children"]), 30)
+                self.assertTrue(response.data["children_truncated"])
+        print(f"Brain test-only fixture query measurements: {measurements}")
+        # Budgets frozen after observing populated fixtures, including relation sources.
+        for label, budget in {"list": 4, "detail": 11, "search": 4, "filters": 5}.items():
+            self.assertLessEqual(measurements[label], budget, label)
+        with CaptureQueriesContext(connection) as small_page:
+            self.assertEqual(self.client.get("/api/brain-anatomy/", {"page_size": 1}).status_code, 200)
+        self.assertEqual(len(small_page), measurements["list"])
+
+    def test_default_and_maximum_page_sizes(self):
+        for number in range(270):
+            self.anatomy(f"page-cap-{number:03}", name_en=f"Page Cap Test {number:03}")
+        default = self.client.get("/api/brain-anatomy/")
+        self.assertEqual(len(default.data["results"]), 30)
+        capped = self.client.get("/api/brain-anatomy/", {"page_size": 10000})
+        self.assertGreater(capped.data["count"], 300)
+        self.assertEqual(len(capped.data["results"]), 300)
