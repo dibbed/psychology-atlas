@@ -169,6 +169,22 @@ class BrainStagingTests(TestCase):
         self.assertIn("ambiguous_identity", {row["code"] for row in validate_brain_staging()["issues"]})
         self.assertEqual(BrainAnatomicalEntity.objects.count(), 0)
 
+    def test_selected_identity_conflict_is_reported_once_when_other_dataset_shares_it(self):
+        selected = copy.deepcopy(self.document)
+        duplicate = copy.deepcopy(selected["records"][1])
+        duplicate.update(id="second-identity", laterality="left")
+        selected["records"].append(duplicate)
+        dataset, _ = self.ingest(selected)
+        other = copy.deepcopy(self.document)
+        other["dataset_metadata"]["version"] = "v2"
+        other["records"][1]["laterality"] = "right"
+        self.ingest(other)
+
+        issues = [row for row in validate_brain_staging(dataset.key)["issues"]
+                  if row["code"] == "ambiguous_identity"]
+        self.assertEqual(len(issues), 2)
+        self.assertEqual(len({(row["dataset"], row["record"], row["code"]) for row in issues}), 2)
+
     def test_duplicate_relation_evidence_keys_are_not_ready_for_curation(self):
         from .models import Concept
 

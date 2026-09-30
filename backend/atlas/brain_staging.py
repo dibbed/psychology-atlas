@@ -145,7 +145,9 @@ def validate_brain_staging(dataset_key=None):
             for key, record in group:
                 if dataset_key and key != dataset_key:
                     continue
-                report["issues"].append({"dataset": key, "record": record.external_id, "code": code})
+                entry = {"dataset": key, "record": record.external_id, "code": code}
+                if entry not in report["issues"]:
+                    report["issues"].append(entry)
     report["issues"].sort(key=lambda row: (row["dataset"], row["record"], row["code"]))
     report["ready_for_curation"] = report["candidate_count"] - len({(row["dataset"], row["record"]) for row in report["issues"]})
     return report
