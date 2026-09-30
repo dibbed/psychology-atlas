@@ -168,3 +168,48 @@ class BrainStagingTests(TestCase):
         self.ingest(other)
         self.assertIn("ambiguous_identity", {row["code"] for row in validate_brain_staging()["issues"]})
         self.assertEqual(BrainAnatomicalEntity.objects.count(), 0)
+
+    def test_duplicate_relation_evidence_keys_are_not_ready_for_curation(self):
+        from .models import Concept
+
+        Concept.objects.create(slug="synthetic-concept", name_en="Synthetic Concept", simple_definition="Test")
+        document = copy.deepcopy(self.document)
+        network = {"id": "network-one", "category": "network", "slug": "synthetic-network", "name_en": "Synthetic Network",
+                   "kind": "functional", "source_version": "Test v1", "definition": "Test definition", "method": "Test method",
+                   "source_ids": ["source-one"], "source_notes": {"source-one": "Synthetic source"}, "review_status": "unreviewed"}
+        document["records"].append(network)
+        for category in ("network_membership", "functional_association"):
+            relation = {"id": category, "category": category, "evidence_key": "synthetic-evidence", "source_version": "Test v1",
+                        "method": "Test method", "source_ids": ["source-one"], "source_notes": {"source-one": "Synthetic claim"},
+                        "review_status": "unreviewed"}
+            if category == "network_membership":
+                relation.update(entity_slug="test-only-structure", network_slug="synthetic-network",
+                                predicate="participates_in_network", qualifier="Synthetic participation")
+            else:
+                relation.update(subject_type="anatomy", subject_slug="test-only-structure", concept_slug="synthetic-concept",
+                                predicate="functional_association", task_context="Synthetic task", population_context="Synthetic population",
+                                limitations="Test limitation", explanation_en="Test association")
+            document["records"].extend([relation, {**relation, "id": category + "-duplicate"}])
+        dataset, _ = self.ingest(document)
+        report = validate_brain_staging(dataset.key)
+        duplicates = [row for row in report["issues"] if row["code"] == "duplicate_evidence_key"]
+        self.assertEqual(len(duplicates), 4)
+        other = copy.deepcopy(document)
+        other["dataset_metadata"]["version"] = "v2"
+        other["records"] = [row for row in other["records"] if not row["id"].endswith("-duplicate")]
+        self.ingest(other)
+        self.assertEqual(len([row for row in validate_brain_staging()["issues"] if row["code"] == "duplicate_evidence_key"]), 6)
+
+    def test_existing_canonical_evidence_key_is_not_a_new_candidate(self):
+        from .tests_v092_brain_api import BrainFixtureMixin
+
+        entity = BrainAnatomicalEntity.objects.create(slug="test-only-structure", name_en="Test Only Structure", kind="structure", laterality="bilateral")
+        fixture = type("SyntheticFixture", (BrainFixtureMixin,), {"source": self.source})
+        fixture.add_relations(entity)
+        document = copy.deepcopy(self.document)
+        document["records"].append({"id": "existing-claim", "category": "network_membership", "evidence_key": "fixture-membership",
+            "entity_slug": entity.slug, "network_slug": "fixture-network", "source_version": "Test v1", "method": "Test",
+            "qualifier": "Test", "predicate": "participates_in_network", "review_status": "unreviewed",
+            "source_ids": ["source-one"], "source_notes": {"source-one": "Test claim"}})
+        dataset, _ = self.ingest(document)
+        self.assertIn("canonical_evidence_key_conflict", {row["code"] for row in validate_brain_staging(dataset.key)["issues"]})

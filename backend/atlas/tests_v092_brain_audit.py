@@ -64,3 +64,22 @@ class BrainAuditTests(TestCase):
             snapshots.append(output.getvalue())
         self.assertEqual(*snapshots)
         self.assertEqual(BrainAnatomicalEntity.objects.count(), 0)
+
+    def test_downgraded_evidence_produces_a_deterministic_audit_error(self):
+        from .tests_v092_brain_api import BrainFixtureMixin
+
+        entity = self.anatomy("test-downgraded")
+        source = SourceReference.objects.create(title="Synthetic evidence", citation="Synthetic citation",
+                                               url="https://example.org/test", verification_status="verified")
+        fixture = type("SyntheticFixture", (BrainFixtureMixin,), {"source": source})
+        fixture.add_relations(entity)
+        source.verification_status = "citation_from_model_knowledge"
+        source.save()
+        outputs = []
+        for _ in range(2):
+            output = StringIO()
+            with self.assertRaises(CommandError):
+                call_command("audit_brain_atlas", stdout=output)
+            outputs.append(output.getvalue())
+        self.assertEqual(*outputs)
+        self.assertIn("invalid_source_link", outputs[0])

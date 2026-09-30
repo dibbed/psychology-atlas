@@ -31,3 +31,18 @@ class BrainRelationMigrationTests(TransactionTestCase):
                 for table, rows in before.items():
                     cursor.execute(f'SELECT * FROM "{table}"')
                     self.assertEqual(sorted(cursor.fetchall(), key=repr), rows, table)
+
+    def test_existing_aliases_gain_only_unreviewed_empty_approval_metadata(self):
+        previous = ("atlas", "0034_v092_brain_relation_support")
+        current = ("atlas", "0035_v092_brain_alias_review")
+        MigrationExecutor(connection).migrate([previous])
+        apps = MigrationExecutor(connection).loader.project_state([previous]).apps
+        entity = apps.get_model("atlas", "BrainAnatomicalEntity").objects.create(
+            slug="alias-migration-test", name_en="Synthetic Alias Migration", kind="structure", laterality="bilateral")
+        alias = apps.get_model("atlas", "BrainAnatomicalAlias").objects.create(
+            entity_id=entity.pk, text="Synthetic Alias", language="en")
+        MigrationExecutor(connection).migrate([current])
+        migrated = MigrationExecutor(connection).loader.project_state([current]).apps.get_model("atlas", "BrainAnatomicalAlias").objects.get(pk=alias.pk)
+        self.assertEqual(migrated.review_status, "unreviewed")
+        self.assertIsNone(migrated.source_id)
+        self.assertEqual(migrated.source_note, "")

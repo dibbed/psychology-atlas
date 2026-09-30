@@ -14,7 +14,7 @@ Date: 2026-09-30. Contract: [frozen v0.9 design](design-notes-v0.9.md).
 
 - `backend/atlas/brain_publication.py`, `brain_views.py`, `brain_serializers.py`, and `urls.py`: publication gate and bounded read API.
 - `backend/atlas/brain_staging.py` and commands `import_brain_dataset`, `promote_brain_staging`: lossless archival and read-only candidate validation.
-- `backend/atlas/models.py` and migration `0034_v092_brain_relation_support`: two approved relation types and their evidence links; four empty tables, no data migration.
+- `backend/atlas/models.py` and migrations `0034_v092_brain_relation_support`, `0035_v092_brain_alias_review`: two approved relation types with four empty evidence tables, plus source-backed per-alias review gates. The alias migration contains no data promotion.
 - Command `audit_brain_atlas`: deterministic integrity and publication-debt audit.
 - Five `tests_v092_brain_*` modules: synthetic fixtures only. `tests_v091_migration.py` restores current migration leaves during teardown.
 - README and this phase record document the limitation.
@@ -23,7 +23,7 @@ Date: 2026-09-30. Contract: [frozen v0.9 design](design-notes-v0.9.md).
 
 `GET /api/brain-anatomy/` and `GET /api/brain-anatomy/<slug>/` are read-only. Only active, reviewed anatomy with resolved evidence and a fully publishable primary ancestry is visible. Inactive/unreviewed records and unsupported ancestry return 404 on detail. There is no network API in this slice.
 
-List supports `q`, `kind`, `laterality`, and `parent` (a public parent slug). Unknown, repeated, empty enum, and malformed filters are rejected. English/Persian names, stable slugs, and explicit aliases are searched; Persian character variants use the existing search helper. Exact matches rank first, then English name and ID. Unsearched lists use English name and ID.
+List supports `q`, `kind`, `laterality`, and `parent` (a public parent slug). Unknown, repeated, empty enum, and malformed filters are rejected. English/Persian names, stable slugs, and reviewed aliases are searched; aliases appear only with their resolved spelling citation and claim note. Persian character variants use the existing search helper. Exact matches rank first, then English name and ID. Unsearched lists use English name and ID.
 
 AtlasPagination uses 30 rows by default and caps pages at 300. Aliases, source links, identifiers, children, memberships, and functional associations are capped at 30 per owner, with truncation flags. The primary parent has a single bounded summary. Responses contain citations, claim notes, source versions, review states, and evidence context, with no raw ResearchRecord payload or curator metadata.
 
@@ -38,6 +38,8 @@ Each record declares a category: anatomy (A), network (B), alias (C), hierarchy 
 Raw UTF-8 text, parsed document, and SHA-256 are preserved. Exact repeated imports reuse staging without rewriting local review states, records, inactivity, or promotion pointers. Duplicate/malformed record IDs receive deterministic archival keys while retaining the original payload. Generic research datasets are ignored.
 
 `python manage.py promote_brain_staging [--dataset <archived-key>]` is deliberately a **read-only validator**: it always reports `canonical_writes=0` and publication blocked. Even a structurally valid candidate remains staging-only. Neither command creates SourceReferences, canonical entities, aliases, hierarchy, or relation rows.
+
+The alias review migration adds unreviewed-by-default review state, a protected optional source, and claim note to anatomical and network aliases. Checked/reviewed aliases require a resolved source and nonblank spelling note. Changing evidence or identity on a reviewed alias requires returning it to unreviewed. Existing aliases do not become public through the schema change.
 
 ## Approved empty relation support
 
@@ -58,12 +60,12 @@ No connectivity, lesion, imaging, symptom, disorder, diagnosis, coordinate, or i
 
 ## VERIFICATION_EXECUTED
 
-- New focused tests: 46 passed on SQLite. Query measurements from populated **test-only** fixtures: list 4, detail 11, search 4, parent/kind filters 5. Regression budgets were frozen after measuring. Page size 1 uses the same list query count; nested children and maximum page size are bounded.
+- New focused tests: 56 passed on SQLite. Query measurements from populated **test-only** fixtures: list 4, detail 11, search 4, parent/kind filters 5. Regression budgets were frozen after measuring. Page size 1 uses the same list query count; nested children and maximum page size are bounded.
 - v0.9.1 regression tests: 27 passed, including 2 PostgreSQL-only skips on SQLite.
-- Full SQLite backend suite: 400 tests passed, with 2 PostgreSQL-only skips. PostgreSQL focused verification: all 73 v0.9.1 + v0.9.2 tests passed without skips, including foundation concurrency checks; query measurements matched SQLite.
-- Disposable copy upgrade from 0032 through 0033 and 0034 preserved identical contents in all 110 pre-existing Atlas tables, including 2 datasets and 1,918 ResearchRecords. Original database was not migrated.
+- Full SQLite backend suite on finalized code: 410 tests passed, with 2 PostgreSQL-only skips. PostgreSQL focused verification on finalized code: all 83 v0.9.1 + v0.9.2 tests passed without skips, including foundation concurrency and alias-review migration checks; query measurements matched SQLite.
+- Disposable copy upgrade from 0032 through 0033, 0034, and 0035 preserved all 110 pre-existing Atlas table contents, including 2 datasets and 1,918 ResearchRecords. Migration 0035 leaves aliases unreviewed and source-less. Original database was not migrated.
 - `check`, `makemigrations --check --dry-run`, `showmigrations atlas`, `verify_research_datasets`, `audit_brain_atlas`, `audit_v06_release`, `audit_study_plans`, `audit_recommendation_feedback`, and `audit_case_graphs` passed against the migrated copy. SQLite integrity_check returned `ok`; foreign_key_check returned no violations. Compilation and `git diff --check` passed.
-- Copy counts: anatomy 0, networks 0, hierarchy 0, memberships 0, functional associations 0. All Brain review/source distributions are empty; these are zero-content counts, not synthetic test counts.
+- Copy counts: anatomy 0, networks 0, hierarchy 0, memberships 0, functional associations 0, aliases 0. All Brain review/source distributions are empty; these are zero-content counts, not synthetic test counts.
 
 ## FAILED_OR_BLOCKED_CHECKS / UNVERIFIED_AREAS
 

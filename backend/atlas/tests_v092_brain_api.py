@@ -27,7 +27,8 @@ class BrainFixtureMixin:
         BrainHierarchyLinkSource.objects.create(relationship=cls.link, source=cls.source, note="Synthetic part-of claim")
         cls.link.review_status = ScientificReviewStatus.REVIEWED
         cls.link.save()
-        BrainAnatomicalAlias.objects.create(entity=cls.child, text="FC", language="en", alias_type="abbreviation")
+        BrainAnatomicalAlias.objects.create(entity=cls.child, text="FC", language="en", alias_type="abbreviation",
+            review_status="reviewed", source=cls.source, source_note="Synthetic abbreviation support")
 
     @classmethod
     def anatomy(cls, slug, **kwargs):
@@ -113,6 +114,26 @@ class BrainAPITests(BrainFixtureMixin, TestCase):
     def test_public_api_is_read_only(self):
         self.assertEqual(self.client.post("/api/brain-anatomy/", {}).status_code, 405)
 
+    def test_new_unreviewed_alias_is_not_public_or_searchable(self):
+        alias = BrainAnatomicalAlias.objects.create(entity=self.child, text="Unverified Alias", language="fa")
+        detail = self.client.get(f"/api/brain-anatomy/{self.child.slug}/").data
+        self.assertNotIn(alias.text, [row["text"] for row in detail["aliases"]])
+        self.assertEqual(self.client.get("/api/brain-anatomy/", {"q": alias.text}).data["count"], 0)
+        alias.source = self.source
+        alias.source_note = "Synthetic reviewed spelling"
+        alias.review_status = "reviewed"
+        alias.save()
+        self.assertEqual(self.client.get("/api/brain-anatomy/", {"q": alias.text}).data["count"], 1)
+
+    def test_hierarchy_provenance_excludes_blank_claim_links(self):
+        other = SourceReference.objects.create(title="Synthetic second source", citation="Synthetic citation",
+                                              url="https://example.org/second", verification_status="verified")
+        citation = BrainHierarchyLinkSource.objects.create(relationship=self.link, source=other, note="Synthetic second claim")
+        QuerySet.update(BrainHierarchyLinkSource.objects.filter(pk=citation.pk), note="\u00a0")
+        parent = self.client.get(f"/api/brain-anatomy/{self.child.slug}/").data["parent"]
+        self.assertEqual(len(parent["sources"]), 1)
+        self.assertEqual(parent["sources"][0]["source"]["id"], self.source.pk)
+
     def test_malformed_source_locator_cannot_pass_publication_gate(self):
         from .brain_publication import source_is_resolved
 
@@ -122,8 +143,23 @@ class BrainAPITests(BrainFixtureMixin, TestCase):
         self.assertFalse(source_is_resolved(self.source))
         self.assertEqual(self.client.get("/api/brain-anatomy/").data["count"], 0)
 
+    def test_whitespace_only_sources_have_matching_python_and_sql_gates(self):
+        from .brain_publication import source_is_resolved, resolved_sources
+
+        for whitespace in ("\f", "\v", "\u00a0", "\u0085", "\u2003", "\u3000", "\x1c"):
+            for field in ("title", "citation"):
+                with self.subTest(whitespace=repr(whitespace), field=field):
+                    self.source.title = "Synthetic title"
+                    self.source.citation = "Synthetic citation"
+                    setattr(self.source, field, whitespace)
+                    self.source.save()
+                    self.assertFalse(source_is_resolved(self.source))
+                    self.assertFalse(resolved_sources().filter(pk=self.source.pk).exists())
+                    self.assertEqual(self.client.get("/api/brain-anatomy/").data["count"], 0)
+
     def test_multiple_alias_hits_do_not_duplicate_or_change_exact_rank(self):
-        BrainAnatomicalAlias.objects.create(entity=self.child, text="FC additional", language="en")
+        BrainAnatomicalAlias.objects.create(entity=self.child, text="FC additional", language="en",
+            review_status="reviewed", source=self.source, source_note="Synthetic abbreviation support")
         partial = self.anatomy("test-partial", name_en="AAA FC partial")
         response = self.client.get("/api/brain-anatomy/", {"q": "FC"})
         self.assertEqual(response.data["count"], 2)
@@ -188,7 +224,8 @@ class BrainQueryProfileTests(BrainFixtureMixin, TestCase):
         cls.add_relations(cls.root)
         for number in range(45):
             entity = cls.anatomy(f"profile-{number:03}", name_en=f"Profile Test {number:03}")
-            BrainAnatomicalAlias.objects.create(entity=entity, text=f"Test Alias {number}", language="en")
+            BrainAnatomicalAlias.objects.create(entity=entity, text=f"Test Alias {number}", language="en",
+                review_status="reviewed", source=cls.source, source_note="Synthetic search fixture alias")
             link = BrainHierarchyLink.objects.create(child=entity, parent=cls.root, source_version="Test profile v1")
             BrainHierarchyLinkSource.objects.create(relationship=link, source=cls.source, note="Synthetic profiling hierarchy")
             link.review_status = "reviewed"

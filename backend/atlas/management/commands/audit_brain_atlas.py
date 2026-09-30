@@ -5,6 +5,7 @@ from collections import Counter, defaultdict
 
 from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
+from django.db.models.deletion import ProtectedError
 
 from atlas import models
 from atlas.brain_publication import source_is_resolved
@@ -54,7 +55,7 @@ class Command(BaseCommand):
                     fail(label, row.pk, "unsupported_review_state")
                 try:
                     row.full_clean()
-                except ValidationError:
+                except (ValidationError, ProtectedError):
                     fail(label, row.pk, "invalid_model_state")
                 if label in {"anatomy", "networks"}:
                     identities[row.slug.strip().casefold()].append(row.pk)
@@ -78,7 +79,7 @@ class Command(BaseCommand):
                 label = model._meta.model_name
                 try:
                     row.full_clean()
-                except ValidationError:
+                except (ValidationError, ProtectedError):
                     fail(label, row.pk, "invalid_alias" if "alias" in label else
                          "invalid_external_identifier" if model is models.BrainExternalIdentifier else "invalid_source_link")
                 if model in SOURCE_MODELS:
@@ -87,6 +88,14 @@ class Command(BaseCommand):
                         fail(label, row.pk, "orphan_source_link")
                 elif model is models.BrainExternalIdentifier and not source_is_resolved(sources.get(row.source_id)):
                     fail(label, row.pk, "unresolved_identifier_source")
+
+        aliases = list(models.BrainAnatomicalAlias.objects.order_by("pk").select_related("source"))
+        aliases.extend(models.BrainNetworkAlias.objects.order_by("pk").select_related("source"))
+        counts["aliases"] = len(aliases)
+        reviews["aliases"] = dict(sorted(Counter(row.review_status for row in aliases).items()))
+        alias_sources = Counter("resolved" if source_is_resolved(row.source) and row.source_note.strip()
+                                else "weak_only" if row.source_id else "unsourced" for row in aliases)
+        provenance["aliases"] = dict(sorted(alias_sources.items()))
 
         parents = defaultdict(list)
         for link in models.BrainHierarchyLink.objects.filter(is_active=True).order_by("pk"):

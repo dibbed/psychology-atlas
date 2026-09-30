@@ -16,6 +16,7 @@ from django.db import transaction
 from .brain_publication import URL_PATTERN, source_is_resolved
 from .models import (
     BrainAnatomicalAlias, BrainAnatomicalEntity, BrainHierarchyLink, BrainNetwork,
+    BrainNetworkMembership, BrainFunctionalAssociation,
     ResearchDataset, ResearchRecord, ScientificReviewStatus, SourceReference,
 )
 
@@ -108,6 +109,7 @@ def validate_brain_staging(dataset_key=None):
     report = {"publication": "blocked_missing_curated_dossier", "canonical_writes": 0,
               "candidate_count": 0, "classifications": {key: 0 for key in "ABCDEFGH"}, "issues": []}
     all_identities = defaultdict(list)
+    all_evidence = defaultdict(list)
     for dataset in datasets.prefetch_related("records"):
         _validate_dataset(dataset, report)
         for record in dataset.records.all():
@@ -116,6 +118,18 @@ def validate_brain_staging(dataset_key=None):
                 continue
             if row.get("category") in ("anatomy", "network") and stable_slug(row.get("slug")):
                 all_identities[(row["category"], row["slug"])].append((dataset.key, record))
+            if row.get("category") in ("network_membership", "functional_association") and stable_slug(row.get("evidence_key")):
+                all_evidence[(row["category"], row["evidence_key"])].append((dataset.key, record))
+    for (category, evidence_key), group in all_evidence.items():
+        model = BrainNetworkMembership if category == "network_membership" else BrainFunctionalAssociation
+        codes = []
+        if len(group) > 1:
+            codes.append("duplicate_evidence_key")
+        if model.objects.filter(evidence_key=evidence_key).exists():
+            codes.append("canonical_evidence_key_conflict")
+        for key, record in group:
+            for code in codes:
+                report["issues"].append({"dataset": key, "record": record.external_id, "code": code})
     for group in all_identities.values():
         if len({key for key, _ in group}) > 1:
             signatures = {json.dumps({field: row.payload.get(field) for field in (

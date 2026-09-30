@@ -2,10 +2,8 @@
 
 import re
 
-from django.db.models import Q, TextField
+from django.db.models import Q
 from django.db.models.expressions import RawSQL
-from django.db.models.functions import Replace, Trim
-from django.db.models import Value
 
 from .models import BrainAnatomicalEntity, BrainHierarchyLink, SourceReference
 
@@ -17,6 +15,8 @@ URL_PATTERN = r"^https?://[A-Za-z0-9][^\s/]+(?:/[^\s]*)?\Z"
 DOI_PATTERN = r"^10[.][0-9]{4,9}/\S+\Z"
 PMID_PATTERN = r"^[0-9]+\Z"
 NESTED_LIMIT = 30
+# Explicit Python str.strip whitespace, independent of the SQL engine's locale.
+NONBLANK_PATTERN = "[^\t\n\v\f\r\x1c\x1d\x1e\x1f \x85\xa0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000]"
 
 
 def source_is_resolved(source):
@@ -31,15 +31,10 @@ def source_is_resolved(source):
 
 
 def resolved_sources():
-    def stripped(field):
-        value = field
-        for whitespace in ("\t", "\n", "\r"):
-            value = Replace(value, Value(whitespace), Value(""), output_field=TextField())
-        return Trim(value, output_field=TextField())
-
-    return SourceReference.objects.filter(verification_status__in=CHECKED_SOURCE_STATES).alias(
-        checked_title=stripped("title"), checked_citation=stripped("citation"),
-    ).exclude(checked_title="").exclude(checked_citation="").filter(
+    return SourceReference.objects.filter(
+        verification_status__in=CHECKED_SOURCE_STATES,
+        title__regex=NONBLANK_PATTERN, citation__regex=NONBLANK_PATTERN,
+    ).filter(
         Q(url__regex=URL_PATTERN) | Q(doi__regex=DOI_PATTERN) | Q(pmid__regex=PMID_PATTERN),
     ).filter(
         Q(url="") | Q(url__regex=URL_PATTERN),
@@ -60,8 +55,8 @@ def public_anatomy():
         laterality__in=BrainAnatomicalEntity.Laterality.values, source_links__source__in=resolved_sources(),
     ).order_by().values("pk").distinct().query.sql_with_params()
     link_sql, link_params = BrainHierarchyLink.objects.filter(
-        is_active=True, review_status="reviewed", source_version__regex=r"\S",
-        source_links__source__in=resolved_sources(), source_links__note__regex=r"\S",
+        is_active=True, review_status="reviewed", source_version__regex=NONBLANK_PATTERN,
+        source_links__source__in=resolved_sources(), source_links__note__regex=NONBLANK_PATTERN,
     ).order_by().values("pk").distinct().query.sql_with_params()
     entity_table = BrainAnatomicalEntity._meta.db_table
     hierarchy_table = BrainHierarchyLink._meta.db_table

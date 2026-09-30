@@ -37,7 +37,9 @@ class BrainAnatomyListSerializer(serializers.ModelSerializer):
                   "aliases", "sources", "aliases_truncated", "sources_truncated")
 
     def get_aliases(self, obj):
-        return [{key: getattr(row, key) for key in ("text", "language", "alias_type")}
+        return [{"text": row.text, "language": row.language, "alias_type": row.alias_type,
+                 "review_status": row.review_status, "source_note": row.source_note,
+                 "source": ScientificSourceSerializer(row.source).data}
                 for row in obj.public_aliases[:NESTED_LIMIT]]
 
     def get_sources(self, obj):

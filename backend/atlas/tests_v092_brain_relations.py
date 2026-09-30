@@ -141,3 +141,43 @@ class BrainRelationTests(TestCase):
         relation.save()
         with self.assertRaises(ProtectedError):
             strong_link.delete()
+
+    def test_alias_approval_requires_resolved_provenance(self):
+        from .models import BrainAnatomicalAlias, BrainNetworkAlias
+
+        for model, owner in ((BrainAnatomicalAlias, {"entity": self.entity}), (BrainNetworkAlias, {"network": self.network})):
+            with self.subTest(model=model.__name__):
+                alias = model.objects.create(text="Synthetic Alias", language="en", **owner)
+                alias.review_status = "reviewed"
+                with self.assertRaises(ValidationError):
+                    alias.save()
+                alias.source = self.source
+                alias.source_note = "Exact synthetic spelling support"
+                alias.save()
+                self.assertEqual(alias.review_status, "reviewed")
+
+    def test_reviewed_alias_edits_require_return_to_unreviewed(self):
+        from .models import BrainAnatomicalAlias
+
+        alias = BrainAnatomicalAlias.objects.create(entity=self.entity, text="Synthetic Alias", language="en",
+            review_status="reviewed", source=self.source, source_note="Synthetic claim")
+        alias.text = "Unreviewed edit"
+        with self.assertRaises(ValidationError):
+            alias.save()
+        alias.review_status = "unreviewed"
+        alias.save()
+
+    def test_reviewed_alias_edits_require_new_review_and_partial_saves_keep_persisted_evidence(self):
+        from .models import BrainAnatomicalAlias
+
+        alias = BrainAnatomicalAlias.objects.create(entity=self.entity, text="Synthetic Alias", language="en",
+                                                  review_status="reviewed", source=self.source, source_note="Synthetic claim")
+        alias.text = "Unreviewed edit"
+        with self.assertRaises(ValidationError):
+            alias.save()
+        alias.save(update_fields=["review_status"])
+        alias.refresh_from_db()
+        self.assertEqual(alias.text, "Synthetic Alias")
+        alias.review_status = "unreviewed"
+        alias.text = "Unreviewed edit"
+        alias.save()

@@ -3550,7 +3550,58 @@ class BrainNetwork(BrainCanonicalBase):
         ]
 
 
-class BrainAnatomicalAlias(models.Model):
+class BrainAliasApprovalBase(models.Model):
+    review_status = models.CharField(max_length=24, choices=ScientificReviewStatus.choices,
+                                     default=ScientificReviewStatus.UNREVIEWED)
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, null=True, blank=True,
+                               related_name="%(class)s_approval_links")
+    source_note = models.TextField(blank=True)
+    alias_owner_field = None
+
+    class Meta:
+        abstract = True
+
+    def clean(self):
+        super().clean()
+        if self.review_status == ScientificReviewStatus.UNREVIEWED:
+            return
+        from .brain_publication import source_is_resolved
+        if not self.source_id or not source_is_resolved(SourceReference.objects.filter(pk=self.source_id).first()) \
+                or not self.source_note.strip():
+            raise ValidationError("Checked or reviewed aliases require a resolved spelling source and note.")
+        if self.pk:
+            previous = type(self).objects.filter(pk=self.pk).values(
+                "text", "language", "alias_type", "source_id", "source_note", f"{self.alias_owner_field}_id", "review_status",
+            ).first()
+            if previous and previous["review_status"] == ScientificReviewStatus.REVIEWED and any(
+                previous[field] != getattr(self, field) for field in (
+                    "text", "language", "alias_type", "source_id", "source_note", f"{self.alias_owner_field}_id",
+                )
+            ):
+                raise ValidationError("Return a reviewed alias to unreviewed before changing its evidence or identity.")
+
+    def save(self, *args, **kwargs):
+        using = kwargs.get("using") or router.db_for_write(type(self), instance=self)
+        update_fields = kwargs.get("update_fields")
+        with transaction.atomic(using=using):
+            candidate = self
+            if self.pk:
+                stored = type(self).objects.using(using).select_for_update().filter(pk=self.pk).first()
+                if stored is not None and update_fields is not None:
+                    candidate = stored
+                    for name in update_fields:
+                        field = self._meta.get_field(name)
+                        setattr(candidate, field.attname, getattr(self, field.attname))
+            owner_model = self._meta.get_field(self.alias_owner_field).remote_field.model
+            owner_id = getattr(candidate, f"{self.alias_owner_field}_id")
+            list(owner_model.objects.using(using).select_for_update().filter(pk=owner_id).values_list("pk", flat=True))
+            if candidate.source_id:
+                list(SourceReference.objects.using(using).select_for_update().filter(pk=candidate.source_id).values_list("pk", flat=True))
+            candidate.full_clean()
+            return super().save(*args, **kwargs)
+
+
+class BrainAnatomicalAlias(BrainAliasApprovalBase):
     objects = BrainValidatedQuerySet.as_manager()
     class Language(models.TextChoices):
         EN = "en", "English"
@@ -3563,6 +3614,7 @@ class BrainAnatomicalAlias(models.Model):
         TRANSLITERATION = "transliteration", "Transliteration"
 
     entity = models.ForeignKey(BrainAnatomicalEntity, on_delete=models.PROTECT, related_name="aliases")
+    alias_owner_field = "entity"
     text = models.CharField(max_length=255)
     language = models.CharField(max_length=12, choices=Language.choices)
     alias_type = models.CharField(max_length=24, choices=AliasType.choices, default=AliasType.ALTERNATIVE)
@@ -3578,16 +3630,16 @@ class BrainAnatomicalAlias(models.Model):
 
     def save(self, *args, **kwargs):
         self.text = " ".join(self.text.split())
-        self.full_clean()
         return super().save(*args, **kwargs)
 
 
-class BrainNetworkAlias(models.Model):
+class BrainNetworkAlias(BrainAliasApprovalBase):
     objects = BrainValidatedQuerySet.as_manager()
     Language = BrainAnatomicalAlias.Language
     AliasType = BrainAnatomicalAlias.AliasType
 
     network = models.ForeignKey(BrainNetwork, on_delete=models.PROTECT, related_name="aliases")
+    alias_owner_field = "network"
     text = models.CharField(max_length=255)
     language = models.CharField(max_length=12, choices=Language.choices)
     alias_type = models.CharField(max_length=24, choices=AliasType.choices, default=AliasType.ALTERNATIVE)
@@ -3603,7 +3655,6 @@ class BrainNetworkAlias(models.Model):
 
     def save(self, *args, **kwargs):
         self.text = " ".join(self.text.split())
-        self.full_clean()
         return super().save(*args, **kwargs)
 
 
@@ -3860,8 +3911,8 @@ class BrainEvidenceRelationBase(ScientificRelationBase):
             if original is not None and original != self.evidence_key:
                 raise ValidationError({"evidence_key": "Evidence identity cannot be changed."})
         if self.review_status != ScientificReviewStatus.UNREVIEWED:
-            from .brain_publication import resolved_sources
-            if self.pk is None or not self.source_links.filter(source__in=resolved_sources(), note__regex=r"\S").exists():
+            from .brain_publication import NONBLANK_PATTERN, resolved_sources
+            if self.pk is None or not self.source_links.filter(source__in=resolved_sources(), note__regex=NONBLANK_PATTERN).exists():
                 raise ValidationError({"review_status": "Checked relations require resolved relation-level evidence."})
         if self.is_active:
             for field in self.endpoint_fields:
@@ -3944,12 +3995,12 @@ class BrainFunctionalAssociation(BrainEvidenceRelationBase):
 class BrainEvidenceSourceQuerySet(BrainSourceLinkQuerySet):
     def _protect_required_sources(self):
         removing = super()._protect_required_sources()
-        from .brain_publication import resolved_sources
+        from .brain_publication import NONBLANK_PATTERN, resolved_sources
         owners = self.model._meta.get_field("relationship").remote_field.model.objects.filter(
             pk__in=removing.values("relationship_id"),
         ).exclude(review_status=ScientificReviewStatus.UNREVIEWED)
         for owner in owners:
-            if not self.model.objects.filter(relationship=owner, source__in=resolved_sources(), note__regex=r"\S").exclude(
+            if not self.model.objects.filter(relationship=owner, source__in=resolved_sources(), note__regex=NONBLANK_PATTERN).exclude(
                 pk__in=removing.values("pk"),
             ).exists():
                 raise ProtectedError("Checked Brain relations must retain resolved evidence.", [owner])
@@ -3967,12 +4018,12 @@ class BrainEvidenceSourceBase(BrainSourceLinkBase):
         super().clean()
         if not self.note.strip():
             raise ValidationError({"note": "Identify the exact supported scientific claim."})
-        from .brain_publication import resolved_sources
+        from .brain_publication import NONBLANK_PATTERN, resolved_sources
         owner_model = self._meta.get_field("relationship").remote_field.model
         owner = owner_model.objects.filter(pk=self.relationship_id).first()
         if owner and owner.review_status != ScientificReviewStatus.UNREVIEWED:
             if not resolved_sources().filter(pk=self.source_id).exists() and not type(self).objects.filter(
-                relationship_id=owner.pk, source__in=resolved_sources(), note__regex=r"\S",
+                relationship_id=owner.pk, source__in=resolved_sources(), note__regex=NONBLANK_PATTERN,
             ).exclude(pk=self.pk).exists():
                 raise ProtectedError("Checked Brain relations must retain resolved evidence.", [owner])
 

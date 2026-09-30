@@ -5,7 +5,7 @@ from rest_framework import generics
 from rest_framework.exceptions import ValidationError
 
 from . import models
-from .brain_publication import NESTED_LIMIT, URL_PATTERN, public_anatomy, resolved_sources
+from .brain_publication import NESTED_LIMIT, NONBLANK_PATTERN, URL_PATTERN, public_anatomy, resolved_sources
 from .brain_serializers import BrainAnatomyDetailSerializer, BrainAnatomyListSerializer
 from .pagination import AtlasPagination
 from .search_utils import icontains_any, search_variants
@@ -24,8 +24,9 @@ def anatomy_queryset():
 def valid_aliases():
     return models.BrainAnatomicalAlias.objects.filter(
         language__in=models.BrainAnatomicalAlias.Language.values,
-        alias_type__in=models.BrainAnatomicalAlias.AliasType.values, text__regex=r"\S",
-    )
+        alias_type__in=models.BrainAnatomicalAlias.AliasType.values, text__regex=NONBLANK_PATTERN,
+        review_status="reviewed", source__in=resolved_sources(), source_note__regex=NONBLANK_PATTERN,
+    ).select_related("source")
 
 
 class BrainAnatomyListView(generics.ListAPIView):
@@ -77,7 +78,9 @@ class BrainAnatomyDetailView(generics.RetrieveAPIView):
     lookup_field = "slug"
 
     def get_queryset(self):
-        relation_sources = models.BrainHierarchyLinkSource.objects.filter(source__in=resolved_sources()).select_related("source").order_by("source_id", "pk")
+        relation_sources = models.BrainHierarchyLinkSource.objects.filter(
+            source__in=resolved_sources(), note__regex=NONBLANK_PATTERN,
+        ).select_related("source").order_by("source_id", "pk")
         links = models.BrainHierarchyLink.objects.filter(
             is_active=True, review_status=models.ScientificReviewStatus.REVIEWED,
             child__in=public_anatomy(), parent__in=public_anatomy(),
@@ -95,7 +98,7 @@ class BrainAnatomyDetailView(generics.RetrieveAPIView):
             Prefetch("parent_links", queryset=links.order_by("pk")[:1], to_attr="public_parents"),
             Prefetch("child_links", queryset=links.order_by("child__name_en", "child_id", "pk")[:NESTED_LIMIT + 1], to_attr="public_children"),
             Prefetch("external_identifiers", queryset=models.BrainExternalIdentifier.objects.filter(
-                source__in=resolved_sources(), namespace__regex=r"\S", identifier__regex=r"\S", source_version__regex=r"\S",
+                source__in=resolved_sources(), namespace__regex=NONBLANK_PATTERN, identifier__regex=NONBLANK_PATTERN, source_version__regex=NONBLANK_PATTERN,
             ).filter(Q(url="") | Q(url__regex=URL_PATTERN)).select_related("source")
                      .order_by("namespace", "source_version", "identifier", "pk")[:NESTED_LIMIT + 1], to_attr="public_identifiers"),
             Prefetch("network_memberships", queryset=memberships[:NESTED_LIMIT + 1], to_attr="public_memberships"),
@@ -106,11 +109,11 @@ class BrainAnatomyDetailView(generics.RetrieveAPIView):
 def supported_relations(model):
     source_model = model._meta.get_field("source_links").related_model
     qs = model.objects.filter(is_active=True, review_status="reviewed", evidence_key__regex=r"^[a-z0-9_-]+$").filter(
-        Exists(source_model.objects.filter(relationship_id=OuterRef("pk"), source__in=resolved_sources(), note__regex=r"\S")),
+        Exists(source_model.objects.filter(relationship_id=OuterRef("pk"), source__in=resolved_sources(), note__regex=NONBLANK_PATTERN)),
     )
     for field in model.required_context:
-        qs = qs.filter(**{f"{field}__regex": r"\S"})
+        qs = qs.filter(**{f"{field}__regex": NONBLANK_PATTERN})
     return qs.order_by("sort_order", "evidence_key", "pk").prefetch_related(
-        Prefetch("source_links", queryset=source_model.objects.filter(source__in=resolved_sources(), note__regex=r"\S")
+        Prefetch("source_links", queryset=source_model.objects.filter(source__in=resolved_sources(), note__regex=NONBLANK_PATTERN)
                  .select_related("source").order_by("source_id", "pk")[:NESTED_LIMIT + 1], to_attr="public_sources"),
     )
