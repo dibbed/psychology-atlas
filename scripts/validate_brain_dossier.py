@@ -13,6 +13,7 @@ import os
 import re
 import sqlite3
 import sys
+import tempfile
 import unicodedata
 from collections import Counter
 from pathlib import Path
@@ -62,12 +63,33 @@ def classify_source(candidate, registry):
     for field, normalize in (("doi", normalized_doi), ("pmid", lambda s: s.strip())):
         if candidate.get(field) and found.get(field) and normalize(candidate[field]) != normalize(found[field]):
             return "CONFLICT", None
+    if candidate.get("url") and found.get("url"):
+        urls = [candidate["url"], *candidate.get("verified_alternate_urls", [])]
+        if canonical_url(found["url"]) not in {canonical_url(url) for url in urls}:
+            return "CONFLICT", None
     titles = [candidate["title"], *candidate.get("verified_alternate_titles", [])]
     if normalized_text(found["title"]) not in {normalized_text(t) for t in titles}:
         return "CONFLICT", None
     if candidate.get("publication_year") and found.get("publication_year") and candidate["publication_year"] != found["publication_year"]:
         return "CONFLICT", None
     return "MATCHED_EXISTING", found["id"]
+
+
+def verify_parent(dossier_path, metadata):
+    name = metadata["parent_input_filename"]
+    if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9_.-]+\.json", name):
+        raise ValueError("Parent input must be a plain JSON filename beside the dossier.")
+    parent = (dossier_path.parent / name).resolve()
+    if parent.parent != dossier_path.parent:
+        raise ValueError("Parent input must not escape the dossier directory.")
+    raw = parent.read_bytes()
+    if len(raw) != metadata["parent_bytes"] or hashlib.sha256(raw).hexdigest() != metadata["parent_sha256"]:
+        raise ValueError("Preserved parent bytes or SHA-256 conflict with reviewed lineage.")
+    json.loads(raw.decode("utf-8"))
+
+
+def audit_is_clear(audit):
+    return not audit["errors"] and not audit["review_debt"] and audit["staging_issues"] == 0
 
 
 def self_test():
@@ -83,7 +105,27 @@ def self_test():
                                     dict(source, id=8, pmid="", url="", title="Other", publication_year=2024)]) == ("CONFLICT", None)
     assert canonical_url("https://EXAMPLE.org/atlas/?utm_source=x&version=1") == source["url"]
     assert canonical_url(source["url"]) != canonical_url(source["url"].replace("version=1", "version=2"))
-    print("Source resolver self-check: PASS (matches, duplicate/ambiguous, conflict, version-preserving URL)")
+    assert classify_source(source, [dict(source, id=7, url=source["url"].replace("version=1", "version=2"))]) == ("CONFLICT", None)
+    audit = dict(errors=[], review_debt=[], staging_issues=0)
+    assert audit_is_clear(audit)
+    assert not audit_is_clear(dict(audit, review_debt=["unreviewed canonical row"]))
+    assert not audit_is_clear(dict(audit, staging_issues=1))
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "master.json"
+        parent = path.with_name("parent.json")
+        raw = b'{"example": true}\r\n'
+        parent.write_bytes(raw)
+        lineage = dict(parent_input_filename=parent.name, parent_bytes=len(raw), parent_sha256=hashlib.sha256(raw).hexdigest())
+        verify_parent(path, lineage)
+        parent.write_bytes(raw.replace(b"\r\n", b"\n"))
+        for wrong in (lineage, dict(lineage, parent_input_filename="../parent.json")):
+            try:
+                verify_parent(path, wrong)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("Changed/escaping parent input was accepted")
+    print("Dossier validation self-check: PASS (identity conflicts, versions, audit debt/issues, exact parent lineage)")
 
 
 def digest(path):
@@ -104,6 +146,7 @@ def run(dossier_path, input_database, output):
     if document.get("schema_version") != "brain-staging-v1":
         raise ValueError("Current brain-staging-v1 schema required.")
     metadata = document["dataset_metadata"]
+    verify_parent(dossier_path, metadata)
     catalog = metadata["verified_source_catalog"]
     sources = [r for r in document["records"] if r["category"] == "source"]
     placeholders = [s["source_reference_id"] for s in sources]
@@ -133,9 +176,11 @@ def run(dossier_path, input_database, output):
 
     def command(name, *args, **kwargs):
         log = io.StringIO()
-        call_command(name, *args, stdout=log, **kwargs)
+        try:
+            call_command(name, *args, stdout=log, **kwargs)
+        finally:
+            (output / (name + ".txt")).write_text(log.getvalue(), encoding="utf-8")
         result = log.getvalue()
-        (output / (name + ".txt")).write_text(result, encoding="utf-8")
         return result
 
     command("migrate", interactive=False)
@@ -203,8 +248,8 @@ def run(dossier_path, input_database, output):
         canonical_unchanged=before == after, canonical_writes=promotion["canonical_writes"],
         staging=promotion, audit=audit, archival_integrity=integrity.strip())
     write_json(output / "validation-summary.json", summary)
-    if not unchanged or promotion["issues"] or promotion["canonical_writes"] != 0:
-        raise ValueError("Validation did not meet unchanged/zero-write/no-issue requirements; inspect evidence.")
+    if not unchanged or promotion["issues"] or promotion["canonical_writes"] != 0 or not audit_is_clear(audit):
+        raise ValueError("Validation did not meet unchanged/zero-write/no-issue/no-debt requirements; inspect evidence.")
     print(json.dumps({"result": "PASS", "records": promotion["candidate_count"], "issues": 0,
         "canonical_writes": 0, "source_resolution": summary["source_resolution"],
         "canonical_unchanged": True, "original_database_unchanged": True}, indent=2))
