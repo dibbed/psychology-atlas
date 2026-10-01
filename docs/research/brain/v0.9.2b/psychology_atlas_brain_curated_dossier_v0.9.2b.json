@@ -5671,7 +5671,7 @@
       "source-persian-isuog-corpus-callosum": {
         "source_id": "source-persian-isuog-corpus-callosum",
         "title": "آژنزی (عدم وجود) جسم پینه‌ای (کورپوس کالوزوم) / Agenesis of the corpus callosum",
-        "citation": "ISUOG. Agenesis of the corpus callosum (ACC), Persian patient information leaflet. Persian translation credited to Solmaz Piri; undated. Accessed 2026-10-01.",
+        "citation": "ISUOG. Agenesis of the corpus callosum (ACC), Persian patient information leaflet. Persian editorial/translation credits: سولماز پیری، نجمیه سعادتی، نیلوفر پور سعادت. Publication date not established; accessed 2026-10-01.",
         "url": "https://www.isuog.org/asset/F525BC70-4CF1-4D29-8ED64BD325142F71/",
         "doi": "",
         "pmid": "",
@@ -5679,7 +5679,9 @@
         "access_date": "2026-10-01",
         "organization": "International Society of Ultrasound in Obstetrics and Gynecology (ISUOG) / Iranian academic translators",
         "authors": [
-          "Solmaz Piri (Persian translator)"
+          "دکتر سولماز پیری (هماهنگ‌کننده و ویراستار)",
+          "دکتر نجمیه سعادتی (سرپرست گروه مترجمین و ویراستار)",
+          "دکتر نیلوفر پور سعادت (مترجم)"
         ],
         "publication_year": null,
         "source_type": "institutional_resource",
@@ -6040,7 +6042,7 @@
           ],
           "metadata_reuse": "Factual bibliographic identity and short nomenclature only; citations retained.",
           "redistribution": "No source document, data volume, figure, photograph or geometry redistributed. Separate file-level permission required for future assets.",
-          "attribution": "ISUOG. Agenesis of the corpus callosum (ACC), Persian patient information leaflet. Persian translation credited to Solmaz Piri; undated. Accessed 2026-10-01.",
+          "attribution": "ISUOG. Agenesis of the corpus callosum (ACC), Persian patient information leaflet. Persian editorial/translation credits: سولماز پیری، نجمیه سعادتی، نیلوفر پور سعادت. Publication date not established; accessed 2026-10-01.",
           "derivative_use": "No full-text/image derivative permission asserted",
           "visual_rights": "No visual asset included; publisher and third-party exclusions must be verified before use.",
           "unresolved_restrictions": "Article/leaflet visual and redistribution permissions unresolved."
@@ -10610,7 +10612,7 @@
       "is_active": true,
       "source_reference_id": -14,
       "title": "آژنزی (عدم وجود) جسم پینه‌ای (کورپوس کالوزوم) / Agenesis of the corpus callosum",
-      "citation": "ISUOG. Agenesis of the corpus callosum (ACC), Persian patient information leaflet. Persian translation credited to Solmaz Piri; undated. Accessed 2026-10-01.",
+      "citation": "ISUOG. Agenesis of the corpus callosum (ACC), Persian patient information leaflet. Persian editorial/translation credits: سولماز پیری، نجمیه سعادتی، نیلوفر پور سعادت. Publication date not established; accessed 2026-10-01.",
       "url": "https://www.isuog.org/asset/F525BC70-4CF1-4D29-8ED64BD325142F71/",
       "doi": "",
       "pmid": ""

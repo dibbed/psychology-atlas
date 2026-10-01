@@ -11,7 +11,7 @@ The original Web file is preserved byte-for-byte here, including its CRLF line e
 | Artifact | Bytes | SHA-256 |
 |---|---:|---|
 | `psychology_atlas_brain_curated_web_dossier_v0.9.2b.json` | 396,308 | `a0baf10cbd21a26651ba1df68b3bc3d4553455e1eb8f6ea69e791c503d7dd321` |
-| `psychology_atlas_brain_curated_dossier_v0.9.2b.json` | 853,787 | `f3e038f0b954d7e04496e8d632cf761d5b94cf875bff0377b18b49058020b0a2` |
+| `psychology_atlas_brain_curated_dossier_v0.9.2b.json` | 854,307 | `cc3a74c071935c1a8f43163d8506da6d9c132f9b519b54ff3838190e629ac306` |
 
 Both are valid UTF-8 JSON using current `brain-staging-v1`. The input dataset key/version are `psychology-atlas-brain-curated-web-dossier-v092b` / `0.9.2b-web-candidate-2026-10-01`; the master uses `psychology-atlas-brain-curated-dossier-v092b` / `0.9.2b-curated-2026-10-01`.
 
