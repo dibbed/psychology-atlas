@@ -3552,8 +3552,9 @@ class BrainCanonicalBase(TimeStampedModel):
             if original_slug is not None and original_slug != self.slug:
                 raise ValidationError({"slug": "Canonical slugs cannot be changed."})
         if self.review_status != ScientificReviewStatus.UNREVIEWED and self.pk:
-            if not self.source_links.exists():
-                raise ValidationError({"review_status": "A checked or reviewed entity requires a source link."})
+            from .brain_publication import resolved_sources
+            if not self.source_links.filter(source__in=resolved_sources()).exists():
+                raise ValidationError({"review_status": "A checked or reviewed entity requires resolved source evidence."})
         elif self.review_status != ScientificReviewStatus.UNREVIEWED:
             raise ValidationError({"review_status": "Create an unreviewed entity and attach sources first."})
 
@@ -3793,8 +3794,12 @@ class BrainSourceLinkQuerySet(BrainValidatedQuerySet):
             if owner.review_status == ScientificReviewStatus.REVIEWED:
                 raise ProtectedError("Return reviewed Brain content to unreviewed before removing evidence.", [owner])
             owner_filter = {owner_field: owner.pk}
-            if self.model.objects.using(self.db).filter(**owner_filter).count() <= removing.filter(**owner_filter).count():
-                raise ProtectedError("Checked or reviewed Brain records require a source link.", [owner])
+            from .brain_publication import NONBLANK_PATTERN, resolved_sources
+            evidence = self.model.objects.using(self.db).filter(**owner_filter, source__in=resolved_sources()).exclude(pk__in=removing.values("pk"))
+            if owner_field == "relationship":
+                evidence = evidence.filter(note__regex=NONBLANK_PATTERN)
+            if not evidence.exists():
+                raise ProtectedError("Checked Brain records must retain resolved evidence.", [owner])
         return removing
 
     def delete(self):
@@ -3824,6 +3829,16 @@ class BrainSourceLinkBase(models.Model):
             owner_model = self._meta.get_field(self.owner_field).remote_field.model
             if owner_model.objects.filter(pk__in=owner_ids, review_status=ScientificReviewStatus.REVIEWED).exists():
                 raise ValidationError("Return reviewed Brain content to unreviewed before changing its source evidence.")
+        from .brain_publication import NONBLANK_PATTERN, resolved_sources
+        owner_model = self._meta.get_field(self.owner_field).remote_field.model
+        owner = owner_model.objects.filter(pk=getattr(self, owner_id_field)).first()
+        if owner and owner.review_status != ScientificReviewStatus.UNREVIEWED:
+            candidate_resolved = resolved_sources().filter(pk=self.source_id).exists() and (self.owner_field != "relationship" or self.note.strip())
+            evidence = type(self).objects.filter(**{owner_id_field: owner.pk}, source__in=resolved_sources()).exclude(pk=self.pk)
+            if self.owner_field == "relationship":
+                evidence = evidence.filter(note__regex=NONBLANK_PATTERN)
+            if not candidate_resolved and not evidence.exists():
+                raise ProtectedError("Checked Brain records must retain resolved evidence.", [owner])
 
     def save(self, *args, **kwargs):
         using = kwargs.get("using") or router.db_for_write(type(self), instance=self)
@@ -4000,8 +4015,9 @@ class BrainHierarchyLink(ScientificRelationBase):
         if not self.source_version.strip():
             raise ValidationError({"source_version": "A named source version is required."})
         if self.review_status != ScientificReviewStatus.UNREVIEWED:
-            if self.pk is None or not self.source_links.exists():
-                raise ValidationError({"review_status": "A checked or reviewed link requires relation-level sources."})
+            from .brain_publication import NONBLANK_PATTERN, resolved_sources
+            if self.pk is None or not self.source_links.filter(source__in=resolved_sources(), note__regex=NONBLANK_PATTERN).exists():
+                raise ValidationError({"review_status": "A checked or reviewed link requires resolved claim evidence."})
         if not self.is_active:
             return
         # Read current endpoint state; a previously cached relation may be stale.
@@ -4174,23 +4190,7 @@ class BrainFunctionalAssociation(BrainEvidenceRelationBase):
             raise ValidationError("A functional association requires exactly one anatomy or network subject.")
 
 
-class BrainEvidenceSourceQuerySet(BrainSourceLinkQuerySet):
-    def _protect_required_sources(self):
-        removing = super()._protect_required_sources()
-        from .brain_publication import NONBLANK_PATTERN, resolved_sources
-        owners = self.model._meta.get_field("relationship").remote_field.model.objects.filter(
-            pk__in=removing.values("relationship_id"),
-        ).exclude(review_status=ScientificReviewStatus.UNREVIEWED)
-        for owner in owners:
-            if not self.model.objects.filter(relationship=owner, source__in=resolved_sources(), note__regex=NONBLANK_PATTERN).exclude(
-                pk__in=removing.values("pk"),
-            ).exists():
-                raise ProtectedError("Checked Brain relations must retain resolved evidence.", [owner])
-        return removing
-
-
 class BrainEvidenceSourceBase(BrainSourceLinkBase):
-    objects = BrainEvidenceSourceQuerySet.as_manager()
     note = models.TextField()
 
     class Meta:
@@ -4200,14 +4200,6 @@ class BrainEvidenceSourceBase(BrainSourceLinkBase):
         super().clean()
         if not self.note.strip():
             raise ValidationError({"note": "Identify the exact supported scientific claim."})
-        from .brain_publication import NONBLANK_PATTERN, resolved_sources
-        owner_model = self._meta.get_field("relationship").remote_field.model
-        owner = owner_model.objects.filter(pk=self.relationship_id).first()
-        if owner and owner.review_status != ScientificReviewStatus.UNREVIEWED:
-            if not resolved_sources().filter(pk=self.source_id).exists() and not type(self).objects.filter(
-                relationship_id=owner.pk, source__in=resolved_sources(), note__regex=NONBLANK_PATTERN,
-            ).exclude(pk=self.pk).exists():
-                raise ProtectedError("Checked Brain relations must retain resolved evidence.", [owner])
 
 
 class BrainNetworkMembershipSource(BrainEvidenceSourceBase):

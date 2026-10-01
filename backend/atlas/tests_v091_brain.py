@@ -41,7 +41,7 @@ class BrainFoundationTests(TestCase):
         )
 
     def source(self):
-        return SourceReference.objects.create(title="Synthetic test source")
+        return SourceReference.objects.create(title="Synthetic test source", citation="Synthetic evidence", url="https://example.org/foundation", verification_status="source_checked")
 
     def test_canonical_defaults_kind_laterality_and_ownership(self):
         entity = self.anatomy("fixture-structure", seed_managed=True)
@@ -392,7 +392,7 @@ class BrainFoundationTests(TestCase):
 
     def test_checked_records_keep_their_last_source_link(self):
         source = self.source()
-        other_source = SourceReference.objects.create(title="Other synthetic source")
+        other_source = SourceReference.objects.create(title="Other synthetic source", citation="Synthetic evidence", url="https://example.org/other-foundation", verification_status="source_checked")
         entity = self.anatomy("sourced-entity")
         first = BrainAnatomicalEntitySource.objects.create(entity=entity, source=source)
         entity.review_status = ScientificReviewStatus.SOURCE_CHECKED
@@ -432,7 +432,7 @@ class BrainFoundationTests(TestCase):
 
     def test_source_reassignment_preserves_required_provenance(self):
         source = self.source()
-        other_source = SourceReference.objects.create(title="Other synthetic source")
+        other_source = SourceReference.objects.create(title="Other synthetic source", citation="Synthetic evidence", url="https://example.org/other-foundation", verification_status="source_checked")
         root = self.anatomy("root")
         targets = (
             (BrainAnatomicalEntitySource, "entity", self.anatomy("target")),
@@ -539,7 +539,7 @@ class BrainIntegrityConcurrencyTests(TransactionTestCase):
         target = BrainAnatomicalEntity.objects.create(
             slug="target", name_en="Target", kind="structure", laterality="bilateral",
         )
-        source = SourceReference.objects.create(title="Synthetic concurrency source")
+        source = SourceReference.objects.create(title="Synthetic concurrency source", citation="Synthetic evidence", url="https://example.org/concurrency", verification_status="source_checked")
         citation = BrainAnatomicalEntitySource.objects.create(entity=old_owner, source=source)
         owner_read, release_delete, move_attempted, move_finished = (Event() for _ in range(4))
         outcomes = SimpleQueue()

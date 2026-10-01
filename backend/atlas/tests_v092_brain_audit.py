@@ -49,8 +49,7 @@ class BrainAuditTests(TestCase):
         entity = self.anatomy("test-weak")
         source = SourceReference.objects.create(title="Test weak reference")
         BrainAnatomicalEntitySource.objects.create(entity=entity, source=source)
-        entity.review_status = "source_checked"
-        entity.save()
+        QuerySet.update(BrainAnatomicalEntity.objects.filter(pk=entity.pk), review_status="source_checked")  # Deliberate legacy/corrupt state for audit.
         output = StringIO()
         with self.assertRaises(CommandError):
             call_command("audit_brain_atlas", stdout=output)

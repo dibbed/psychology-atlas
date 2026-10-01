@@ -425,6 +425,57 @@ class BrainRelationTests(TestCase):
         self.assertEqual(self.source.verification_status, "citation_from_model_knowledge")
 
 
+    def test_checked_canonical_evidence_cannot_be_removed_or_replaced_by_weak_sources(self):
+        parent = BrainAnatomicalEntity.objects.create(slug="retention-parent", name_en="Synthetic Parent", kind="structure", laterality="bilateral")
+        hierarchy = BrainHierarchyLink.objects.create(child=self.entity, parent=parent, source_version="Test v1")
+        BrainHierarchyLinkSource.objects.create(relationship=hierarchy, source=self.source, note="Synthetic hierarchy claim")
+        BrainNetworkSource.objects.create(network=self.network, source=self.source)
+        weak = SourceReference.objects.create(title="Synthetic weak evidence")
+        replacement_weak = SourceReference.objects.create(title="Synthetic weak replacement")
+        target_network = BrainNetwork.objects.create(slug="retention-target", name_en="Synthetic Target")
+        root = BrainAnatomicalEntity.objects.create(slug="retention-root", name_en="Synthetic Root", kind="whole_brain", laterality="bilateral")
+        target_hierarchy = BrainHierarchyLink.objects.create(child=parent, parent=root, source_version="Test v1")
+        alternative = SourceReference.objects.create(title="Synthetic resolved alternative", citation="Synthetic evidence",
+            url="https://example.org/retention", verification_status="source_checked")
+        for owner, model in ((self.entity, BrainAnatomicalEntitySource), (self.network, BrainNetworkSource),
+                             (hierarchy, BrainHierarchyLinkSource)):
+            strong = owner.source_links.get(source=self.source)
+            model.objects.create(**{model.owner_field: owner}, source=weak, note="Synthetic historical claim")
+            owner.review_status = "source_checked"
+            owner.save()
+            with self.subTest(model=model.__name__):
+                with self.assertRaises(ProtectedError):
+                    strong.delete()
+                with self.assertRaises(ProtectedError):
+                    owner.source_links.filter(pk=strong.pk).delete()
+                target = {"entity": parent, "network": target_network, "relationship": target_hierarchy}[model.owner_field]
+                setattr(strong, model.owner_field, target)
+                with self.assertRaises(ProtectedError):
+                    strong.save()
+                strong.refresh_from_db()
+                strong.source = alternative
+                strong.save()  # A resolved replacement is safe.
+                strong.source = replacement_weak
+                with self.assertRaises(ProtectedError):
+                    strong.save()
+                strong.refresh_from_db()
+                model.objects.create(**{model.owner_field: owner}, source=self.source, note="Synthetic retained claim")
+                strong.delete()
+                self.assertTrue(owner.source_links.filter(source=self.source).exists())
+
+    def test_canonical_checked_approval_requires_resolved_evidence(self):
+        weak = SourceReference.objects.create(title="Synthetic unchecked evidence")
+        parent = BrainAnatomicalEntity.objects.create(slug="weak-parent", name_en="Synthetic Parent", kind="structure", laterality="bilateral")
+        hierarchy = BrainHierarchyLink.objects.create(child=self.entity, parent=parent, source_version="Test v1")
+        anatomy = BrainAnatomicalEntity.objects.create(slug="weak-anatomy", name_en="Synthetic Anatomy", kind="structure", laterality="bilateral")
+        for owner, model in ((anatomy, BrainAnatomicalEntitySource), (self.network, BrainNetworkSource), (hierarchy, BrainHierarchyLinkSource)):
+            model.objects.create(**{model.owner_field: owner}, source=weak, note="Synthetic unchecked claim")
+            for status in ("source_checked", "reviewed"):
+                owner.review_status = status
+                with self.subTest(model=model.__name__, status=status), self.assertRaises(ValidationError):
+                    owner.save()
+
+
 @skipUnless(connection.vendor == "postgresql", "Source curation locking requires PostgreSQL")
 class BrainSourceConcurrencyTests(TransactionTestCase):
     def test_source_edit_waits_for_inflight_review_and_then_requires_re_review(self):
