@@ -82,3 +82,24 @@ class BrainAuditTests(TestCase):
             outputs.append(output.getvalue())
         self.assertEqual(*outputs)
         self.assertIn("invalid_source_link", outputs[0])
+
+    def test_unreviewed_weak_identifier_and_alias_sources_are_debt_not_integrity_errors(self):
+        import json
+        from .models import BrainExternalIdentifier
+
+        entity = self.anatomy("synthetic-debt")
+        source = SourceReference.objects.create(title="Synthetic unchecked source")
+        BrainAnatomicalAlias.objects.create(entity=entity, text="Synthetic pending spelling", language="en", source=source)
+        identifier = BrainExternalIdentifier.objects.create(entity=entity, namespace="Synthetic Atlas", identifier="S-pending",
+            source_version="Test v1", source=source)
+        output = StringIO()
+        call_command("audit_brain_atlas", as_json=True, stdout=output)
+        report = json.loads(output.getvalue())
+        self.assertEqual(report["errors"], [])
+        self.assertTrue(any("brainexternalidentifier" in debt for debt in report["review_debt"]))
+        self.assertTrue(any("brainanatomicalalias" in debt for debt in report["review_debt"]))
+        QuerySet.update(BrainExternalIdentifier.objects.filter(pk=identifier.pk), review_status="source_checked")
+        output = StringIO()
+        with self.assertRaises(CommandError):
+            call_command("audit_brain_atlas", stdout=output)
+        self.assertIn("unresolved_identifier_source", output.getvalue())

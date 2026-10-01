@@ -86,8 +86,11 @@ class Command(BaseCommand):
                     owner_model = model._meta.get_field(model.owner_field).remote_field.model
                     if row.source_id not in sources or not owner_model.objects.filter(pk=getattr(row, f"{model.owner_field}_id")).exists():
                         fail(label, row.pk, "orphan_source_link")
-                elif model is models.BrainExternalIdentifier and not source_is_resolved(sources.get(row.source_id)):
-                    fail(label, row.pk, "unresolved_identifier_source")
+                elif not source_is_resolved(sources.get(row.source_id)) or not row.source_note.strip():
+                    if row.review_status == models.ScientificReviewStatus.UNREVIEWED:
+                        debt.add(f"{label}:{row.pk}:unreviewed_provenance_debt")
+                    else:
+                        fail(label, row.pk, "unresolved_identifier_source" if model is models.BrainExternalIdentifier else "unresolved_alias_source")
 
         aliases = list(models.BrainAnatomicalAlias.objects.order_by("pk").select_related("source"))
         aliases.extend(models.BrainNetworkAlias.objects.order_by("pk").select_related("source"))

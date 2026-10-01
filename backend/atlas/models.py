@@ -230,10 +230,15 @@ class SourceReference(TimeStampedModel):
                     if any(model.objects.using(using).filter(source_id=self.pk, review_status="source_checked").exists()
                            for model in (BrainAnatomicalAlias, BrainNetworkAlias, BrainExternalIdentifier)):
                         raise ValidationError("Checked Brain aliases and identifiers must retain resolved source evidence.")
-                    for model in (BrainNetworkMembershipSource, BrainFunctionalAssociationSource):
-                        for link in model.objects.using(using).filter(source_id=self.pk, relationship__review_status="source_checked"):
-                            if not link.relationship.source_links.filter(source__in=resolved_sources(), note__regex=NONBLANK_PATTERN).exclude(source_id=self.pk).exists():
-                                raise ValidationError("Checked Brain relations must retain resolved source evidence.")
+                    for model in (BrainAnatomicalEntitySource, BrainNetworkSource, BrainHierarchyLinkSource,
+                                  BrainNetworkMembershipSource, BrainFunctionalAssociationSource):
+                        status_filter = {f"{model.owner_field}__review_status": "source_checked"}
+                        for link in model.objects.using(using).filter(source_id=self.pk, **status_filter):
+                            evidence = getattr(link, model.owner_field).source_links.filter(source__in=resolved_sources()).exclude(source_id=self.pk)
+                            if model.owner_field == "relationship":
+                                evidence = evidence.filter(note__regex=NONBLANK_PATTERN)
+                            if not evidence.exists():
+                                raise ValidationError("Checked Brain records must retain resolved source evidence.")
             return super().save(*args, **kwargs)
 
 

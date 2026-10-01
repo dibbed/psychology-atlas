@@ -403,6 +403,27 @@ class BrainRelationTests(TestCase):
         self.source.refresh_from_db()
         self.assertEqual(self.source.verification_status, "citation_from_model_knowledge")
 
+    def test_source_checked_anatomy_network_and_hierarchy_keep_last_resolved_evidence(self):
+        parent = BrainAnatomicalEntity.objects.create(slug="checked-evidence-parent", name_en="Synthetic Checked Parent", kind="structure", laterality="bilateral")
+        hierarchy = BrainHierarchyLink.objects.create(child=self.entity, parent=parent, source_version="Test v1")
+        BrainHierarchyLinkSource.objects.create(relationship=hierarchy, source=self.source, note="Synthetic hierarchy evidence")
+        BrainNetworkSource.objects.create(network=self.network, source=self.source)
+        other = SourceReference.objects.create(title="Synthetic alternative source", citation="Synthetic evidence",
+            url="https://example.org/alternative", verification_status="source_checked")
+        for owner in (self.entity, self.network, hierarchy):
+            owner.review_status = "source_checked"
+            owner.save()
+        for owner, model in ((self.entity, BrainAnatomicalEntitySource), (self.network, BrainNetworkSource),
+                             (hierarchy, BrainHierarchyLinkSource)):
+            self.source.refresh_from_db()
+            self.source.verification_status = "citation_from_model_knowledge"
+            with self.subTest(model=model.__name__), self.assertRaises(ValidationError):
+                self.source.save(update_fields=["verification_status"])
+            model.objects.create(**{model.owner_field: owner}, source=other, note="Synthetic alternative evidence")
+        self.source.save(update_fields=["verification_status"])
+        self.source.refresh_from_db()
+        self.assertEqual(self.source.verification_status, "citation_from_model_knowledge")
+
 
 @skipUnless(connection.vendor == "postgresql", "Source curation locking requires PostgreSQL")
 class BrainSourceConcurrencyTests(TransactionTestCase):
