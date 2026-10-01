@@ -16,6 +16,10 @@
 
 اگر برای استفاده‌ای خارج از این محدوده به مجوز نیاز داری، ابتدا باید اجازه صریح صاحب repository را دریافت کنی.
 
+## Internal v0.9.2 — Brain infrastructure
+
+Internal v0.9.2 adds Brain API, staging validation, audit, and empty scientific relation infrastructure. **Curated Brain data publication remains blocked pending an approved scientific/source dossier.** No public Brain content is seeded or promoted. See the [v0.9.2 infrastructure record](docs/Psychology_Atlas_v0.9.2_Brain_Infrastructure_2026-09-30.md).
+
 ## v0.8.4 — Today Study Mode + Study Sessions
 
 ```text

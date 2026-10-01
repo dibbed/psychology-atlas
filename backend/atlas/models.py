@@ -1,12 +1,14 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
-from django.db import models, router, transaction
+from django.db import connections, models, router, transaction
 from django.db.models import F, Q
 from django.db.models.deletion import ProtectedError
 from django.db.models.functions import Lower, Trim
 from django.utils import timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from urllib.parse import urlsplit
+from copy import copy
 
 
 class TimeStampedModel(models.Model):
@@ -127,7 +129,46 @@ class DifferentialRelationship(TimeStampedModel):
         ]
 
 
+def lock_brain_curation(using):
+    # ponytail: serialize rare scientific curation; use per-dossier locks if write throughput matters.
+    if connections[using].vendor == "postgresql":
+        with connections[using].cursor() as cursor:
+            cursor.execute("SELECT pg_advisory_xact_lock(%s)", [0x425241494E])
+
+
+class BrainCurationQuerySet(models.QuerySet):
+    def update_or_create(self, *args, **kwargs):
+        with transaction.atomic(using=self.db):
+            lock_brain_curation(self.db)
+            return super().update_or_create(*args, **kwargs)
+
+
+class SourceReferenceQuerySet(BrainCurationQuerySet):
+    def bulk_create(self, objs, batch_size=None, ignore_conflicts=False, update_conflicts=False, update_fields=None, unique_fields=None):
+        if update_conflicts:
+            raise ValidationError("Source conflict updates require individual validated saves.")
+        objs = list(objs)
+        for obj in objs:
+            obj.full_clean()
+            obj._validate_url(obj.url)
+        return super().bulk_create(objs, batch_size=batch_size, ignore_conflicts=ignore_conflicts,
+                                   update_conflicts=update_conflicts, update_fields=update_fields, unique_fields=unique_fields)
+
+    def update(self, **kwargs):
+        if not kwargs:
+            return 0
+        with transaction.atomic(using=self.db):
+            lock_brain_curation(self.db)
+            rows = list(self.model.objects.using(self.db).filter(pk__in=self.values("pk")).select_for_update().order_by("pk"))
+            for row in rows:
+                for name, value in kwargs.items():
+                    setattr(row, name, value)
+                row.save(using=self.db, update_fields=kwargs)
+            return len(rows)
+
+
 class SourceReference(TimeStampedModel):
+    objects = SourceReferenceQuerySet.as_manager()
     title = models.CharField(max_length=500)
     organization = models.CharField(max_length=255, blank=True)
     citation = models.TextField(blank=True)
@@ -145,6 +186,60 @@ class SourceReference(TimeStampedModel):
             models.Index(fields=("title",)),
             models.Index(fields=("publication_year",)),
         ]
+
+    def _validate_url(self, value):
+        self._meta.get_field("url").clean(value, self)
+        try:
+            urlsplit(value).port
+        except ValueError as error:
+            raise ValidationError({"url": "Invalid source URL port."}) from error
+
+    def save(self, *args, **kwargs):
+        using = kwargs.get("using") or router.db_for_write(type(self), instance=self)
+        with transaction.atomic(using=using):
+            lock_brain_curation(using)
+            previous = type(self).objects.using(using).select_for_update().filter(pk=self.pk).first() if self.pk is not None else None
+            update_fields = kwargs.get("update_fields")
+            fields = tuple(field.name for field in self._meta.concrete_fields if not field.primary_key
+                           and field.name not in {"created_at", "updated_at"}
+                           and (update_fields is None or field.name in update_fields))
+            if any(hasattr(getattr(self, name), "resolve_expression") for name in fields):
+                raise ValidationError("Source evidence writes require concrete values for validation.")
+            if previous and any(getattr(previous, name) != getattr(self, name) for name in fields):
+                owners = ((BrainAnatomicalEntitySource, "entity__review_status"),
+                          (BrainNetworkSource, "network__review_status"),
+                          (BrainHierarchyLinkSource, "relationship__review_status"),
+                          (BrainNetworkMembershipSource, "relationship__review_status"),
+                          (BrainFunctionalAssociationSource, "relationship__review_status"),
+                          (BrainAnatomicalAlias, "review_status"), (BrainNetworkAlias, "review_status"),
+                          (BrainExternalIdentifier, "review_status"))
+                if any(model.objects.using(using).filter(source_id=self.pk, **{status: "reviewed"}).exists()
+                       for model, status in owners):
+                    raise ValidationError("Return all reviewed Brain claims using this source to unreviewed before changing its provenance.")
+            candidate = self
+            if previous is not None and update_fields is not None:
+                candidate = copy(previous)
+                for name in update_fields:
+                    field = self._meta.get_field(name)
+                    setattr(candidate, field.attname, getattr(self, field.attname))
+            candidate.full_clean()
+            candidate._validate_url(candidate.url)
+            if previous and any(getattr(previous, name) != getattr(self, name) for name in fields):
+                from .brain_publication import NONBLANK_PATTERN, resolved_sources, source_is_resolved
+                if not source_is_resolved(candidate):
+                    if any(model.objects.using(using).filter(source_id=self.pk, review_status="source_checked").exists()
+                           for model in (BrainAnatomicalAlias, BrainNetworkAlias, BrainExternalIdentifier)):
+                        raise ValidationError("Checked Brain aliases and identifiers must retain resolved source evidence.")
+                    for model in (BrainAnatomicalEntitySource, BrainNetworkSource, BrainHierarchyLinkSource,
+                                  BrainNetworkMembershipSource, BrainFunctionalAssociationSource):
+                        status_filter = {f"{model.owner_field}__review_status": "source_checked"}
+                        for link in model.objects.using(using).filter(source_id=self.pk, **status_filter):
+                            evidence = getattr(link, model.owner_field).source_links.filter(source__in=resolved_sources()).exclude(source_id=self.pk)
+                            if model.owner_field == "relationship":
+                                evidence = evidence.filter(note__regex=NONBLANK_PATTERN)
+                            if not evidence.exists():
+                                raise ValidationError("Checked Brain records must retain resolved source evidence.")
+            return super().save(*args, **kwargs)
 
 
 class DisorderSource(models.Model):
@@ -3397,7 +3492,7 @@ class DSMRecordRelation(TimeStampedModel):
         ]
 
 
-class BrainValidatedQuerySet(models.QuerySet):
+class BrainValidatedQuerySet(BrainCurationQuerySet):
     """Bulk persistence bypasses Brain identity, graph, and provenance validation."""
 
     def update(self, **kwargs):
@@ -3408,6 +3503,20 @@ class BrainValidatedQuerySet(models.QuerySet):
 
     def bulk_create(self, objs, *args, **kwargs):
         raise ValidationError("Brain records require individual validated saves.")
+
+
+def validate_brain_reviewed_content(instance):
+    """Scientific edits require explicitly removing the persisted approval."""
+    if not instance.pk or instance.review_status == ScientificReviewStatus.UNREVIEWED:
+        return
+    fields = tuple(field.attname for field in instance._meta.concrete_fields if not field.primary_key and field.name not in {
+        "review_status", "is_active", "sort_order", "seed_managed", "created_at", "updated_at",
+    })
+    previous = type(instance).objects.filter(pk=instance.pk).values("review_status", *fields).first()
+    if previous and previous["review_status"] == ScientificReviewStatus.REVIEWED and any(
+        previous[field] != getattr(instance, field) for field in fields
+    ):
+        raise ValidationError("Return reviewed Brain content to unreviewed before changing its identity, claim or evidence context.")
 
 
 class BrainCanonicalBase(TimeStampedModel):
@@ -3433,6 +3542,7 @@ class BrainCanonicalBase(TimeStampedModel):
 
     def clean(self):
         super().clean()
+        validate_brain_reviewed_content(self)
         if self.slug != self.slug.strip().lower():
             raise ValidationError({"slug": "Slug must be lowercase without surrounding whitespace."})
         if self.name_en != " ".join(self.name_en.split()):
@@ -3442,16 +3552,25 @@ class BrainCanonicalBase(TimeStampedModel):
             if original_slug is not None and original_slug != self.slug:
                 raise ValidationError({"slug": "Canonical slugs cannot be changed."})
         if self.review_status != ScientificReviewStatus.UNREVIEWED and self.pk:
-            if not self.source_links.exists():
-                raise ValidationError({"review_status": "A checked or reviewed entity requires a source link."})
+            from .brain_publication import resolved_sources
+            if not self.source_links.filter(source__in=resolved_sources()).exists():
+                raise ValidationError({"review_status": "A checked or reviewed entity requires resolved source evidence."})
         elif self.review_status != ScientificReviewStatus.UNREVIEWED:
             raise ValidationError({"review_status": "Create an unreviewed entity and attach sources first."})
 
     def save(self, *args, **kwargs):
-        with transaction.atomic():
-            if self.pk is not None:
-                list(type(self).objects.select_for_update().filter(pk=self.pk).values_list("pk", flat=True))
-            self.full_clean()
+        using = kwargs.get("using") or router.db_for_write(type(self), instance=self)
+        with transaction.atomic(using=using):
+            lock_brain_curation(using)
+            candidate = self
+            stored = type(self).objects.using(using).select_for_update().filter(pk=self.pk).first() if self.pk else None
+            update_fields = kwargs.get("update_fields")
+            if stored is not None and update_fields is not None:
+                candidate = stored
+                for name in update_fields:
+                    field = self._meta.get_field(name)
+                    setattr(candidate, field.attname, getattr(self, field.attname))
+            candidate.full_clean()
             return super().save(*args, **kwargs)
 
     def __str__(self):
@@ -3528,6 +3647,7 @@ class BrainAnatomicalEntity(BrainCanonicalBase):
 
     def save(self, *args, **kwargs):
         with transaction.atomic():
+            lock_brain_curation("default")
             # Match hierarchy writes: incident endpoints must not change while
             # laterality is validated against their current committed state.
             list(type(self).objects.select_for_update().order_by("pk").values_list("pk", flat=True))
@@ -3550,7 +3670,59 @@ class BrainNetwork(BrainCanonicalBase):
         ]
 
 
-class BrainAnatomicalAlias(models.Model):
+class BrainAliasApprovalBase(models.Model):
+    review_status = models.CharField(max_length=24, choices=ScientificReviewStatus.choices,
+                                     default=ScientificReviewStatus.UNREVIEWED)
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, null=True, blank=True,
+                               related_name="%(class)s_approval_links")
+    source_note = models.TextField(blank=True)
+    alias_owner_field = None
+
+    class Meta:
+        abstract = True
+
+    def clean(self):
+        super().clean()
+        if self.review_status == ScientificReviewStatus.UNREVIEWED:
+            return
+        from .brain_publication import source_is_resolved
+        if not self.source_id or not source_is_resolved(SourceReference.objects.filter(pk=self.source_id).first()) \
+                or not self.source_note.strip():
+            raise ValidationError("Checked or reviewed aliases require a resolved spelling source and note.")
+        if self.pk:
+            previous = type(self).objects.filter(pk=self.pk).values(
+                "text", "language", "alias_type", "source_id", "source_note", f"{self.alias_owner_field}_id", "review_status",
+            ).first()
+            if previous and previous["review_status"] == ScientificReviewStatus.REVIEWED and any(
+                previous[field] != getattr(self, field) for field in (
+                    "text", "language", "alias_type", "source_id", "source_note", f"{self.alias_owner_field}_id",
+                )
+            ):
+                raise ValidationError("Return a reviewed alias to unreviewed before changing its evidence or identity.")
+
+    def save(self, *args, **kwargs):
+        using = kwargs.get("using") or router.db_for_write(type(self), instance=self)
+        update_fields = kwargs.get("update_fields")
+        with transaction.atomic(using=using):
+            lock_brain_curation(using)
+            candidate = self
+            if self.pk:
+                stored = type(self).objects.using(using).select_for_update().filter(pk=self.pk).first()
+                if stored is not None and update_fields is not None:
+                    candidate = stored
+                    for name in update_fields:
+                        field = self._meta.get_field(name)
+                        setattr(candidate, field.attname, getattr(self, field.attname))
+            owner_model = self._meta.get_field(self.alias_owner_field).remote_field.model
+            owner_id = getattr(candidate, f"{self.alias_owner_field}_id")
+            list(owner_model.objects.using(using).select_for_update().filter(pk=owner_id).values_list("pk", flat=True))
+            if candidate.source_id:
+                list(SourceReference.objects.using(using).select_for_update().filter(pk=candidate.source_id).values_list("pk", flat=True))
+            candidate.full_clean()
+            return super().save(*args, **kwargs)
+
+
+class BrainAnatomicalAlias(BrainAliasApprovalBase):
     objects = BrainValidatedQuerySet.as_manager()
     class Language(models.TextChoices):
         EN = "en", "English"
@@ -3563,6 +3735,7 @@ class BrainAnatomicalAlias(models.Model):
         TRANSLITERATION = "transliteration", "Transliteration"
 
     entity = models.ForeignKey(BrainAnatomicalEntity, on_delete=models.PROTECT, related_name="aliases")
+    alias_owner_field = "entity"
     text = models.CharField(max_length=255)
     language = models.CharField(max_length=12, choices=Language.choices)
     alias_type = models.CharField(max_length=24, choices=AliasType.choices, default=AliasType.ALTERNATIVE)
@@ -3578,16 +3751,16 @@ class BrainAnatomicalAlias(models.Model):
 
     def save(self, *args, **kwargs):
         self.text = " ".join(self.text.split())
-        self.full_clean()
         return super().save(*args, **kwargs)
 
 
-class BrainNetworkAlias(models.Model):
+class BrainNetworkAlias(BrainAliasApprovalBase):
     objects = BrainValidatedQuerySet.as_manager()
     Language = BrainAnatomicalAlias.Language
     AliasType = BrainAnatomicalAlias.AliasType
 
     network = models.ForeignKey(BrainNetwork, on_delete=models.PROTECT, related_name="aliases")
+    alias_owner_field = "network"
     text = models.CharField(max_length=255)
     language = models.CharField(max_length=12, choices=Language.choices)
     alias_type = models.CharField(max_length=24, choices=AliasType.choices, default=AliasType.ALTERNATIVE)
@@ -3603,7 +3776,6 @@ class BrainNetworkAlias(models.Model):
 
     def save(self, *args, **kwargs):
         self.text = " ".join(self.text.split())
-        self.full_clean()
         return super().save(*args, **kwargs)
 
 
@@ -3619,14 +3791,21 @@ class BrainSourceLinkQuerySet(BrainValidatedQuerySet):
         for owner in owners:
             if owner.review_status == ScientificReviewStatus.UNREVIEWED:
                 continue
+            if owner.review_status == ScientificReviewStatus.REVIEWED:
+                raise ProtectedError("Return reviewed Brain content to unreviewed before removing evidence.", [owner])
             owner_filter = {owner_field: owner.pk}
-            if self.model.objects.using(self.db).filter(**owner_filter).count() <= removing.filter(**owner_filter).count():
-                raise ProtectedError("Checked or reviewed Brain records require a source link.", [owner])
+            from .brain_publication import NONBLANK_PATTERN, resolved_sources
+            evidence = self.model.objects.using(self.db).filter(**owner_filter, source__in=resolved_sources()).exclude(pk__in=removing.values("pk"))
+            if owner_field == "relationship":
+                evidence = evidence.filter(note__regex=NONBLANK_PATTERN)
+            if not evidence.exists():
+                raise ProtectedError("Checked Brain records must retain resolved evidence.", [owner])
         return removing
 
     def delete(self):
         """Keep provenance until curation explicitly returns the owner to unreviewed."""
         with transaction.atomic(using=self.db):
+            lock_brain_curation(self.db)
             removing = self._protect_required_sources()
             return models.QuerySet.delete(removing)
 
@@ -3638,18 +3817,52 @@ class BrainSourceLinkBase(models.Model):
     class Meta:
         abstract = True
 
+    def clean(self):
+        super().clean()
+        owner_id_field = f"{self.owner_field}_id"
+        fields = (owner_id_field, "source_id", "note")
+        previous = type(self).objects.filter(pk=self.pk).values(*fields).first() if self.pk else None
+        if previous is None or any(previous[field] != getattr(self, field) for field in fields):
+            owner_ids = {getattr(self, owner_id_field)}
+            if previous:
+                owner_ids.add(previous[owner_id_field])
+            owner_model = self._meta.get_field(self.owner_field).remote_field.model
+            if owner_model.objects.filter(pk__in=owner_ids, review_status=ScientificReviewStatus.REVIEWED).exists():
+                raise ValidationError("Return reviewed Brain content to unreviewed before changing its source evidence.")
+        from .brain_publication import NONBLANK_PATTERN, resolved_sources
+        owner_model = self._meta.get_field(self.owner_field).remote_field.model
+        owner = owner_model.objects.filter(pk=getattr(self, owner_id_field)).first()
+        if owner and owner.review_status != ScientificReviewStatus.UNREVIEWED:
+            candidate_resolved = resolved_sources().filter(pk=self.source_id).exists() and (self.owner_field != "relationship" or self.note.strip())
+            evidence = type(self).objects.filter(**{owner_id_field: owner.pk}, source__in=resolved_sources()).exclude(pk=self.pk)
+            if self.owner_field == "relationship":
+                evidence = evidence.filter(note__regex=NONBLANK_PATTERN)
+            if not candidate_resolved and not evidence.exists():
+                raise ProtectedError("Checked Brain records must retain resolved evidence.", [owner])
+
     def save(self, *args, **kwargs):
         using = kwargs.get("using") or router.db_for_write(type(self), instance=self)
-        update_fields = kwargs.get("update_fields")
         owner_id_field = f"{self.owner_field}_id"
-        writes_owner = update_fields is None or self.owner_field in update_fields or owner_id_field in update_fields
         with transaction.atomic(using=using):
-            if self.pk is not None and writes_owner:
-                list(type(self).objects.using(using).select_for_update().filter(pk=self.pk).values_list("pk", flat=True))
-                previous = type(self).objects.using(using).filter(pk=self.pk).exclude(
-                    **{owner_id_field: getattr(self, owner_id_field)}
-                )
-                previous._protect_required_sources()
+            lock_brain_curation(using)
+            candidate = self
+            stored = type(self).objects.using(using).select_for_update().filter(pk=self.pk).first() if self.pk else None
+            update_fields = kwargs.get("update_fields")
+            if stored is not None and update_fields is not None:
+                candidate = stored
+                for name in update_fields:
+                    field = self._meta.get_field(name)
+                    setattr(candidate, field.attname, getattr(self, field.attname))
+            owner_ids = {getattr(candidate, owner_id_field)}
+            if stored:
+                owner_ids.add(type(self).objects.using(using).values_list(owner_id_field, flat=True).get(pk=self.pk))
+            owner_model = self._meta.get_field(self.owner_field).remote_field.model
+            list(owner_model.objects.using(using).select_for_update().filter(pk__in=owner_ids).order_by("pk").values_list("pk", flat=True))
+            if stored and type(self).objects.using(using).filter(pk=self.pk).exclude(
+                **{owner_id_field: getattr(candidate, owner_id_field)}
+            ).exists():
+                type(self).objects.using(using).filter(pk=self.pk)._protect_required_sources()
+            candidate.full_clean()
             return super().save(*args, **kwargs)
 
     def delete(self, using=None, keep_parents=False):
@@ -3697,6 +3910,9 @@ class BrainExternalIdentifier(models.Model):
     source_version = models.CharField(max_length=120)
     url = models.URLField(max_length=1000, blank=True)
     source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="brain_identifier_links")
+    review_status = models.CharField(max_length=24, choices=ScientificReviewStatus.choices,
+                                     default=ScientificReviewStatus.UNREVIEWED)
+    source_note = models.TextField(blank=True)
 
     class Meta:
         constraints = [
@@ -3719,13 +3935,45 @@ class BrainExternalIdentifier(models.Model):
         super().clean()
         if (self.entity_id is None) == (self.network_id is None):
             raise ValidationError("An external identifier must have exactly one owner.")
+        if self.review_status != ScientificReviewStatus.UNREVIEWED:
+            from .brain_publication import source_is_resolved
+            if not source_is_resolved(SourceReference.objects.filter(pk=self.source_id).first()) or not self.source_note.strip():
+                raise ValidationError("Checked or reviewed identifiers require a resolved source and claim note.")
+        if self.pk and self.review_status != ScientificReviewStatus.UNREVIEWED:
+            previous = type(self).objects.filter(pk=self.pk).values(
+                "entity_id", "network_id", "namespace", "identifier", "source_version", "url", "source_id",
+                "source_note", "review_status",
+            ).first()
+            if previous and previous["review_status"] == ScientificReviewStatus.REVIEWED and any(
+                previous[field] != getattr(self, field) for field in (
+                    "entity_id", "network_id", "namespace", "identifier", "source_version", "url", "source_id", "source_note",
+                )
+            ):
+                raise ValidationError("Return a reviewed external identifier to unreviewed before changing its identity or evidence.")
 
     def save(self, *args, **kwargs):
         self.namespace = self.namespace.strip()
         self.identifier = self.identifier.strip()
         self.source_version = self.source_version.strip()
-        self.full_clean()
-        return super().save(*args, **kwargs)
+        using = kwargs.get("using") or router.db_for_write(type(self), instance=self)
+        update_fields = kwargs.get("update_fields")
+        with transaction.atomic(using=using):
+            lock_brain_curation(using)
+            candidate = self
+            if self.pk:
+                stored = type(self).objects.using(using).select_for_update().filter(pk=self.pk).first()
+                if stored is not None and update_fields is not None:
+                    candidate = stored
+                    for name in update_fields:
+                        field = self._meta.get_field(name)
+                        setattr(candidate, field.attname, getattr(self, field.attname))
+            if candidate.entity_id:
+                list(BrainAnatomicalEntity.objects.using(using).select_for_update().filter(pk=candidate.entity_id).values_list("pk", flat=True))
+            if candidate.network_id:
+                list(BrainNetwork.objects.using(using).select_for_update().filter(pk=candidate.network_id).values_list("pk", flat=True))
+            list(SourceReference.objects.using(using).select_for_update().filter(pk=candidate.source_id).values_list("pk", flat=True))
+            candidate.full_clean()
+            return super().save(*args, **kwargs)
 
 
 class BrainHierarchyLink(ScientificRelationBase):
@@ -3759,6 +4007,7 @@ class BrainHierarchyLink(ScientificRelationBase):
 
     def clean(self):
         super().clean()
+        validate_brain_reviewed_content(self)
         if self.child_id is None or self.parent_id is None:
             return
         if self.child_id == self.parent_id:
@@ -3766,8 +4015,9 @@ class BrainHierarchyLink(ScientificRelationBase):
         if not self.source_version.strip():
             raise ValidationError({"source_version": "A named source version is required."})
         if self.review_status != ScientificReviewStatus.UNREVIEWED:
-            if self.pk is None or not self.source_links.exists():
-                raise ValidationError({"review_status": "A checked or reviewed link requires relation-level sources."})
+            from .brain_publication import NONBLANK_PATTERN, resolved_sources
+            if self.pk is None or not self.source_links.filter(source__in=resolved_sources(), note__regex=NONBLANK_PATTERN).exists():
+                raise ValidationError({"review_status": "A checked or reviewed link requires resolved claim evidence."})
         if not self.is_active:
             return
         # Read current endpoint state; a previously cached relation may be stale.
@@ -3792,6 +4042,7 @@ class BrainHierarchyLink(ScientificRelationBase):
                 raise ValidationError({"parent": "An active link cannot have an inactive ancestor."})
     def save(self, force_insert=False, force_update=False, using=None, update_fields=None):
         with transaction.atomic():
+            lock_brain_curation("default")
             # Curator writes are rare. Lock the whole primary tree in a fixed
             # order so two disjoint reparentings cannot jointly form a cycle.
             list(BrainAnatomicalEntity.objects.select_for_update().order_by("pk").values_list("pk", flat=True))
@@ -3829,6 +4080,142 @@ class BrainHierarchyLinkSource(BrainSourceLinkBase):
         if not self.note.strip():
             raise ValidationError({"note": "Identify the supported part-of claim."})
 
-    def save(self, *args, **kwargs):
-        self.full_clean()
-        return super().save(*args, **kwargs)
+
+class BrainEvidenceRelationBase(ScientificRelationBase):
+    """Shared lifecycle for the two approved, method-specific Brain predicates."""
+
+    objects = BrainValidatedQuerySet.as_manager()
+    evidence_key = models.SlugField(max_length=180, unique=True)
+    source_version = models.CharField(max_length=120)
+    method = models.TextField()
+    limitations = models.TextField(blank=True)
+    required_context = ("source_version", "method")
+    endpoint_fields = ()
+
+    class Meta:
+        abstract = True
+
+    def clean(self):
+        super().clean()
+        validate_brain_reviewed_content(self)
+        for field in self.required_context:
+            if not getattr(self, field).strip():
+                raise ValidationError({field: "Explicit sourced evidence context is required."})
+        if self.evidence_key != self.evidence_key.strip().lower():
+            raise ValidationError({"evidence_key": "Evidence keys must be lowercase and stable."})
+        if self.pk:
+            original = type(self).objects.filter(pk=self.pk).values_list("evidence_key", flat=True).first()
+            if original is not None and original != self.evidence_key:
+                raise ValidationError({"evidence_key": "Evidence identity cannot be changed."})
+        if self.review_status != ScientificReviewStatus.UNREVIEWED:
+            from .brain_publication import NONBLANK_PATTERN, resolved_sources
+            if self.pk is None or not self.source_links.filter(source__in=resolved_sources(), note__regex=NONBLANK_PATTERN).exists():
+                raise ValidationError({"review_status": "Checked relations require resolved relation-level evidence."})
+        if self.is_active:
+            for field in self.endpoint_fields:
+                endpoint_id = getattr(self, f"{field}_id")
+                model = self._meta.get_field(field).remote_field.model
+                if endpoint_id is not None and not model.objects.filter(pk=endpoint_id, is_active=True).exists():
+                    raise ValidationError({field: "An active relation requires active endpoints."})
+
+    def save(self, force_insert=False, force_update=False, using=None, update_fields=None):
+        using = using or router.db_for_write(type(self), instance=self)
+        with transaction.atomic(using=using):
+            lock_brain_curation(using)
+            candidate = self
+            if self.pk is not None:
+                stored = type(self).objects.using(using).select_for_update().filter(pk=self.pk).first()
+                if stored is not None and update_fields is not None:
+                    update_fields = frozenset(update_fields)
+                    candidate = stored
+                    for name in update_fields:
+                        field = self._meta.get_field(name)
+                        setattr(candidate, field.attname, getattr(self, field.attname))
+            for field in candidate.endpoint_fields:
+                model = candidate._meta.get_field(field).remote_field.model
+                list(model.objects.using(using).select_for_update().filter(
+                    pk=getattr(candidate, f"{field}_id"),
+                ).values_list("pk", flat=True))
+            candidate.full_clean()
+            return super().save(force_insert=force_insert, force_update=force_update,
+                                using=using, update_fields=update_fields)
+
+
+class BrainNetworkMembership(BrainEvidenceRelationBase):
+    """Participation under one versioned network definition; never parentage."""
+
+    predicate = "participates_in_network"
+    required_context = BrainEvidenceRelationBase.required_context + ("qualifier",)
+    endpoint_fields = ("entity", "network")
+    entity = models.ForeignKey(BrainAnatomicalEntity, on_delete=models.PROTECT, related_name="network_memberships")
+    network = models.ForeignKey(BrainNetwork, on_delete=models.PROTECT, related_name="anatomical_memberships")
+    qualifier = models.TextField()
+
+    class Meta:
+        ordering = ("sort_order", "evidence_key", "id")
+        indexes = [models.Index(fields=("entity", "is_active", "review_status")),
+                   models.Index(fields=("network", "is_active", "review_status"))]
+
+
+class BrainFunctionalAssociation(BrainEvidenceRelationBase):
+    """One exact anatomy/network-to-construct claim, with method and limitations."""
+
+    predicate = "functional_association"
+    required_context = BrainEvidenceRelationBase.required_context + (
+        "explanation_en", "task_context", "population_context", "limitations",
+    )
+    endpoint_fields = ("entity", "network", "concept")
+    entity = models.ForeignKey(BrainAnatomicalEntity, on_delete=models.PROTECT,
+                              related_name="functional_associations", null=True, blank=True)
+    network = models.ForeignKey(BrainNetwork, on_delete=models.PROTECT,
+                               related_name="functional_associations", null=True, blank=True)
+    concept = models.ForeignKey(Concept, on_delete=models.PROTECT, related_name="brain_functional_associations")
+    task_context = models.TextField()
+    population_context = models.TextField()
+
+    class Meta:
+        ordering = ("sort_order", "evidence_key", "id")
+        constraints = [models.CheckConstraint(
+            condition=(Q(entity__isnull=False, network__isnull=True)
+                       | Q(entity__isnull=True, network__isnull=False)),
+            name="ck_brain_function_one_subject",
+        )]
+        indexes = [models.Index(fields=("entity", "is_active", "review_status")),
+                   models.Index(fields=("network", "is_active", "review_status")),
+                   models.Index(fields=("concept", "is_active", "review_status"))]
+
+    def clean(self):
+        super().clean()
+        if (self.entity_id is None) == (self.network_id is None):
+            raise ValidationError("A functional association requires exactly one anatomy or network subject.")
+
+
+class BrainEvidenceSourceBase(BrainSourceLinkBase):
+    note = models.TextField()
+
+    class Meta:
+        abstract = True
+
+    def clean(self):
+        super().clean()
+        if not self.note.strip():
+            raise ValidationError({"note": "Identify the exact supported scientific claim."})
+
+
+class BrainNetworkMembershipSource(BrainEvidenceSourceBase):
+    owner_field = "relationship"
+    relationship = models.ForeignKey(BrainNetworkMembership, on_delete=models.PROTECT, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="brain_membership_links")
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=("relationship", "source"), name="uq_brain_membership_source"),
+                       models.CheckConstraint(condition=~Q(note=""), name="ck_brain_membership_source_note")]
+
+class BrainFunctionalAssociationSource(BrainEvidenceSourceBase):
+    owner_field = "relationship"
+    relationship = models.ForeignKey(BrainFunctionalAssociation, on_delete=models.PROTECT, related_name="source_links")
+    source = models.ForeignKey(SourceReference, on_delete=models.PROTECT, related_name="brain_functional_links")
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=("relationship", "source"), name="uq_brain_function_source"),
+                       models.CheckConstraint(condition=~Q(note=""), name="ck_brain_function_source_note")]

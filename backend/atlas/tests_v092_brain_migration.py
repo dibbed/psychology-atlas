@@ -1,0 +1,65 @@
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
+from django.test import TransactionTestCase
+
+
+class BrainRelationMigrationTests(TransactionTestCase):
+    def tearDown(self):
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
+        super().tearDown()
+
+    def test_v091_upgrade_and_reverse_preserve_foundation_and_legacy_data(self):
+        previous = ("atlas", "0033_v091_brain_foundation")
+        current = ("atlas", "0034_v092_brain_relation_support")
+        executor = MigrationExecutor(connection)
+        executor.migrate([previous])
+        apps = executor.loader.project_state([previous]).apps
+        entity = apps.get_model("atlas", "BrainAnatomicalEntity").objects.create(
+            slug="migration-test", name_en="Synthetic Migration", kind="structure", laterality="bilateral")
+        source = apps.get_model("atlas", "SourceReference").objects.create(title="Synthetic migration reference")
+        apps.get_model("atlas", "BrainAnatomicalEntitySource").objects.create(entity_id=entity.pk, source_id=source.pk)
+        with connection.cursor() as cursor:
+            tables = sorted(t for t in connection.introspection.table_names(cursor) if t.startswith("atlas_"))
+            before = {}
+            for table in tables:
+                cursor.execute(f'SELECT * FROM "{table}"')
+                before[table] = sorted(cursor.fetchall(), key=repr)
+        for target in (current, previous):
+            MigrationExecutor(connection).migrate([target])
+            with connection.cursor() as cursor:
+                for table, rows in before.items():
+                    cursor.execute(f'SELECT * FROM "{table}"')
+                    self.assertEqual(sorted(cursor.fetchall(), key=repr), rows, table)
+
+    def test_existing_aliases_gain_only_unreviewed_empty_approval_metadata(self):
+        previous = ("atlas", "0034_v092_brain_relation_support")
+        current = ("atlas", "0035_v092_brain_alias_review")
+        MigrationExecutor(connection).migrate([previous])
+        apps = MigrationExecutor(connection).loader.project_state([previous]).apps
+        entity = apps.get_model("atlas", "BrainAnatomicalEntity").objects.create(
+            slug="alias-migration-test", name_en="Synthetic Alias Migration", kind="structure", laterality="bilateral")
+        alias = apps.get_model("atlas", "BrainAnatomicalAlias").objects.create(
+            entity_id=entity.pk, text="Synthetic Alias", language="en")
+        MigrationExecutor(connection).migrate([current])
+        migrated = MigrationExecutor(connection).loader.project_state([current]).apps.get_model("atlas", "BrainAnatomicalAlias").objects.get(pk=alias.pk)
+        self.assertEqual(migrated.review_status, "unreviewed")
+        self.assertIsNone(migrated.source_id)
+        self.assertEqual(migrated.source_note, "")
+
+    def test_existing_external_identifiers_start_unreviewed_with_no_claim_note(self):
+        previous = ("atlas", "0035_v092_brain_alias_review")
+        current = ("atlas", "0036_v092_brain_identifier_review")
+        MigrationExecutor(connection).migrate([previous])
+        apps = MigrationExecutor(connection).loader.project_state([previous]).apps
+        entity = apps.get_model("atlas", "BrainAnatomicalEntity").objects.create(
+            slug="identifier-migration-test", name_en="Synthetic Identifier Owner", kind="structure", laterality="bilateral")
+        source = apps.get_model("atlas", "SourceReference").objects.create(title="Synthetic mapping source")
+        identifier = apps.get_model("atlas", "BrainExternalIdentifier").objects.create(
+            entity_id=entity.pk, namespace="Synthetic Atlas", identifier="S-17", source_version="Test v1", source_id=source.pk)
+        MigrationExecutor(connection).migrate([current])
+        migrated = MigrationExecutor(connection).loader.project_state([current]).apps.get_model(
+            "atlas", "BrainExternalIdentifier").objects.get(pk=identifier.pk)
+        self.assertEqual(migrated.review_status, "unreviewed")
+        self.assertEqual(migrated.source_note, "")
+        self.assertEqual(migrated.source_id, source.pk)
