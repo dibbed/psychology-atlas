@@ -73,6 +73,8 @@ These grants do not cover every upstream figure, template or third-party asset. 
 
 From the repository root, with its installed backend dependencies:
 
+This phase-specific command pins the reviewed master SHA-256 and 74-claim deferred inventory independently of mutable dossier metadata. Scientific curation changes require a reviewed update of the validator pin and this report; arbitrary or coordinated artifact changes cannot pass by updating counts alone. Deferred scientific dispositions must remain `VERIFIED`, while publication rights remain blocked.
+
 ```powershell
 python scripts/validate_brain_dossier.py --self-test
 python scripts/validate_brain_dossier.py `

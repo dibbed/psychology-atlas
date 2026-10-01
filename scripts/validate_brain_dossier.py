@@ -20,6 +20,10 @@ from pathlib import Path
 from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 
 ROOT = Path(__file__).resolve().parents[1]
+# This command validates the reviewed v0.9.2B artifact, not arbitrary research.
+# A scientific curation change requires a reviewed update of this pin/README.
+REVIEWED_MASTER_SHA256 = "738b3ce478b0dd9f9213f5d8b8aba002701972fc2ab39eaa9263a81ca5893213"
+REVIEWED_DEFERRED_CLAIM_COUNT = 74
 
 
 def normalized_text(value):
@@ -100,7 +104,8 @@ def verify_inventory_and_dispositions(document):
         raise ValueError("Records conflict with declared per-category inventory.")
     deferred = metadata["deferred_hierarchy_claims"]
     hierarchy_review = metadata["hierarchy_review"]
-    if (type(hierarchy_review["scientifically_verified_deferred_claims"]) is not int or
+    if (len(deferred) != REVIEWED_DEFERRED_CLAIM_COUNT or
+            type(hierarchy_review["scientifically_verified_deferred_claims"]) is not int or
             hierarchy_review["scientifically_verified_deferred_claims"] != len(deferred) or
             hierarchy_review["approved_candidates"] != 0):
         raise ValueError("Deferred hierarchy conflicts with its declared inventory/approval count.")
@@ -126,7 +131,8 @@ def verify_inventory_and_dispositions(document):
         protected = row["category"] in ("anatomy", "hierarchy") or row.get("owner_type") == "anatomy"
         if protected:
             decision = by_id[row["id"]]
-            if (decision["classification"] != "DEFERRED" or decision["publication_rights_status"] != "BLOCKED_UNRESOLVED" or
+            if (decision["classification"] != "DEFERRED" or decision["scientific_identity_status"] != "VERIFIED" or
+                    decision["publication_rights_status"] != "BLOCKED_UNRESOLVED" or
                     row["review_status"] != "source_checked" or row["verification_status"] != "source_checked"):
                 raise ValueError("Allen-derived anatomical research must remain source-checked and rights-deferred.")
     if any(r["category"] == "hierarchy" for r in records) or any(r["classification"] != "DEFERRED" for r in deferred):
@@ -168,7 +174,8 @@ def self_test():
                 raise AssertionError("Changed/escaping parent input was accepted")
     master = json.loads((ROOT / "docs/research/brain/v0.9.2b/psychology_atlas_brain_curated_dossier_v0.9.2b.json").read_bytes())
     verify_inventory_and_dispositions(master)
-    for mutation in ("empty", "deleted", "approval", "reviewed", "hierarchy", "rights", "deferred_deleted", "deferred_rights"):
+    assert digest(ROOT / "docs/research/brain/v0.9.2b/psychology_atlas_brain_curated_dossier_v0.9.2b.json") == REVIEWED_MASTER_SHA256
+    for mutation in ("empty", "deleted", "approval", "reviewed", "hierarchy", "rights", "deferred_deleted", "deferred_rights", "coordinated_deletion", "unverified"):
         bad = copy.deepcopy(master)
         metadata = bad["dataset_metadata"]
         if mutation == "empty":
@@ -188,12 +195,18 @@ def self_test():
             metadata["record_counts"]["hierarchy"] = 1
             next(r for r in metadata["publication_review_ledger"] if r["record_id"] == restored["id"])["location"] = "records"
             metadata["hierarchy_review"]["scientifically_verified_deferred_claims"] -= 1
-        elif mutation == "deferred_deleted":
+        elif mutation in ("deferred_deleted", "coordinated_deletion"):
             removed = metadata["deferred_hierarchy_claims"].pop()
             metadata["publication_review_ledger"] = [r for r in metadata["publication_review_ledger"] if r["record_id"] != removed["record_id"]]
             metadata["publication_review_counts"]["DEFERRED"] -= 1
+            if mutation == "coordinated_deletion":
+                metadata["hierarchy_review"]["scientifically_verified_deferred_claims"] -= 1
         elif mutation == "deferred_rights":
             metadata["deferred_hierarchy_claims"][0]["publication_rights_status"] = "CLEARED"
+        elif mutation == "unverified":
+            claim = metadata["deferred_hierarchy_claims"][0]
+            claim["scientific_identity_status"] = "UNVERIFIED"
+            next(r for r in metadata["publication_review_ledger"] if r["record_id"] == claim["record_id"])["scientific_identity_status"] = "UNVERIFIED"
         else:
             metadata["rights_review_summary"]["commercial_anatomy_publication"] = "CLEARED"
         try:
@@ -261,7 +274,10 @@ def run(dossier_path, input_database, output):
         raise ValueError("Disposable output must be outside the repository; target-specific IDs must not be tracked.")
     if output.exists():
         raise ValueError("Output already exists; refusing to overwrite any evidence or database.")
-    document = json.loads(dossier_path.read_bytes().decode("utf-8"))
+    raw = dossier_path.read_bytes()
+    document = json.loads(raw.decode("utf-8"))
+    if hashlib.sha256(raw).hexdigest() != REVIEWED_MASTER_SHA256:
+        raise ValueError("Dossier bytes differ from the pinned reviewed v0.9.2B master; a reviewed pin update is required.")
     if document.get("schema_version") != "brain-staging-v1":
         raise ValueError("Current brain-staging-v1 schema required.")
     metadata = document["dataset_metadata"]
