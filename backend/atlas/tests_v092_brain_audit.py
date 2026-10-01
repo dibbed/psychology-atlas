@@ -73,8 +73,7 @@ class BrainAuditTests(TestCase):
                                                url="https://example.org/test", verification_status="verified")
         fixture = type("SyntheticFixture", (BrainFixtureMixin,), {"source": source})
         fixture.add_relations(entity)
-        source.verification_status = "citation_from_model_knowledge"
-        source.save()
+        QuerySet.update(SourceReference.objects.filter(pk=source.pk), verification_status="citation_from_model_knowledge")
         outputs = []
         for _ in range(2):
             output = StringIO()

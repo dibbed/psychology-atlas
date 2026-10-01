@@ -1,9 +1,13 @@
 """Approved relation semantics exercised with synthetic test evidence only."""
 
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, transaction, connection, close_old_connections
 from django.db.models.deletion import ProtectedError
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
+from queue import SimpleQueue
+from threading import Event, Thread
+from unittest import skipUnless
+from unittest.mock import patch
 
 from .models import (
     BrainAnatomicalEntity, BrainAnatomicalEntitySource, BrainFunctionalAssociation,
@@ -311,3 +315,119 @@ class BrainRelationTests(TestCase):
                 citation.save(update_fields=["note"])
                 citation.refresh_from_db()
                 self.assertEqual(citation.note, "Changed claim evidence")
+
+    def test_source_reference_edits_require_all_linked_brain_approvals_to_be_removed(self):
+        from .models import BrainAnatomicalAlias, BrainNetworkAlias, BrainExternalIdentifier
+
+        alias = BrainAnatomicalAlias.objects.create(entity=self.entity, text="Synthetic reviewed alias", language="en",
+            source=self.source, source_note="Synthetic spelling", review_status="reviewed")
+        network_alias = BrainNetworkAlias.objects.create(network=self.network, text="Synthetic network alias", language="en",
+            source=self.source, source_note="Synthetic spelling", review_status="reviewed")
+        identifier = BrainExternalIdentifier.objects.create(entity=self.entity, namespace="Synthetic", identifier="S-1",
+            source_version="Test v1", source=self.source, source_note="Synthetic mapping", review_status="reviewed")
+        parent = BrainAnatomicalEntity.objects.create(slug="synthetic-parent", name_en="Synthetic Parent", kind="structure", laterality="bilateral")
+        hierarchy = BrainHierarchyLink.objects.create(child=self.entity, parent=parent, source_version="Test v1")
+        BrainHierarchyLinkSource.objects.create(relationship=hierarchy, source=self.source, note="Synthetic hierarchy")
+        BrainNetworkSource.objects.create(network=self.network, source=self.source, note="Synthetic definition")
+        membership, association = self.membership(), self.association()
+        for relation, source_model in ((membership, BrainNetworkMembershipSource), (association, BrainFunctionalAssociationSource)):
+            source_model.objects.create(relationship=relation, source=self.source, note="Synthetic evidence")
+        owners = (self.entity, self.network, hierarchy, membership, association, alias, network_alias, identifier)
+        for owner in owners:
+            owner.review_status = "reviewed"
+            owner.save()
+        for field, value in (("title", "Replacement source"), ("citation", "Replacement citation"),
+                             ("url", "https://example.org/replacement"), ("doi", "10.1234/replacement"),
+                             ("pmid", "12345"), ("organization", "Replacement publisher"),
+                             ("verification_status", "verified"), ("authors", ["Replacement author"])):
+            self.source.refresh_from_db()
+            setattr(self.source, field, value)
+            with self.subTest(field=field), self.assertRaises(ValidationError):
+                self.source.save(update_fields=[field])
+        with self.assertRaises(ValidationError):
+            SourceReference.objects.filter(pk=self.source.pk).update(citation="Replacement citation")
+        self.source.refresh_from_db()
+        self.source.title = "Replacement source"
+        with self.assertRaises(ValidationError), transaction.atomic():
+            SourceReference.objects.bulk_update([self.source], ["title"])
+        with self.assertRaises(ValidationError):
+            SourceReference.objects.bulk_create([self.source], update_conflicts=True, unique_fields=["id"], update_fields=["title"])
+        for owner in owners:
+            with self.assertRaises(ValidationError):
+                SourceReference.objects.filter(pk=self.source.pk).update(title="Replacement source")
+            owner.review_status = "unreviewed"
+            owner.save(update_fields=["review_status"])
+        self.source.refresh_from_db()
+        self.source.title = "Replacement source"
+        self.source.save(update_fields=["title"])
+        self.source.refresh_from_db()
+        self.assertEqual(self.source.title, "Replacement source")
+
+
+@skipUnless(connection.vendor == "postgresql", "Source curation locking requires PostgreSQL")
+class BrainSourceConcurrencyTests(TransactionTestCase):
+    def test_source_edit_waits_for_inflight_review_and_then_requires_re_review(self):
+        source = SourceReference.objects.create(title="Synthetic concurrent source", citation="Synthetic evidence",
+            url="https://example.org/concurrent", verification_status="source_checked")
+        entity = BrainAnatomicalEntity.objects.create(slug="concurrent-source-test", name_en="Synthetic Concurrent Entity",
+            kind="structure", laterality="bilateral")
+        BrainAnatomicalEntitySource.objects.create(entity=entity, source=source)
+        validating, release, editing, finished = Event(), Event(), Event(), Event()
+        results = SimpleQueue()
+        original_clean = BrainAnatomicalEntity.full_clean
+
+        def paused_clean(row, *args, **kwargs):
+            if row.pk == entity.pk and row.review_status == "reviewed":
+                validating.set()
+                if not release.wait(10):
+                    raise RuntimeError("Synthetic review barrier timed out")
+            return original_clean(row, *args, **kwargs)
+
+        def approve():
+            close_old_connections()
+            try:
+                row = BrainAnatomicalEntity.objects.get(pk=entity.pk)
+                row.review_status = "reviewed"
+                row.save()
+                results.put("reviewed")
+            except Exception as error:
+                results.put(error)
+            finally:
+                close_old_connections()
+
+        def edit():
+            close_old_connections()
+            try:
+                row = SourceReference.objects.get(pk=source.pk)
+                row.citation = "Unreviewed replacement evidence"
+                editing.set()
+                row.save()
+                results.put("source edit unexpectedly accepted")
+            except ValidationError:
+                results.put("source edit rejected")
+            except Exception as error:
+                results.put(error)
+            finally:
+                finished.set()
+                close_old_connections()
+
+        with patch.object(BrainAnatomicalEntity, "full_clean", paused_clean):
+            approval_thread = Thread(target=approve)
+            source_thread = Thread(target=edit)
+            approval_thread.start()
+            try:
+                self.assertTrue(validating.wait(5))
+                source_thread.start()
+                self.assertTrue(editing.wait(5))
+                self.assertFalse(finished.wait(0.3))
+            finally:
+                release.set()
+                approval_thread.join(10)
+                if source_thread.ident is not None:
+                    source_thread.join(10)
+            self.assertFalse(approval_thread.is_alive())
+            self.assertFalse(source_thread.is_alive())
+        outcomes = [results.get(), results.get()]
+        self.assertCountEqual(outcomes, ["reviewed", "source edit rejected"])
+        source.refresh_from_db()
+        self.assertEqual(source.citation, "Synthetic evidence")

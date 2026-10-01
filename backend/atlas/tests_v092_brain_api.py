@@ -108,8 +108,7 @@ class BrainAPITests(BrainFixtureMixin, TestCase):
         self.link.review_status = ScientificReviewStatus.SOURCE_CHECKED
         self.link.save()
         self.assertEqual(self.client.get(f"/api/brain-anatomy/{self.child.slug}/").status_code, 404)
-        self.source.verification_status = "citation_from_model_knowledge"
-        self.source.save()
+        QuerySet.update(SourceReference.objects.filter(pk=self.source.pk), verification_status="citation_from_model_knowledge")
         self.assertEqual(self.client.get("/api/brain-anatomy/").data["count"], 0)
 
     def test_public_api_is_read_only(self):
@@ -168,9 +167,8 @@ class BrainAPITests(BrainFixtureMixin, TestCase):
     def test_malformed_source_locator_cannot_pass_publication_gate(self):
         from .brain_publication import source_is_resolved
 
-        self.source.url = ""
-        self.source.pmid = "12345\n"
-        self.source.save()
+        QuerySet.update(SourceReference.objects.filter(pk=self.source.pk), url="", pmid="12345\n")
+        self.source.refresh_from_db()
         self.assertFalse(source_is_resolved(self.source))
         self.assertEqual(self.client.get("/api/brain-anatomy/").data["count"], 0)
 
@@ -183,7 +181,7 @@ class BrainAPITests(BrainFixtureMixin, TestCase):
                     self.source.title = "Synthetic title"
                     self.source.citation = "Synthetic citation"
                     setattr(self.source, field, whitespace)
-                    self.source.save()
+                    QuerySet.update(SourceReference.objects.filter(pk=self.source.pk), title=self.source.title, citation=self.source.citation)
                     self.assertFalse(source_is_resolved(self.source))
                     self.assertFalse(resolved_sources().filter(pk=self.source.pk).exists())
                     self.assertEqual(self.client.get("/api/brain-anatomy/").data["count"], 0)
@@ -309,3 +307,26 @@ class BrainQueryProfileTests(BrainFixtureMixin, TestCase):
         capped = self.client.get("/api/brain-anatomy/", {"page_size": 10000})
         self.assertGreater(capped.data["count"], 300)
         self.assertEqual(len(capped.data["results"]), 300)
+
+
+class BrainSourceLocatorTests(TestCase):
+    def test_django_persistence_and_publication_reject_malformed_url_hosts(self):
+        from django.core.exceptions import ValidationError
+        from .brain_publication import source_is_resolved, resolved_sources
+
+        source = SourceReference.objects.create(title="Synthetic URL source", citation="Synthetic evidence",
+            url="https://example.org/test", verification_status="source_checked")
+        values = (("https://x<>", False), ("https://example.org:bad", False), ("https://example.org:65536", False),
+                  ("https://-bad.example.org", False), ("https://999.999.999.999", False),
+                  ("https://[:::]", False), ("https://example.org/\n", False),
+                  ("https://EXAMPLE.org:443/test?q=1#part", True), ("https://127.0.0.1/test", True))
+        for url, valid in values:
+            with self.subTest(url=url):
+                if not valid:
+                    source.url = url
+                    with self.assertRaises(ValidationError):
+                        source.save()
+                QuerySet.update(SourceReference.objects.filter(pk=source.pk), url=url)
+                source.refresh_from_db()
+                self.assertEqual(source_is_resolved(source), valid)
+                self.assertEqual(resolved_sources().filter(pk=source.pk).exists(), valid)

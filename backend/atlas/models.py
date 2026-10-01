@@ -1,12 +1,13 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
-from django.db import models, router, transaction
+from django.db import connections, models, router, transaction
 from django.db.models import F, Q
 from django.db.models.deletion import ProtectedError
 from django.db.models.functions import Lower, Trim
 from django.utils import timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from urllib.parse import urlsplit
 
 
 class TimeStampedModel(models.Model):
@@ -127,7 +128,45 @@ class DifferentialRelationship(TimeStampedModel):
         ]
 
 
+def lock_brain_curation(using):
+    # ponytail: serialize rare scientific curation; use per-dossier locks if write throughput matters.
+    if connections[using].vendor == "postgresql":
+        with connections[using].cursor() as cursor:
+            cursor.execute("SELECT pg_advisory_xact_lock(%s)", [0x425241494E])
+
+
+class BrainCurationQuerySet(models.QuerySet):
+    def update_or_create(self, *args, **kwargs):
+        with transaction.atomic(using=self.db):
+            lock_brain_curation(self.db)
+            return super().update_or_create(*args, **kwargs)
+
+
+class SourceReferenceQuerySet(BrainCurationQuerySet):
+    def bulk_create(self, objs, batch_size=None, ignore_conflicts=False, update_conflicts=False, update_fields=None, unique_fields=None):
+        if update_conflicts:
+            raise ValidationError("Source conflict updates require individual validated saves.")
+        objs = list(objs)
+        for obj in objs:
+            obj._validate_url(obj.url)
+        return super().bulk_create(objs, batch_size=batch_size, ignore_conflicts=ignore_conflicts,
+                                   update_conflicts=update_conflicts, update_fields=update_fields, unique_fields=unique_fields)
+
+    def update(self, **kwargs):
+        if not kwargs:
+            return 0
+        with transaction.atomic(using=self.db):
+            lock_brain_curation(self.db)
+            rows = list(self.model.objects.using(self.db).filter(pk__in=self.values("pk")).select_for_update().order_by("pk"))
+            for row in rows:
+                for name, value in kwargs.items():
+                    setattr(row, name, value)
+                row.save(using=self.db, update_fields=kwargs)
+            return len(rows)
+
+
 class SourceReference(TimeStampedModel):
+    objects = SourceReferenceQuerySet.as_manager()
     title = models.CharField(max_length=500)
     organization = models.CharField(max_length=255, blank=True)
     citation = models.TextField(blank=True)
@@ -145,6 +184,37 @@ class SourceReference(TimeStampedModel):
             models.Index(fields=("title",)),
             models.Index(fields=("publication_year",)),
         ]
+
+    def _validate_url(self, value):
+        self._meta.get_field("url").clean(value, self)
+        try:
+            urlsplit(value).port
+        except ValueError as error:
+            raise ValidationError({"url": "Invalid source URL port."}) from error
+
+    def save(self, *args, **kwargs):
+        using = kwargs.get("using") or router.db_for_write(type(self), instance=self)
+        with transaction.atomic(using=using):
+            lock_brain_curation(using)
+            previous = type(self).objects.using(using).select_for_update().filter(pk=self.pk).first() if self.pk is not None else None
+            update_fields = kwargs.get("update_fields")
+            fields = tuple(field.name for field in self._meta.concrete_fields if not field.primary_key
+                           and field.name not in {"created_at", "updated_at"}
+                           and (update_fields is None or field.name in update_fields))
+            if previous and any(getattr(previous, name) != getattr(self, name) for name in fields):
+                owners = ((BrainAnatomicalEntitySource, "entity__review_status"),
+                          (BrainNetworkSource, "network__review_status"),
+                          (BrainHierarchyLinkSource, "relationship__review_status"),
+                          (BrainNetworkMembershipSource, "relationship__review_status"),
+                          (BrainFunctionalAssociationSource, "relationship__review_status"),
+                          (BrainAnatomicalAlias, "review_status"), (BrainNetworkAlias, "review_status"),
+                          (BrainExternalIdentifier, "review_status"))
+                if any(model.objects.using(using).filter(source_id=self.pk, **{status: "reviewed"}).exists()
+                       for model, status in owners):
+                    raise ValidationError("Return all reviewed Brain claims using this source to unreviewed before changing its provenance.")
+            url = self.url if previous is None or update_fields is None or "url" in update_fields else previous.url
+            self._validate_url(url)
+            return super().save(*args, **kwargs)
 
 
 class DisorderSource(models.Model):
@@ -3397,7 +3467,7 @@ class DSMRecordRelation(TimeStampedModel):
         ]
 
 
-class BrainValidatedQuerySet(models.QuerySet):
+class BrainValidatedQuerySet(BrainCurationQuerySet):
     """Bulk persistence bypasses Brain identity, graph, and provenance validation."""
 
     def update(self, **kwargs):
@@ -3465,6 +3535,7 @@ class BrainCanonicalBase(TimeStampedModel):
     def save(self, *args, **kwargs):
         using = kwargs.get("using") or router.db_for_write(type(self), instance=self)
         with transaction.atomic(using=using):
+            lock_brain_curation(using)
             candidate = self
             stored = type(self).objects.using(using).select_for_update().filter(pk=self.pk).first() if self.pk else None
             update_fields = kwargs.get("update_fields")
@@ -3550,6 +3621,7 @@ class BrainAnatomicalEntity(BrainCanonicalBase):
 
     def save(self, *args, **kwargs):
         with transaction.atomic():
+            lock_brain_curation("default")
             # Match hierarchy writes: incident endpoints must not change while
             # laterality is validated against their current committed state.
             list(type(self).objects.select_for_update().order_by("pk").values_list("pk", flat=True))
@@ -3606,6 +3678,7 @@ class BrainAliasApprovalBase(models.Model):
         using = kwargs.get("using") or router.db_for_write(type(self), instance=self)
         update_fields = kwargs.get("update_fields")
         with transaction.atomic(using=using):
+            lock_brain_curation(using)
             candidate = self
             if self.pk:
                 stored = type(self).objects.using(using).select_for_update().filter(pk=self.pk).first()
@@ -3702,6 +3775,7 @@ class BrainSourceLinkQuerySet(BrainValidatedQuerySet):
     def delete(self):
         """Keep provenance until curation explicitly returns the owner to unreviewed."""
         with transaction.atomic(using=self.db):
+            lock_brain_curation(self.db)
             removing = self._protect_required_sources()
             return models.QuerySet.delete(removing)
 
@@ -3730,6 +3804,7 @@ class BrainSourceLinkBase(models.Model):
         using = kwargs.get("using") or router.db_for_write(type(self), instance=self)
         owner_id_field = f"{self.owner_field}_id"
         with transaction.atomic(using=using):
+            lock_brain_curation(using)
             candidate = self
             stored = type(self).objects.using(using).select_for_update().filter(pk=self.pk).first() if self.pk else None
             update_fields = kwargs.get("update_fields")
@@ -3843,6 +3918,7 @@ class BrainExternalIdentifier(models.Model):
         using = kwargs.get("using") or router.db_for_write(type(self), instance=self)
         update_fields = kwargs.get("update_fields")
         with transaction.atomic(using=using):
+            lock_brain_curation(using)
             candidate = self
             if self.pk:
                 stored = type(self).objects.using(using).select_for_update().filter(pk=self.pk).first()
@@ -3925,6 +4001,7 @@ class BrainHierarchyLink(ScientificRelationBase):
                 raise ValidationError({"parent": "An active link cannot have an inactive ancestor."})
     def save(self, force_insert=False, force_update=False, using=None, update_fields=None):
         with transaction.atomic():
+            lock_brain_curation("default")
             # Curator writes are rare. Lock the whole primary tree in a fixed
             # order so two disjoint reparentings cannot jointly form a cycle.
             list(BrainAnatomicalEntity.objects.select_for_update().order_by("pk").values_list("pk", flat=True))
@@ -4003,6 +4080,7 @@ class BrainEvidenceRelationBase(ScientificRelationBase):
     def save(self, force_insert=False, force_update=False, using=None, update_fields=None):
         using = using or router.db_for_write(type(self), instance=self)
         with transaction.atomic(using=using):
+            lock_brain_curation(using)
             candidate = self
             if self.pk is not None:
                 stored = type(self).objects.using(using).select_for_update().filter(pk=self.pk).first()

@@ -312,3 +312,18 @@ class BrainStagingTests(TestCase):
                 codes = {row["code"] for row in validate_brain_staging(dataset.key)["issues"] if row["record"] == "oversized"}
                 self.assertIn("invalid_field_length", codes)
         self.assertEqual(BrainAnatomicalEntity.objects.count(), 0)
+
+    def test_repeated_claim_source_ids_are_not_ready_for_curation(self):
+        for repeated_key in (True, False):
+            document = copy.deepcopy(self.document)
+            document["dataset_metadata"]["version"] = str(repeated_key)
+            if not repeated_key:
+                document["records"].append({**document["records"][0], "id": "source-two"})
+                document["records"][1]["source_notes"]["source-two"] = "Same synthetic source through another key"
+            document["records"][1]["source_ids"] = ["source-one", "source-one" if repeated_key else "source-two"]
+            dataset, _ = self.ingest(document)
+            report = validate_brain_staging(dataset.key)
+            with self.subTest(repeated_key=repeated_key):
+                self.assertIn("duplicate_source_id", {row["code"] for row in report["issues"]})
+                self.assertEqual(report["canonical_writes"], 0)
+                self.assertEqual(dataset.raw_document, document)

@@ -2,8 +2,12 @@
 
 import re
 
+from django.core.exceptions import ValidationError
+from django.core.validators import URLValidator
+
 from django.db.models import Q
 from django.db.models.expressions import RawSQL
+from django.db.models.functions import Length
 
 from .models import BrainAnatomicalEntity, BrainHierarchyLink, SourceReference
 
@@ -11,7 +15,22 @@ from .models import BrainAnatomicalEntity, BrainHierarchyLink, SourceReference
 CHECKED_SOURCE_STATES = (
     "source_checked", "verified", "search_verified", "web_verified_doi", "web_verified_doi_and_pmid",
 )
-URL_PATTERN = r"^https?://[A-Za-z0-9][^\s/]+(?:/[^\s]*)?\Z"
+# Conservative database-safe subset of Django URLs: DNS/IPv4, no credentials or IPv6.
+URL_PATTERN = (r"(?i)^(?!.*\s)https?://(?=[^/?#]{1,253}(?:[/?#]|\Z))"
+               rf"(?:{URLValidator.ipv4_re}|{URLValidator.host_re})(?::(?:[0-9]{{1,4}}|[0-5][0-9]{{4}}|6[0-4][0-9]{{3}}|65[0-4][0-9]{{2}}|655[0-2][0-9]|6553[0-5]))?(?:[/?#][^\s]*)?\Z")
+URL_VALIDATOR = URLValidator(schemes=["http", "https"])
+
+
+def valid_brain_url(value):
+    if not isinstance(value, str) or len(value) > SourceReference._meta.get_field("url").max_length:
+        return False
+    try:
+        URL_VALIDATOR(value)
+    except ValidationError:
+        return False
+    return bool(re.fullmatch(URL_PATTERN, value))
+
+
 DOI_PATTERN = r"^10[.][0-9]{4,9}/\S+\Z"
 PMID_PATTERN = r"^[0-9]+\Z"
 NESTED_LIMIT = 30
@@ -24,6 +43,8 @@ def source_is_resolved(source):
         return False
     if not source.title.strip() or not source.citation.strip():
         return False
+    if source.url and not valid_brain_url(source.url):
+        return False
     locators = ((source.url, URL_PATTERN), (source.doi, DOI_PATTERN), (source.pmid, PMID_PATTERN))
     return any(value for value, _ in locators) and all(
         not value or re.fullmatch(pattern, value) for value, pattern in locators
@@ -31,7 +52,8 @@ def source_is_resolved(source):
 
 
 def resolved_sources():
-    return SourceReference.objects.filter(
+    return SourceReference.objects.alias(brain_url_length=Length("url")).filter(
+        brain_url_length__lte=SourceReference._meta.get_field("url").max_length,
         verification_status__in=CHECKED_SOURCE_STATES,
         title__regex=NONBLANK_PATTERN, citation__regex=NONBLANK_PATTERN,
     ).filter(

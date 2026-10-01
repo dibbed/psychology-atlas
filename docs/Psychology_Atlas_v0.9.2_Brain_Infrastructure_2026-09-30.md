@@ -27,7 +27,7 @@ List supports `q`, `kind`, `laterality`, and `parent` (a public parent slug). Un
 
 AtlasPagination uses 30 rows by default and caps pages at 300. Aliases, source links, identifiers, children, memberships, and functional associations are capped at 30 per owner, with truncation flags. The primary parent has a single bounded summary. Responses contain citations, claim notes, source versions, review states, and evidence context, with no raw ResearchRecord payload or curator metadata.
 
-Resolved sources require a checked verification state, nonblank title/citation, and a valid URL, DOI, or PMID. Every supplied locator must be valid. Supported existing states are `source_checked`, `verified`, `search_verified`, `web_verified_doi`, and `web_verified_doi_and_pmid`. Weak model-knowledge citations cannot authorize publication. This mechanical gate does not confer scientific approval.
+Resolved sources require a checked verification state, nonblank title/citation, and a valid URL, DOI, or PMID. Every supplied locator must be valid. Supported existing states are `source_checked`, `verified`, `search_verified`, `web_verified_doi`, and `web_verified_doi_and_pmid`. Weak model-knowledge citations cannot authorize publication. This mechanical gate does not confer scientific approval. Source URLs are validated with Django at persistence and with a conservative matching SQL predicate at publication (DNS/IPv4 HTTP(S), bounded host/URL/port, no embedded credentials or IPv6). Unsupported locator forms remain unresolved.
 
 ## Staging contract
 
@@ -43,7 +43,7 @@ The alias review migration adds unreviewed-by-default review state, a protected 
 
 Migration 0036 adds individual review state and a mapping claim note to external identifiers. Existing identifiers retain their source and default to unreviewed with an empty note. Public identifiers require reviewed mapping approval, a resolved source, and a nonblank claim note. Changing a reviewed mapping requires returning it to unreviewed; partial saves validate the state that will persist.
 
-Identity, alias, relation evidence-key, and external-identifier conflict checks compare selected candidates with all archived Brain dossiers. Alias and external-identifier keys are also compared with canonical rows. Selecting one dataset limits report candidates; it does not narrow conflict detection. Identical findings are reported once. Normalized aliases and other mapped bounded fields must fit the canonical model capacities; overlong candidates remain staging-only.
+Identity, alias, relation evidence-key, and external-identifier conflict checks compare selected candidates with all archived Brain dossiers. Alias and external-identifier keys are also compared with canonical rows. Selecting one dataset limits report candidates; it does not narrow conflict detection. Identical findings are reported once. Normalized aliases and other mapped bounded fields must fit the canonical model capacities; overlong candidates remain staging-only. Repeated claim source IDs, including separate keys resolving to the same canonical source, are rejected without rewriting archived provenance.
 
 ## Approved empty relation support
 
@@ -53,6 +53,8 @@ Identity, alias, relation evidence-key, and external-identifier conflict checks 
 Evidence keys are stable; checked/reviewed relations require resolved relation-level sources and nonblank claim notes. Active relations require active endpoints. PROTECT deletion and checked-owner source retention preserve evidence; partial saves validate the fields that will actually persist. The database enforces exclusive association subjects and unique evidence identities.
 
 Changing reviewed anatomy/network identity or descriptions, hierarchy endpoints/version/claim wording, or relation scientific context requires returning the affected row to unreviewed. Partial saves validate the approval state that will actually persist. Changing a reviewed row's source evidence likewise requires returning it to unreviewed. Adding, editing, moving, or removing its source links also requires removing review first. Display order and active state can change without changing the scientific claim.
+
+Direct SourceReference provenance edits likewise require every linked reviewed Brain anatomy, network, hierarchy, alias, identifier and relation to return to unreviewed. Normal saves, queryset updates and bulk updates enforce this; conflicting bulk upserts are rejected. PostgreSQL serializes rare source/Brain curation transactions before row locks, including update-or-create, so source edits cannot race a new approval. A dedicated PostgreSQL regression verifies that invariant; SQLite retains its database write serialization.
 
 No connectivity, lesion, imaging, symptom, disorder, diagnosis, coordinate, or inferred network data is created. Association does not establish causation, exclusive localization, or diagnosis.
 
@@ -66,9 +68,9 @@ No connectivity, lesion, imaging, symptom, disorder, diagnosis, coordinate, or i
 
 ## VERIFICATION_EXECUTED
 
-- New focused tests: 68 passed on SQLite. Query measurements from populated **test-only** fixtures: list 4, detail 11, search 4, parent/kind filters 5. Regression budgets were frozen after measuring. Page size 1 uses the same list query count; nested children and maximum page size are bounded.
+- New focused tests: 72 tests, OK, with 1 PostgreSQL-only skip on SQLite. Query measurements from populated **test-only** fixtures: list 4, detail 11, search 4, parent/kind filters 5. Regression budgets were frozen after measuring. Page size 1 uses the same list query count; nested children and maximum page size are bounded.
 - v0.9.1 regression tests: 27 tests, OK, with 2 PostgreSQL-only skips on SQLite.
-- Full SQLite backend suite on finalized code: 422 tests, OK, with 2 PostgreSQL-only skips. PostgreSQL focused verification on finalized code: all 95 v0.9.1 + v0.9.2 tests passed without skips, including foundation concurrency and alias/identifier review migration checks; query measurements matched SQLite.
+- Full SQLite backend suite on finalized code: 426 tests, OK, with 3 PostgreSQL-only skips. PostgreSQL focused verification on finalized code: all 99 v0.9.1 + v0.9.2 tests passed without skips, including foundation concurrency and alias/identifier review migration checks; query measurements matched SQLite.
 - Disposable copy upgrade from 0032 through 0033, 0034, 0035, and 0036 preserved all 110 pre-existing Atlas table contents, including 2 datasets and 1,918 ResearchRecords. Migration 0035 leaves aliases unreviewed and source-less; migration 0036 leaves existing identifiers unreviewed while retaining their source. Original database was not migrated.
 - `check`, `makemigrations --check --dry-run`, `showmigrations atlas`, `verify_research_datasets`, `audit_brain_atlas`, `audit_v06_release`, `audit_study_plans`, `audit_recommendation_feedback`, and `audit_case_graphs` passed against the migrated copy. SQLite integrity_check returned `ok`; foreign_key_check returned no violations. Compilation and `git diff --check` passed.
 - Copy counts: anatomy 0, networks 0, hierarchy 0, memberships 0, functional associations 0, aliases 0, external identifiers 0. All Brain review/source distributions are empty; these are zero-content counts, not synthetic test counts.

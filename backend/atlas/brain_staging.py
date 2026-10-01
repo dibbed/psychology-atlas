@@ -13,7 +13,7 @@ from pathlib import Path
 from django.core.management.base import CommandError
 from django.db import transaction
 
-from .brain_publication import URL_PATTERN, source_is_resolved
+from .brain_publication import valid_brain_url, source_is_resolved
 from .models import (
     BrainAnatomicalAlias, BrainNetworkAlias, BrainAnatomicalEntity, BrainHierarchyLink, BrainNetwork,
     BrainNetworkMembership, BrainFunctionalAssociation, BrainExternalIdentifier,
@@ -289,7 +289,7 @@ def _validate_dataset(dataset, report):
         elif category == "external_identifier":
             if any(not text(row.get(field)).strip() for field in ("namespace", "identifier", "source_version")):
                 issue(record, "invalid_external_identifier")
-            if row.get("url") and not re.fullmatch(URL_PATTERN, text(row["url"])):
+            if row.get("url") and not valid_brain_url(row["url"]):
                 issue(record, "invalid_external_identifier")
             mappings[(text(row.get("namespace")).strip().casefold(), text(row.get("identifier")).strip(),
                       text(row.get("source_version")).strip().casefold())].append(record)
@@ -343,6 +343,11 @@ def _validate_dataset(dataset, report):
         notes = row.get("source_notes")
         if not isinstance(ids, list) or not ids or any(not isinstance(value, str) or value not in sources for value in ids):
             issue(record, "unresolved_source")
+        if isinstance(ids, list):
+            string_ids = [value for value in ids if isinstance(value, str)]
+            resolved_ids = [sources[value].pk for value in string_ids if value in sources]
+            if len(string_ids) != len(set(string_ids)) or len(resolved_ids) != len(set(resolved_ids)):
+                issue(record, "duplicate_source_id")
         if not isinstance(notes, dict) or not isinstance(ids, list) or any(not text(notes.get(value)).strip() for value in ids if isinstance(value, str)):
             issue(record, "missing_provenance")
         if category in ("alias", "external_identifier"):
