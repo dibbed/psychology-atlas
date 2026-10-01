@@ -318,7 +318,7 @@ class BrainSourceLocatorTests(TestCase):
             url="https://example.org/test", verification_status="source_checked")
         values = (("https://x<>", False), ("https://example.org:bad", False), ("https://example.org:65536", False),
                   ("https://-bad.example.org", False), ("https://999.999.999.999", False),
-                  ("https://[:::]", False), ("https://example.org/\n", False),
+                  ("https://[:::]", False), ("https://example.org/\n", False), ("https://example.org/\x1c", False), ("https://example.org/\u2003", False),
                   ("https://EXAMPLE.org:443/test?q=1#part", True), ("https://127.0.0.1/test", True))
         for url, valid in values:
             with self.subTest(url=url):
@@ -330,3 +330,21 @@ class BrainSourceLocatorTests(TestCase):
                 source.refresh_from_db()
                 self.assertEqual(source_is_resolved(source), valid)
                 self.assertEqual(resolved_sources().filter(pk=source.pk).exists(), valid)
+
+    def test_doi_and_pmid_model_bounds_match_publication_on_both_engines(self):
+        from django.core.exceptions import ValidationError
+        from django.db import connection
+        from .brain_publication import source_is_resolved, resolved_sources
+
+        source = SourceReference.objects.create(title="Synthetic identifier bounds", citation="Synthetic evidence",
+            url="https://example.org/identifier-bounds", verification_status="source_checked")
+        for field, value in (("doi", "10.1234/" + "a" * 248), ("pmid", "1" * 65)):
+            source.refresh_from_db()
+            setattr(source, field, value)
+            self.assertFalse(source_is_resolved(source))
+            with self.subTest(field=field), self.assertRaises(ValidationError):
+                source.save(update_fields=[field])
+            if connection.vendor == "sqlite":
+                QuerySet.update(SourceReference.objects.filter(pk=source.pk), **{field: value})
+                self.assertFalse(resolved_sources().filter(pk=source.pk).exists())
+                QuerySet.update(SourceReference.objects.filter(pk=source.pk), **{field: ""})

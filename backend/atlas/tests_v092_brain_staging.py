@@ -327,3 +327,22 @@ class BrainStagingTests(TestCase):
                 self.assertIn("duplicate_source_id", {row["code"] for row in report["issues"]})
                 self.assertEqual(report["canonical_writes"], 0)
                 self.assertEqual(dataset.raw_document, document)
+
+    def test_inactive_hierarchy_history_does_not_change_the_primary_graph(self):
+        document = copy.deepcopy(self.document)
+        second = {**document["records"][1], "id": "second-anatomy", "slug": "second-test", "name_en": "Synthetic Second"}
+        historical = {**second, "id": "historical-anatomy", "slug": "historical-test", "name_en": "Synthetic Historical", "is_active": False}
+        document["records"].extend([second, historical])
+        for record_id, child, parent, active in (("active-link", "test-only-structure", "second-test", True),
+                                                ("historical-parent", "test-only-structure", "historical-test", False),
+                                                ("historical-return", "second-test", "test-only-structure", False)):
+            document["records"].append({"id": record_id, "category": "hierarchy", "child_slug": child, "parent_slug": parent,
+                "predicate": "part_of", "source_version": "Test v1", "review_status": "reviewed", "is_active": active,
+                "source_ids": ["source-one"], "source_notes": {"source-one": "Synthetic historical hierarchy"}})
+        dataset, _ = self.ingest(document)
+        self.assertEqual(validate_brain_staging(dataset.key)["issues"], [])
+        document["dataset_metadata"]["version"] = "active-cycle"
+        document["records"][-1]["is_active"] = True
+        dataset, _ = self.ingest(document)
+        self.assertIn("hierarchy_cycle", {row["code"] for row in validate_brain_staging(dataset.key)["issues"]})
+        self.assertEqual(BrainHierarchyLink.objects.count(), 0)

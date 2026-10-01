@@ -324,9 +324,9 @@ def _validate_dataset(dataset, report):
                 if any(record.payload.get(field) != getattr(existing, field) for field in fields):
                     issue(record, "canonical_identity_conflict")
 
-    def endpoint(record, category, slug):
+    def endpoint(record, category, slug, require_active=True):
         group = identities.get((text(category), text(slug)), [])
-        if len(group) != 1 or group[0].payload.get("is_active") is False:
+        if len(group) != 1 or (require_active and group[0].payload.get("is_active") is False):
             issue(record, "unresolved_endpoint")
             return None
         return group[0].payload
@@ -351,26 +351,35 @@ def _validate_dataset(dataset, report):
         if not isinstance(notes, dict) or not isinstance(ids, list) or any(not text(notes.get(value)).strip() for value in ids if isinstance(value, str)):
             issue(record, "missing_provenance")
         if category in ("alias", "external_identifier"):
-            endpoint(record, row.get("owner_type"), row.get("owner_slug"))
+            endpoint(record, row.get("owner_type"), row.get("owner_slug"), require_active=False)
         elif category == "hierarchy":
-            child = endpoint(record, "anatomy", row.get("child_slug"))
-            parent = endpoint(record, "anatomy", row.get("parent_slug"))
-            parents[text(row.get("child_slug"))].append(record)
-            if child and parent and BrainHierarchyLink.laterality_conflicts(child.get("laterality"), parent.get("laterality")):
-                issue(record, "laterality_conflict")
+            active = row.get("is_active") is not False
+            child = endpoint(record, "anatomy", row.get("child_slug"), require_active=active)
+            parent = endpoint(record, "anatomy", row.get("parent_slug"), require_active=active)
+            if row.get("child_slug") == row.get("parent_slug"):
+                issue(record, "hierarchy_cycle")
+            if active:
+                parents[text(row.get("child_slug"))].append(record)
+                if child and parent and BrainHierarchyLink.laterality_conflicts(child.get("laterality"), parent.get("laterality")):
+                    issue(record, "laterality_conflict")
         elif category == "network_membership":
-            endpoint(record, "anatomy", row.get("entity_slug"))
-            endpoint(record, "network", row.get("network_slug"))
+            endpoint(record, "anatomy", row.get("entity_slug"), require_active=row.get("is_active") is not False)
+            endpoint(record, "network", row.get("network_slug"), require_active=row.get("is_active") is not False)
         elif category == "functional_association":
-            endpoint(record, row.get("subject_type"), row.get("subject_slug"))
+            endpoint(record, row.get("subject_type"), row.get("subject_slug"), require_active=row.get("is_active") is not False)
             from .models import Concept
-            if not Concept.objects.filter(slug=text(row.get("concept_slug")), is_active=True).exists():
+            concepts = Concept.objects.filter(slug=text(row.get("concept_slug")))
+            if row.get("is_active") is not False:
+                concepts = concepts.filter(is_active=True)
+            if not concepts.exists():
                 issue(record, "unresolved_construct")
     for child, group in parents.items():
         if len(group) > 1:
             for record in group:
                 issue(record, "multiple_primary_parents")
     for record in links:
+        if record.payload.get("is_active") is False:
+            continue
         current = text(record.payload.get("parent_slug"))
         seen = {text(record.payload.get("child_slug"))}
         while current in parents:

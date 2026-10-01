@@ -12,11 +12,12 @@ from django.db.models.functions import Length
 from .models import BrainAnatomicalEntity, BrainHierarchyLink, SourceReference
 
 
+SOURCE_LENGTHS = {field.name: field.max_length for field in SourceReference._meta.concrete_fields if field.max_length}
 CHECKED_SOURCE_STATES = (
     "source_checked", "verified", "search_verified", "web_verified_doi", "web_verified_doi_and_pmid",
 )
-# Conservative database-safe subset of Django URLs: DNS/IPv4, no credentials or IPv6.
-URL_PATTERN = (r"(?i)^(?!.*\s)https?://(?=[^/?#]{1,253}(?:[/?#]|\Z))"
+# Conservative database-safe subset of Django URLs: ASCII DNS/IPv4 URIs, no credentials or IPv6; encode Unicode paths/hosts first.
+URL_PATTERN = (r"(?i)^(?=[!-~]+\Z)https?://(?=[^/?#]{1,253}(?:[/?#]|\Z))"
                rf"(?:{URLValidator.ipv4_re}|{URLValidator.host_re})(?::(?:[0-9]{{1,4}}|[0-5][0-9]{{4}}|6[0-4][0-9]{{3}}|65[0-4][0-9]{{2}}|655[0-2][0-9]|6553[0-5]))?(?:[/?#][^\s]*)?\Z")
 URL_VALIDATOR = URLValidator(schemes=["http", "https"])
 
@@ -41,6 +42,9 @@ NONBLANK_PATTERN = "[^\t\n\v\f\r\x1c\x1d\x1e\x1f \x85\xa0\u1680\u2000\u2001\u200
 def source_is_resolved(source):
     if source is None or source.verification_status not in CHECKED_SOURCE_STATES:
         return False
+    if any(not isinstance(getattr(source, field), str) or len(getattr(source, field)) > maximum
+           for field, maximum in SOURCE_LENGTHS.items()):
+        return False
     if not source.title.strip() or not source.citation.strip():
         return False
     if source.url and not valid_brain_url(source.url):
@@ -52,8 +56,10 @@ def source_is_resolved(source):
 
 
 def resolved_sources():
-    return SourceReference.objects.alias(brain_url_length=Length("url")).filter(
-        brain_url_length__lte=SourceReference._meta.get_field("url").max_length,
+    lengths = {f"brain_{field}_length": Length(field) for field in SOURCE_LENGTHS}
+    bounds = {f"brain_{field}_length__lte": maximum for field, maximum in SOURCE_LENGTHS.items()}
+    return SourceReference.objects.alias(**lengths).filter(
+        **bounds,
         verification_status__in=CHECKED_SOURCE_STATES,
         title__regex=NONBLANK_PATTERN, citation__regex=NONBLANK_PATTERN,
     ).filter(

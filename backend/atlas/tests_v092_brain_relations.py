@@ -363,6 +363,46 @@ class BrainRelationTests(TestCase):
         self.source.refresh_from_db()
         self.assertEqual(self.source.title, "Replacement source")
 
+    def test_source_checked_aliases_and_identifiers_cannot_lose_resolved_sources(self):
+        from django.db.models import F
+        from .models import BrainAnatomicalAlias, BrainNetworkAlias, BrainExternalIdentifier
+
+        owners = (BrainAnatomicalAlias.objects.create(entity=self.entity, text="Synthetic checked alias", language="en",
+                    source=self.source, source_note="Synthetic spelling", review_status="source_checked"),
+                  BrainNetworkAlias.objects.create(network=self.network, text="Synthetic checked network alias", language="en",
+                    source=self.source, source_note="Synthetic spelling", review_status="source_checked"),
+                  BrainExternalIdentifier.objects.create(entity=self.entity, namespace="Synthetic", identifier="S-checked",
+                    source_version="Test v1", source=self.source, source_note="Synthetic mapping", review_status="source_checked"))
+        for owner in owners:
+            self.source.refresh_from_db()
+            self.source.verification_status = "citation_from_model_knowledge"
+            with self.assertRaises(ValidationError):
+                self.source.save(update_fields=["verification_status"])
+            owner.review_status = "unreviewed"
+            owner.save(update_fields=["review_status"])
+        self.source.save(update_fields=["verification_status"])
+        self.source.refresh_from_db()
+        self.assertEqual(self.source.verification_status, "citation_from_model_knowledge")
+        self.source.title = F("organization")
+        with self.assertRaises(ValidationError):
+            self.source.save(update_fields=["title"])
+
+    def test_source_checked_relations_keep_last_resolved_evidence_but_allow_other_weak_sources(self):
+        other = SourceReference.objects.create(title="Synthetic other source", citation="Synthetic evidence",
+            url="https://example.org/other-checked", verification_status="source_checked")
+        for relation, model in ((self.membership(), BrainNetworkMembershipSource), (self.association(), BrainFunctionalAssociationSource)):
+            model.objects.create(relationship=relation, source=self.source, note="Synthetic evidence")
+            relation.review_status = "source_checked"
+            relation.save()
+            self.source.refresh_from_db()
+            self.source.verification_status = "citation_from_model_knowledge"
+            with self.assertRaises(ValidationError):
+                self.source.save(update_fields=["verification_status"])
+            model.objects.create(relationship=relation, source=other, note="Synthetic alternative evidence")
+        self.source.save(update_fields=["verification_status"])
+        self.source.refresh_from_db()
+        self.assertEqual(self.source.verification_status, "citation_from_model_knowledge")
+
 
 @skipUnless(connection.vendor == "postgresql", "Source curation locking requires PostgreSQL")
 class BrainSourceConcurrencyTests(TransactionTestCase):

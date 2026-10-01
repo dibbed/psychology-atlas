@@ -8,6 +8,7 @@ from django.db.models.functions import Lower, Trim
 from django.utils import timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from urllib.parse import urlsplit
+from copy import copy
 
 
 class TimeStampedModel(models.Model):
@@ -148,6 +149,7 @@ class SourceReferenceQuerySet(BrainCurationQuerySet):
             raise ValidationError("Source conflict updates require individual validated saves.")
         objs = list(objs)
         for obj in objs:
+            obj.full_clean()
             obj._validate_url(obj.url)
         return super().bulk_create(objs, batch_size=batch_size, ignore_conflicts=ignore_conflicts,
                                    update_conflicts=update_conflicts, update_fields=update_fields, unique_fields=unique_fields)
@@ -201,6 +203,8 @@ class SourceReference(TimeStampedModel):
             fields = tuple(field.name for field in self._meta.concrete_fields if not field.primary_key
                            and field.name not in {"created_at", "updated_at"}
                            and (update_fields is None or field.name in update_fields))
+            if any(hasattr(getattr(self, name), "resolve_expression") for name in fields):
+                raise ValidationError("Source evidence writes require concrete values for validation.")
             if previous and any(getattr(previous, name) != getattr(self, name) for name in fields):
                 owners = ((BrainAnatomicalEntitySource, "entity__review_status"),
                           (BrainNetworkSource, "network__review_status"),
@@ -212,8 +216,24 @@ class SourceReference(TimeStampedModel):
                 if any(model.objects.using(using).filter(source_id=self.pk, **{status: "reviewed"}).exists()
                        for model, status in owners):
                     raise ValidationError("Return all reviewed Brain claims using this source to unreviewed before changing its provenance.")
-            url = self.url if previous is None or update_fields is None or "url" in update_fields else previous.url
-            self._validate_url(url)
+            candidate = self
+            if previous is not None and update_fields is not None:
+                candidate = copy(previous)
+                for name in update_fields:
+                    field = self._meta.get_field(name)
+                    setattr(candidate, field.attname, getattr(self, field.attname))
+            candidate.full_clean()
+            candidate._validate_url(candidate.url)
+            if previous and any(getattr(previous, name) != getattr(self, name) for name in fields):
+                from .brain_publication import NONBLANK_PATTERN, resolved_sources, source_is_resolved
+                if not source_is_resolved(candidate):
+                    if any(model.objects.using(using).filter(source_id=self.pk, review_status="source_checked").exists()
+                           for model in (BrainAnatomicalAlias, BrainNetworkAlias, BrainExternalIdentifier)):
+                        raise ValidationError("Checked Brain aliases and identifiers must retain resolved source evidence.")
+                    for model in (BrainNetworkMembershipSource, BrainFunctionalAssociationSource):
+                        for link in model.objects.using(using).filter(source_id=self.pk, relationship__review_status="source_checked"):
+                            if not link.relationship.source_links.filter(source__in=resolved_sources(), note__regex=NONBLANK_PATTERN).exclude(source_id=self.pk).exists():
+                                raise ValidationError("Checked Brain relations must retain resolved source evidence.")
             return super().save(*args, **kwargs)
 
 
