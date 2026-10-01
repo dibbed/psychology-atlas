@@ -192,6 +192,48 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def verify_deferred_hierarchy(derived):
+    """Use existing structural rules in a probe archive that is always rolled back.
+
+    Only the in-memory probe changes hierarchy review state to satisfy the
+    parser's approval precondition. This is not scientific/rights approval.
+    """
+    from django.db import transaction
+    from atlas.brain_staging import ingest_brain_document, validate_brain_staging
+
+    probe = copy.deepcopy(derived)
+    claims = copy.deepcopy(probe["dataset_metadata"]["deferred_hierarchy_claims"])
+    for claim in claims:
+        claim["record"]["review_status"] = "reviewed"
+        probe["records"].append(claim["record"])
+
+    def check(document):
+        with transaction.atomic():
+            try:
+                archive, _ = ingest_brain_document(json.dumps(document, ensure_ascii=False), "deferred-hierarchy-structural-probe.json")
+                return validate_brain_staging(archive.key)
+            finally:
+                transaction.set_rollback(True)
+
+    report = check(probe)
+    if report["issues"] or report["candidate_count"] != len(probe["records"]):
+        raise ValueError("Deferred hierarchy structural validation failed: " + json.dumps(report["issues"]))
+    # Exercise the same endpoint/predicate/provenance/cycle rules in disposable
+    # transactions. Neither valid nor deliberately invalid probes are archived.
+    mutations = {"parent_slug": ("missing-anatomy-endpoint", "unresolved_endpoint"),
+                 "predicate": ("is_a", "unsupported_hierarchy"),
+                 "source_notes": ({}, "missing_provenance"),
+                 "child_slug": (claims[0]["record"]["parent_slug"], "hierarchy_cycle")} if claims else {}
+    for field, (value, expected) in mutations.items():
+        bad = copy.deepcopy(probe)
+        bad["records"][-len(claims)][field] = value
+        failure = check(bad)
+        if expected not in {issue["code"] for issue in failure["issues"]}:
+            raise ValueError("Deferred hierarchy regression was not rejected: " + field)
+    return dict(claim_count=len(claims), structural_report=report, negative_checks=list(mutations),
+                archive_rolled_back=True, publication_approval=False)
+
+
 def write_json(path, value):
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
@@ -296,6 +338,8 @@ def run(dossier_path, input_database, output):
         classifications=dict(Counter(r["classification"] for r in resolutions)))
     resolved = output / (dossier_path.stem + ".resolved.json")
     write_json(resolved, derived)
+    deferred_validation = verify_deferred_hierarchy(derived)
+    write_json(output / "deferred-hierarchy-validation.json", deferred_validation)
     command("import_brain_dataset", str(resolved))
     archived = ResearchDataset.objects.get(source_sha256=digest(resolved))
     promotion = json.loads(command("promote_brain_staging", dataset=archived.key))
@@ -307,7 +351,7 @@ def run(dossier_path, input_database, output):
         source_resolution=dict(Counter(r["classification"] for r in resolutions)),
         canonical_before=before, canonical_after=after, original_database_unchanged=original_hash == digest(input_database),
         canonical_unchanged=before == after, canonical_writes=promotion["canonical_writes"],
-        staging=promotion, audit=audit, archival_integrity=integrity.strip())
+        staging=promotion, deferred_hierarchy_validation=deferred_validation, audit=audit, archival_integrity=integrity.strip())
     write_json(output / "validation-summary.json", summary)
     if (not unchanged or promotion["issues"] or promotion["candidate_count"] != len(document["records"]) or
             promotion["canonical_writes"] != 0 or not audit_is_clear(audit)):

@@ -91,6 +91,7 @@ The output directory must be new and outside the repository. Before database/out
 - Disposable local source resolution: **24 new verified sources, 0 existing matches**, no unresolved bibliographic source rows in the derivative. Bibliographic resolution does not clear commercial rights.
 - Existing `import_brain_dataset`: **346 staging research records archived, 0 issues**.
 - Existing `promote_brain_staging`: **346 staging records, 0 issues, `canonical_writes=0`**. This is structural validation, not publication eligibility.
+- Deferred hierarchy: **74 claims / 420 combined probe records, 0 structural issues**, checked through the existing staging validator in transactions that always roll back. The temporary probe review state satisfies the parser's structural precondition only; master/resolved dispositions remain deferred. Invalid endpoint, predicate, provenance and cycle mutations are rejected by those same existing rules; no probe archive survives.
 - Existing `audit_brain_atlas --json`: **0 errors, 0 review debt, 0 staging issues**.
 - Existing `verify_research_datasets`: **3 datasets / 2,264 records PASS**, including the two unchanged legacy archives.
 - Public API on the migrated validation copy: **200 with zero list results; 404 for `brain` detail**.
