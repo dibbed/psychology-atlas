@@ -60,6 +60,14 @@ jobs:
       - name: Run backend test suite
         run: python manage.py test atlas --noinput
 
+      - name: Validate curated Brain dossier without publication
+        run: |
+          python ../scripts/validate_brain_dossier.py --self-test
+          python ../scripts/validate_brain_dossier.py \
+            --dossier ../docs/research/brain/v0.9.2b/psychology_atlas_brain_curated_dossier_v0.9.2b.json \
+            --database data/ci.sqlite3 \
+            --output "$RUNNER_TEMP/brain-dossier-validation"
+
       - name: Compile Python modules
         run: python -m compileall -q atlas config
 
