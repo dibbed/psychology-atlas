@@ -284,3 +284,31 @@ class BrainStagingTests(TestCase):
             "source_ids": ["source-one"], "source_notes": {"source-one": "Test claim"}})
         dataset, _ = self.ingest(document)
         self.assertIn("canonical_evidence_key_conflict", {row["code"] for row in validate_brain_staging(dataset.key)["issues"]})
+
+    def test_alias_length_matches_normalized_canonical_capacity(self):
+        for length, valid in ((255, True), (256, False)):
+            document = copy.deepcopy(self.document)
+            document["dataset_metadata"]["version"] = f"alias-{length}"
+            document["records"].append({"id": "alias-length", "category": "alias", "owner_type": "anatomy",
+                "owner_slug": "test-only-structure", "text": "  " + "a" * length + "  ", "language": "en",
+                "alias_type": "alternative", "source_ids": ["source-one"], "source_notes": {"source-one": "Synthetic spelling"},
+                "review_status": "unreviewed"})
+            dataset, _ = self.ingest(document)
+            codes = {row["code"] for row in validate_brain_staging(dataset.key)["issues"] if row["record"] == "alias-length"}
+            with self.subTest(length=length):
+                self.assertEqual("invalid_alias" not in codes, valid)
+        self.assertEqual(BrainAnatomicalEntity.objects.count(), 0)
+
+    def test_candidate_lengths_cannot_exceed_existing_canonical_fields(self):
+        for category, fields in (("anatomy", {"name_fa": "x" * 256, "persian_reviewed": True}),
+                                 ("hierarchy", {"source_version": "x" * 121}),
+                                 ("external_identifier", {"namespace": "x" * 121, "identifier": "x" * 256}),
+                                 ("network_membership", {"source_version": "x" * 121})):
+            document = copy.deepcopy(self.document)
+            document["dataset_metadata"]["version"] = category
+            document["records"].append({"id": "oversized", "category": category, "review_status": "unreviewed", **fields})
+            dataset, _ = self.ingest(document)
+            with self.subTest(category=category):
+                codes = {row["code"] for row in validate_brain_staging(dataset.key)["issues"] if row["record"] == "oversized"}
+                self.assertIn("invalid_field_length", codes)
+        self.assertEqual(BrainAnatomicalEntity.objects.count(), 0)

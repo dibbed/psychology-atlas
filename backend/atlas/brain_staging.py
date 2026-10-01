@@ -239,6 +239,12 @@ def _validate_dataset(dataset, report):
             continue
         if "is_active" in row and type(row["is_active"]) is not bool:
             issue(record, "invalid_active_state")
+        model = {"anatomy": BrainAnatomicalEntity, "network": BrainNetwork, "alias": BrainAnatomicalAlias,
+                 "hierarchy": BrainHierarchyLink, "external_identifier": BrainExternalIdentifier,
+                 "network_membership": BrainNetworkMembership, "functional_association": BrainFunctionalAssociation}.get(category)
+        if model and any(field.max_length and field.name in row and field.name != "text"
+                         and len(text(row[field.name])) > field.max_length for field in model._meta.concrete_fields):
+            issue(record, "invalid_field_length")
         if category == "source":
             source = source_objects.get(row.get("source_reference_id")) if type(row.get("source_reference_id")) is int else None
             if not source_is_resolved(source) or not any(text(row.get(key)) for key in ("url", "doi", "pmid")):
@@ -271,7 +277,9 @@ def _validate_dataset(dataset, report):
                         text(row.get("source_version")), text(row.get("spatial_scope", row.get("definition"))))
             candidate_names[identity].append(record)
         elif category == "alias":
-            if (not text(row.get("text")).strip() or row.get("language") not in BrainAnatomicalAlias.Language.values
+            normalized_alias = " ".join(text(row.get("text")).split())
+            if (not normalized_alias or len(normalized_alias) > BrainAnatomicalAlias._meta.get_field("text").max_length
+                    or row.get("language") not in BrainAnatomicalAlias.Language.values
                     or row.get("alias_type") not in BrainAnatomicalAlias.AliasType.values):
                 issue(record, "invalid_alias")
             if row.get("language") == "fa" and row.get("persian_reviewed") is not True:

@@ -3410,6 +3410,20 @@ class BrainValidatedQuerySet(models.QuerySet):
         raise ValidationError("Brain records require individual validated saves.")
 
 
+def validate_brain_reviewed_content(instance):
+    """Scientific edits require explicitly removing the persisted approval."""
+    if not instance.pk or instance.review_status == ScientificReviewStatus.UNREVIEWED:
+        return
+    fields = tuple(field.attname for field in instance._meta.concrete_fields if not field.primary_key and field.name not in {
+        "review_status", "is_active", "sort_order", "seed_managed", "created_at", "updated_at",
+    })
+    previous = type(instance).objects.filter(pk=instance.pk).values("review_status", *fields).first()
+    if previous and previous["review_status"] == ScientificReviewStatus.REVIEWED and any(
+        previous[field] != getattr(instance, field) for field in fields
+    ):
+        raise ValidationError("Return reviewed Brain content to unreviewed before changing its identity, claim or evidence context.")
+
+
 class BrainCanonicalBase(TimeStampedModel):
     """Common identity and review fields; anatomy and networks remain distinct tables."""
 
@@ -3433,6 +3447,7 @@ class BrainCanonicalBase(TimeStampedModel):
 
     def clean(self):
         super().clean()
+        validate_brain_reviewed_content(self)
         if self.slug != self.slug.strip().lower():
             raise ValidationError({"slug": "Slug must be lowercase without surrounding whitespace."})
         if self.name_en != " ".join(self.name_en.split()):
@@ -3448,10 +3463,17 @@ class BrainCanonicalBase(TimeStampedModel):
             raise ValidationError({"review_status": "Create an unreviewed entity and attach sources first."})
 
     def save(self, *args, **kwargs):
-        with transaction.atomic():
-            if self.pk is not None:
-                list(type(self).objects.select_for_update().filter(pk=self.pk).values_list("pk", flat=True))
-            self.full_clean()
+        using = kwargs.get("using") or router.db_for_write(type(self), instance=self)
+        with transaction.atomic(using=using):
+            candidate = self
+            stored = type(self).objects.using(using).select_for_update().filter(pk=self.pk).first() if self.pk else None
+            update_fields = kwargs.get("update_fields")
+            if stored is not None and update_fields is not None:
+                candidate = stored
+                for name in update_fields:
+                    field = self._meta.get_field(name)
+                    setattr(candidate, field.attname, getattr(self, field.attname))
+            candidate.full_clean()
             return super().save(*args, **kwargs)
 
     def __str__(self):
@@ -3670,6 +3692,8 @@ class BrainSourceLinkQuerySet(BrainValidatedQuerySet):
         for owner in owners:
             if owner.review_status == ScientificReviewStatus.UNREVIEWED:
                 continue
+            if owner.review_status == ScientificReviewStatus.REVIEWED:
+                raise ProtectedError("Return reviewed Brain content to unreviewed before removing evidence.", [owner])
             owner_filter = {owner_field: owner.pk}
             if self.model.objects.using(self.db).filter(**owner_filter).count() <= removing.filter(**owner_filter).count():
                 raise ProtectedError("Checked or reviewed Brain records require a source link.", [owner])
@@ -3689,18 +3713,41 @@ class BrainSourceLinkBase(models.Model):
     class Meta:
         abstract = True
 
+    def clean(self):
+        super().clean()
+        owner_id_field = f"{self.owner_field}_id"
+        fields = (owner_id_field, "source_id", "note")
+        previous = type(self).objects.filter(pk=self.pk).values(*fields).first() if self.pk else None
+        if previous is None or any(previous[field] != getattr(self, field) for field in fields):
+            owner_ids = {getattr(self, owner_id_field)}
+            if previous:
+                owner_ids.add(previous[owner_id_field])
+            owner_model = self._meta.get_field(self.owner_field).remote_field.model
+            if owner_model.objects.filter(pk__in=owner_ids, review_status=ScientificReviewStatus.REVIEWED).exists():
+                raise ValidationError("Return reviewed Brain content to unreviewed before changing its source evidence.")
+
     def save(self, *args, **kwargs):
         using = kwargs.get("using") or router.db_for_write(type(self), instance=self)
-        update_fields = kwargs.get("update_fields")
         owner_id_field = f"{self.owner_field}_id"
-        writes_owner = update_fields is None or self.owner_field in update_fields or owner_id_field in update_fields
         with transaction.atomic(using=using):
-            if self.pk is not None and writes_owner:
-                list(type(self).objects.using(using).select_for_update().filter(pk=self.pk).values_list("pk", flat=True))
-                previous = type(self).objects.using(using).filter(pk=self.pk).exclude(
-                    **{owner_id_field: getattr(self, owner_id_field)}
-                )
-                previous._protect_required_sources()
+            candidate = self
+            stored = type(self).objects.using(using).select_for_update().filter(pk=self.pk).first() if self.pk else None
+            update_fields = kwargs.get("update_fields")
+            if stored is not None and update_fields is not None:
+                candidate = stored
+                for name in update_fields:
+                    field = self._meta.get_field(name)
+                    setattr(candidate, field.attname, getattr(self, field.attname))
+            owner_ids = {getattr(candidate, owner_id_field)}
+            if stored:
+                owner_ids.add(type(self).objects.using(using).values_list(owner_id_field, flat=True).get(pk=self.pk))
+            owner_model = self._meta.get_field(self.owner_field).remote_field.model
+            list(owner_model.objects.using(using).select_for_update().filter(pk__in=owner_ids).order_by("pk").values_list("pk", flat=True))
+            if stored and type(self).objects.using(using).filter(pk=self.pk).exclude(
+                **{owner_id_field: getattr(candidate, owner_id_field)}
+            ).exists():
+                type(self).objects.using(using).filter(pk=self.pk)._protect_required_sources()
+            candidate.full_clean()
             return super().save(*args, **kwargs)
 
     def delete(self, using=None, keep_parents=False):
@@ -3844,6 +3891,7 @@ class BrainHierarchyLink(ScientificRelationBase):
 
     def clean(self):
         super().clean()
+        validate_brain_reviewed_content(self)
         if self.child_id is None or self.parent_id is None:
             return
         if self.child_id == self.parent_id:
@@ -3914,10 +3962,6 @@ class BrainHierarchyLinkSource(BrainSourceLinkBase):
         if not self.note.strip():
             raise ValidationError({"note": "Identify the supported part-of claim."})
 
-    def save(self, *args, **kwargs):
-        self.full_clean()
-        return super().save(*args, **kwargs)
-
 
 class BrainEvidenceRelationBase(ScientificRelationBase):
     """Shared lifecycle for the two approved, method-specific Brain predicates."""
@@ -3935,6 +3979,7 @@ class BrainEvidenceRelationBase(ScientificRelationBase):
 
     def clean(self):
         super().clean()
+        validate_brain_reviewed_content(self)
         for field in self.required_context:
             if not getattr(self, field).strip():
                 raise ValidationError({field: "Explicit sourced evidence context is required."})
@@ -3948,15 +3993,6 @@ class BrainEvidenceRelationBase(ScientificRelationBase):
             from .brain_publication import NONBLANK_PATTERN, resolved_sources
             if self.pk is None or not self.source_links.filter(source__in=resolved_sources(), note__regex=NONBLANK_PATTERN).exists():
                 raise ValidationError({"review_status": "Checked relations require resolved relation-level evidence."})
-            if self.pk:
-                fields = tuple(field.attname for field in self._meta.concrete_fields if not field.primary_key and field.name not in {
-                    "review_status", "is_active", "sort_order", "seed_managed", "created_at", "updated_at",
-                })
-                previous = type(self).objects.filter(pk=self.pk).values("review_status", *fields).first()
-                if previous and previous["review_status"] == ScientificReviewStatus.REVIEWED and any(
-                    previous[field] != getattr(self, field) for field in fields
-                ):
-                    raise ValidationError("Return a reviewed Brain relation to unreviewed before changing its claim or evidence context.")
         if self.is_active:
             for field in self.endpoint_fields:
                 endpoint_id = getattr(self, f"{field}_id")
@@ -4043,8 +4079,6 @@ class BrainEvidenceSourceQuerySet(BrainSourceLinkQuerySet):
             pk__in=removing.values("relationship_id"),
         ).exclude(review_status=ScientificReviewStatus.UNREVIEWED)
         for owner in owners:
-            if owner.review_status == ScientificReviewStatus.REVIEWED:
-                raise ProtectedError("Return a reviewed Brain relation to unreviewed before removing evidence.", [owner])
             if not self.model.objects.filter(relationship=owner, source__in=resolved_sources(), note__regex=NONBLANK_PATTERN).exclude(
                 pk__in=removing.values("pk"),
             ).exists():
@@ -4066,37 +4100,11 @@ class BrainEvidenceSourceBase(BrainSourceLinkBase):
         from .brain_publication import NONBLANK_PATTERN, resolved_sources
         owner_model = self._meta.get_field("relationship").remote_field.model
         owner = owner_model.objects.filter(pk=self.relationship_id).first()
-        previous = type(self).objects.filter(pk=self.pk).values("relationship_id", "source_id", "note").first() if self.pk else None
-        changed = previous is None or any(previous[field] != getattr(self, field) for field in ("relationship_id", "source_id", "note"))
-        if changed:
-            owner_ids = {self.relationship_id}
-            if previous:
-                owner_ids.add(previous["relationship_id"])
-            if owner_model.objects.filter(pk__in=owner_ids, review_status=ScientificReviewStatus.REVIEWED).exists():
-                raise ValidationError("Return a reviewed Brain relation to unreviewed before changing its source evidence.")
         if owner and owner.review_status != ScientificReviewStatus.UNREVIEWED:
             if not resolved_sources().filter(pk=self.source_id).exists() and not type(self).objects.filter(
                 relationship_id=owner.pk, source__in=resolved_sources(), note__regex=NONBLANK_PATTERN,
             ).exclude(pk=self.pk).exists():
                 raise ProtectedError("Checked Brain relations must retain resolved evidence.", [owner])
-
-    def save(self, *args, **kwargs):
-        using = kwargs.get("using") or router.db_for_write(type(self), instance=self)
-        with transaction.atomic(using=using):
-            candidate = self
-            stored = type(self).objects.using(using).select_for_update().filter(pk=self.pk).first() if self.pk else None
-            previous_owner_id = stored.relationship_id if stored else self.relationship_id
-            update_fields = kwargs.get("update_fields")
-            if stored is not None and update_fields is not None:
-                candidate = stored
-                for name in update_fields:
-                    field = self._meta.get_field(name)
-                    setattr(candidate, field.attname, getattr(self, field.attname))
-            owner_model = self._meta.get_field("relationship").remote_field.model
-            owner_ids = {candidate.relationship_id, previous_owner_id}
-            list(owner_model.objects.using(using).select_for_update().filter(pk__in=owner_ids).order_by("pk").values_list("pk", flat=True))
-            candidate.full_clean()
-            return super().save(*args, **kwargs)
 
 
 class BrainNetworkMembershipSource(BrainEvidenceSourceBase):

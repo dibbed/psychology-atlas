@@ -457,7 +457,18 @@ class BrainFoundationTests(TestCase):
                         citation.save()
                     citation.refresh_from_db()
                     self.assertEqual(getattr(citation, f"{field}_id"), owner.pk)
+                    if status == ScientificReviewStatus.REVIEWED:
+                        owner.review_status = ScientificReviewStatus.UNREVIEWED
+                        owner.save(update_fields=["review_status"])
                     model.objects.create(**{field: owner, "source": other_source, "note": "Other fixture claim"})
+                    if status == ScientificReviewStatus.REVIEWED:
+                        owner.review_status = status
+                        owner.save(update_fields=["review_status"])
+                        citation.note = "Changed reviewed evidence"
+                        with self.assertRaises(ValidationError):
+                            citation.save(update_fields=["note"])
+                        owner.review_status = ScientificReviewStatus.UNREVIEWED
+                        owner.save(update_fields=["review_status"])
                     setattr(citation, field, target)
                     citation.save()
                     self.assertEqual(owner.source_links.count(), 1)

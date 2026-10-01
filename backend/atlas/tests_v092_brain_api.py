@@ -155,7 +155,11 @@ class BrainAPITests(BrainFixtureMixin, TestCase):
     def test_hierarchy_provenance_excludes_blank_claim_links(self):
         other = SourceReference.objects.create(title="Synthetic second source", citation="Synthetic citation",
                                               url="https://example.org/second", verification_status="verified")
+        self.link.review_status = "unreviewed"
+        self.link.save(update_fields=["review_status"])
         citation = BrainHierarchyLinkSource.objects.create(relationship=self.link, source=other, note="Synthetic second claim")
+        self.link.review_status = "reviewed"
+        self.link.save(update_fields=["review_status"])
         QuerySet.update(BrainHierarchyLinkSource.objects.filter(pk=citation.pk), note="\u00a0")
         parent = self.client.get(f"/api/brain-anatomy/{self.child.slug}/").data["parent"]
         self.assertEqual(len(parent["sources"]), 1)
@@ -212,7 +216,11 @@ class BrainAPITests(BrainFixtureMixin, TestCase):
         network, membership, association = self.add_relations(self.child)
         other = SourceReference.objects.create(title="Other test source", citation="Synthetic secondary evidence",
                                               url="https://example.org/other", verification_status="verified")
+        network.review_status = "unreviewed"
+        network.save(update_fields=["review_status"])
         BrainNetworkSource.objects.create(network=network, source=other)
+        network.review_status = "reviewed"
+        network.save(update_fields=["review_status"])
         membership.review_status = "unreviewed"
         membership.save(update_fields=["review_status"])
         BrainNetworkMembershipSource.objects.create(relationship=membership, source=other, note="Second synthetic claim source")

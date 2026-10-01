@@ -8,7 +8,8 @@ from django.test import TestCase
 from .models import (
     BrainAnatomicalEntity, BrainAnatomicalEntitySource, BrainFunctionalAssociation,
     BrainFunctionalAssociationSource, BrainNetwork, BrainNetworkMembership,
-    BrainNetworkMembershipSource, Concept, ScientificReviewStatus, SourceReference,
+    BrainNetworkMembershipSource, BrainNetworkSource, BrainHierarchyLink, BrainHierarchyLinkSource,
+    Concept, ScientificReviewStatus, SourceReference,
 )
 
 
@@ -232,3 +233,81 @@ class BrainRelationTests(TestCase):
         alias.review_status = "unreviewed"
         alias.text = "Unreviewed edit"
         alias.save()
+
+    def test_reviewed_canonical_content_requires_re_review_including_partial_saves(self):
+        BrainNetworkSource.objects.create(network=self.network, source=self.source)
+        for obj in (self.entity, self.network):
+            obj.review_status = "reviewed"
+            obj.save()
+            fields = ("name_en", "name_fa", "description_en", "description_fa", "kind")
+            for field in fields:
+                obj.refresh_from_db()
+                value = "Synthetic changed content" if field != "kind" else ("region" if obj == self.entity else "functional")
+                setattr(obj, field, value)
+                with self.subTest(model=type(obj).__name__, field=field), self.assertRaises(ValidationError):
+                    obj.save()
+            obj.refresh_from_db()
+            obj.description_en = "Changed unreviewed description"
+            obj.review_status = "unreviewed"
+            with self.assertRaises(ValidationError):
+                obj.save(update_fields=["description_en"])
+            obj.save(update_fields=["review_status", "description_en"])
+            obj.refresh_from_db()
+            self.assertEqual(obj.review_status, "unreviewed")
+            self.assertEqual(obj.description_en, "Changed unreviewed description")
+        self.entity.review_status = "reviewed"
+        self.entity.save()
+        self.entity.laterality = "left"
+        with self.assertRaises(ValidationError):
+            self.entity.save()
+
+    def test_reviewed_hierarchy_claim_requires_re_review_including_partial_saves(self):
+        parent = BrainAnatomicalEntity.objects.create(slug="test-parent", name_en="Test Parent", kind="structure", laterality="bilateral")
+        other = BrainAnatomicalEntity.objects.create(slug="test-other-parent", name_en="Test Other Parent", kind="structure", laterality="bilateral")
+        link = BrainHierarchyLink.objects.create(child=self.entity, parent=parent, source_version="Test v1")
+        BrainHierarchyLinkSource.objects.create(relationship=link, source=self.source, note="Synthetic hierarchy claim")
+        link.review_status = "reviewed"
+        link.save()
+        for field, value in (("parent", other), ("source_version", "Test v2"), ("explanation_en", "Changed claim")):
+            link.refresh_from_db()
+            setattr(link, field, value)
+            with self.subTest(field=field), self.assertRaises(ValidationError):
+                link.save()
+        link.refresh_from_db()
+        link.parent = other
+        link.review_status = "unreviewed"
+        with self.assertRaises(ValidationError):
+            link.save(update_fields=["parent"])
+        link.save(update_fields=["review_status", "parent"])
+        link.refresh_from_db()
+        self.assertEqual(link.parent_id, other.pk)
+        self.assertEqual(link.review_status, "unreviewed")
+
+    def test_reviewed_canonical_and_hierarchy_sources_require_re_review(self):
+        BrainNetworkSource.objects.create(network=self.network, source=self.source, note="Synthetic network identity")
+        parent = BrainAnatomicalEntity.objects.create(slug="test-parent", name_en="Test Parent", kind="structure", laterality="bilateral")
+        hierarchy = BrainHierarchyLink.objects.create(child=self.entity, parent=parent, source_version="Test v1")
+        BrainHierarchyLinkSource.objects.create(relationship=hierarchy, source=self.source, note="Synthetic hierarchy claim")
+        other = SourceReference.objects.create(title="Synthetic second source", citation="Synthetic evidence",
+            url="https://example.org/second", verification_status="source_checked")
+        for owner, model in ((self.entity, BrainAnatomicalEntitySource), (self.network, BrainNetworkSource),
+                             (hierarchy, BrainHierarchyLinkSource)):
+            model.objects.create(**{model.owner_field: owner}, source=other, note="Synthetic second source")
+            owner.review_status = "reviewed"
+            owner.save()
+            citation = owner.source_links.get(source=self.source)
+            citation.note = "Changed claim evidence"
+            with self.subTest(model=model.__name__):
+                with self.assertRaises(ValidationError):
+                    citation.save(update_fields=["note"])
+                with self.assertRaises(ProtectedError):
+                    owner.source_links.filter(pk=citation.pk).delete()
+                citation.source = SourceReference.objects.create(title=f"Synthetic new {model.__name__}")
+                with self.assertRaises(ValidationError):
+                    citation.save()
+                owner.review_status = "unreviewed"
+                owner.save(update_fields=["review_status"])
+                citation.source = self.source
+                citation.save(update_fields=["note"])
+                citation.refresh_from_db()
+                self.assertEqual(citation.note, "Changed claim evidence")
