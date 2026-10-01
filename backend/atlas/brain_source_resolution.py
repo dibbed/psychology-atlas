@@ -62,4 +62,3 @@ def classify_source(candidate, registry):
         if [normalized_text(a) for a in candidate["authors"]] != [normalized_text(a) for a in found["authors"]]:
             return "CONFLICT", None
     return "MATCHED_EXISTING", found["id"]
-
