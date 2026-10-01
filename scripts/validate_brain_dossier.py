@@ -92,6 +92,37 @@ def audit_is_clear(audit):
     return not audit["errors"] and not audit["review_debt"] and audit["staging_issues"] == 0
 
 
+def verify_inventory_and_dispositions(document):
+    """Enforce this research phase's reviewed inventory and unresolved rights gate."""
+    metadata, records = document["dataset_metadata"], document["records"]
+    declared = metadata["record_counts"]
+    if any(type(n) is not int or n < 0 for n in declared.values()) or Counter(declared) != Counter(r["category"] for r in records):
+        raise ValueError("Records conflict with declared per-category inventory.")
+    deferred = metadata["deferred_hierarchy_claims"]
+    entries = [(r["id"], r["category"], "records") for r in records]
+    entries += [(r["record"]["id"], "hierarchy", "dataset_metadata.deferred_hierarchy_claims") for r in deferred]
+    ledger = metadata["publication_review_ledger"]
+    if (len({e[0] for e in entries}) != len(entries) or
+            Counter(entries) != Counter((r["record_id"], r["category"], r["location"]) for r in ledger) or
+            Counter(r["classification"] for r in ledger) != Counter(metadata["publication_review_counts"])):
+        raise ValueError("Publication ledger coverage/counts conflict with retained research records.")
+    if (metadata["rights_review_summary"]["commercial_anatomy_publication"] != "BLOCKED_UNRESOLVED" or
+            metadata["anatomy_approved_candidate_count"] != 0 or
+            metadata["publication_guardrails"]["canonical_writes"] != 0 or
+            metadata["publication_guardrails"]["no_canonical_brain_publication"] is not True):
+        raise ValueError("This research phase requires unresolved anatomical rights and zero publication.")
+    by_id = {r["record_id"]: r for r in ledger}
+    for row in records + [r["record"] for r in deferred]:
+        protected = row["category"] in ("anatomy", "hierarchy") or row.get("owner_type") == "anatomy"
+        if protected:
+            decision = by_id[row["id"]]
+            if (decision["classification"] != "DEFERRED" or decision["publication_rights_status"] != "BLOCKED_UNRESOLVED" or
+                    row["review_status"] != "source_checked" or row["verification_status"] != "source_checked"):
+                raise ValueError("Allen-derived anatomical research must remain source-checked and rights-deferred.")
+    if any(r["category"] == "hierarchy" for r in records) or any(r["classification"] != "DEFERRED" for r in deferred):
+        raise ValueError("Unapproved hierarchy must remain deferred outside staging records.")
+
+
 def self_test():
     source = dict(title="Example: atlas", doi="10.1234/atlas", pmid="123", url="https://example.org/atlas?version=1",
                   authors=["A Author"], publication_year=2025)
@@ -125,7 +156,36 @@ def self_test():
                 pass
             else:
                 raise AssertionError("Changed/escaping parent input was accepted")
-    print("Dossier validation self-check: PASS (identity conflicts, versions, audit debt/issues, exact parent lineage)")
+    master = json.loads((ROOT / "docs/research/brain/v0.9.2b/psychology_atlas_brain_curated_dossier_v0.9.2b.json").read_bytes())
+    verify_inventory_and_dispositions(master)
+    for mutation in ("empty", "deleted", "approval", "reviewed", "hierarchy", "rights"):
+        bad = copy.deepcopy(master)
+        metadata = bad["dataset_metadata"]
+        if mutation == "empty":
+            bad["records"] = []
+        elif mutation == "deleted":
+            bad["records"].pop()
+        elif mutation == "approval":
+            next(r for r in metadata["publication_review_ledger"] if r["category"] == "anatomy")["classification"] = "APPROVED_CANDIDATE"
+            metadata["publication_review_counts"]["DEFERRED"] -= 1
+            metadata["publication_review_counts"]["APPROVED_CANDIDATE"] += 1
+        elif mutation == "reviewed":
+            next(r for r in bad["records"] if r["category"] == "anatomy")["review_status"] = "reviewed"
+        elif mutation == "hierarchy":
+            restored = metadata["deferred_hierarchy_claims"].pop(0)["record"]
+            restored.update(review_status="reviewed", verification_status="source_checked")
+            bad["records"].append(restored)
+            metadata["record_counts"]["hierarchy"] = 1
+            next(r for r in metadata["publication_review_ledger"] if r["record_id"] == restored["id"])["location"] = "records"
+        else:
+            metadata["rights_review_summary"]["commercial_anatomy_publication"] = "CLEARED"
+        try:
+            verify_inventory_and_dispositions(bad)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Truncated/inconsistent or rights-unblocked dossier was accepted: " + mutation)
+    print("Dossier validation self-check: PASS (source conflicts, audit debt, parent lineage, inventory/ledger coverage, commercial rights deferral)")
 
 
 def digest(path):
@@ -147,6 +207,7 @@ def run(dossier_path, input_database, output):
         raise ValueError("Current brain-staging-v1 schema required.")
     metadata = document["dataset_metadata"]
     verify_parent(dossier_path, metadata)
+    verify_inventory_and_dispositions(document)
     catalog = metadata["verified_source_catalog"]
     sources = [r for r in document["records"] if r["category"] == "source"]
     placeholders = [s["source_reference_id"] for s in sources]
@@ -248,7 +309,8 @@ def run(dossier_path, input_database, output):
         canonical_unchanged=before == after, canonical_writes=promotion["canonical_writes"],
         staging=promotion, audit=audit, archival_integrity=integrity.strip())
     write_json(output / "validation-summary.json", summary)
-    if not unchanged or promotion["issues"] or promotion["canonical_writes"] != 0 or not audit_is_clear(audit):
+    if (not unchanged or promotion["issues"] or promotion["candidate_count"] != len(document["records"]) or
+            promotion["canonical_writes"] != 0 or not audit_is_clear(audit)):
         raise ValueError("Validation did not meet unchanged/zero-write/no-issue/no-debt requirements; inspect evidence.")
     print(json.dumps({"result": "PASS", "records": promotion["candidate_count"], "issues": 0,
         "canonical_writes": 0, "source_resolution": summary["source_resolution"],

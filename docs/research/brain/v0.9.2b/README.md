@@ -81,12 +81,12 @@ python scripts/validate_brain_dossier.py `
   --output ../brain-dossier-validation
 ```
 
-The output directory must be new and outside the repository. The script opens the original SQLite database read-only, backs it up, migrates only the copy, resolves verified SourceReferences, emits a target-specific derivative, and invokes the existing importer, read-only promoter, Brain audit and research archive verifier. It compares every canonical Brain table before/after and verifies that the original database hash is unchanged. Refusals and failures retain evidence rather than overwrite a previous run. The recorded verification URLs and immutable source hashes allow rechecking the scientific inputs; the runtime resolver is not an automated scientific reviewer.
+The output directory must be new and outside the repository. Before database/output creation, the script verifies exact parent lineage, declared category counts, complete publication ledger coverage/counts, and this phase's commercial anatomical deferral. The script opens the original SQLite database read-only, backs it up, migrates only the copy, resolves verified SourceReferences, emits a target-specific derivative, and invokes the existing importer, read-only promoter, Brain audit and research archive verifier. It compares every canonical Brain table before/after and verifies that the original database hash is unchanged. Refusals and failures retain evidence rather than overwrite a previous run. The recorded verification URLs and immutable source hashes allow rechecking the scientific inputs; the runtime resolver is not an automated scientific reviewer. Rights clearance requires a separately reviewed phase change; editing a dossier status cannot silently unblock this research phase.
 
 ## Executed checks
 
 - Brain baseline: **106 tests passed, 3 PostgreSQL-only concurrency tests skipped** on SQLite.
-- Validation self-check: **PASS**, covering matches, duplicate ambiguity, conflicting locators/title, version-sensitive URL conflicts, audit debt/issues and altered/escaping parent lineage.
+- Validation self-check: **PASS**, covering matches, duplicate ambiguity, conflicting locators/title, version-sensitive URL conflicts, audit debt/issues, altered/escaping parent lineage, truncated inventory, ledger coverage, anatomical approval/review mutations and restored hierarchy while rights remain unresolved.
 - Strict UTF-8/JSON intake and reviewed master: **PASS**.
 - Disposable local source resolution: **24 new verified sources, 0 existing matches**, no unresolved bibliographic source rows in the derivative. Bibliographic resolution does not clear commercial rights.
 - Existing `import_brain_dataset`: **346 staging research records archived, 0 issues**.
