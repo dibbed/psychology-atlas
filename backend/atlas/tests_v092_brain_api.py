@@ -348,3 +348,15 @@ class BrainSourceLocatorTests(TestCase):
                 QuerySet.update(SourceReference.objects.filter(pk=source.pk), **{field: value})
                 self.assertFalse(resolved_sources().filter(pk=source.pk).exists())
                 QuerySet.update(SourceReference.objects.filter(pk=source.pk), **{field: ""})
+
+    def test_doi_whitespace_is_rejected_identically_by_python_and_sql(self):
+        from .brain_publication import source_is_resolved, resolved_sources
+
+        source = SourceReference.objects.create(title="Synthetic DOI whitespace", citation="Synthetic evidence",
+            url="https://example.org/doi-whitespace", verification_status="source_checked")
+        for whitespace in ("\x1c", "\u00a0", "\u2003", "\u3000"):
+            QuerySet.update(SourceReference.objects.filter(pk=source.pk), doi="10.1234/" + whitespace)
+            source.refresh_from_db()
+            with self.subTest(whitespace=repr(whitespace)):
+                self.assertFalse(source_is_resolved(source))
+                self.assertFalse(resolved_sources().filter(pk=source.pk).exists())
