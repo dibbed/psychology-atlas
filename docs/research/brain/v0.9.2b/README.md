@@ -86,7 +86,7 @@ The output directory must be new and outside the repository. Before database/out
 ## Executed checks
 
 - Brain baseline: **106 tests passed, 3 PostgreSQL-only concurrency tests skipped** on SQLite.
-- Validation self-check: **PASS**, covering matches, duplicate ambiguity, conflicting locators/title, version-sensitive URL conflicts, audit debt/issues, altered/escaping parent lineage, truncated inventory, ledger coverage, anatomical approval/review mutations and restored hierarchy while rights remain unresolved.
+- Validation self-check: **PASS**, covering matches, duplicate ambiguity, conflicting locators/title, version-sensitive URL conflicts, audit debt/issues, altered/escaping parent lineage, truncated staging/deferred inventory, ledger coverage and wrapper dispositions, anatomical approval/review mutations and restored hierarchy while rights remain unresolved.
 - Strict UTF-8/JSON intake and reviewed master: **PASS**.
 - Disposable local source resolution: **24 new verified sources, 0 existing matches**, no unresolved bibliographic source rows in the derivative. Bibliographic resolution does not clear commercial rights.
 - Existing `import_brain_dataset`: **346 staging research records archived, 0 issues**.

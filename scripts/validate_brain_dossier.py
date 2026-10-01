@@ -99,6 +99,11 @@ def verify_inventory_and_dispositions(document):
     if any(type(n) is not int or n < 0 for n in declared.values()) or Counter(declared) != Counter(r["category"] for r in records):
         raise ValueError("Records conflict with declared per-category inventory.")
     deferred = metadata["deferred_hierarchy_claims"]
+    hierarchy_review = metadata["hierarchy_review"]
+    if (type(hierarchy_review["scientifically_verified_deferred_claims"]) is not int or
+            hierarchy_review["scientifically_verified_deferred_claims"] != len(deferred) or
+            hierarchy_review["approved_candidates"] != 0):
+        raise ValueError("Deferred hierarchy conflicts with its declared inventory/approval count.")
     entries = [(r["id"], r["category"], "records") for r in records]
     entries += [(r["record"]["id"], "hierarchy", "dataset_metadata.deferred_hierarchy_claims") for r in deferred]
     ledger = metadata["publication_review_ledger"]
@@ -112,6 +117,11 @@ def verify_inventory_and_dispositions(document):
             metadata["publication_guardrails"]["no_canonical_brain_publication"] is not True):
         raise ValueError("This research phase requires unresolved anatomical rights and zero publication.")
     by_id = {r["record_id"]: r for r in ledger}
+    for claim in deferred:
+        decision = by_id[claim["record"]["id"]]
+        if (claim["record_id"] != claim["record"]["id"] or any(claim[field] != decision[field] for field in
+                ("classification", "scientific_identity_status", "publication_rights_status"))):
+            raise ValueError("Deferred hierarchy disposition conflicts with its publication ledger.")
     for row in records + [r["record"] for r in deferred]:
         protected = row["category"] in ("anatomy", "hierarchy") or row.get("owner_type") == "anatomy"
         if protected:
@@ -158,7 +168,7 @@ def self_test():
                 raise AssertionError("Changed/escaping parent input was accepted")
     master = json.loads((ROOT / "docs/research/brain/v0.9.2b/psychology_atlas_brain_curated_dossier_v0.9.2b.json").read_bytes())
     verify_inventory_and_dispositions(master)
-    for mutation in ("empty", "deleted", "approval", "reviewed", "hierarchy", "rights"):
+    for mutation in ("empty", "deleted", "approval", "reviewed", "hierarchy", "rights", "deferred_deleted", "deferred_rights"):
         bad = copy.deepcopy(master)
         metadata = bad["dataset_metadata"]
         if mutation == "empty":
@@ -177,6 +187,13 @@ def self_test():
             bad["records"].append(restored)
             metadata["record_counts"]["hierarchy"] = 1
             next(r for r in metadata["publication_review_ledger"] if r["record_id"] == restored["id"])["location"] = "records"
+            metadata["hierarchy_review"]["scientifically_verified_deferred_claims"] -= 1
+        elif mutation == "deferred_deleted":
+            removed = metadata["deferred_hierarchy_claims"].pop()
+            metadata["publication_review_ledger"] = [r for r in metadata["publication_review_ledger"] if r["record_id"] != removed["record_id"]]
+            metadata["publication_review_counts"]["DEFERRED"] -= 1
+        elif mutation == "deferred_rights":
+            metadata["deferred_hierarchy_claims"][0]["publication_rights_status"] = "CLEARED"
         else:
             metadata["rights_review_summary"]["commercial_anatomy_publication"] = "CLEARED"
         try:
