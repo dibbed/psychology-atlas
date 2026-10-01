@@ -1,0 +1,2 @@
+# Publication approval pins refer to exact UTF-8 bytes on every platform.
+*.json -text

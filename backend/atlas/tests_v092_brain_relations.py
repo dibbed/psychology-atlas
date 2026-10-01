@@ -505,7 +505,7 @@ class BrainSourceConcurrencyTests(TransactionTestCase):
             except Exception as error:
                 results.put(error)
             finally:
-                close_old_connections()
+                connection.close()
 
         def edit():
             close_old_connections()
@@ -521,7 +521,7 @@ class BrainSourceConcurrencyTests(TransactionTestCase):
                 results.put(error)
             finally:
                 finished.set()
-                close_old_connections()
+                connection.close()
 
         with patch.object(BrainAnatomicalEntity, "full_clean", paused_clean):
             approval_thread = Thread(target=approve)

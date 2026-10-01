@@ -101,6 +101,7 @@ def ingest_brain_document(raw_text, filename):
 
 
 def validate_brain_staging(dataset_key=None):
+    from .brain_controlled_publication import published_record_ids
     all_datasets = ResearchDataset.objects.filter(raw_document__schema_version=SCHEMA).order_by("key")
     datasets = all_datasets
     if dataset_key:
@@ -113,6 +114,7 @@ def validate_brain_staging(dataset_key=None):
     all_evidence = defaultdict(list)
     all_external_ids = defaultdict(list)
     all_aliases = defaultdict(list)
+    published = {dataset.key: published_record_ids(dataset) for dataset in all_datasets}
     for dataset in datasets.prefetch_related("records"):
         _validate_dataset(dataset, report)
     reported = {(row["dataset"], row["record"], row["code"]) for row in report["issues"]}
@@ -156,7 +158,8 @@ def validate_brain_staging(dataset_key=None):
             codes.append("canonical_evidence_key_conflict")
         for key, record in group:
             for code in codes:
-                issue(key, record, code)
+                if code != "canonical_evidence_key_conflict" or record.external_id not in published[key]:
+                    issue(key, record, code)
     for group in all_identities.values():
         if len({key for key, _ in group}) > 1:
             signatures = {json.dumps({field: row.payload.get(field) for field in (
@@ -179,7 +182,8 @@ def validate_brain_staging(dataset_key=None):
             codes.append("canonical_external_identifier_conflict")
         for key, record in group:
             for code in codes:
-                issue(key, record, code)
+                if code != "canonical_external_identifier_conflict" or record.external_id not in published[key]:
+                    issue(key, record, code)
     canonical_aliases = set()
     for owner_type, model, owner_field in (("anatomy", BrainAnatomicalAlias, "entity"), ("network", BrainNetworkAlias, "network")):
         for slug, language, alias in model.objects.values_list(f"{owner_field}__slug", "language", "text").iterator():
@@ -192,7 +196,8 @@ def validate_brain_staging(dataset_key=None):
             codes.append("canonical_alias_conflict")
         for key, record in group:
             for code in codes:
-                issue(key, record, code)
+                if code != "canonical_alias_conflict" or record.external_id not in published[key]:
+                    issue(key, record, code)
     report["issues"].sort(key=lambda row: (row["dataset"], row["record"], row["code"]))
     report["ready_for_curation"] = report["candidate_count"] - len({(row["dataset"], row["record"]) for row in report["issues"]})
     return report
