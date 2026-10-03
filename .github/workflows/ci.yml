@@ -71,8 +71,59 @@ jobs:
       - name: Compile Python modules
         run: python -m compileall -q atlas config
 
+      - name: Publish approved Brain selection in disposable CI database
+        run: |
+          python manage.py publish_curated_brain --expected-dossier-sha256 50b6e33e25b76a77b6ef735503487ac5fab7832d7474e45ad6beb7acdc25a557 --expected-manifest-sha256 3f3538fd4f8195b0dbe1c8631d61674cd84c629e7bea1018ba29b91329a3920d --dry-run
+          python manage.py publish_curated_brain --expected-dossier-sha256 50b6e33e25b76a77b6ef735503487ac5fab7832d7474e45ad6beb7acdc25a557 --expected-manifest-sha256 3f3538fd4f8195b0dbe1c8631d61674cd84c629e7bea1018ba29b91329a3920d --apply
+          python manage.py verify_brain_publication
+          python manage.py verify_research_datasets
+
       - name: Verify installed Python dependencies
         run: python -m pip check
+
+  brain-postgresql:
+    name: Brain PostgreSQL publication and concurrency
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: brain_publication_test
+          POSTGRES_USER: brain_test
+          POSTGRES_PASSWORD: disposable-ci-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      DEBUG: "1"
+      DB_ENGINE: postgres
+      POSTGRES_DB: brain_publication_test
+      POSTGRES_USER: brain_test
+      POSTGRES_PASSWORD: disposable-ci-only
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: "5432"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+      - name: Install PostgreSQL test driver
+        run: python -m pip install --disable-pip-version-check "psycopg[binary]>=3.2,<4"
+      - name: Brain regression and concurrent controlled publication tests
+        run: python manage.py test atlas.tests_v092c_brain_publication atlas.tests_v092_brain_api atlas.tests_v092_brain_staging atlas.tests_v092_brain_relations atlas.tests_v091_brain --noinput --verbosity 2
 
   frontend-build:
     name: Frontend typecheck and build

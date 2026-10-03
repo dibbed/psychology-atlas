@@ -123,9 +123,19 @@ class Command(BaseCommand):
                 current = parents[current][0].parent_id
 
         staging = validate_brain_staging()
+        publication = "DATA BLOCKED: curated dossier required"
+        from atlas.brain_controlled_publication import MANIFEST_SHA, verify_receipt
+        for dataset in models.ResearchDataset.objects.filter(
+                ingestion_audit__publication_manifest_sha256=MANIFEST_SHA):
+            try:
+                verify_receipt(dataset)
+                publication = "PUBLISHED: pinned v0.9.2C manifest reconciled"
+            except (CommandError, ValidationError, models.BrainAnatomicalEntity.DoesNotExist,
+                    models.BrainNetwork.DoesNotExist):
+                fail("publication_receipt", dataset.pk, "manifest_reconciliation_conflict")
         report = {"counts": counts, "reviews": reviews, "provenance": provenance, "errors": sorted(errors),
                   "review_debt": sorted(debt), "staging_candidates": staging["candidate_count"],
-                  "staging_issues": len(staging["issues"]), "publication": "DATA BLOCKED: curated dossier required"}
+                  "staging_issues": len(staging["issues"]), "publication": publication}
         if options["as_json"]:
             self.stdout.write(json.dumps(report, ensure_ascii=False, sort_keys=True))
         else:

@@ -16,9 +16,11 @@
 
 اگر برای استفاده‌ای خارج از این محدوده به مجوز نیاز داری، ابتدا باید اجازه صریح صاحب repository را دریافت کنی.
 
+This code usage notice does not override licenses on credited third-party scientific data. The selected Brain FMA data are adapted under CC BY 4.0; CBIG network metadata retain their MIT notice. Those licenses permit commercial reuse within their respective scopes. See the [Brain data attribution](docs/research/brain/v0.9.2c/THIRD_PARTY_NOTICES.md).
+
 ## Internal v0.9.2 — Brain infrastructure
 
-Internal v0.9.2 adds Brain API, staging validation, audit, and empty scientific relation infrastructure. **Curated Brain data publication remains blocked pending an approved scientific/source dossier.** No public Brain content is seeded or promoted. See the [v0.9.2 infrastructure record](docs/Psychology_Atlas_v0.9.2_Brain_Infrastructure_2026-09-30.md).
+Internal v0.9.2 adds Brain API, staging validation, audit, and scientific relation infrastructure. The **2026-10-01 v0.9.2C controlled publication selection** contains 87 reviewed anatomical entities, 70 sourced hierarchy links, seven versioned network definitions, 50 aliases and 94 identifiers. FMA 5.1.0 replaces the rights-blocked Allen annotation provenance with independently checked human structural ontology data under CC BY 4.0. Publication requires the exact reviewed dossier and manifest hashes; `seed_mvp` and the read-only staging promoter never publish Brain data. See the [publication record and commands](docs/research/brain/v0.9.2c/README.md) and the [historical infrastructure record](docs/Psychology_Atlas_v0.9.2_Brain_Infrastructure_2026-09-30.md). No final v0.9 release/tag is created by this phase.
 
 ## v0.8.4 — Today Study Mode + Study Sessions
 

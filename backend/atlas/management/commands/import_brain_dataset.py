@@ -26,6 +26,6 @@ class Command(BaseCommand):
                 transaction.set_rollback(True)
         self.stdout.write(f"Brain staging {'DRY RUN' if options['dry_run'] else 'ARCHIVED'}: {dataset.key}; created={created}")
         self.stdout.write(f"candidates={report['candidate_count']} issues={len(report['issues'])} canonical_writes=0")
-        self.stdout.write("Publication BLOCKED: approved curated dossier required.")
+        self.stdout.write("Canonical publication is not performed by this staging-only command.")
         for row in report["issues"]:
             self.stdout.write(f"  {row['record']}: {row['code']}")

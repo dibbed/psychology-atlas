@@ -6,7 +6,7 @@ from atlas.brain_staging import validate_brain_staging
 
 
 class Command(BaseCommand):
-    help = "Validate Brain promotion candidates without writing canonical content. Publication is data-blocked."
+    help = "Validate Brain candidates read-only. Canonical publication requires the separate pinned controlled pass."
 
     def add_arguments(self, parser):
         parser.add_argument("--dataset", help="Explicit archived Brain dataset key.")

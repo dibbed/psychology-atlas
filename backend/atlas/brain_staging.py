@@ -55,6 +55,17 @@ def stable_slug(value):
     return bool(re.fullmatch(r"[a-z0-9_-]{1,180}", text(value)))
 
 
+def brain_record_fields(row, external_id):
+    """One normalized archive projection shared by intake and pinned receipts."""
+    section, _ = CATEGORIES.get(row.get("category") if isinstance(row.get("category"), str) else "", ("brain_unsupported", "H"))
+    return dict(section=section, external_id=external_id,
+        canonical_key=f"{section}:{text(row.get('slug')) or external_id}"[:400],
+        slug=text(row.get("slug"))[:220], name_en=text(row.get("name_en"))[:500], name_fa=text(row.get("name_fa"))[:500],
+        source_ids=row.get("source_ids") if isinstance(row.get("source_ids"), list) else [],
+        review_status=text(row.get("review_status"))[:64], verification_status=text(row.get("verification_status"))[:64],
+        payload=row)
+
+
 def ingest_brain_document(raw_text, filename):
     try:
         document = json.loads(raw_text)
@@ -88,31 +99,28 @@ def ingest_brain_document(raw_text, filename):
             external_id = text(row.get("id"))
             if not external_id or ids[external_id] > 1 or len(external_id) > 270:
                 external_id = f"record-{index:06d}-{hashlib.sha256(json.dumps(row, sort_keys=True).encode()).hexdigest()[:16]}"
-            section, _ = CATEGORIES.get(row.get("category") if isinstance(row.get("category"), str) else "", ("brain_unsupported", "H"))
-            ResearchRecord.objects.create(
-                dataset=dataset, section=section, external_id=external_id,
-                canonical_key=f"{section}:{text(row.get('slug')) or external_id}"[:400],
-                slug=text(row.get("slug"))[:220], name_en=text(row.get("name_en"))[:500], name_fa=text(row.get("name_fa"))[:500],
-                source_ids=row.get("source_ids") if isinstance(row.get("source_ids"), list) else [],
-                review_status=text(row.get("review_status"))[:64], verification_status=text(row.get("verification_status"))[:64],
-                payload=row,
-            )
+            ResearchRecord.objects.create(dataset=dataset, **brain_record_fields(row, external_id))
     return dataset, True
 
 
 def validate_brain_staging(dataset_key=None):
+    from .brain_controlled_publication import published_record_ids, superseded_predecessor_keys
     all_datasets = ResearchDataset.objects.filter(raw_document__schema_version=SCHEMA).order_by("key")
+    superseded = superseded_predecessor_keys(all_datasets)
+    all_datasets = all_datasets.exclude(key__in=superseded)
     datasets = all_datasets
     if dataset_key:
         datasets = datasets.filter(key=dataset_key)
-        if not datasets.exists():
+        if not datasets.exists() and dataset_key not in superseded:
             raise CommandError("The selected dataset is not a Brain staging document.")
     report = {"publication": "blocked_missing_curated_dossier", "canonical_writes": 0,
-              "candidate_count": 0, "classifications": {key: 0 for key in "ABCDEFGH"}, "issues": []}
+              "candidate_count": 0, "classifications": {key: 0 for key in "ABCDEFGH"}, "issues": [],
+              "superseded_datasets": sorted(superseded)}
     all_identities = defaultdict(list)
     all_evidence = defaultdict(list)
     all_external_ids = defaultdict(list)
     all_aliases = defaultdict(list)
+    published = {dataset.key: published_record_ids(dataset) for dataset in all_datasets}
     for dataset in datasets.prefetch_related("records"):
         _validate_dataset(dataset, report)
     reported = {(row["dataset"], row["record"], row["code"]) for row in report["issues"]}
@@ -156,7 +164,8 @@ def validate_brain_staging(dataset_key=None):
             codes.append("canonical_evidence_key_conflict")
         for key, record in group:
             for code in codes:
-                issue(key, record, code)
+                if code != "canonical_evidence_key_conflict" or record.external_id not in published[key]:
+                    issue(key, record, code)
     for group in all_identities.values():
         if len({key for key, _ in group}) > 1:
             signatures = {json.dumps({field: row.payload.get(field) for field in (
@@ -179,7 +188,8 @@ def validate_brain_staging(dataset_key=None):
             codes.append("canonical_external_identifier_conflict")
         for key, record in group:
             for code in codes:
-                issue(key, record, code)
+                if code != "canonical_external_identifier_conflict" or record.external_id not in published[key]:
+                    issue(key, record, code)
     canonical_aliases = set()
     for owner_type, model, owner_field in (("anatomy", BrainAnatomicalAlias, "entity"), ("network", BrainNetworkAlias, "network")):
         for slug, language, alias in model.objects.values_list(f"{owner_field}__slug", "language", "text").iterator():
@@ -192,7 +202,8 @@ def validate_brain_staging(dataset_key=None):
             codes.append("canonical_alias_conflict")
         for key, record in group:
             for code in codes:
-                issue(key, record, code)
+                if code != "canonical_alias_conflict" or record.external_id not in published[key]:
+                    issue(key, record, code)
     report["issues"].sort(key=lambda row: (row["dataset"], row["record"], row["code"]))
     report["ready_for_curation"] = report["candidate_count"] - len({(row["dataset"], row["record"]) for row in report["issues"]})
     return report
