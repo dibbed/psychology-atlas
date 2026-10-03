@@ -149,14 +149,15 @@ def superseded_predecessor_keys(datasets):
     def intact(dataset):
         raw = dataset.raw_text
         rows = dataset.raw_document.get("records", [])
-        records = {r.external_id: r for r in dataset.records.all()}
+        archived = list(dataset.records.all())
+        records = {r.external_id: r for r in archived}
         try:
             parsed = json.loads(raw)
         except (TypeError, ValueError):
             return False
         return (hashlib.sha256(raw.encode("utf-8")).hexdigest() == dataset.source_sha256
                 and parsed == dataset.raw_document and dataset.metadata == dataset.raw_document["dataset_metadata"]
-                and len(rows) == len(records) and set(records) == {r["id"] for r in rows}
+                and len(rows) == len(archived) == len(records) and set(records) == {r["id"] for r in rows}
                 and all(records[r["id"]].payload == r and records[r["id"]].source_ids == r["source_ids"]
                         and records[r["id"]].review_status == r["review_status"]
                         and records[r["id"]].verification_status == r["verification_status"] for r in rows))
@@ -205,7 +206,10 @@ def verify_receipt(dataset, document=None, manifest=None):
             dataset.source_sha256 != hashlib.sha256(raw.encode("utf-8")).hexdigest() or
             dataset.ingestion_audit.get("publication_manifest_sha256") != MANIFEST_SHA):
         raise CommandError("Publication archive/receipt differs from the pinned approved selection.")
-    records = {r.external_id: r for r in dataset.records.all()}
+    archived = list(dataset.records.all())
+    records = {r.external_id: r for r in archived}
+    if len(archived) != len(records):
+        raise CommandError("Publication archive contains duplicate external record IDs.")
     if set(records) != {r["id"] for r in derived["records"]}:
         raise CommandError("Publication archive records differ from the reviewed inventory.")
     for row in derived["records"]:

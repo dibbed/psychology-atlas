@@ -157,6 +157,17 @@ class PublishedCorpusTests(TestCase):
         with self.assertRaisesMessage(CommandError, "Approved source metadata differs"):
             publication.publish(dry_run=False)
 
+    def test_duplicate_external_id_in_another_section_invalidates_receipt(self):
+        archive = m.ResearchDataset.objects.get(key=self.result["dataset_key"])
+        original = archive.records.first()
+        m.ResearchRecord.objects.create(dataset=archive, section="aaaa-duplicate", external_id=original.external_id,
+            payload=original.payload, source_ids=original.source_ids, review_status=original.review_status,
+            verification_status=original.verification_status, promoted_model=original.promoted_model,
+            promoted_pk=original.promoted_pk)
+        with self.assertRaisesMessage(CommandError, "duplicate external record IDs"):
+            publication.verify_receipt(archive)
+        self.assertEqual(publication.published_record_ids(archive), set())
+
     def test_manifest_reconciliation_and_exact_idempotence(self):
         before = {model._meta.label: list(model.objects.values()) for model in
                   (m.SourceReference, m.ResearchDataset, m.ResearchRecord, m.BrainAnatomicalEntity,
