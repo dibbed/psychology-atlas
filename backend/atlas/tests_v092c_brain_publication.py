@@ -12,7 +12,7 @@ from unittest.mock import patch
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import close_old_connections, connection
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 
@@ -148,6 +148,14 @@ class PublishedCorpusTests(TestCase):
 
     def setUp(self):
         self.client = APIClient()
+
+    @override_settings(ALLOWED_HOSTS=["atlas.example.org"], DEBUG=False, SECURE_SSL_REDIRECT=True)
+    def test_verification_uses_the_configured_public_host(self):
+        output = io.StringIO()
+        call_command("verify_brain_publication", stdout=output)
+        report = json.loads(output.getvalue())
+        self.assertTrue(all(probe["status"] == 200 for probe in report["api"]))
+        self.assertEqual(report["counts"]["anatomy"], 87)
 
     def test_source_metadata_revocation_invalidates_publication_receipt(self):
         source = m.SourceReference.objects.get(doi="10.1152/jn.00338.2011")

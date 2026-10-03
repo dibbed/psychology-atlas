@@ -4,6 +4,7 @@ import io
 import json
 from time import perf_counter
 
+from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection
@@ -22,7 +23,8 @@ class Command(BaseCommand):
         if len(datasets) != 1:
             raise CommandError("Exactly one controlled publication receipt is required.")
         verify_receipt(datasets[0])
-        client = Client(HTTP_HOST="localhost")
+        host = next((value.lstrip(".") for value in settings.ALLOWED_HOSTS if value and value != "*"), "localhost")
+        client = Client(HTTP_HOST=host)
         probes = []
         for label, path, params, budget in (
             ("list", "/api/brain-anatomy/", {}, 4),
@@ -35,14 +37,14 @@ class Command(BaseCommand):
             ("pagination", "/api/brain-anatomy/", {"page": 2}, 4)):
             start = perf_counter()
             with CaptureQueriesContext(connection) as queries:
-                response = client.get(path, params)
+                response = client.get(path, params, secure=True)
             elapsed = round((perf_counter() - start) * 1000, 2)
             if response.status_code != 200 or len(queries) > budget:
                 raise CommandError(f"Real API probe failed: {label}; status={response.status_code}, queries={len(queries)}, budget={budget}")
             data = response.json()
             probes.append(dict(probe=label, status=200, queries=len(queries), budget=budget,
                 milliseconds=elapsed, results=data.get("count", 1)))
-        if client.get("/api/brain-anatomy/not-an-approved-entity/").status_code != 404:
+        if client.get("/api/brain-anatomy/not-an-approved-entity/", secure=True).status_code != 404:
             raise CommandError("Missing entity is not 404.")
         output = io.StringIO()
         call_command("audit_brain_atlas", as_json=True, stdout=output)
