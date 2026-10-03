@@ -55,6 +55,17 @@ def stable_slug(value):
     return bool(re.fullmatch(r"[a-z0-9_-]{1,180}", text(value)))
 
 
+def brain_record_fields(row, external_id):
+    """One normalized archive projection shared by intake and pinned receipts."""
+    section, _ = CATEGORIES.get(row.get("category") if isinstance(row.get("category"), str) else "", ("brain_unsupported", "H"))
+    return dict(section=section, external_id=external_id,
+        canonical_key=f"{section}:{text(row.get('slug')) or external_id}"[:400],
+        slug=text(row.get("slug"))[:220], name_en=text(row.get("name_en"))[:500], name_fa=text(row.get("name_fa"))[:500],
+        source_ids=row.get("source_ids") if isinstance(row.get("source_ids"), list) else [],
+        review_status=text(row.get("review_status"))[:64], verification_status=text(row.get("verification_status"))[:64],
+        payload=row)
+
+
 def ingest_brain_document(raw_text, filename):
     try:
         document = json.loads(raw_text)
@@ -88,15 +99,7 @@ def ingest_brain_document(raw_text, filename):
             external_id = text(row.get("id"))
             if not external_id or ids[external_id] > 1 or len(external_id) > 270:
                 external_id = f"record-{index:06d}-{hashlib.sha256(json.dumps(row, sort_keys=True).encode()).hexdigest()[:16]}"
-            section, _ = CATEGORIES.get(row.get("category") if isinstance(row.get("category"), str) else "", ("brain_unsupported", "H"))
-            ResearchRecord.objects.create(
-                dataset=dataset, section=section, external_id=external_id,
-                canonical_key=f"{section}:{text(row.get('slug')) or external_id}"[:400],
-                slug=text(row.get("slug"))[:220], name_en=text(row.get("name_en"))[:500], name_fa=text(row.get("name_fa"))[:500],
-                source_ids=row.get("source_ids") if isinstance(row.get("source_ids"), list) else [],
-                review_status=text(row.get("review_status"))[:64], verification_status=text(row.get("verification_status"))[:64],
-                payload=row,
-            )
+            ResearchRecord.objects.create(dataset=dataset, **brain_record_fields(row, external_id))
     return dataset, True
 
 

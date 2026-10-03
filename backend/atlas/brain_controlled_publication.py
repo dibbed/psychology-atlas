@@ -140,6 +140,7 @@ def superseded_predecessor_keys(datasets):
     No archive, source or record is edited/deleted. Names and claimed hashes alone
     never exempt an unknown or curator-modified archive from conflict validation.
     """
+    from .brain_staging import brain_record_fields
     datasets = list(datasets)
     selections = [d for d in datasets if d.ingestion_audit.get("publication_manifest_sha256") == MANIFEST_SHA]
     if not selections:
@@ -157,10 +158,11 @@ def superseded_predecessor_keys(datasets):
             return False
         return (hashlib.sha256(raw.encode("utf-8")).hexdigest() == dataset.source_sha256
                 and parsed == dataset.raw_document and dataset.metadata == dataset.raw_document["dataset_metadata"]
+                and dataset.dataset_name == dataset.metadata["key"] and dataset.dataset_version == dataset.metadata["version"]
+                and dataset.key == dataset.metadata["key"] + "-" + dataset.source_sha256[:12]
                 and len(rows) == len(archived) == len(records) and set(records) == {r["id"] for r in rows}
-                and all(records[r["id"]].payload == r and records[r["id"]].source_ids == r["source_ids"]
-                        and records[r["id"]].review_status == r["review_status"]
-                        and records[r["id"]].verification_status == r["verification_status"] for r in rows))
+                and all(all(getattr(records[r["id"]], field) == value
+                            for field, value in brain_record_fields(r, r["id"]).items()) for r in rows))
     if not any(d.raw_document == derived and intact(d) for d in selections):
         return set()
     raw = PREDECESSOR.read_bytes()
@@ -197,14 +199,21 @@ def superseded_predecessor_keys(datasets):
 
 def verify_receipt(dataset, document=None, manifest=None):
     """A pointer alone is not evidence; verify pinned input, raw archive and all canonical data."""
+    from .brain_staging import brain_record_fields
     if document is None:
         document, manifest = approved_artifacts()
     derived, sources, _ = resolve_document(document, create=False)
     raw = encoded(derived)
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    metadata = derived["dataset_metadata"]
+    expected_audit = dict(list_record_total=len(derived["records"]), brain_staging_schema=derived["schema_version"],
+                          publication_manifest_sha256=MANIFEST_SHA, portable_master_sha256=DOSSIER_SHA)
     if (not dataset.is_active or dataset.metadata != derived["dataset_metadata"]
             or dataset.raw_text != raw or dataset.raw_document != derived or
-            dataset.source_sha256 != hashlib.sha256(raw.encode("utf-8")).hexdigest() or
-            dataset.ingestion_audit.get("publication_manifest_sha256") != MANIFEST_SHA):
+            dataset.source_sha256 != digest or dataset.key != metadata["key"] + "-" + digest[:12]
+            or dataset.dataset_name != metadata["key"] or dataset.dataset_version != VERSION
+            or dataset.source_filename != DOSSIER.name.replace(".json", ".resolved.json")
+            or dataset.ingestion_audit != expected_audit):
         raise CommandError("Publication archive/receipt differs from the pinned approved selection.")
     archived = list(dataset.records.all())
     records = {r.external_id: r for r in archived}
@@ -216,8 +225,7 @@ def verify_receipt(dataset, document=None, manifest=None):
         record = records[row["id"]]
         model, fields, links = projection(row, sources)
         obj = model.objects.filter(pk=record.promoted_pk).first()
-        if (record.payload != row or record.review_status != row["review_status"]
-                or record.verification_status != row["verification_status"] or record.source_ids != row["source_ids"]
+        if (any(getattr(record, field) != value for field, value in brain_record_fields(row, row["id"]).items())
                 or record.promoted_model != model._meta.label or obj is None
                 or any(getattr(obj, f) != value for f, value in fields.items())):
             raise CommandError("Published record identity/state conflict: " + row["id"])

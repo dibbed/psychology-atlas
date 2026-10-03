@@ -123,7 +123,7 @@ jobs:
       - name: Install PostgreSQL test driver
         run: python -m pip install --disable-pip-version-check "psycopg[binary]>=3.2,<4"
       - name: Brain regression and concurrent controlled publication tests
-        run: python manage.py test atlas.tests_v092c_brain_publication atlas.tests_v092_brain_api atlas.tests_v092_brain_staging atlas.tests_v092_brain_relations atlas.tests_v091_brain --noinput
+        run: python manage.py test atlas.tests_v092c_brain_publication atlas.tests_v092_brain_api atlas.tests_v092_brain_staging atlas.tests_v092_brain_relations atlas.tests_v091_brain --noinput --verbosity 2
 
   frontend-build:
     name: Frontend typecheck and build

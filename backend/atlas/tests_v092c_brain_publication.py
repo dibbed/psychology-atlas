@@ -168,6 +168,31 @@ class PublishedCorpusTests(TestCase):
             publication.verify_receipt(archive)
         self.assertEqual(publication.published_record_ids(archive), set())
 
+    def test_changed_searchable_archive_index_invalidates_receipt(self):
+        archive = m.ResearchDataset.objects.get(key=self.result["dataset_key"])
+        first_id = publication.approved_artifacts()[0]["records"][0]["id"]
+        original = archive.records.get(external_id=first_id)
+        for field in ("section", "canonical_key", "slug", "name_en", "name_fa"):
+            with self.subTest(field=field):
+                m.ResearchRecord.objects.filter(pk=original.pk).update(**{field: "altered"})
+                with self.assertRaisesMessage(CommandError, "Published record identity/state conflict"):
+                    publication.verify_receipt(archive)
+                self.assertEqual(publication.published_record_ids(archive), set())
+                m.ResearchRecord.objects.filter(pk=original.pk).update(**{field: getattr(original, field)})
+
+    def test_changed_dataset_index_or_audit_invalidates_receipt(self):
+        archive = m.ResearchDataset.objects.get(key=self.result["dataset_key"])
+        for field, value in (("key", "altered"), ("dataset_name", "altered"), ("dataset_version", "altered"),
+                             ("source_filename", "altered.json"), ("ingestion_audit", {"publication_manifest_sha256": publication.MANIFEST_SHA})):
+            with self.subTest(field=field):
+                previous = getattr(archive, field)
+                m.ResearchDataset.objects.filter(pk=archive.pk).update(**{field: value})
+                archive.refresh_from_db()
+                with self.assertRaisesMessage(CommandError, "Publication archive/receipt differs"):
+                    publication.verify_receipt(archive)
+                m.ResearchDataset.objects.filter(pk=archive.pk).update(**{field: previous})
+                archive.refresh_from_db()
+
     def test_manifest_reconciliation_and_exact_idempotence(self):
         before = {model._meta.label: list(model.objects.values()) for model in
                   (m.SourceReference, m.ResearchDataset, m.ResearchRecord, m.BrainAnatomicalEntity,
