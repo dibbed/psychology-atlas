@@ -66,6 +66,8 @@ Dry-run is the default and rolls back sources, archive, pointers and canonical r
 
 Every reused source must exactly match all approved bibliographic fields, including organization, authors, year and source type; blank existing values fail closed. Receipt verification repeats this check, so later source metadata changes invalidate the receipt.
 
+An intact archive of the pinned v0.9.2B predecessor is explicitly superseded during this controlled C pass. Its bytes, normalized records, review fields and source-resolution identity must match the reviewed B artifact; only target-specific source PKs and verified resolution metadata may differ. The archive and its records remain unchanged. Validation reports its key in `superseded_datasets` and checks the 333 current candidates; unknown, forged or curator-modified archives still participate in conflict checks. Dry-run and failed publication leave no supersession state behind.
+
 `verify_brain_publication` checks actual database counts, receipt, source/provenance, review debt, SQLite integrity/foreign keys, anonymous API and established query budgets. It does not publish or repair. Publishing to this configured database does not by itself prove deployment to an external server.
 
 ## Verification

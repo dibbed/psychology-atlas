@@ -101,15 +101,18 @@ def ingest_brain_document(raw_text, filename):
 
 
 def validate_brain_staging(dataset_key=None):
-    from .brain_controlled_publication import published_record_ids
+    from .brain_controlled_publication import published_record_ids, superseded_predecessor_keys
     all_datasets = ResearchDataset.objects.filter(raw_document__schema_version=SCHEMA).order_by("key")
+    superseded = superseded_predecessor_keys(all_datasets)
+    all_datasets = all_datasets.exclude(key__in=superseded)
     datasets = all_datasets
     if dataset_key:
         datasets = datasets.filter(key=dataset_key)
-        if not datasets.exists():
+        if not datasets.exists() and dataset_key not in superseded:
             raise CommandError("The selected dataset is not a Brain staging document.")
     report = {"publication": "blocked_missing_curated_dossier", "canonical_writes": 0,
-              "candidate_count": 0, "classifications": {key: 0 for key in "ABCDEFGH"}, "issues": []}
+              "candidate_count": 0, "classifications": {key: 0 for key in "ABCDEFGH"}, "issues": [],
+              "superseded_datasets": sorted(superseded)}
     all_identities = defaultdict(list)
     all_evidence = defaultdict(list)
     all_external_ids = defaultdict(list)

@@ -19,6 +19,8 @@ MANIFEST = DOSSIER.with_name("publication_manifest.json")
 DOSSIER_SHA = "50b6e33e25b76a77b6ef735503487ac5fab7832d7474e45ad6beb7acdc25a557"
 MANIFEST_SHA = "3f3538fd4f8195b0dbe1c8631d61674cd84c629e7bea1018ba29b91329a3920d"
 VERSION = "0.9.2c-fma510-2026-10-01"
+PREDECESSOR = DOSSIER.parent.parent / "v0.9.2b/psychology_atlas_brain_curated_dossier_v0.9.2b.json"
+PREDECESSOR_SHA = "738b3ce478b0dd9f9213f5d8b8aba002701972fc2ab39eaa9263a81ca5893213"
 ORDER = ("source", "anatomy", "network", "alias", "external_identifier", "hierarchy")
 ENTITY_FIELDS = ("slug", "name_en", "name_fa", "kind", "description_en", "description_fa", "is_active")
 SOURCE_FIELDS = ("title", "organization", "citation", "url", "publication_year", "source_type", "authors", "doi", "pmid")
@@ -132,6 +134,66 @@ def canonical_counts():
             "network_membership": m.BrainNetworkMembership.objects.count(), "functional_association": m.BrainFunctionalAssociation.objects.count()}
 
 
+def superseded_predecessor_keys(datasets):
+    """Only the exact reviewed B archive is historical after this pinned C pass.
+
+    No archive, source or record is edited/deleted. Names and claimed hashes alone
+    never exempt an unknown or curator-modified archive from conflict validation.
+    """
+    datasets = list(datasets)
+    selections = [d for d in datasets if d.ingestion_audit.get("publication_manifest_sha256") == MANIFEST_SHA]
+    if not selections:
+        return set()
+    document, _ = approved_artifacts()
+    derived, _, _ = resolve_document(document, create=False)
+    def intact(dataset):
+        raw = dataset.raw_text
+        rows = dataset.raw_document.get("records", [])
+        records = {r.external_id: r for r in dataset.records.all()}
+        try:
+            parsed = json.loads(raw)
+        except (TypeError, ValueError):
+            return False
+        return (hashlib.sha256(raw.encode("utf-8")).hexdigest() == dataset.source_sha256
+                and parsed == dataset.raw_document and dataset.metadata == dataset.raw_document["dataset_metadata"]
+                and len(rows) == len(records) and set(records) == {r["id"] for r in rows}
+                and all(records[r["id"]].payload == r and records[r["id"]].source_ids == r["source_ids"]
+                        and records[r["id"]].review_status == r["review_status"]
+                        and records[r["id"]].verification_status == r["verification_status"] for r in rows))
+    if not any(d.raw_document == derived and intact(d) for d in selections):
+        return set()
+    raw = PREDECESSOR.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != PREDECESSOR_SHA:
+        raise CommandError("Reviewed predecessor artifact hash conflict.")
+    previous = json.loads(raw.decode("utf-8"))
+    original_sources = {r["id"]: r for r in previous["records"] if r["category"] == "source"}
+    registry = list(m.SourceReference.objects.values("id", *SOURCE_FIELDS))
+    result = set()
+    for dataset in datasets:
+        if dataset.raw_document.get("dataset_metadata", {}).get("key") != previous["dataset_metadata"]["key"]:
+            continue
+        normalized = copy.deepcopy(dataset.raw_document)
+        if not isinstance(normalized.get("records"), list) or any(not isinstance(r, dict) for r in normalized["records"]):
+            continue
+        resolution = normalized["dataset_metadata"].pop("target_resolution", None)
+        if resolution is not None and (not isinstance(resolution, dict) or resolution.get("portable_master_sha256") != PREDECESSOR_SHA):
+            continue
+        valid_sources = True
+        for row in normalized.get("records", []):
+            if row.get("category") != "source" or row.get("id") not in original_sources:
+                continue
+            original = original_sources[row["id"]]
+            if row.get("source_reference_id") != original["source_reference_id"]:
+                status, pk = classify_source(previous["dataset_metadata"]["verified_source_catalog"][row["id"]], registry)
+                if status != "MATCHED_EXISTING" or pk != row.get("source_reference_id"):
+                    valid_sources = False
+                row["source_reference_id"] = original["source_reference_id"]
+        if (valid_sources and normalized == previous and intact(dataset)
+                and not dataset.records.exclude(promoted_model="", promoted_pk=None).exists()):
+            result.add(dataset.key)
+    return result
+
+
 def verify_receipt(dataset, document=None, manifest=None):
     """A pointer alone is not evidence; verify pinned input, raw archive and all canonical data."""
     if document is None:
@@ -192,6 +254,11 @@ def publish(*, dry_run=True, dossier=DOSSIER, manifest=MANIFEST):
         else:
             if any(before.values()):
                 raise CommandError("This first controlled pass requires an empty Brain corpus or its exact valid receipt.")
+            # Approval is provisional inside this atomic transaction; any failure
+            # rolls it back. It enables exact predecessor recognition during staging.
+            dataset.ingestion_audit = dict(dataset.ingestion_audit, publication_manifest_sha256=MANIFEST_SHA,
+                                          portable_master_sha256=DOSSIER_SHA)
+            dataset.save(update_fields=("ingestion_audit", "updated_at"))
             validation = validate_brain_staging(dataset.key)
             if validation["issues"]:
                 raise CommandError("Brain staging validation failed: " + json.dumps(validation["issues"]))
@@ -214,9 +281,6 @@ def publish(*, dry_run=True, dossier=DOSSIER, manifest=MANIFEST):
                     record = records[row["id"]]
                     record.promoted_model, record.promoted_pk = model._meta.label, obj.pk
                     record.save(update_fields=("promoted_model", "promoted_pk", "updated_at"))
-            dataset.ingestion_audit = dict(dataset.ingestion_audit, publication_manifest_sha256=MANIFEST_SHA,
-                                          portable_master_sha256=DOSSIER_SHA)
-            dataset.save(update_fields=("ingestion_audit", "updated_at"))
             verify_receipt(dataset, document, approval)
             result = dict(status="DRY_RUN_VALIDATED" if dry_run else "PUBLISHED", canonical_writes=0 if dry_run else sum(canonical_counts().values()),
                           planned_canonical_rows=sum(canonical_counts().values()), counts=canonical_counts(), dataset_key=dataset.key)

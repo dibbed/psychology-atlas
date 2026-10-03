@@ -1,5 +1,6 @@
 """Controlled real-corpus publication, rollback, receipt integrity and public API."""
 import io
+import copy
 import json
 from pathlib import Path
 import tempfile
@@ -93,6 +94,51 @@ class ControlledPublicationFailureTests(TestCase):
                 self.assertFalse(m.ResearchDataset.objects.exists())
                 self.assertFalse(any(publication.canonical_counts().values()))
                 source.delete()
+
+    def predecessor_archive(self):
+        from .brain_staging import ingest_brain_document
+        previous = json.loads(publication.PREDECESSOR.read_text(encoding="utf-8"))
+        derived, _, _ = publication.resolve_document(previous, create=True)
+        derived["dataset_metadata"]["target_resolution"] = {"portable_master_sha256": publication.PREDECESSOR_SHA}
+        archive, _ = ingest_brain_document(publication.encoded(derived), "previous.resolved.json")
+        return archive
+
+    def test_pinned_predecessor_is_preserved_and_superseded_by_controlled_publication(self):
+        previous = self.predecessor_archive()
+        before = (list(m.ResearchDataset.objects.values()), list(previous.records.values()))
+        result, _ = publication.publish(dry_run=False)
+        previous.refresh_from_db()
+        self.assertEqual(list(m.ResearchDataset.objects.filter(pk=previous.pk).values()), before[0])
+        self.assertEqual(list(previous.records.values()), before[1])
+        self.assertEqual(result["counts"]["anatomy"], 87)
+        self.assertEqual(sum(r["classification"] == "EXISTING_MATCH" for r in result["source_resolution"]), 24)
+        validation = validate_brain_staging()
+        self.assertEqual(validation["issues"], [])
+        self.assertEqual(validation["superseded_datasets"], [previous.key])
+        self.assertEqual(validation["candidate_count"], 333)
+        self.assertEqual(validate_brain_staging(previous.key)["candidate_count"], 0)
+        self.assertEqual(publication.publish(dry_run=False)[0]["canonical_writes"], 0)
+
+    def test_changed_predecessor_or_forged_pin_cannot_bypass_conflict_validation(self):
+        from .brain_staging import ingest_brain_document
+        previous = json.loads(publication.PREDECESSOR.read_text(encoding="utf-8"))
+        altered = copy.deepcopy(previous)
+        altered["dataset_metadata"]["target_resolution"] = {"portable_master_sha256": publication.PREDECESSOR_SHA}
+        altered["records"][24]["name_en"] = "Unreviewed changed identity"
+        ingest_brain_document(publication.encoded(altered), "forged.json")
+        with self.assertRaisesMessage(CommandError, "Brain staging validation failed"):
+            publication.publish(dry_run=False)
+        self.assertFalse(any(publication.canonical_counts().values()))
+        self.assertEqual(m.ResearchDataset.objects.count(), 1)
+
+    def test_predecessor_dry_run_preserves_archive_and_rolls_back_supersession(self):
+        previous = self.predecessor_archive()
+        before = (list(m.SourceReference.objects.values()), list(m.ResearchDataset.objects.values()), list(m.ResearchRecord.objects.values()))
+        self.assertEqual(publication.publish()[0]["canonical_writes"], 0)
+        self.assertEqual(list(m.SourceReference.objects.values()), before[0])
+        self.assertEqual(list(m.ResearchDataset.objects.values()), before[1])
+        self.assertEqual(list(m.ResearchRecord.objects.values()), before[2])
+        self.assertEqual(validate_brain_staging(previous.key)["superseded_datasets"], [])
 
 
 class PublishedCorpusTests(TestCase):
