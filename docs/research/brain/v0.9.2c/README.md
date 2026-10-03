@@ -64,6 +64,8 @@ python manage.py verify_research_datasets
 
 Dry-run is the default and rolls back sources, archive, pointers and canonical rows. `--resolved-output` may write a **new**, target-specific derivative outside version control; dry-run allocations are tentative. Export uses exact UTF-8 LF bytes so a repeat importer is byte-idempotent on Windows. Apply repetitions verify the immutable receipt and **every canonical field/evidence link** and perform no writes. Conflicting data fail closed rather than being overwritten or mass-reviewed. A promotion pointer alone cannot exempt a staging conflict; exemptions require exact pinned archive and complete manifest/canonical reconciliation. The ordinary `promote_brain_staging` remains read-only with `canonical_writes=0`.
 
+Every reused source must exactly match all approved bibliographic fields, including organization, authors, year and source type; blank existing values fail closed. Receipt verification repeats this check, so later source metadata changes invalidate the receipt.
+
 `verify_brain_publication` checks actual database counts, receipt, source/provenance, review debt, SQLite integrity/foreign keys, anonymous API and established query budgets. It does not publish or repair. Publishing to this configured database does not by itself prove deployment to an external server.
 
 ## Verification

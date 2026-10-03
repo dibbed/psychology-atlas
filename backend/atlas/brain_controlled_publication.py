@@ -75,6 +75,8 @@ def resolve_document(document, *, create):
         else:
             source = m.SourceReference.objects.get(pk=pk)
             decision = "EXISTING_MATCH"
+        if any(getattr(source, field) != candidate.get(field) for field in SOURCE_FIELDS):
+            raise CommandError("Approved source metadata differs from registry: " + row["id"])
         if not source_is_resolved(source):
             raise CommandError("Existing bibliography is not checked/resolved: " + row["id"])
         sources[row["id"]] = source

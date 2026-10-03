@@ -80,6 +80,20 @@ class ControlledPublicationFailureTests(TestCase):
         self.assertEqual(m.SourceReference.objects.count(), 1)
         self.assertFalse(m.ResearchDataset.objects.exists())
 
+    def test_incomplete_or_different_checked_source_metadata_is_rejected(self):
+        info = publication.approved_artifacts()[0]["dataset_metadata"]["verified_source_catalog"]["source-yeo-2011"]
+        for field, value in (("organization", ""), ("authors", []), ("publication_year", None),
+                             ("source_type", "website")):
+            with self.subTest(field=field):
+                fields = {f: info.get(f) for f in publication.SOURCE_FIELDS}
+                fields[field] = value
+                source = m.SourceReference.objects.create(**fields, verification_status="source_checked")
+                with self.assertRaisesMessage(CommandError, "Approved source metadata differs"):
+                    publication.publish(dry_run=False)
+                self.assertFalse(m.ResearchDataset.objects.exists())
+                self.assertFalse(any(publication.canonical_counts().values()))
+                source.delete()
+
 
 class PublishedCorpusTests(TestCase):
     @classmethod
@@ -88,6 +102,14 @@ class PublishedCorpusTests(TestCase):
 
     def setUp(self):
         self.client = APIClient()
+
+    def test_source_metadata_revocation_invalidates_publication_receipt(self):
+        source = m.SourceReference.objects.get(doi="10.1152/jn.00338.2011")
+        # Simulate out-of-band damage; normal source writes already forbid this.
+        with connection.cursor() as cursor:
+            cursor.execute("UPDATE atlas_sourcereference SET organization = %s WHERE id = %s", ["", source.pk])
+        with self.assertRaisesMessage(CommandError, "Approved source metadata differs"):
+            publication.publish(dry_run=False)
 
     def test_manifest_reconciliation_and_exact_idempotence(self):
         before = {model._meta.label: list(model.objects.values()) for model in
