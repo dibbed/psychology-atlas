@@ -75,9 +75,15 @@ try:
                         candidate = sql if mode == "original" else sql.replace("checked_links(id) AS (", "checked_links(id) AS MATERIALIZED (")
                         cursor.execute("EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) " + candidate, params)
                         plan = cursor.fetchone()[0][0]
+                        nodes, work = [plan["Plan"]], []
+                        while nodes:
+                            node = nodes.pop()
+                            nodes.extend(node.get("Plans", []))
+                            if node.get("Relation Name") == "atlas_sourcereference" or node.get("Actual Loops", 0) > 100:
+                                work.append({k: node.get(k) for k in ("Node Type", "Relation Name", "Subplan Name", "Actual Loops", "Actual Rows", "Actual Total Time")})
                         print(json.dumps({"path": path, "variant": mode, "wall_s": perf_counter() - started,
                             "planning_ms": plan["Planning Time"], "execution_ms": plan["Execution Time"],
-                            "actual_rows": plan["Plan"]["Actual Rows"], "jit_detail": plan.get("JIT")}), flush=True)
+                            "actual_rows": plan["Plan"]["Actual Rows"], "jit_detail": plan.get("JIT"), "work": work}), flush=True)
                 except Exception as error:
                     print(json.dumps({"path": path, "variant": mode, "wall_s": perf_counter() - started,
                         "error": type(error).__name__, "sqlstate": getattr(error.__cause__, "sqlstate", None)}), flush=True)
