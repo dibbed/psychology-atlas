@@ -18,6 +18,7 @@ const sourceRoleLabels: Record<string, string> = {
 };
 
 const verificationLabels: Record<string, string> = {
+  source_checked: "منبع بررسی‌شده",
   verified: "راستی‌آزمایی‌شده",
   web_verified_doi_and_pmid: "DOI و PMID راستی‌آزمایی‌شده",
   web_verified_doi: "DOI راستی‌آزمایی‌شده",

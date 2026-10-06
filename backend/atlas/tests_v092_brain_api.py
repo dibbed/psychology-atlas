@@ -91,9 +91,30 @@ class BrainAPITests(BrainFixtureMixin, TestCase):
         response = self.client.get("/api/brain-anatomy/", {"kind": "structure", "laterality": "bilateral", "parent": self.root.slug})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["count"], 1)
-        for params in ({"kind": "brain"}, {"laterality": "both"}, {"parent": "bad/slug"}, {"parent": "absent"}, {"review_status": "unreviewed"}):
+        for params in ({"kind": "brain"}, {"laterality": "both"}, {"parent": "bad/slug"}, {"parent": "absent"}, {"review_status": "unreviewed"},
+                       {"roots": "1"}, {"roots": ""}, {"roots": "true", "parent": self.root.slug}):
             with self.subTest(params=params):
                 self.assertEqual(self.client.get("/api/brain-anatomy/", params).status_code, 400)
+
+    def test_root_filter_uses_public_forest_and_preserves_other_filters(self):
+        other = self.anatomy("fixture-other-root", name_en="Other Root")
+        BrainAnatomicalEntity.objects.create(slug="unreviewed-root", name_en="Private root", kind="structure", laterality="not_established")
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.get("/api/brain-anatomy/", {"roots": "true"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual({row["slug"] for row in response.data["results"]}, {self.root.slug, other.slug})
+        self.assertLessEqual(len(queries), 4)
+        self.assertEqual(self.client.get("/api/brain-anatomy/", {"roots": "false"}).data["count"], 3)
+        self.assertEqual(self.client.get("/api/brain-anatomy/", {"roots": "true", "kind": "whole_brain"}).data["count"], 1)
+        self.assertEqual(self.client.get("/api/brain-anatomy/", {"roots": "true", "q": "Fixture Child"}).data["count"], 0)
+        self.assertEqual(self.client.get("/api/brain-anatomy/", {"roots": "true", "laterality": "left"}).data["count"], 0)
+        # Corrupt test-only review state: unsupported ancestry must not manufacture a public root.
+        QuerySet.update(BrainHierarchyLink.objects.filter(pk=self.link.pk), review_status="unreviewed")
+        self.assertNotIn(self.child.slug, [row["slug"] for row in self.client.get("/api/brain-anatomy/", {"roots": "true"}).data["results"]])
+        self.link.is_active = False
+        self.link.review_status = "unreviewed"
+        self.link.save(update_fields=["is_active", "review_status"])
+        self.assertIn(self.child.slug, [row["slug"] for row in self.client.get("/api/brain-anatomy/", {"roots": "true"}).data["results"]])
 
     def test_inactive_or_unreviewed_ancestry_is_excluded(self):
         for field, value in (("is_active", False), ("review_status", ScientificReviewStatus.UNREVIEWED)):

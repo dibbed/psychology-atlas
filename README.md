@@ -18,6 +18,18 @@
 
 This code usage notice does not override licenses on credited third-party scientific data. The selected Brain FMA data are adapted under CC BY 4.0; CBIG network metadata retain their MIT notice. Those licenses permit commercial reuse within their respective scopes. See the [Brain data attribution](docs/research/brain/v0.9.2c/THIRD_PARTY_NOTICES.md).
 
+## Internal v0.9.3 — Brain Atlas frontend · 2026-10-06
+
+`/brain` browses the public reviewed corpus with server-backed English/Persian/alias search, kind/laterality filters, pagination and published-parent navigation. `/brain/[slug]` presents bilingual names, sourced descriptions, hierarchy claims, aliases, identifiers and scientific provenance. The main atlas navigation includes Brain on desktop and mobile.
+
+The optional `GET /api/brain-anatomy/?roots=true` filter selects public entities without an active primary parent; `roots=false` preserves the normal list. Roots can combine with search/kind/laterality, but not a parent filter. Existing response shapes and publication gates are unchanged. No missing parents, translations, coordinates, functions or network memberships are inferred. Licensed FMA attribution is visible in both routes; no anatomical images or meshes are distributed.
+
+The interface uses existing CSS tokens, native GET forms/disclosures, canonical API helpers and ScientificMeta. Registry discovery informs filter grouping and progressive disclosure without adding Tailwind or a component runtime. Only the vulnerable locked transitive sharp/libvips and source-map-js versions are updated; direct dependencies are unchanged.
+
+Runnable browser regression: pass the JavaScript function in [scripts/brain_browser_checks.js](scripts/brain_browser_checks.js) to Playwright MCP's `browser_run_code_unsafe` against a local frontend (default port 3013) and the real published backend (port 8013). The check exercises real search, filters, roots, pagination, detail navigation, sources, keyboard, reduced motion and responsive reflow. For recovery QA, stop the local backend, open `/brain`, confirm the retryable error, restart the backend, then run the same check from that page. Backend regressions: `python manage.py test atlas.tests_v092_brain_api --noinput`.
+
+Assessment, Global Search/Knowledge Graph integration, Study authority, diagnosis and release/tag creation remain outside this slice.
+
 ## Internal v0.9.2 — Brain infrastructure
 
 Internal v0.9.2 adds Brain API, staging validation, audit, and scientific relation infrastructure. The **2026-10-01 v0.9.2C controlled publication selection** contains 87 reviewed anatomical entities, 70 sourced hierarchy links, seven versioned network definitions, 50 aliases and 94 identifiers. FMA 5.1.0 replaces the rights-blocked Allen annotation provenance with independently checked human structural ontology data under CC BY 4.0. Publication requires the exact reviewed dossier and manifest hashes; `seed_mvp` and the read-only staging promoter never publish Brain data. See the [publication record and commands](docs/research/brain/v0.9.2c/README.md) and the [historical infrastructure record](docs/Psychology_Atlas_v0.9.2_Brain_Infrastructure_2026-09-30.md). No final v0.9 release/tag is created by this phase.
