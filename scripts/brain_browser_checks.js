@@ -49,6 +49,17 @@ async (page) => {
       const second = await json("/brain-anatomy/?page=2");
       await page.locator('.brain-card[href="/brain/' + second.results[0].slug + '"]').waitFor();
       assert((await cards().first().getAttribute("href")) === "/brain/" + second.results[0].slug, "next page uses real second-page data");
+      await goto("/brain?page=last");
+      const last = await json("/brain-anatomy/?page=last");
+      await page.locator('.brain-card[href="/brain/' + last.results[0].slug + '"]').waitFor();
+      assert(await cards().count() === last.results.length, "last-page token shows real final-page data");
+      assert(/صفحهٔ [۰-۹0-9]+/.test(await page.locator(".brain-pagination").innerText()), "last-page label remains numeric");
+      const previous = new URL(last.previous).searchParams.get("page") || "1";
+      await page.getByRole("link", { name: "صفحهٔ قبل", exact: true }).click();
+      await page.waitForURL(url => (url.searchParams.get("page") || "1") === previous);
+      const preceding = await json("/brain-anatomy/?page=" + previous);
+      await page.locator('.brain-card[href="/brain/' + preceding.results[0].slug + '"]').waitFor();
+      assert((await cards().first().getAttribute("href")) === "/brain/" + preceding.results[0].slug, "last-page previous link recovers preceding results");
     }
     const persian = all.results.find(entity => entity.name_fa);
     for (const term of [persian.name_en, persian.name_fa, "کورپوس کالوزوم"]) {

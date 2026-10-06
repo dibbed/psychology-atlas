@@ -23,7 +23,7 @@ async function BrainResults({ query }: { query: string }) {
   } catch (error) {
     return <BrainUnavailable href={brainHref(params)} invalid={error instanceof ApiError && [400, 404].includes(error.status)} />;
   }
-  const page = Number(params.get("page") || 1);
+  const page = data.previous ? Number(new URL(data.previous).searchParams.get("page") || 1) + 1 : 1;
   const filtered = ["q", "kind", "laterality", "parent", "roots"].some(key => !!params.get(key));
   return <section className="brain-results" aria-labelledby="brain-results-title">
     {parent && <div className="brain-parent-context"><GitBranch size={21} aria-hidden="true" /><div><span>زیرساختارهای منتشرشدهٔ</span><h2><BrainLabel entity={parent} /></h2><Link href={`/brain/${parent.slug}`} prefetch={false} className="brain-inline-link">مشاهدهٔ ساختار والد و منابع</Link></div></div>}
