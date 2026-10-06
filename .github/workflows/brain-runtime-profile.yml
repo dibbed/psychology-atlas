@@ -1,0 +1,39 @@
+name: Brain runtime experiment
+on:
+  push:
+    branches: [fix/v0.9.3-postgres-ci-runtime]
+permissions:
+  contents: read
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: brain_publication_test
+          POSTGRES_USER: brain_test
+          POSTGRES_PASSWORD: disposable-ci-only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DEBUG: "1"
+      DB_ENGINE: postgres
+      POSTGRES_DB: brain_publication_test
+      POSTGRES_USER: brain_test
+      POSTGRES_PASSWORD: disposable-ci-only
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: "5432"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --disable-pip-version-check -r backend/requirements.txt "psycopg[binary]>=3.2,<4"
+      - run: python scripts/profile_brain_postgres_runtime.py
