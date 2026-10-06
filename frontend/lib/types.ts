@@ -679,6 +679,37 @@ export type SourceReference = {
   verification_status?: string;
 };
 
+export type BrainKind = "whole_brain" | "hemisphere" | "lobe" | "cortical_region" | "subcortical_structure" | "region" | "structure";
+export type BrainLaterality = "left" | "right" | "midline" | "bilateral" | "not_established";
+export type BrainSourceLink = { note: string; source: SourceReference };
+export type BrainAnatomyBrief = {
+  slug: string; name_en: string; name_fa: string; kind: BrainKind; laterality: BrainLaterality;
+  review_status: "reviewed";
+};
+export type BrainAnatomy = BrainAnatomyBrief & {
+  id: number;
+  aliases: { text: string; language: "fa" | "en"; alias_type: "alternative" | "abbreviation" | "historical" | "transliteration"; review_status: "reviewed"; source_note: string; source: SourceReference }[];
+  sources: BrainSourceLink[]; aliases_truncated: boolean; sources_truncated: boolean;
+};
+export type BrainHierarchyLink = {
+  predicate: "part_of"; entity: BrainAnatomyBrief; source_version: string; review_status: "reviewed";
+  explanation_en: string; explanation_fa: string; sources: BrainSourceLink[]; sources_truncated: boolean;
+};
+export type BrainRelationEvidence = {
+  evidence_key: string; predicate: string; review_status: "reviewed"; source_version: string; method: string;
+  explanation_en: string; explanation_fa: string; limitations: string; sources: BrainSourceLink[]; sources_truncated: boolean;
+};
+export type BrainAnatomyDetail = BrainAnatomy & {
+  description_en: string; description_fa: string; parent: BrainHierarchyLink | null;
+  children: BrainHierarchyLink[]; children_truncated: boolean;
+  external_identifiers: { namespace: string; identifier: string; source_version: string; url: string; review_status: "reviewed"; source_note: string; source: SourceReference }[];
+  external_identifiers_truncated: boolean;
+  network_memberships: (BrainRelationEvidence & { qualifier: string; network: { slug: string; name_en: string; name_fa: string; kind: string; review_status: "reviewed" } })[];
+  network_memberships_truncated: boolean;
+  functional_associations: (BrainRelationEvidence & { subject_type: "anatomy"; task_context: string; population_context: string; concept: { slug: string; name_en: string; name_fa: string } })[];
+  functional_associations_truncated: boolean;
+};
+
 export type TherapyFamily = {
   slug: string;
   name_en: string;

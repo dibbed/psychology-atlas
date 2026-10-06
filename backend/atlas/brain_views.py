@@ -35,13 +35,20 @@ class BrainAnatomyListView(generics.ListAPIView):
 
     def get_queryset(self):
         params = self.request.query_params
-        allowed = {"q", "kind", "laterality", "parent", "page", "page_size", "format"}
+        allowed = {"q", "kind", "laterality", "parent", "roots", "page", "page_size", "format"}
         unknown = sorted(set(params) - allowed)
         if unknown:
             raise ValidationError({key: "Unsupported Brain filter." for key in unknown})
         if any(len(params.getlist(key)) != 1 for key in params):
             raise ValidationError("Brain query parameters must have one value each.")
         qs = anatomy_queryset()
+        if "roots" in params:
+            if params["roots"] not in {"true", "false"}:
+                raise ValidationError({"roots": "Expected true or false."})
+            if params["roots"] == "true":
+                if "parent" in params:
+                    raise ValidationError({"roots": "Cannot combine roots with a parent filter."})
+                qs = qs.exclude(parent_links__is_active=True)
         for key, choices in (("kind", models.BrainAnatomicalEntity.Kind.values),
                              ("laterality", models.BrainAnatomicalEntity.Laterality.values)):
             value = params.get(key, "").strip()
