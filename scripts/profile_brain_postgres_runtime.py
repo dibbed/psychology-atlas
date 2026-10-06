@@ -21,6 +21,11 @@ databases = runner.setup_databases()
 print(json.dumps({"database_setup_s": perf_counter() - started}), flush=True)
 try:
     started = perf_counter()
+    preceding = runner.build_suite(["atlas.tests_v092c_brain_publication.ControlledPublicationFailureTests"])
+    result = runner.run_suite(preceding)
+    assert result.wasSuccessful()
+    print(json.dumps({"preceding_tests_s": perf_counter() - started}), flush=True)
+    started = perf_counter()
     PublishedCorpusTests.setUpClass()
     print(json.dumps({"corpus_setup_s": perf_counter() - started}), flush=True)
     try:
