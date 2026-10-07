@@ -17,7 +17,7 @@ from django.test import Client, override_settings
 from django.test.utils import CaptureQueriesContext
 
 
-def profile(runs=5):
+def profile(runs=5, query_plans=False):
     if not 1 <= runs <= 10:
         raise ValueError("Use between 1 and 10 warm samples.")
     result = dict(vendor=connection.vendor, warm_samples=runs,
@@ -56,6 +56,15 @@ def profile(runs=5):
                           if "meta" in data else {key: len(value) for key, value in data.items() if isinstance(value, list)})
                 samples.append(dict(query_count=len(captured), ms=round(elapsed, 3),
                                     payload_bytes=len(response.content), result_counts=counts))
+                if query_plans and connection.vendor == "postgresql" and name == "search_assessment_acronym" and len(samples) == 1:
+                    plans = []
+                    selects = [q for q in captured.captured_queries if q["sql"].lstrip().upper().startswith("SELECT")]
+                    for query in sorted(selects, key=lambda q: float(q["time"]), reverse=True)[:3]:
+                        with connection.cursor() as cursor:
+                            cursor.execute("EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) " + query["sql"])
+                            plan = cursor.fetchone()[0][0]
+                        plans.append(dict(sql=query["sql"], captured_ms=float(query["time"]) * 1000, plan=plan))
+                    result["query_plans"] = plans
             result["measurements"][name] = dict(cold=samples[0], warm=samples[1:],
                 warm_median_ms=round(statistics.median(sample["ms"] for sample in samples[1:]), 3))
             if name == "graph":
@@ -74,11 +83,17 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output")
     parser.add_argument("--runs", type=int, choices=range(1, 11), default=5)
+    parser.add_argument("--query-plans", action="store_true", help="Explain the three slowest captured search SELECTs on PostgreSQL.")
     args = parser.parse_args()
-    result = profile(args.runs)
+    result = profile(args.runs, args.query_plans)
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    for query in result.get("query_plans", []):
+        plan = query["plan"]
+        print(json.dumps(dict(search_query_plan=dict(captured_ms=query["captured_ms"],
+            total_cost=plan["Plan"]["Total Cost"], execution_ms=plan["Execution Time"],
+            planning_ms=plan["Planning Time"], jit=plan.get("JIT"))), ensure_ascii=False))
     print(json.dumps(dict(vendor=result["vendor"], corpus={
         key: result["corpus"][key] for key in ("node_count", "edge_count", "node_types")
     }, measurements={

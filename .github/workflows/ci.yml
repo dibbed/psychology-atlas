@@ -151,7 +151,7 @@ jobs:
           python manage.py publish_curated_brain --expected-dossier-sha256 50b6e33e25b76a77b6ef735503487ac5fab7832d7474e45ad6beb7acdc25a557 --expected-manifest-sha256 3f3538fd4f8195b0dbe1c8631d61674cd84c629e7bea1018ba29b91329a3920d --dry-run
           python manage.py publish_curated_brain --expected-dossier-sha256 50b6e33e25b76a77b6ef735503487ac5fab7832d7474e45ad6beb7acdc25a557 --expected-manifest-sha256 3f3538fd4f8195b0dbe1c8631d61674cd84c629e7bea1018ba29b91329a3920d --apply
           python manage.py verify_brain_publication
-          python ../scripts/profile_atlas_integration.py ./data/atlas-integration-profile-postgres.json
+          python ../scripts/profile_atlas_integration.py ./data/atlas-integration-profile-postgres.json --query-plans
 
   frontend-build:
     name: Frontend typecheck and build
