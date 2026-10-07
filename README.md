@@ -18,6 +18,12 @@
 
 This code usage notice does not override licenses on credited third-party scientific data. The selected Brain FMA data are adapted under CC BY 4.0; CBIG network metadata retain their MIT notice. Those licenses permit commercial reuse within their respective scopes. See the [Brain data attribution](docs/research/brain/v0.9.2c/THIRD_PARTY_NOTICES.md).
 
+## Internal v0.9.5 — Assessment UI, Global Search and Knowledge Graph · 2026-10-08
+
+`/assessments` and `/assessments/[slug]` now expose the existing reviewed registry with API-supported search, filters, pagination, exact versions/forms, contextual evidence and scoped rights. Global Search adds canonical Brain/Assessment results while preserving its existing domains. The graph adds public anatomical and instrument nodes plus sourced child-to-parent anatomical hierarchy; instruments remain isolated and no scientific cross-domain relationship is inferred.
+
+Loading, retryable service failure, empty corpus, no matches, invalid addresses and absent optional evidence remain separate. See the [implementation and validation record](docs/Psychology_Atlas_v0.9.5_Assessment_Search_Graph_2026-10-08.md) for runnable browser checks, measured query/payload costs and corpus limitations. No schema migration or final v0.9 release/tag is introduced.
+
 ## Internal v0.9.4 — Assessment metadata foundation · 2026-10-07
 
 Read-only `/api/assessments/` and `/api/assessments/<slug>/` expose a curated educational registry of four instrument families and five exact versions. Six distinct language forms, two Persian PHQ-9 study contexts, two contextual reliability findings, eight aliases and ten sources preserve version, language, population and provenance. Six access records retain three unknown permissions, two official questionnaire public-domain statements and one restricted publisher-access scope. Persian display titles do not imply authorized or validated test forms.
