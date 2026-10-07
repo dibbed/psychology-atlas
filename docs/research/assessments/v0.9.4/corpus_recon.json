@@ -1,0 +1,1753 @@
+{
+  "datasets": [
+    {
+      "id": 1,
+      "key": "psychology-atlas-research-dataset-100-753a7d3edf22",
+      "sha256": "753a7d3edf2239becdf2bb27073e8e56fcd24399a5a901bea98da89fbb660bc0",
+      "active": true
+    },
+    {
+      "id": 2,
+      "key": "psychology-atlas-research-dataset-research-1-complete-3bfa4fe8b465",
+      "sha256": "3bfa4fe8b465ff0b6b5b1aaf511372efb136c42ccb0db58a5468645aaf6b27e9",
+      "active": true
+    },
+    {
+      "id": 3,
+      "key": "psychology-atlas-brain-publication-v092c-0b0ac82befda",
+      "sha256": "0b0ac82befdab388dfb3526663b4e5026d9096462c5a7ccfe6d6e41793fd94fc",
+      "active": true
+    }
+  ],
+  "record_count": 2251,
+  "matched_record_count": 106,
+  "classification_counts": {
+    "A": 38,
+    "D": 5,
+    "E": 58,
+    "F": 7,
+    "G": 5,
+    "H": 38
+  },
+  "labels": {
+    "A": "Instrument-name lead only; no canonical promotion",
+    "B": "Exact version/form lead",
+    "C": "Measurement-evidence lead; context still unverified",
+    "D": "Bibliographic/source record",
+    "E": "Incidental mention",
+    "F": "Rights-sensitive lead",
+    "G": "Explicit research gap",
+    "H": "Unsupported/weak lead"
+  },
+  "distinct_measure_names": [
+    "AAQ-II",
+    "ACQ",
+    "AIQ",
+    "ALS",
+    "ASI",
+    "ASRM",
+    "ASRS",
+    "BAI",
+    "BDI-II",
+    "BES",
+    "BIAQ",
+    "BNSS",
+    "BPD-SSI",
+    "BSI-C",
+    "C-SSRS",
+    "CAPE",
+    "Conners-3",
+    "DARS",
+    "DES-II",
+    "DSST",
+    "EDE-Q",
+    "ERS",
+    "FSS",
+    "GAD-7",
+    "HAMD",
+    "IES-R",
+    "IGDS9-SF",
+    "ISAS",
+    "ISI",
+    "LSAS",
+    "MADRS",
+    "MDQ",
+    "NQ",
+    "NSSI-SS",
+    "PANSS negative",
+    "PCL-5",
+    "PCL-5 item",
+    "PDSS",
+    "PHQ-9 item",
+    "PSQI",
+    "PSWQ",
+    "PSYRATS",
+    "Peters Delusions Inventory",
+    "SCID-5-PD",
+    "SHAI",
+    "SHAPS",
+    "SPIN",
+    "TALD",
+    "TLFB assessment",
+    "Whiteley Index",
+    "Y-BOCS",
+    "YMRS"
+  ],
+  "canonical_promotions": 0,
+  "matches": [
+    {
+      "record_id": 21,
+      "dataset_id": 1,
+      "section": "sources",
+      "external_id": "src_dsm5tr_2022",
+      "name": "Diagnostic and Statistical Manual of Mental Disorders, Fifth Edition, Text Revision (DSM-5-TR)",
+      "terms": [
+        "copyright"
+      ],
+      "classifications": [
+        "D",
+        "F"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 64,
+      "dataset_id": 1,
+      "section": "sources",
+      "external_id": "src_pavlov_1927_conditioned",
+      "name": "Conditioned Reflexes: An Investigation of the Physiological Activity of the Cerebral Cortex",
+      "terms": [
+        "translation"
+      ],
+      "classifications": [
+        "D"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 70,
+      "dataset_id": 1,
+      "section": "sources",
+      "external_id": "src_clark_wells_1995_social",
+      "name": "A cognitive model of social phobia",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "D"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 103,
+      "dataset_id": 1,
+      "section": "concepts",
+      "external_id": "con_experiential_avoidance",
+      "name": "Experiential avoidance",
+      "terms": [
+        "sensitivity"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 154,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_depressed_mood",
+      "name": "Depressed mood",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "PHQ-9 item",
+        "BDI-II",
+        "HAMD"
+      ]
+    },
+    {
+      "record_id": 155,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_anhedonia",
+      "name": "Anhedonia",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "PHQ-9 item",
+        "SHAPS",
+        "DARS"
+      ]
+    },
+    {
+      "record_id": 156,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_weight_change",
+      "name": "Appetite/weight change",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "PHQ-9 item",
+        "HAMD"
+      ]
+    },
+    {
+      "record_id": 157,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_sleep_disturbance",
+      "name": "Sleep disturbance",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "ISI",
+        "PSQI",
+        "PHQ-9 item"
+      ]
+    },
+    {
+      "record_id": 158,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_psychomotor_change",
+      "name": "Psychomotor agitation/retardation",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "HAMD",
+        "MADRS"
+      ]
+    },
+    {
+      "record_id": 159,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_fatigue",
+      "name": "Fatigue or loss of energy",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "PHQ-9 item",
+        "FSS"
+      ]
+    },
+    {
+      "record_id": 160,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_worthlessness_guilt",
+      "name": "Worthlessness or excessive guilt",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "PHQ-9 item",
+        "BDI-II"
+      ]
+    },
+    {
+      "record_id": 161,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_concentration_difficulty",
+      "name": "Concentration difficulty",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "PHQ-9 item",
+        "DSST"
+      ]
+    },
+    {
+      "record_id": 162,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_suicidal_ideation",
+      "name": "Suicidal ideation",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "C-SSRS",
+        "BSI-C"
+      ]
+    },
+    {
+      "record_id": 163,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_worry_excess",
+      "name": "Excessive worry",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "PSWQ",
+        "GAD-7"
+      ]
+    },
+    {
+      "record_id": 164,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_restlessness",
+      "name": "Restlessness/feeling keyed up",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "GAD-7",
+        "BAI"
+      ]
+    },
+    {
+      "record_id": 165,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_muscle_tension",
+      "name": "Muscle tension",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "GAD-7",
+        "BAI"
+      ]
+    },
+    {
+      "record_id": 166,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_autonomic_arousal",
+      "name": "Autonomic arousal symptoms",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "BAI",
+        "ASI"
+      ]
+    },
+    {
+      "record_id": 167,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_panic_attacks",
+      "name": "Panic attacks (recurrent unexpected)",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "PDSS",
+        "ACQ"
+      ]
+    },
+    {
+      "record_id": 168,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_avoidance",
+      "name": "Avoidance behavior",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "AIQ",
+        "AAQ-II"
+      ]
+    },
+    {
+      "record_id": 169,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_intrusive_memories",
+      "name": "Intrusive memories",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "PCL-5",
+        "IES-R"
+      ]
+    },
+    {
+      "record_id": 170,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_hyperarousal",
+      "name": "Hyperarousal",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "PCL-5"
+      ]
+    },
+    {
+      "record_id": 171,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_nightmares",
+      "name": "Nightmares",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "PCL-5",
+        "NQ"
+      ]
+    },
+    {
+      "record_id": 172,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_dissociative_reactions",
+      "name": "Dissociative reactions (flashbacks)",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "PCL-5 item",
+        "DES-II"
+      ]
+    },
+    {
+      "record_id": 173,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_compulsions",
+      "name": "Compulsions",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "Y-BOCS"
+      ]
+    },
+    {
+      "record_id": 174,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_obsessions",
+      "name": "Obsessions",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "Y-BOCS"
+      ]
+    },
+    {
+      "record_id": 175,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_mania_episodes",
+      "name": "Manic episode features",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "YMRS",
+        "ASRM"
+      ]
+    },
+    {
+      "record_id": 176,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_hypomania_episodes",
+      "name": "Hypomanic episode features",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "YMRS",
+        "MDQ"
+      ]
+    },
+    {
+      "record_id": 177,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_hallucinations",
+      "name": "Hallucinations",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "PSYRATS",
+        "CAPE"
+      ]
+    },
+    {
+      "record_id": 178,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_delusions",
+      "name": "Delusions",
+      "terms": [
+        "inventory",
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H",
+        "F"
+      ],
+      "instrument_name_leads": [
+        "PSYRATS",
+        "Peters Delusions Inventory"
+      ]
+    },
+    {
+      "record_id": 179,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_disorganized_speech",
+      "name": "Disorganized speech (formal thought disorder)",
+      "terms": [
+        "assessment",
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "TLFB assessment",
+        "TALD"
+      ]
+    },
+    {
+      "record_id": 180,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_negative_symptoms",
+      "name": "Negative symptoms (psychosis)",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "PANSS negative",
+        "BNSS"
+      ]
+    },
+    {
+      "record_id": 181,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_inattention",
+      "name": "Inattention",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "ASRS",
+        "Conners-3"
+      ]
+    },
+    {
+      "record_id": 182,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_hyperactivity_impulsivity",
+      "name": "Hyperactivity and impulsivity",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "ASRS",
+        "Conners-3"
+      ]
+    },
+    {
+      "record_id": 183,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_avoidance_social",
+      "name": "Social avoidance",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "LSAS",
+        "SPIN"
+      ]
+    },
+    {
+      "record_id": 184,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_binge_eating",
+      "name": "Binge eating",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "EDE-Q",
+        "BES"
+      ]
+    },
+    {
+      "record_id": 185,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_purging",
+      "name": "Purging and compensatory behavior",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "EDE-Q"
+      ]
+    },
+    {
+      "record_id": 186,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_body_image_disturbance",
+      "name": "Body image disturbance",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "EDE-Q",
+        "BIAQ"
+      ]
+    },
+    {
+      "record_id": 187,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_identity_disturbance",
+      "name": "Identity disturbance",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "SCID-5-PD",
+        "BPD-SSI"
+      ]
+    },
+    {
+      "record_id": 188,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_affective_instability",
+      "name": "Affective instability",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "ALS",
+        "ERS"
+      ]
+    },
+    {
+      "record_id": 189,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_self_harm",
+      "name": "Non-suicidal self-injury",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "ISAS",
+        "NSSI-SS"
+      ]
+    },
+    {
+      "record_id": 190,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_health_preoccupation",
+      "name": "Health preoccupation",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "SHAI",
+        "Whiteley Index"
+      ]
+    },
+    {
+      "record_id": 191,
+      "dataset_id": 1,
+      "section": "symptoms",
+      "external_id": "sym_internet_gaming_preoccupation",
+      "name": "Gaming preoccupation and dyscontrol",
+      "terms": [
+        "measures"
+      ],
+      "classifications": [
+        "A",
+        "H"
+      ],
+      "instrument_name_leads": [
+        "IGDS9-SF"
+      ]
+    },
+    {
+      "record_id": 192,
+      "dataset_id": 1,
+      "section": "disorders",
+      "external_id": "dis_mdd",
+      "name": "Major depressive disorder",
+      "terms": [
+        "copyright"
+      ],
+      "classifications": [
+        "E",
+        "F"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 229,
+      "dataset_id": 1,
+      "section": "therapy_classifications",
+      "external_id": "tc_transdiagnostic_vs_disorderspecific",
+      "name": "Classification by target specificity",
+      "terms": [
+        "specificity"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 294,
+      "dataset_id": 1,
+      "section": "techniques",
+      "external_id": "tech_cognitive_restructuring",
+      "name": "Cognitive restructuring",
+      "terms": [
+        "tests"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 295,
+      "dataset_id": 1,
+      "section": "techniques",
+      "external_id": "tech_behavioral_experiments",
+      "name": "Behavioral experiments",
+      "terms": [
+        "measures",
+        "tests"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 325,
+      "dataset_id": 1,
+      "section": "techniques",
+      "external_id": "tech_interpersonal_inventory",
+      "name": "Interpersonal inventory",
+      "terms": [
+        "inventory"
+      ],
+      "classifications": [
+        "E",
+        "F"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 370,
+      "dataset_id": 1,
+      "section": "psychologists",
+      "external_id": "ps_beck_aaron",
+      "name": "Aaron T. Beck",
+      "terms": [
+        "inventory"
+      ],
+      "classifications": [
+        "E",
+        "F"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 375,
+      "dataset_id": 1,
+      "section": "psychologists",
+      "external_id": "ps_wolpe_joseph",
+      "name": "Joseph Wolpe",
+      "terms": [
+        "scale"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 385,
+      "dataset_id": 1,
+      "section": "psychologists",
+      "external_id": "ps_young_jeffrey",
+      "name": "Jeffrey E. Young",
+      "terms": [
+        "questionnaire"
+      ],
+      "classifications": [
+        "E",
+        "F"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 459,
+      "dataset_id": 1,
+      "section": "psychologists",
+      "external_id": "ps_marx_brian",
+      "name": "Brian P. Marx",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 473,
+      "dataset_id": 1,
+      "section": "theories",
+      "external_id": "the_prospect_theory",
+      "name": "Prospect theory",
+      "terms": [
+        "sensitivity"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 728,
+      "dataset_id": 1,
+      "section": "research_gaps",
+      "external_id": "gap_low_and_middle_income_evidence",
+      "name": "Under-representation of low- and middle-income countries in psychotherapy trials",
+      "terms": [
+        "scale"
+      ],
+      "classifications": [
+        "G"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 730,
+      "dataset_id": 1,
+      "section": "research_gaps",
+      "external_id": "gap_exposure_optimization",
+      "name": "Optimal exposure parameters not established",
+      "terms": [
+        "scale",
+        "tests"
+      ],
+      "classifications": [
+        "G"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 767,
+      "dataset_id": 2,
+      "section": "sources",
+      "external_id": "source:nice-cg159-social-anxiety",
+      "name": "Social anxiety disorder: recognition, assessment and treatment - Recommendations",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "D"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 769,
+      "dataset_id": 2,
+      "section": "sources",
+      "external_id": "source:nice-cg185-bipolar",
+      "name": "Bipolar disorder: assessment and management - Recommendations",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "D"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 917,
+      "dataset_id": 2,
+      "section": "concepts",
+      "external_id": "concept:secure-attachment",
+      "name": "Secure Attachment",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 955,
+      "dataset_id": 2,
+      "section": "symptoms",
+      "external_id": "symptom:suicidal-ideation",
+      "name": "Suicidal Ideation",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1005,
+      "dataset_id": 2,
+      "section": "symptoms",
+      "external_id": "symptom:self-harm-behavior",
+      "name": "Self-Harm Behavior",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1013,
+      "dataset_id": 2,
+      "section": "disorders",
+      "external_id": "disorder:major-depressive-disorder",
+      "name": "Major Depressive Disorder",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1014,
+      "dataset_id": 2,
+      "section": "disorders",
+      "external_id": "disorder:persistent-depressive-disorder",
+      "name": "Persistent Depressive Disorder",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1015,
+      "dataset_id": 2,
+      "section": "disorders",
+      "external_id": "disorder:generalized-anxiety-disorder",
+      "name": "Generalized Anxiety Disorder",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1016,
+      "dataset_id": 2,
+      "section": "disorders",
+      "external_id": "disorder:panic-disorder",
+      "name": "Panic Disorder",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1017,
+      "dataset_id": 2,
+      "section": "disorders",
+      "external_id": "disorder:agoraphobia",
+      "name": "Agoraphobia",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1018,
+      "dataset_id": 2,
+      "section": "disorders",
+      "external_id": "disorder:social-anxiety-disorder",
+      "name": "Social Anxiety Disorder",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1019,
+      "dataset_id": 2,
+      "section": "disorders",
+      "external_id": "disorder:specific-phobia",
+      "name": "Specific Phobia",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1020,
+      "dataset_id": 2,
+      "section": "disorders",
+      "external_id": "disorder:obsessive-compulsive-disorder",
+      "name": "Obsessive-Compulsive Disorder",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1021,
+      "dataset_id": 2,
+      "section": "disorders",
+      "external_id": "disorder:body-dysmorphic-disorder",
+      "name": "Body Dysmorphic Disorder",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1022,
+      "dataset_id": 2,
+      "section": "disorders",
+      "external_id": "disorder:post-traumatic-stress-disorder",
+      "name": "Post-Traumatic Stress Disorder",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1023,
+      "dataset_id": 2,
+      "section": "disorders",
+      "external_id": "disorder:schizophrenia",
+      "name": "Schizophrenia",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1024,
+      "dataset_id": 2,
+      "section": "disorders",
+      "external_id": "disorder:bipolar-i-disorder",
+      "name": "Bipolar I Disorder",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1025,
+      "dataset_id": 2,
+      "section": "disorders",
+      "external_id": "disorder:bipolar-ii-disorder",
+      "name": "Bipolar II Disorder",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1026,
+      "dataset_id": 2,
+      "section": "disorders",
+      "external_id": "disorder:borderline-personality-disorder",
+      "name": "Borderline Personality Disorder",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1027,
+      "dataset_id": 2,
+      "section": "disorders",
+      "external_id": "disorder:attention-deficit-hyperactivity-disorder",
+      "name": "Attention-Deficit/Hyperactivity Disorder",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1028,
+      "dataset_id": 2,
+      "section": "disorders",
+      "external_id": "disorder:autism-spectrum-disorder",
+      "name": "Autism Spectrum Disorder",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1029,
+      "dataset_id": 2,
+      "section": "disorders",
+      "external_id": "disorder:anorexia-nervosa",
+      "name": "Anorexia Nervosa",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1030,
+      "dataset_id": 2,
+      "section": "disorders",
+      "external_id": "disorder:bulimia-nervosa",
+      "name": "Bulimia Nervosa",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1031,
+      "dataset_id": 2,
+      "section": "disorders",
+      "external_id": "disorder:binge-eating-disorder",
+      "name": "Binge-Eating Disorder",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1032,
+      "dataset_id": 2,
+      "section": "disorders",
+      "external_id": "disorder:avoidant-restrictive-food-intake-disorder",
+      "name": "Avoidant/Restrictive Food Intake Disorder",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1058,
+      "dataset_id": 2,
+      "section": "therapies",
+      "external_id": "therapy:cognitive-behavioral-therapy",
+      "name": "Cognitive Behavioral Therapy",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1059,
+      "dataset_id": 2,
+      "section": "therapies",
+      "external_id": "therapy:behavioral-activation",
+      "name": "Behavioral Activation",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1060,
+      "dataset_id": 2,
+      "section": "therapies",
+      "external_id": "therapy:dialectical-behavior-therapy",
+      "name": "Dialectical Behavior Therapy",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1061,
+      "dataset_id": 2,
+      "section": "therapies",
+      "external_id": "therapy:acceptance-commitment-therapy",
+      "name": "Acceptance and Commitment Therapy",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1062,
+      "dataset_id": 2,
+      "section": "therapies",
+      "external_id": "therapy:interpersonal-psychotherapy",
+      "name": "Interpersonal Psychotherapy",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1063,
+      "dataset_id": 2,
+      "section": "therapies",
+      "external_id": "therapy:cognitive-processing-therapy",
+      "name": "Cognitive Processing Therapy",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1064,
+      "dataset_id": 2,
+      "section": "therapies",
+      "external_id": "therapy:prolonged-exposure",
+      "name": "Prolonged Exposure Therapy",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1065,
+      "dataset_id": 2,
+      "section": "therapies",
+      "external_id": "therapy:exposure-based-therapy",
+      "name": "Exposure-Based Therapy",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1066,
+      "dataset_id": 2,
+      "section": "therapies",
+      "external_id": "therapy:mindfulness-based-cognitive-therapy",
+      "name": "Mindfulness-Based Cognitive Therapy",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1067,
+      "dataset_id": 2,
+      "section": "therapies",
+      "external_id": "therapy:schema-therapy",
+      "name": "Schema Therapy",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1068,
+      "dataset_id": 2,
+      "section": "therapies",
+      "external_id": "therapy:mentalization-based-treatment",
+      "name": "Mentalization-Based Treatment",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1069,
+      "dataset_id": 2,
+      "section": "therapies",
+      "external_id": "therapy:psychodynamic-psychotherapy",
+      "name": "Psychodynamic Psychotherapy",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1070,
+      "dataset_id": 2,
+      "section": "therapies",
+      "external_id": "therapy:short-term-psychodynamic-psychotherapy",
+      "name": "Short-Term Psychodynamic Psychotherapy",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1071,
+      "dataset_id": 2,
+      "section": "therapies",
+      "external_id": "therapy:supportive-psychotherapy",
+      "name": "Supportive Psychotherapy",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1072,
+      "dataset_id": 2,
+      "section": "therapies",
+      "external_id": "therapy:person-centered-therapy",
+      "name": "Person-Centered Therapy",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1073,
+      "dataset_id": 2,
+      "section": "therapies",
+      "external_id": "therapy:rational-emotive-behavior-therapy",
+      "name": "Rational Emotive Behavior Therapy",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1074,
+      "dataset_id": 2,
+      "section": "therapies",
+      "external_id": "therapy:cbt-eating-disorders",
+      "name": "Cognitive Behavioral Therapy for Eating Disorders",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1075,
+      "dataset_id": 2,
+      "section": "therapies",
+      "external_id": "therapy:family-therapy-anorexia-nervosa",
+      "name": "Family Therapy for Anorexia Nervosa",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1076,
+      "dataset_id": 2,
+      "section": "therapies",
+      "external_id": "therapy:family-intervention-psychosis",
+      "name": "Family Intervention for Psychosis",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1077,
+      "dataset_id": 2,
+      "section": "therapies",
+      "external_id": "therapy:narrative-exposure-therapy",
+      "name": "Narrative Exposure Therapy",
+      "terms": [
+        "assessment"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1081,
+      "dataset_id": 2,
+      "section": "techniques",
+      "external_id": "technique:behavioral-experiment",
+      "name": "Behavioral Experiment",
+      "terms": [
+        "test"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1091,
+      "dataset_id": 2,
+      "section": "techniques",
+      "external_id": "technique:expectancy-violation",
+      "name": "Expectancy Violation",
+      "terms": [
+        "test"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1166,
+      "dataset_id": 2,
+      "section": "theories",
+      "external_id": "theory:prospect-theory",
+      "name": "Prospect Theory",
+      "terms": [
+        "sensitivity"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1887,
+      "dataset_id": 2,
+      "section": "research_gaps",
+      "external_id": "research_gaps:f07f8f708d41b7cca4a5:0",
+      "name": "",
+      "terms": [
+        "assessment",
+        "copyright",
+        "instrument",
+        "instruments",
+        "licensing",
+        "norms",
+        "persian validation",
+        "psychometric",
+        "translations"
+      ],
+      "classifications": [
+        "G",
+        "F"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1888,
+      "dataset_id": 2,
+      "section": "research_gaps",
+      "external_id": "research_gaps:3a560372a733429fe6c2:1",
+      "name": "",
+      "terms": [
+        "instruments"
+      ],
+      "classifications": [
+        "G"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1890,
+      "dataset_id": 2,
+      "section": "research_gaps",
+      "external_id": "research_gaps:0221643eb2d80f15458b:3",
+      "name": "",
+      "terms": [
+        "instruments",
+        "translations"
+      ],
+      "classifications": [
+        "G"
+      ],
+      "instrument_name_leads": []
+    },
+    {
+      "record_id": 1938,
+      "dataset_id": 3,
+      "section": "brain_sources",
+      "external_id": "source-persian-isuog-corpus-callosum",
+      "name": "",
+      "terms": [
+        "translation"
+      ],
+      "classifications": [
+        "E"
+      ],
+      "instrument_name_leads": []
+    }
+  ]
+}

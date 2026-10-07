@@ -1,9 +1,11 @@
 from django.urls import path
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from . import brain_views, dsm_views, recommendation_views, study_session_views, study_today_views, views
+from . import assessment_views, brain_views, dsm_views, recommendation_views, study_session_views, study_today_views, views
 
 urlpatterns = [
+    path("assessments/", assessment_views.AssessmentListView.as_view()),
+    path("assessments/<slug:slug>/", assessment_views.AssessmentDetailView.as_view()),
     path("brain-anatomy/", brain_views.BrainAnatomyListView.as_view()),
     path("brain-anatomy/<slug:slug>/", brain_views.BrainAnatomyDetailView.as_view()),
     path("auth/register/", views.RegisterView.as_view()),

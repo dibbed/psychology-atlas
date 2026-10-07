@@ -18,6 +18,12 @@
 
 This code usage notice does not override licenses on credited third-party scientific data. The selected Brain FMA data are adapted under CC BY 4.0; CBIG network metadata retain their MIT notice. Those licenses permit commercial reuse within their respective scopes. See the [Brain data attribution](docs/research/brain/v0.9.2c/THIRD_PARTY_NOTICES.md).
 
+## Internal v0.9.4 — Assessment metadata foundation · 2026-10-07
+
+Read-only `/api/assessments/` and `/api/assessments/<slug>/` expose a curated educational registry of four instrument families and five exact versions. Six distinct language forms, two Persian PHQ-9 study contexts, two contextual reliability findings, eight aliases and ten sources preserve version, language, population and provenance. Six access records retain three unknown permissions, two official questionnaire public-domain statements and one restricted publisher-access scope. Persian display titles do not imply authorized or validated test forms.
+
+Additive migration `0037` separates family, version, language form, study, finding, access, alias, relation and source models. Explicit hash-pinned publication supports atomic dry runs, conflict detection, provenance verification and zero-write repeats; `seed_mvp` does not publish Assessments. No protected questionnaire content, scoring, diagnosis, frontend, global search/graph or Study integration is included. See the [scientific extraction, rights register and commands](docs/research/assessments/v0.9.4/README.md).
+
 ## Internal v0.9.3 — Brain Atlas frontend · 2026-10-06
 
 `/brain` browses the public reviewed corpus with server-backed English/Persian/alias search, kind/laterality filters, pagination and published-parent navigation. `/brain/[slug]` presents bilingual names, sourced descriptions, hierarchy claims, aliases, identifiers and scientific provenance. The main atlas navigation includes Brain on desktop and mobile.

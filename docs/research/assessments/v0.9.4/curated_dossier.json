@@ -1,0 +1,862 @@
+{
+  "schema_version": "psychology-atlas-assessments-v1",
+  "dataset_metadata": {
+    "key": "assessments-v094-curated",
+    "version": "0.9.4-2026-10-07",
+    "reviewed_on": "2026-10-07",
+    "rights_policy": "Original educational metadata summaries and bibliographies only; no protected questionnaire content or score interpretation."
+  },
+  "records": [
+    {
+      "id": "src-phq-1999",
+      "category": "source",
+      "data": {
+        "title": "Validation and utility of a self-report version of PRIME-MD: the PHQ primary care study. Primary Care Evaluation of Mental Disorders. Patient Health Questionnaire",
+        "authors": [
+          "R L Spitzer",
+          "K Kroenke",
+          "J B Williams"
+        ],
+        "publication_year": 1999,
+        "doi": "10.1001/jama.282.18.1737",
+        "pmid": "10568646",
+        "organization": "JAMA",
+        "url": "https://pubmed.ncbi.nlm.nih.gov/10568646/",
+        "source_type": "primary_publication",
+        "citation": "R L Spitzer; K Kroenke; J B Williams. Validation and utility of a self-report version of PRIME-MD: the PHQ primary care study. Primary Care Evaluation of Mental Disorders. Patient Health Questionnaire. JAMA (1999). doi:10.1001/jama.282.18.1737."
+      },
+      "sources": []
+    },
+    {
+      "id": "src-phq9-2001",
+      "category": "source",
+      "data": {
+        "title": "The PHQ-9: validity of a brief depression severity measure",
+        "authors": [
+          "K Kroenke",
+          "R L Spitzer",
+          "J B Williams"
+        ],
+        "publication_year": 2001,
+        "doi": "10.1046/j.1525-1497.2001.016009606.x",
+        "pmid": "11556941",
+        "organization": "Journal of General Internal Medicine",
+        "url": "https://pubmed.ncbi.nlm.nih.gov/11556941/",
+        "source_type": "primary_publication",
+        "citation": "K Kroenke; R L Spitzer; J B Williams. The PHQ-9: validity of a brief depression severity measure. Journal of General Internal Medicine (2001). doi:10.1046/j.1525-1497.2001.016009606.x."
+      },
+      "sources": []
+    },
+    {
+      "id": "src-gad7-2006",
+      "category": "source",
+      "data": {
+        "title": "A brief measure for assessing generalized anxiety disorder: the GAD-7",
+        "authors": [
+          "R L Spitzer",
+          "K Kroenke",
+          "J B Williams",
+          "B Löwe"
+        ],
+        "publication_year": 2006,
+        "doi": "10.1001/archinte.166.10.1092",
+        "pmid": "16717171",
+        "organization": "Archives of Internal Medicine",
+        "url": "https://pubmed.ncbi.nlm.nih.gov/16717171/",
+        "source_type": "primary_publication",
+        "citation": "R L Spitzer; K Kroenke; J B Williams; B Löwe. A brief measure for assessing generalized anxiety disorder: the GAD-7. Archives of Internal Medicine (2006). doi:10.1001/archinte.166.10.1092."
+      },
+      "sources": []
+    },
+    {
+      "id": "src-dass-1995",
+      "category": "source",
+      "data": {
+        "title": "The structure of negative emotional states: comparison of the Depression Anxiety Stress Scales (DASS) with the Beck Depression and Anxiety Inventories",
+        "authors": [
+          "P F Lovibond",
+          "S H Lovibond"
+        ],
+        "publication_year": 1995,
+        "doi": "10.1016/0005-7967(94)00075-U",
+        "pmid": "7726811",
+        "organization": "Behaviour Research and Therapy",
+        "url": "https://pubmed.ncbi.nlm.nih.gov/7726811/",
+        "source_type": "primary_publication",
+        "citation": "P F Lovibond; S H Lovibond. The structure of negative emotional states: comparison of the Depression Anxiety Stress Scales (DASS) with the Beck Depression and Anxiety Inventories. Behaviour Research and Therapy (1995). doi:10.1016/0005-7967(94)00075-U."
+      },
+      "sources": []
+    },
+    {
+      "id": "src-bdi-1961",
+      "category": "source",
+      "data": {
+        "title": "An inventory for measuring depression",
+        "authors": [
+          "A T Beck",
+          "C H Ward",
+          "M Mendelson",
+          "J Mock",
+          "J Erbaugh"
+        ],
+        "publication_year": 1961,
+        "doi": "10.1001/archpsyc.1961.01710120031004",
+        "pmid": "13688369",
+        "organization": "Archives of General Psychiatry",
+        "url": "https://pubmed.ncbi.nlm.nih.gov/13688369/",
+        "source_type": "primary_publication",
+        "citation": "A T Beck; C H Ward; M Mendelson; J Mock; J Erbaugh. An inventory for measuring depression. Archives of General Psychiatry (1961). doi:10.1001/archpsyc.1961.01710120031004."
+      },
+      "sources": []
+    },
+    {
+      "id": "src-phq9-fa-2011",
+      "category": "source",
+      "data": {
+        "title": "Comparison of the CES-D and PHQ-9 depression scales in people with type 2 diabetes in Tehran, Iran",
+        "authors": [
+          "Mohammad E Khamseh",
+          "Hamid R Baradaran",
+          "Anna Javanbakht",
+          "Maryam Mirghorbani",
+          "Zahra Yadollahi",
+          "Mojtaba Malek"
+        ],
+        "publication_year": 2011,
+        "doi": "10.1186/1471-244X-11-61",
+        "pmid": "21496289",
+        "organization": "BMC Psychiatry",
+        "url": "https://link.springer.com/article/10.1186/1471-244X-11-61",
+        "source_type": "primary_publication",
+        "citation": "Mohammad E Khamseh; Hamid R Baradaran; Anna Javanbakht; Maryam Mirghorbani; Zahra Yadollahi; Mojtaba Malek. Comparison of the CES-D and PHQ-9 depression scales in people with type 2 diabetes in Tehran, Iran. BMC Psychiatry (2011). doi:10.1186/1471-244X-11-61."
+      },
+      "sources": []
+    },
+    {
+      "id": "src-phq-site",
+      "category": "source",
+      "data": {
+        "title": "Patient Health Questionnaire (PHQ) Screeners",
+        "authors": [],
+        "publication_year": null,
+        "doi": "",
+        "pmid": "",
+        "organization": "PHQ Screeners",
+        "url": "https://www.phqscreeners.com/",
+        "source_type": "official_website",
+        "citation": "PHQ Screeners. Patient Health Questionnaire (PHQ) Screeners. Accessed 2026-10-07."
+      },
+      "sources": []
+    },
+    {
+      "id": "src-dass-overview",
+      "category": "source",
+      "data": {
+        "title": "Overview of the DASS and its uses",
+        "authors": [],
+        "publication_year": null,
+        "doi": "",
+        "pmid": "",
+        "organization": "UNSW DASS website",
+        "url": "https://www2.psy.unsw.edu.au/dass/over.htm",
+        "source_type": "official_website",
+        "citation": "UNSW DASS website. Overview of the DASS and its uses. Accessed 2026-10-07."
+      },
+      "sources": []
+    },
+    {
+      "id": "src-dass-faq",
+      "category": "source",
+      "data": {
+        "title": "DASS FAQ (Frequently Asked Questions)",
+        "authors": [],
+        "publication_year": null,
+        "doi": "",
+        "pmid": "",
+        "organization": "UNSW DASS website",
+        "url": "https://www2.psy.unsw.edu.au/dass/DASSFAQ.htm",
+        "source_type": "official_website",
+        "citation": "UNSW DASS website. DASS FAQ (Frequently Asked Questions). Accessed 2026-10-07."
+      },
+      "sources": []
+    },
+    {
+      "id": "src-bdi2-owner",
+      "category": "source",
+      "data": {
+        "title": "Beck Depression Inventory (BDI-2)",
+        "authors": [],
+        "publication_year": null,
+        "doi": "",
+        "pmid": "",
+        "organization": "Pearson Assessments",
+        "url": "https://www.pearsonassessments.com/en-us/en-us/Store/Professional-Assessments/Personality-%26-Biopsychosocial/Beck-Depression-Inventory/p/100000159",
+        "source_type": "official_website",
+        "citation": "Pearson Assessments. Beck Depression Inventory (BDI-2). Accessed 2026-10-07."
+      },
+      "sources": []
+    },
+    {
+      "id": "phq",
+      "category": "instrument",
+      "data": {
+        "slug": "patient-health-questionnaire",
+        "name_en": "Patient Health Questionnaire",
+        "name_fa": "پرسش‌نامه سلامت بیمار",
+        "description": "Patient Health Questionnaire family; this selection identifies its nine-item depression form.",
+        "construct_overview": "Depressive symptom assessment in the selected PHQ-9 form.",
+        "rightsholder": ""
+      },
+      "sources": [
+        {
+          "source": "src-phq-1999",
+          "note": "Verified English family identity. Persian title is an Atlas editorial display translation, not a validated or authorized test form."
+        },
+        {
+          "source": "src-phq9-2001",
+          "note": "Verified English family identity. Persian title is an Atlas editorial display translation, not a validated or authorized test form."
+        }
+      ]
+    },
+    {
+      "id": "gad",
+      "category": "instrument",
+      "data": {
+        "slug": "generalized-anxiety-disorder-scale",
+        "name_en": "Generalized Anxiety Disorder Scale",
+        "name_fa": "مقیاس اختلال اضطراب فراگیر",
+        "description": "Generalized anxiety symptom measure; this selection identifies the seven-item form.",
+        "construct_overview": "Generalized anxiety symptoms.",
+        "rightsholder": ""
+      },
+      "sources": [
+        {
+          "source": "src-gad7-2006",
+          "note": "Verified English family identity. Persian title is an Atlas editorial display translation, not a validated or authorized test form."
+        }
+      ]
+    },
+    {
+      "id": "dass",
+      "category": "instrument",
+      "data": {
+        "slug": "depression-anxiety-stress-scales",
+        "name_en": "Depression Anxiety Stress Scales",
+        "name_fa": "مقیاس‌های افسردگی اضطراب و استرس",
+        "description": "Self-report measures of depression, anxiety and stress with distinct full and short forms.",
+        "construct_overview": "Depression, anxiety and tension/stress.",
+        "rightsholder": ""
+      },
+      "sources": [
+        {
+          "source": "src-dass-1995",
+          "note": "Verified English family identity. Persian title is an Atlas editorial display translation, not a validated or authorized test form."
+        },
+        {
+          "source": "src-dass-overview",
+          "note": "Verified English family identity. Persian title is an Atlas editorial display translation, not a validated or authorized test form."
+        }
+      ]
+    },
+    {
+      "id": "bdi",
+      "category": "instrument",
+      "data": {
+        "slug": "beck-depression-inventory",
+        "name_en": "Beck Depression Inventory",
+        "name_fa": "پرسش‌نامه افسردگی بک",
+        "description": "Beck Depression Inventory family; the 1996 second edition is separately identified here.",
+        "construct_overview": "Depressive symptom severity.",
+        "rightsholder": "Pearson Assessments (verified publisher of BDI-II)"
+      },
+      "sources": [
+        {
+          "source": "src-bdi-1961",
+          "note": "Verified English family identity. Persian title is an Atlas editorial display translation, not a validated or authorized test form."
+        },
+        {
+          "source": "src-bdi2-owner",
+          "note": "Verified English family identity. Persian title is an Atlas editorial display translation, not a validated or authorized test form."
+        }
+      ]
+    },
+    {
+      "id": "phq9",
+      "category": "version",
+      "data": {
+        "instrument": "phq",
+        "key": "phq-9",
+        "label": "Patient Health Questionnaire-9",
+        "form_kind": "original",
+        "publication_year": 2001,
+        "derived_from": null,
+        "construct": "depression",
+        "intended_use": "screening",
+        "administration": "Self-report",
+        "informant": "Patient",
+        "population": "Adult primary-care and obstetrics/gynecology samples in the original study",
+        "limitations": "Measurement or screening is not a diagnosis; evidence and permissions are specific to form, population and use."
+      },
+      "sources": [
+        {
+          "source": "src-phq9-2001",
+          "note": "Identity and educational metadata; no protected material reproduced."
+        }
+      ]
+    },
+    {
+      "id": "gad7",
+      "category": "version",
+      "data": {
+        "instrument": "gad",
+        "key": "gad-7",
+        "label": "Generalized Anxiety Disorder-7",
+        "form_kind": "original",
+        "publication_year": 2006,
+        "derived_from": null,
+        "construct": "generalized-anxiety",
+        "intended_use": "screening",
+        "administration": "Self-report",
+        "informant": "Patient",
+        "population": "Adults in United States primary care in the original study",
+        "limitations": "Measurement or screening is not a diagnosis; evidence and permissions are specific to form, population and use."
+      },
+      "sources": [
+        {
+          "source": "src-gad7-2006",
+          "note": "Identity and educational metadata; no protected material reproduced."
+        }
+      ]
+    },
+    {
+      "id": "dass42",
+      "category": "version",
+      "data": {
+        "instrument": "dass",
+        "key": "dass-42",
+        "label": "Depression Anxiety Stress Scales (42-item form)",
+        "form_kind": "original",
+        "publication_year": 1995,
+        "derived_from": null,
+        "construct": "depression-anxiety-stress",
+        "intended_use": "severity",
+        "administration": "Self-report",
+        "informant": "Respondent",
+        "population": "Population suitability must be assessed for the intended setting",
+        "limitations": "Measurement or screening is not a diagnosis; evidence and permissions are specific to form, population and use."
+      },
+      "sources": [
+        {
+          "source": "src-dass-1995",
+          "note": "Identity and educational metadata; no protected material reproduced."
+        },
+        {
+          "source": "src-dass-overview",
+          "note": "Identity and educational metadata; no protected material reproduced."
+        }
+      ]
+    },
+    {
+      "id": "dass21",
+      "category": "version",
+      "data": {
+        "instrument": "dass",
+        "key": "dass-21",
+        "label": "Depression Anxiety Stress Scales (21-item short form)",
+        "form_kind": "short",
+        "publication_year": null,
+        "derived_from": "dass42",
+        "construct": "depression-anxiety-stress",
+        "intended_use": "severity",
+        "administration": "Self-report",
+        "informant": "Respondent",
+        "population": "Population suitability must be assessed for the intended setting",
+        "limitations": "Measurement or screening is not a diagnosis; evidence and permissions are specific to form, population and use."
+      },
+      "sources": [
+        {
+          "source": "src-dass-overview",
+          "note": "Identity and educational metadata; no protected material reproduced."
+        },
+        {
+          "source": "src-dass-faq",
+          "note": "Identity and educational metadata; no protected material reproduced."
+        }
+      ]
+    },
+    {
+      "id": "bdi2",
+      "category": "version",
+      "data": {
+        "instrument": "bdi",
+        "key": "bdi-ii-1996",
+        "label": "Beck Depression Inventory-II",
+        "form_kind": "revision",
+        "publication_year": 1996,
+        "derived_from": null,
+        "construct": "depression",
+        "intended_use": "severity",
+        "administration": "Self-administered or verbally administered by a trained administrator",
+        "informant": "Respondent",
+        "population": "Ages 13 through 80 according to the publisher",
+        "limitations": "Measurement or screening is not a diagnosis; evidence and permissions are specific to form, population and use."
+      },
+      "sources": [
+        {
+          "source": "src-bdi2-owner",
+          "note": "Identity and educational metadata; no protected material reproduced."
+        }
+      ]
+    },
+    {
+      "id": "phq9-en",
+      "category": "language_form",
+      "data": {
+        "version": "phq9",
+        "key": "original-english",
+        "language": "en",
+        "label": "Patient Health Questionnaire-9 — original English form",
+        "form_kind": "original",
+        "owner": "",
+        "authorization_status": "unknown",
+        "authorization_source": null,
+        "authorization_note": "No separate redistribution or digital-use authorization is asserted."
+      },
+      "sources": [
+        {
+          "source": "src-phq9-2001",
+          "note": "Identity of the original English form; no translation authorization or scoring permission inferred."
+        }
+      ]
+    },
+    {
+      "id": "gad7-en",
+      "category": "language_form",
+      "data": {
+        "version": "gad7",
+        "key": "original-english",
+        "language": "en",
+        "label": "Generalized Anxiety Disorder-7 — original English form",
+        "form_kind": "original",
+        "owner": "",
+        "authorization_status": "unknown",
+        "authorization_source": null,
+        "authorization_note": "No separate redistribution or digital-use authorization is asserted."
+      },
+      "sources": [
+        {
+          "source": "src-gad7-2006",
+          "note": "Identity of the original English form; no translation authorization or scoring permission inferred."
+        }
+      ]
+    },
+    {
+      "id": "dass42-en",
+      "category": "language_form",
+      "data": {
+        "version": "dass42",
+        "key": "original-english",
+        "language": "en",
+        "label": "Depression Anxiety Stress Scales (42-item form) — original English form",
+        "form_kind": "original",
+        "owner": "",
+        "authorization_status": "unknown",
+        "authorization_source": null,
+        "authorization_note": "No separate redistribution or digital-use authorization is asserted."
+      },
+      "sources": [
+        {
+          "source": "src-dass-1995",
+          "note": "Identity of the original English form; no translation authorization or scoring permission inferred."
+        },
+        {
+          "source": "src-dass-overview",
+          "note": "Identity of the original English form; no translation authorization or scoring permission inferred."
+        }
+      ]
+    },
+    {
+      "id": "dass21-en",
+      "category": "language_form",
+      "data": {
+        "version": "dass21",
+        "key": "original-english",
+        "language": "en",
+        "label": "Depression Anxiety Stress Scales (21-item short form) — original English form",
+        "form_kind": "original",
+        "owner": "",
+        "authorization_status": "unknown",
+        "authorization_source": null,
+        "authorization_note": "No separate redistribution or digital-use authorization is asserted."
+      },
+      "sources": [
+        {
+          "source": "src-dass-overview",
+          "note": "Identity of the original English form; no translation authorization or scoring permission inferred."
+        },
+        {
+          "source": "src-dass-faq",
+          "note": "Identity of the original English form; no translation authorization or scoring permission inferred."
+        }
+      ]
+    },
+    {
+      "id": "bdi2-en",
+      "category": "language_form",
+      "data": {
+        "version": "bdi2",
+        "key": "original-english",
+        "language": "en",
+        "label": "Beck Depression Inventory-II — original English form",
+        "form_kind": "original",
+        "owner": "",
+        "authorization_status": "unknown",
+        "authorization_source": null,
+        "authorization_note": "No separate redistribution or digital-use authorization is asserted."
+      },
+      "sources": [
+        {
+          "source": "src-bdi2-owner",
+          "note": "Identity of the original English form; no translation authorization or scoring permission inferred."
+        }
+      ]
+    },
+    {
+      "id": "phq9-fa-khamseh",
+      "category": "language_form",
+      "data": {
+        "version": "phq9",
+        "key": "khamseh-2011-persian",
+        "language": "fa",
+        "label": "PHQ-9 Persian translation evaluated by Khamseh et al. (2011)",
+        "form_kind": "translation",
+        "owner": "",
+        "authorization_status": "unknown",
+        "authorization_source": null,
+        "authorization_note": "The article documents translation and study evidence; official authorization and redistribution permission for this exact form remain unverified."
+      },
+      "sources": [
+        {
+          "source": "src-phq9-fa-2011",
+          "note": "Methods: forward/back translation and Persian-language administration; this identifies only the study-specific form."
+        }
+      ]
+    },
+    {
+      "id": "phq9-fa-2011-pilot",
+      "category": "study",
+      "data": {
+        "key": "phq9-fa-2011-pilot",
+        "version": "phq9",
+        "language_form": "phq9-fa-khamseh",
+        "source": "src-phq9-fa-2011",
+        "source_note": "Methods — Procedures: translation pilot",
+        "design": "Translation pilot",
+        "population": "Patients in the Persian translation pilot; pilot diagnoses not separately specified",
+        "sample_context": "Translation pilot involving 46 patients",
+        "sample_size": 46,
+        "administration": "Persian self-report",
+        "informant": "Patient",
+        "method": "Internal consistency using Cronbach's alpha",
+        "comparator": "",
+        "limitations": "Clinic-specific evidence; pilot and main samples are distinct. Neither estimate establishes general Persian-population validity or translation authorization."
+      },
+      "sources": []
+    },
+    {
+      "id": "phq9-fa-2011-pilot-alpha",
+      "category": "finding",
+      "data": {
+        "key": "phq9-fa-2011-pilot-alpha",
+        "study": "phq9-fa-2011-pilot",
+        "measurement_property": "reliability",
+        "statistic": "Cronbach's alpha",
+        "method": "Internal consistency",
+        "value_text": "0.86",
+        "units": "Coefficient",
+        "uncertainty": "",
+        "finding": "Reported internal consistency for the study-specific Persian PHQ-9 form.",
+        "limitations": "Internal consistency is not test-retest reliability, diagnostic accuracy or universal validity. No confidence interval was extracted.",
+        "extraction_locator": "Methods — Procedures: translation pilot"
+      },
+      "sources": []
+    },
+    {
+      "id": "phq9-fa-2011-main",
+      "category": "study",
+      "data": {
+        "key": "phq9-fa-2011-main",
+        "version": "phq9",
+        "language_form": "phq9-fa-khamseh",
+        "source": "src-phq9-fa-2011",
+        "source_note": "Results: internal consistency paragraph",
+        "design": "Cross-sectional screening validation",
+        "population": "Persian-speaking patients with type 2 diabetes",
+        "sample_context": "Consecutive diabetes-clinic outpatients in Tehran, February–July 2009",
+        "sample_size": 185,
+        "administration": "Persian self-report",
+        "informant": "Patient",
+        "method": "Internal consistency using Cronbach's alpha",
+        "comparator": "Psychiatrist-administered SCID for DSM-IV in the main validation study",
+        "limitations": "Clinic-specific evidence; pilot and main samples are distinct. Neither estimate establishes general Persian-population validity or translation authorization."
+      },
+      "sources": []
+    },
+    {
+      "id": "phq9-fa-2011-main-alpha",
+      "category": "finding",
+      "data": {
+        "key": "phq9-fa-2011-main-alpha",
+        "study": "phq9-fa-2011-main",
+        "measurement_property": "reliability",
+        "statistic": "Cronbach's alpha",
+        "method": "Internal consistency",
+        "value_text": "0.873",
+        "units": "Coefficient",
+        "uncertainty": "",
+        "finding": "Reported internal consistency for the study-specific Persian PHQ-9 form.",
+        "limitations": "Internal consistency is not test-retest reliability, diagnostic accuracy or universal validity. No confidence interval was extracted.",
+        "extraction_locator": "Results: internal consistency paragraph"
+      },
+      "sources": []
+    },
+    {
+      "id": "phq-acronym",
+      "category": "alias",
+      "data": {
+        "instrument": "phq",
+        "version": null,
+        "text": "PHQ",
+        "language": "en",
+        "alias_type": "acronym",
+        "source": "src-phq-1999",
+        "source_note": "Family abbreviation; it does not resolve a particular edition or translation."
+      },
+      "sources": []
+    },
+    {
+      "id": "dass-acronym",
+      "category": "alias",
+      "data": {
+        "instrument": "dass",
+        "version": null,
+        "text": "DASS",
+        "language": "en",
+        "alias_type": "acronym",
+        "source": "src-dass-overview",
+        "source_note": "Family abbreviation; it does not resolve a particular edition or translation."
+      },
+      "sources": []
+    },
+    {
+      "id": "bdi-acronym",
+      "category": "alias",
+      "data": {
+        "instrument": "bdi",
+        "version": null,
+        "text": "BDI",
+        "language": "en",
+        "alias_type": "acronym",
+        "source": "src-bdi-1961",
+        "source_note": "Family abbreviation; it does not resolve a particular edition or translation."
+      },
+      "sources": []
+    },
+    {
+      "id": "phq9-acronym",
+      "category": "alias",
+      "data": {
+        "instrument": "phq",
+        "version": "phq9",
+        "text": "PHQ-9",
+        "language": "en",
+        "alias_type": "acronym",
+        "source": "src-phq9-2001",
+        "source_note": "Exact selected version/form abbreviation; family identity remains separate."
+      },
+      "sources": []
+    },
+    {
+      "id": "gad7-acronym",
+      "category": "alias",
+      "data": {
+        "instrument": "gad",
+        "version": "gad7",
+        "text": "GAD-7",
+        "language": "en",
+        "alias_type": "acronym",
+        "source": "src-gad7-2006",
+        "source_note": "Exact selected version/form abbreviation; family identity remains separate."
+      },
+      "sources": []
+    },
+    {
+      "id": "dass42-acronym",
+      "category": "alias",
+      "data": {
+        "instrument": "dass",
+        "version": "dass42",
+        "text": "DASS-42",
+        "language": "en",
+        "alias_type": "acronym",
+        "source": "src-dass-overview",
+        "source_note": "Exact selected version/form abbreviation; family identity remains separate."
+      },
+      "sources": []
+    },
+    {
+      "id": "dass21-acronym",
+      "category": "alias",
+      "data": {
+        "instrument": "dass",
+        "version": "dass21",
+        "text": "DASS-21",
+        "language": "en",
+        "alias_type": "acronym",
+        "source": "src-dass-overview",
+        "source_note": "Exact selected version/form abbreviation; family identity remains separate."
+      },
+      "sources": []
+    },
+    {
+      "id": "bdi2-acronym",
+      "category": "alias",
+      "data": {
+        "instrument": "bdi",
+        "version": "bdi2",
+        "text": "BDI-II",
+        "language": "en",
+        "alias_type": "acronym",
+        "source": "src-bdi2-owner",
+        "source_note": "Exact selected version/form abbreviation; family identity remains separate."
+      },
+      "sources": []
+    },
+    {
+      "id": "phq9-access",
+      "category": "access",
+      "data": {
+        "key": "phq9-access",
+        "version": "phq9",
+        "language_form": "phq9-en",
+        "material_type": "questionnaire",
+        "use": "owner_access",
+        "jurisdiction": "Jurisdiction-specific legal review not performed",
+        "owner": "",
+        "availability": "unknown",
+        "license_status": "unknown",
+        "terms": "Current official landing page identifies the screener. Permission for commercial redistribution, this exact form and digital scoring was not established.",
+        "source": "src-phq-site",
+        "source_note": "Exact access/material scope reviewed against the cited official page on 2026-10-07.",
+        "verified_on": "2026-10-07",
+        "expires_on": null
+      },
+      "sources": []
+    },
+    {
+      "id": "gad7-access",
+      "category": "access",
+      "data": {
+        "key": "gad7-access",
+        "version": "gad7",
+        "language_form": "gad7-en",
+        "material_type": "questionnaire",
+        "use": "owner_access",
+        "jurisdiction": "Jurisdiction-specific legal review not performed",
+        "owner": "",
+        "availability": "unknown",
+        "license_status": "unknown",
+        "terms": "Current official landing page identifies GAD-7. Permission for commercial redistribution, this exact form and digital scoring was not established.",
+        "source": "src-phq-site",
+        "source_note": "Exact access/material scope reviewed against the cited official page on 2026-10-07.",
+        "verified_on": "2026-10-07",
+        "expires_on": null
+      },
+      "sources": []
+    },
+    {
+      "id": "dass42-access",
+      "category": "access",
+      "data": {
+        "key": "dass42-access",
+        "version": "dass42",
+        "language_form": "dass42-en",
+        "material_type": "questionnaire",
+        "use": "redistribution",
+        "jurisdiction": "Jurisdiction-specific legal review not performed",
+        "owner": "",
+        "availability": "public_access",
+        "license_status": "public_domain",
+        "terms": "Official FAQ states that the DASS questionnaire is public domain and may be copied without restriction. This record concerns the original English questionnaire only; it does not cover the manual or translated forms. No test content is redistributed here.",
+        "source": "src-dass-faq",
+        "source_note": "Exact access/material scope reviewed against the cited official page on 2026-10-07.",
+        "verified_on": "2026-10-07",
+        "expires_on": null
+      },
+      "sources": []
+    },
+    {
+      "id": "dass21-access",
+      "category": "access",
+      "data": {
+        "key": "dass21-access",
+        "version": "dass21",
+        "language_form": "dass21-en",
+        "material_type": "questionnaire",
+        "use": "redistribution",
+        "jurisdiction": "Jurisdiction-specific legal review not performed",
+        "owner": "",
+        "availability": "public_access",
+        "license_status": "public_domain",
+        "terms": "Official FAQ describes full and short questionnaires and states the DASS questionnaire is public domain. This scope covers the original English short questionnaire; manual and translations are separate. No scoring implementation or content is included.",
+        "source": "src-dass-faq",
+        "source_note": "Exact access/material scope reviewed against the cited official page on 2026-10-07.",
+        "verified_on": "2026-10-07",
+        "expires_on": null
+      },
+      "sources": []
+    },
+    {
+      "id": "bdi2-access",
+      "category": "access",
+      "data": {
+        "key": "bdi2-access",
+        "version": "bdi2",
+        "language_form": "bdi2-en",
+        "material_type": "questionnaire",
+        "use": "owner_access",
+        "jurisdiction": "Jurisdiction-specific legal review not performed",
+        "owner": "Pearson Assessments",
+        "availability": "owner_access",
+        "license_status": "restricted",
+        "terms": "Publisher offers BDI-II materials under qualification level B and commercial purchase terms. No permission to redistribute its items, manual, translations or scoring content was established.",
+        "source": "src-bdi2-owner",
+        "source_note": "Exact access/material scope reviewed against the cited official page on 2026-10-07.",
+        "verified_on": "2026-10-07",
+        "expires_on": null
+      },
+      "sources": []
+    },
+    {
+      "id": "phq9-fa-access",
+      "category": "access",
+      "data": {
+        "key": "phq9-fa-access",
+        "version": "phq9",
+        "language_form": "phq9-fa-khamseh",
+        "material_type": "translation",
+        "use": "redistribution",
+        "jurisdiction": "Not established",
+        "owner": "",
+        "availability": "unknown",
+        "license_status": "unknown",
+        "terms": "Open-access publication of a validation study does not grant redistribution permission for the questionnaire translation evaluated in that study.",
+        "source": "src-phq9-fa-2011",
+        "source_note": "Article rights concern the article; no exact-form authorization was established.",
+        "verified_on": "2026-10-07",
+        "expires_on": null
+      },
+      "sources": []
+    }
+  ]
+}

@@ -206,6 +206,8 @@ class SourceReference(TimeStampedModel):
             if any(hasattr(getattr(self, name), "resolve_expression") for name in fields):
                 raise ValidationError("Source evidence writes require concrete values for validation.")
             if previous and any(getattr(previous, name) != getattr(self, name) for name in fields):
+                from .assessment_models import protect_assessment_source
+                protect_assessment_source(self.pk, using)
                 owners = ((BrainAnatomicalEntitySource, "entity__review_status"),
                           (BrainNetworkSource, "network__review_status"),
                           (BrainHierarchyLinkSource, "relationship__review_status"),
@@ -4219,3 +4221,10 @@ class BrainFunctionalAssociationSource(BrainEvidenceSourceBase):
     class Meta:
         constraints = [models.UniqueConstraint(fields=("relationship", "source"), name="uq_brain_function_source"),
                        models.CheckConstraint(condition=~Q(note=""), name="ck_brain_function_source_note")]
+
+
+from .assessment_models import (  # noqa: E402,F401 — Django discovers these concrete domain models here.
+    AssessmentAccess, AssessmentAlias, AssessmentInstrument, AssessmentLanguageForm,
+    AssessmentPsychometricEvidence, AssessmentRelation, AssessmentSource,
+    AssessmentValidationStudy, AssessmentVersion,
+)
