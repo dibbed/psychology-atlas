@@ -1,0 +1,423 @@
+{
+  "date": "2026-10-07",
+  "scope": "Local validation of the final implementation; GitHub and merged-main gates are reported separately.",
+  "baseline_sha": "0db337349ff892678f67e2c38c7f88648ea035eb",
+  "branch": "feature/v0.9.4-assessments-atlas",
+  "entry_gate": {
+    "main_refs_equal": true,
+    "pr45": "MERGED",
+    "baseline_ci_run": 37639410184,
+    "baseline_codeql_run": 37639410218,
+    "unrelated_original_checkout_edits": "Preserved; implementation uses a dedicated clean worktree."
+  },
+  "migration": "0037_v094_assessments_atlas",
+  "curated_registry": {
+    "access_distribution": {
+      "owner_access": 1,
+      "public_access": 2,
+      "unknown": 3
+    },
+    "counts": {
+      "access": 6,
+      "alias": 8,
+      "finding": 2,
+      "instrument": 4,
+      "language_form": 6,
+      "relation": 0,
+      "study": 2,
+      "version": 5
+    },
+    "issues": [],
+    "license_distribution": {
+      "public_domain": 2,
+      "restricted": 1,
+      "unknown": 3
+    },
+    "persian_forms": 1,
+    "persian_studies": 2,
+    "source_count": 10,
+    "status": "PASS",
+    "warnings": []
+  },
+  "corpus_recon": {
+    "records": 2251,
+    "matches": 106,
+    "old_corpus_canonical_promotions": 0
+  },
+  "publication": {
+    "dossier_sha256": "6f42ca1c251ce45ab06a8bc3ffe81ec853bbb09c39c3acfe9d57d05956e5f9cf",
+    "manifest_sha256": "fc7afe5047618ca568ed9f5981e1057d7687b9d143e7dc92b0cbcc49736c1ade",
+    "staged_records": 43,
+    "repeat_canonical_writes": 0,
+    "dry_run_net_writes": 0,
+    "research_datasets": 4,
+    "research_records": 2294,
+    "first_apply_records_created_including_sources_and_links": 65
+  },
+  "tests": {
+    "assessment_sqlite": {
+      "status": "PASS",
+      "tests": 80,
+      "seconds": 56.009,
+      "skipped": 1
+    },
+    "assessment_postgresql": {
+      "status": "PASS",
+      "tests": 80,
+      "seconds": 68.047,
+      "skipped": 0
+    },
+    "brain_sqlite": {
+      "status": "PASS",
+      "tests": 132,
+      "seconds": 78.501,
+      "skipped": 5
+    },
+    "brain_postgresql": {
+      "status": "PASS",
+      "tests": 132,
+      "seconds": 189.71,
+      "skipped": 0
+    },
+    "full_backend_sqlite": {
+      "status": "PASS",
+      "tests": 541,
+      "seconds": 416.136,
+      "skipped": 6
+    }
+  },
+  "legacy_migrations": {
+    "current_main": {
+      "legacy_tables": 134,
+      "legacy_rows": 10555,
+      "upgrade": "PASS",
+      "reverse": "PASS",
+      "integrity": "ok",
+      "foreign_key_issues": 0
+    },
+    "released_v084": {
+      "legacy_tables": 121,
+      "legacy_rows": 10072,
+      "upgrade": "PASS",
+      "reverse": "PASS",
+      "integrity": "ok",
+      "foreign_key_issues": 0
+    },
+    "zero_to_latest": {
+      "status": "PASS",
+      "integrity": "ok",
+      "foreign_key_issues": 0
+    }
+  },
+  "audits": {
+    "audit_assessments": "PASS",
+    "audit_brain_atlas": "PASS",
+    "audit_v06_release": "PASS",
+    "audit_study_plans": "PASS",
+    "audit_recommendation_feedback": "PASS",
+    "audit_case_graphs": "PASS",
+    "verify_research_datasets": "PASS"
+  },
+  "existing_v06_debt": {
+    "weak_entities": 59,
+    "weak_relations": 52,
+    "reviewed_weak_claims": 0
+  },
+  "checks": {
+    "django_check": "PASS",
+    "migration_drift": "NONE",
+    "showmigrations": "All applied through 0037",
+    "sqlite_integrity_check": "ok",
+    "sqlite_foreign_key_issues": 0,
+    "compileall": "PASS",
+    "pip_check": "PASS",
+    "git_diff_check": "PASS"
+  },
+  "environment": {
+    "python": "3.12.8",
+    "dependencies": {
+      "Django": "5.2.18",
+      "djangorestframework": "3.18.3",
+      "psycopg": "3.3.6"
+    }
+  },
+  "profiles": {
+    "sqlite": {
+      "vendor": "sqlite",
+      "measurements": {
+        "list": {
+          "query_counts": [
+            7,
+            7,
+            7,
+            7,
+            7
+          ],
+          "median_ms": 35.395,
+          "result_count": 4,
+          "payload_bytes": 14132
+        },
+        "detail": {
+          "query_counts": [
+            13,
+            13,
+            13,
+            13,
+            13
+          ],
+          "median_ms": 79.427,
+          "result_count": null,
+          "payload_bytes": 11946
+        },
+        "search": {
+          "query_counts": [
+            7,
+            7,
+            7,
+            7,
+            7
+          ],
+          "median_ms": 49.1,
+          "result_count": 2,
+          "payload_bytes": 8141
+        },
+        "persian_search": {
+          "query_counts": [
+            7,
+            7,
+            7,
+            7,
+            7
+          ],
+          "median_ms": 53.432,
+          "result_count": 2,
+          "payload_bytes": 6928
+        },
+        "acronym_search": {
+          "query_counts": [
+            7,
+            7,
+            7,
+            7,
+            7
+          ],
+          "median_ms": 47.522,
+          "result_count": 1,
+          "payload_bytes": 3725
+        },
+        "language_filter": {
+          "query_counts": [
+            8,
+            8,
+            8,
+            8,
+            8
+          ],
+          "median_ms": 41.963,
+          "result_count": 1,
+          "payload_bytes": 3725
+        },
+        "construct_filter": {
+          "query_counts": [
+            8,
+            8,
+            8,
+            8,
+            8
+          ],
+          "median_ms": 35.407,
+          "result_count": 2,
+          "payload_bytes": 6928
+        },
+        "access_filter": {
+          "query_counts": [
+            7,
+            7,
+            7,
+            7,
+            7
+          ],
+          "median_ms": 45.253,
+          "result_count": 1,
+          "payload_bytes": 4938
+        },
+        "language_license_filter": {
+          "query_counts": [
+            8,
+            8,
+            8,
+            8,
+            8
+          ],
+          "median_ms": 56.757,
+          "result_count": 1,
+          "payload_bytes": 3725
+        }
+      }
+    },
+    "postgres": {
+      "vendor": "postgresql",
+      "measurements": {
+        "list": {
+          "query_counts": [
+            7,
+            7,
+            7,
+            7,
+            7
+          ],
+          "median_ms": 39.602,
+          "result_count": 4,
+          "payload_bytes": 14100
+        },
+        "detail": {
+          "query_counts": [
+            13,
+            13,
+            13,
+            13,
+            13
+          ],
+          "median_ms": 81.564,
+          "result_count": null,
+          "payload_bytes": 11924
+        },
+        "search": {
+          "query_counts": [
+            7,
+            7,
+            7,
+            7,
+            7
+          ],
+          "median_ms": 54.328,
+          "result_count": 2,
+          "payload_bytes": 8121
+        },
+        "persian_search": {
+          "query_counts": [
+            7,
+            7,
+            7,
+            7,
+            7
+          ],
+          "median_ms": 52.509,
+          "result_count": 2,
+          "payload_bytes": 6914
+        },
+        "acronym_search": {
+          "query_counts": [
+            7,
+            7,
+            7,
+            7,
+            7
+          ],
+          "median_ms": 51.482,
+          "result_count": 1,
+          "payload_bytes": 3717
+        },
+        "language_filter": {
+          "query_counts": [
+            8,
+            8,
+            8,
+            8,
+            8
+          ],
+          "median_ms": 43.488,
+          "result_count": 1,
+          "payload_bytes": 3717
+        },
+        "construct_filter": {
+          "query_counts": [
+            8,
+            8,
+            8,
+            8,
+            8
+          ],
+          "median_ms": 36.166,
+          "result_count": 2,
+          "payload_bytes": 6914
+        },
+        "access_filter": {
+          "query_counts": [
+            7,
+            7,
+            7,
+            7,
+            7
+          ],
+          "median_ms": 50.504,
+          "result_count": 1,
+          "payload_bytes": 4924
+        },
+        "language_license_filter": {
+          "query_counts": [
+            8,
+            8,
+            8,
+            8,
+            8
+          ],
+          "median_ms": 61.333,
+          "result_count": 1,
+          "payload_bytes": 3717
+        }
+      },
+      "execution_plans": {
+        "list": {
+          "select_queries": 7,
+          "maximum_execution_ms": 5.396,
+          "summed_execution_ms": 5.997,
+          "maximum_planning_ms": 1.061
+        },
+        "detail": {
+          "select_queries": 13,
+          "maximum_execution_ms": 3.084,
+          "summed_execution_ms": 5.004,
+          "maximum_planning_ms": 1.871
+        },
+        "language_license_filter": {
+          "select_queries": 8,
+          "maximum_execution_ms": 3.131,
+          "summed_execution_ms": 5.178,
+          "maximum_planning_ms": 4.757
+        }
+      }
+    }
+  },
+  "profile_method": "Five actual requests per route on the published selection; median wall time. Local machine had concurrent validation work; these are measurements, not an SLA.",
+  "api_routes": [
+    "GET /api/assessments/",
+    "GET /api/assessments/<slug>/"
+  ],
+  "scientific_debt": [
+    "Only two contextual Persian PHQ-9 internal-consistency findings extracted; other properties, populations and instruments require separate review.",
+    "No canonical cross-domain relations published; endpoint identity and source review remain deferred.",
+    "DASS-21 publication year unresolved; original BDI/BDI-IA editions not imported."
+  ],
+  "rights_uncertainty": [
+    "PHQ-9/GAD-7 exact commercial redistribution and digital-use permission unknown.",
+    "Persian PHQ-9 exact-form authorization unknown; article license does not grant form rights.",
+    "DASS owner public-domain statements scoped to original English questionnaires; no manual/translation or jurisdiction-wide legal claim.",
+    "BDI-II publisher access is restricted; no protected material redistributed."
+  ],
+  "exclusions": [
+    "Assessment frontend",
+    "Questionnaire engine",
+    "Scoring or diagnosis",
+    "User attempts/history",
+    "Global Search/Knowledge Graph",
+    "StudyPlan/Today integration",
+    "v0.9.5",
+    "v0.9 tag/release"
+  ],
+  "review_regressions": [
+    "Inactive/unreviewed/unproven derivation targets are hidden without hiding the independent short form.",
+    "Derivation cycles are checked against the current stored chain, including cached-object regression."
+  ],
+  "ci_profiler_recovery": "Missing PostgreSQL output directory creation verified with a real request/profile run; no API/model behavior changed."
+}

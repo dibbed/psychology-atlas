@@ -1,0 +1,366 @@
+{
+  "dossier_sha256": "6f42ca1c251ce45ab06a8bc3ffe81ec853bbb09c39c3acfe9d57d05956e5f9cf",
+  "counts": {
+    "access": 6,
+    "alias": 8,
+    "finding": 2,
+    "instrument": 4,
+    "language_form": 6,
+    "source": 10,
+    "study": 2,
+    "version": 5
+  },
+  "records": [
+    {
+      "id": "src-phq-1999",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "src-phq9-2001",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "src-gad7-2006",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "src-dass-1995",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "src-bdi-1961",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "src-phq9-fa-2011",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "src-phq-site",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "src-dass-overview",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "src-dass-faq",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "src-bdi2-owner",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "phq",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "gad",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "dass",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "bdi",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "phq9",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "gad7",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "dass42",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "dass21",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "bdi2",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "phq9-en",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "gad7-en",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "dass42-en",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "dass21-en",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "bdi2-en",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "phq9-fa-khamseh",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "phq9-fa-2011-pilot",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "phq9-fa-2011-pilot-alpha",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "phq9-fa-2011-main",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "phq9-fa-2011-main-alpha",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "phq-acronym",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "dass-acronym",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "bdi-acronym",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "phq9-acronym",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "gad7-acronym",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "dass42-acronym",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "dass21-acronym",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "bdi2-acronym",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "phq9-access",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "gad7-access",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "dass42-access",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "dass21-access",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "bdi2-access",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    },
+    {
+      "id": "phq9-fa-access",
+      "identity": "verified",
+      "sources": "verified",
+      "scientific_review": "passed",
+      "rights_review": "metadata_only",
+      "version_resolution": "passed"
+    }
+  ],
+  "deferred": [
+    "PHQ-2, GAD-2 and other editions: no version dossier in this selection",
+    "BDI 1961 and BDI-IA canonical versions: not conflated with BDI-II",
+    "GAD-7 numerical estimates: study language and subsample context need separate extraction",
+    "DASS/BDI Persian adaptations: no exact-form scientific/authorization dossier in this selection",
+    "Cutoffs, sensitivity/specificity and norms: frozen design defers publication"
+  ]
+}
