@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import type { GraphPathResult, KnowledgeGraphNode } from "@/lib/types";
 
 const edgeLabels: Record<string, string> = {
+  brain_part_of: "جزء از کل آناتومی · ساختاری",
   related: "مرتبط",
   part_of: "جزئی از",
   subtype_of: "زیرنوع",
@@ -82,6 +83,8 @@ const nodeTypeLabels: Record<string, string> = {
   psychologist: "روان‌شناس",
   theory: "نظریه",
   timeline: "رویداد",
+  brain_anatomy: "ساختار مغز",
+  assessment: "ابزار ارزیابی",
 };
 
 function pathEdgeLabel(kind: string) {
@@ -103,6 +106,8 @@ export default function GraphPathFinder({ nodes, initialFrom }: { nodes: Knowled
 
   useEffect(() => {
     if (initialFrom && nodes.some(node => node.id === initialFrom)) {
+      requestRef.current?.abort();
+      setLoading(false);
       setFrom(initialFrom);
       setTo(current => current === initialFrom ? nodes.find(node => node.id !== initialFrom)?.id || "" : current);
       setResult(null);
@@ -130,7 +135,7 @@ export default function GraphPathFinder({ nodes, initialFrom }: { nodes: Knowled
       );
       if (!controller.signal.aborted) setResult(data);
     } catch (reason: any) {
-      if (reason?.name !== "AbortError") setError(reason?.message || "محاسبه مسیر انجام نشد.");
+      if (!controller.signal.aborted && reason?.name !== "AbortError") setError(reason?.message || "محاسبه مسیر انجام نشد.");
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
@@ -141,7 +146,7 @@ export default function GraphPathFinder({ nodes, initialFrom }: { nodes: Knowled
       <div>
         <div className="meta">مسیر میان گره‌ها</div>
         <h3>دو گره را انتخاب کن و کوتاه‌ترین مسیر واقعی را پیدا کن.</h3>
-        <p className="muted">مسیر فقط از رابطه‌های ثبت‌شدهٔ اطلس ساخته می‌شود. پیوندهای صرفاً ساختاریِ مرجع DSM میان‌بُر مسیر مفهومی نیستند.</p>
+        <p className="muted">مسیر فقط از رابطه‌های ثبت‌شدهٔ اطلس ساخته می‌شود؛ رابطه و زنجیرهٔ پیوندها، علت یا تشخیص را اثبات نمی‌کنند. پیوندهای ساختاریِ مرجع DSM و جزء از کل آناتومی میان‌بُر مسیر مفهومی نیستند.</p>
       </div>
       <div className="graph-path-controls">
         <label>
@@ -158,8 +163,8 @@ export default function GraphPathFinder({ nodes, initialFrom }: { nodes: Knowled
         </label>
         <button className="button primary" onClick={findPath} disabled={loading}>{loading ? "در حال محاسبه..." : "پیدا کردن مسیر"}</button>
       </div>
-      {error && <div className="error-state"><p>{error}</p></div>}
-      {result && !result.found && <div className="empty-relation">بین این دو گره در نقشهٔ فعلی مسیری پیدا نشد.</div>}
+      {error && <div className="error-state" role="alert"><p>{error}</p></div>}
+      {result && !result.found && <div className="empty-relation" role="status">بین این دو گره در نقشهٔ فعلی مسیری پیدا نشد.</div>}
       {result?.found && (
         <div className="graph-path-result">
           <div className="graph-path-summary"><strong>{result.hops?.toLocaleString("fa-IR")}</strong><span>رابطه در کوتاه‌ترین مسیر</span></div>

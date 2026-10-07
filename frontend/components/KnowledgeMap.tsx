@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { normalizePersianSearch } from "@/lib/text";
 import type { KnowledgeGraphData, KnowledgeGraphEdge, KnowledgeGraphNode } from "@/lib/types";
 import GraphPathFinder from "./GraphPathFinder";
@@ -22,10 +23,13 @@ function nodeTypeLabel(type: KnowledgeGraphNode["type"]) {
   if (type === "technique") return "تکنیک";
   if (type === "psychologist") return "روان‌شناس";
   if (type === "theory") return "نظریه";
+  if (type === "brain_anatomy") return "ساختار مغز";
+  if (type === "assessment") return "ابزار ارزیابی";
   return "رویداد تاریخی";
 }
 
 const edgeLabels: Record<string, string> = {
+  brain_part_of: "جزء از کل آناتومی · ساختاری",
   related: "مرتبط",
   part_of: "جزئی از",
   subtype_of: "زیرنوع",
@@ -155,7 +159,7 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
 
   const [selectedId, setSelectedId] = useState(preferred?.id || "");
   const [query, setQuery] = useState("");
-  const [type, setType] = useState<"all" | "concept" | "disorder" | "symptom" | "therapy" | "technique" | "psychologist" | "theory" | "timeline">("all");
+  const [type, setType] = useState<"all" | KnowledgeGraphNode["type"]>("all");
   const [domain, setDomain] = useState("");
   const [subtype, setSubtype] = useState("");
   const [theoryDomain, setTheoryDomain] = useState("");
@@ -168,6 +172,14 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
   const [pathOpen, setPathOpen] = useState(false);
 
   const nodeById = useMemo(() => new Map(data.nodes.map(node => [node.id, node])), [data.nodes]);
+  const urlNode = useSearchParams().get("node");
+
+  useEffect(() => {
+    if (urlNode && nodeById.has(urlNode)) {
+      setSelectedId(urlNode);
+      setEdgeKind("all");
+    }
+  }, [urlNode, nodeById]);
   const selected = nodeById.get(selectedId) || preferred;
 
   const neighbors = useMemo<MapNeighbor[]>(() => {
@@ -207,7 +219,7 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
         if (timelineCategory && (node.type !== "timeline" || node.category !== timelineCategory)) return false;
         if (reviewStatus && node.review_status !== reviewStatus) return false;
         if (node.degree < minDegree) return false;
-        const haystack = `${node.label} ${node.name_en} ${node.slug} ${node.group} ${node.summary} ${node.role || ""} ${node.nationality || ""} ${node.modern_status || ""} ${node.date_text || ""}`;
+        const haystack = `${node.label} ${node.name_en} ${node.slug} ${node.group} ${node.summary} ${(node.aliases || []).join(" ")} ${node.role || ""} ${node.nationality || ""} ${node.modern_status || ""} ${node.date_text || ""}`;
         return !q || normalizePersianSearch(haystack).includes(q);
       })
       .sort((a, b) => b.degree - a.degree || a.label.localeCompare(b.label, "fa"));
@@ -245,6 +257,8 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
     psychologist: neighbors.filter(row => row.node.type === "psychologist").length,
     theory: neighbors.filter(row => row.node.type === "theory").length,
     timeline: neighbors.filter(row => row.node.type === "timeline").length,
+    brain_anatomy: neighbors.filter(row => row.node.type === "brain_anatomy").length,
+    assessment: neighbors.filter(row => row.node.type === "assessment").length,
   }), [neighbors]);
 
   function selectNode(id: string) {
@@ -258,7 +272,7 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
       url.searchParams.set("node", id);
-      window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+      window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}`);
     }
   }
 
@@ -278,6 +292,8 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
           <span>روان‌شناس: {data.meta.node_types.psychologist.toLocaleString("fa-IR")}</span>
           <span>نظریه: {data.meta.node_types.theory.toLocaleString("fa-IR")}</span>
           <span>رویداد: {data.meta.node_types.timeline.toLocaleString("fa-IR")}</span>
+          <span>ساختار مغز: {data.meta.node_types.brain_anatomy.toLocaleString("fa-IR")}</span>
+          <span>ابزار ارزیابی: {data.meta.node_types.assessment.toLocaleString("fa-IR")}</span>
         </div></details>
       </section>
 
@@ -297,7 +313,7 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
             aria-label="جست‌وجوی گره‌های نقشه"
           />
           <div className="category-chips compact-chips">
-            {(["all", "concept", "disorder", "symptom", "therapy", "technique", "psychologist", "theory", "timeline"] as const).map(value => (
+            {(["all", "concept", "disorder", "symptom", "therapy", "technique", "psychologist", "theory", "timeline", "brain_anatomy", "assessment"] as const).map(value => (
               <button
                 className={`chip ${type === value ? "active" : ""}`}
                 aria-pressed={type === value}
@@ -355,6 +371,7 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
               </button>
             ))}
           </div>
+          {!filteredNodes.length && <p className="muted" role="status">گرهی مطابق این انتخاب پیدا نشد. عبارت یا فیلترها را تغییر دهید.</p>}
           {visibleLimit < filteredNodes.length && <button className="button map-show-more" type="button" onClick={() => setVisibleLimit(count => count + 60)}>نمایش گره‌های بیشتر</button>}
           <div className="map-hotspots">
             <div className="map-list-summary"><strong>گره‌های پراتصال</strong><span>Degree واقعی</span></div>
@@ -388,8 +405,8 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
                 <span className={`node-type-dot ${selected.type}`} />
                 <div>
                   <div className="meta">{nodeTypeLabel(selected.type)} · {selected.group}</div>
-                  <h2>{selected.label}</h2>
-                  <div className="latin-title">{selected.name_en}</div>
+                  <h2><bdi>{selected.label}</bdi></h2>
+                  <div className="latin-title" lang="en" dir="ltr">{selected.name_en}</div>
                 </div>
               </div>
               <div className="actions">
@@ -406,7 +423,7 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
               </div>
               <div className="node-profile-copy">
                 <p>{selected.summary || "برای این گره هنوز توضیح کوتاه ثبت نشده است."}</p>
-                {(selected.type === "psychologist" || selected.type === "theory" || selected.type === "timeline") && (
+                {(selected.type === "psychologist" || selected.type === "theory" || selected.type === "timeline" || selected.type === "brain_anatomy" || selected.type === "assessment") && (
                   <div className="v065-node-context">
                     {selected.type === "psychologist" && (selected.birth_year || selected.death_year) && (
                       <span>{selected.birth_year?.toLocaleString("fa-IR") || "؟"} — {selected.death_year?.toLocaleString("fa-IR") || "نامشخص"}</span>
@@ -436,6 +453,8 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
                   <div><strong>{neighborTypeCounts.psychologist.toLocaleString("fa-IR")}</strong><span>Psychologist</span></div>
                   <div><strong>{neighborTypeCounts.theory.toLocaleString("fa-IR")}</strong><span>Theory</span></div>
                   <div><strong>{neighborTypeCounts.timeline.toLocaleString("fa-IR")}</strong><span>Timeline</span></div>
+                  <div><strong>{neighborTypeCounts.brain_anatomy.toLocaleString("fa-IR")}</strong><span>ساختار مغز</span></div>
+                  <div><strong>{neighborTypeCounts.assessment.toLocaleString("fa-IR")}</strong><span>ابزار ارزیابی</span></div>
                 </div>
               </div>
             </div>
@@ -470,7 +489,7 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
                   )}
                 </button>
               ))}
-              {!visibleNeighbors.length && <div className="empty-relation">برای این فیلتر رابطه‌ای ثبت نشده است.</div>}
+              {!visibleNeighbors.length && <div className="empty-relation">برای این انتخاب پیوندی منتشر نشده است؛ نبود پیوند، رابطهٔ علمی تازه‌ای را اثبات یا رد نمی‌کند.</div>}
             </div>
           </section>
         </section>

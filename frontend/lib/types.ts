@@ -499,6 +499,8 @@ export type SearchResults = {
   psychologists: Psychologist[];
   theories: Theory[];
   timeline_events: TimelineEvent[];
+  brain_entities: BrainAnatomy[];
+  assessments: AssessmentInstrument[];
   symptoms: {
     slug: string;
     name_en: string;
@@ -534,7 +536,7 @@ export type AtlasOverview = {
 
 export type KnowledgeGraphNode = {
   id: string;
-  type: "concept" | "disorder" | "symptom" | "therapy" | "technique" | "psychologist" | "theory" | "timeline";
+  type: "concept" | "disorder" | "symptom" | "therapy" | "technique" | "psychologist" | "theory" | "timeline" | "brain_anatomy" | "assessment";
   slug: string;
   label: string;
   name_en: string;
@@ -554,6 +556,8 @@ export type KnowledgeGraphNode = {
   family?: string;
   classifications?: string[];
   review_status?: string;
+  aliases?: string[];
+  aliases_truncated?: boolean;
   role?: string;
   nationality?: string;
   birth_year?: number | null;
@@ -575,6 +579,11 @@ export type KnowledgeGraphEdge = {
   target: string;
   kind: string;
   explanation: string;
+  predicate?: "part_of";
+  structural?: boolean;
+  direction?: "child_to_parent";
+  source_version?: string;
+  sources_truncated?: boolean;
   traversal_direction?: "forward" | "reverse";
   traversed_from?: string;
   traversed_to?: string;
@@ -590,6 +599,7 @@ export type KnowledgeGraphEdge = {
     verification_status?: string;
     doi?: string;
     pmid?: string;
+    note?: string;
   }[];
 };
 
@@ -657,6 +667,8 @@ export type KnowledgeGraphData = {
       psychologist: number;
       theory: number;
       timeline: number;
+      brain_anatomy: number;
+      assessment: number;
     };
     edge_kinds: Record<string, number>;
     available_edge_kinds?: Record<string, number>;
@@ -708,6 +720,136 @@ export type BrainAnatomyDetail = BrainAnatomy & {
   network_memberships_truncated: boolean;
   functional_associations: (BrainRelationEvidence & { subject_type: "anatomy"; task_context: string; population_context: string; concept: { slug: string; name_en: string; name_fa: string } })[];
   functional_associations_truncated: boolean;
+};
+
+// Assessment serializers use bounded collections and a smaller bibliography than other domains.
+export type AssessmentCollection<T> = { results: T[]; truncated: boolean };
+export type AssessmentSourceReference = {
+  id: number;
+  title: string;
+  citation: string;
+  url: string;
+  doi: string;
+  pmid: string;
+  publication_year: number | null;
+};
+export type AssessmentSourceLink = { source: AssessmentSourceReference; note: string };
+export type AssessmentAlias = {
+  text: string;
+  language: string;
+  alias_type: "name" | "acronym" | "translated_title";
+  source: AssessmentSourceReference;
+};
+export type AssessmentFormKind = "original" | "revision" | "short" | "unknown";
+export type AssessmentIntendedUse = "screening" | "research" | "severity" | "monitoring" | "diagnostic_support";
+export type AssessmentAvailability = "unknown" | "owner_access" | "public_access";
+export type AssessmentLicense = "unknown" | "restricted" | "public_domain" | "explicit_permission";
+export type AssessmentLanguageForm = {
+  key: string;
+  language: string;
+  label: string;
+  form_kind: "original" | "translation" | "adaptation";
+  owner: string;
+  authorization_status: "unknown" | "authorized";
+  authorization_note: string;
+  review_status: "reviewed";
+  authorization_source: AssessmentSourceReference | null;
+  sources: AssessmentCollection<AssessmentSourceLink>;
+};
+export type AssessmentPsychometricEvidence = {
+  key: string;
+  measurement_property: "reliability" | "validity" | "responsiveness";
+  statistic: string;
+  method: string;
+  value_text: string;
+  units: string;
+  uncertainty: string;
+  finding: string;
+  limitations: string;
+  extraction_locator: string;
+  review_status: "reviewed";
+};
+export type AssessmentValidationStudy = {
+  key: string;
+  design: string;
+  population: string;
+  sample_context: string;
+  sample_size: number | null;
+  administration: string;
+  informant: string;
+  method: string;
+  comparator: string;
+  limitations: string;
+  review_status: "reviewed";
+  version: string;
+  language_form: string;
+  language: string;
+  source: AssessmentSourceReference;
+  source_note: string;
+  findings: AssessmentCollection<AssessmentPsychometricEvidence>;
+};
+export type AssessmentAccess = {
+  key: string;
+  material_type: "questionnaire" | "manual" | "translation" | "metadata";
+  use: "owner_access" | "redistribution" | "metadata_listing";
+  jurisdiction: string;
+  owner: string;
+  availability: AssessmentAvailability;
+  license_status: AssessmentLicense;
+  terms: string;
+  verified_on: string | null;
+  expires_on: string | null;
+  language_form: string | null;
+  source: AssessmentSourceReference;
+  source_note: string;
+};
+export type AssessmentRelation = {
+  key: string;
+  predicate: "measures" | "research_measure_of" | "screens_for" | "monitors" | "diagnostic_support_for";
+  claim: string;
+  context: string;
+  limitations: string;
+  language_form: string | null;
+  target: { type: "concept" | "symptom" | "disorder"; slug: string; name_en: string };
+  sources: AssessmentCollection<AssessmentSourceLink>;
+};
+export type AssessmentVersion = {
+  key: string;
+  label: string;
+  form_kind: AssessmentFormKind;
+  publication_year: number | null;
+  construct: string;
+  intended_use: AssessmentIntendedUse | "";
+  administration: string;
+  informant: string;
+  population: string;
+  limitations: string;
+  review_status: "reviewed";
+  derived_from: string | null;
+  sources: AssessmentCollection<AssessmentSourceLink>;
+};
+export type AssessmentVersionDetail = AssessmentVersion & {
+  aliases: AssessmentCollection<AssessmentAlias>;
+  language_forms: AssessmentCollection<AssessmentLanguageForm>;
+  access: AssessmentCollection<AssessmentAccess>;
+  validation_studies: AssessmentCollection<AssessmentValidationStudy>;
+  relations: AssessmentCollection<AssessmentRelation>;
+};
+export type AssessmentInstrument = {
+  slug: string;
+  name_en: string;
+  name_fa: string;
+  description: string;
+  construct_overview: string;
+  rightsholder: string;
+  review_status: "reviewed";
+  aliases: AssessmentCollection<AssessmentAlias>;
+  versions: AssessmentCollection<AssessmentVersion>;
+  sources: AssessmentCollection<AssessmentSourceLink>;
+  interpretation_limitations: string;
+};
+export type AssessmentInstrumentDetail = Omit<AssessmentInstrument, "versions"> & {
+  versions: AssessmentCollection<AssessmentVersionDetail>;
 };
 
 export type TherapyFamily = {
