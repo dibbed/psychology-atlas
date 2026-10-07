@@ -1,6 +1,6 @@
 import re
 
-from django.db.models import Case, Exists, IntegerField, OuterRef, Prefetch, Q, Value, When
+from django.db.models import Exists, OuterRef, Prefetch, Q
 from rest_framework import generics
 from rest_framework.exceptions import ValidationError
 
@@ -8,7 +8,7 @@ from . import models
 from .brain_publication import NESTED_LIMIT, NONBLANK_PATTERN, URL_PATTERN, public_anatomy, resolved_sources
 from .brain_serializers import BrainAnatomyDetailSerializer, BrainAnatomyListSerializer
 from .pagination import AtlasPagination
-from .search_utils import icontains_any, search_variants
+from .search_utils import ranked_public_search
 
 
 def anatomy_queryset():
@@ -67,16 +67,7 @@ class BrainAnatomyListView(generics.ListAPIView):
             raise ValidationError({"q": "Search text must be at most 255 characters."})
         if q:
             aliases = valid_aliases().filter(entity_id=OuterRef("pk"))
-            qs = qs.filter(icontains_any(("name_en", "name_fa", "slug"), q) | Exists(aliases.filter(icontains_any(("text",), q))))
-            exact = Q()
-            exact_alias = Q()
-            for variant in search_variants(q):
-                for field in ("name_en", "name_fa", "slug"):
-                    exact |= Q(**{f"{field}__iexact": variant})
-                exact_alias |= Q(text__iexact=variant)
-            qs = qs.annotate(search_rank=Case(When(exact | Exists(aliases.filter(exact_alias)), then=Value(0)),
-                                            default=Value(1), output_field=IntegerField()))
-            return qs.distinct().order_by("search_rank", "name_en", "id")
+            return ranked_public_search(qs, q, aliases, ("name_en", "name_fa", "slug"))
         return qs.distinct().order_by("name_en", "id")
 
 

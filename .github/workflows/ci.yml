@@ -145,6 +145,14 @@ jobs:
           python manage.py audit_assessments
           python ../scripts/profile_assessments.py ./data/assessment-profile-postgres.json
 
+      - name: Global Search and Knowledge Graph integration and reviewed corpus profile
+        run: |
+          python manage.py test atlas.tests_v095_integration --noinput --verbosity 2 --durations 10 --timing
+          python manage.py publish_curated_brain --expected-dossier-sha256 50b6e33e25b76a77b6ef735503487ac5fab7832d7474e45ad6beb7acdc25a557 --expected-manifest-sha256 3f3538fd4f8195b0dbe1c8631d61674cd84c629e7bea1018ba29b91329a3920d --dry-run
+          python manage.py publish_curated_brain --expected-dossier-sha256 50b6e33e25b76a77b6ef735503487ac5fab7832d7474e45ad6beb7acdc25a557 --expected-manifest-sha256 3f3538fd4f8195b0dbe1c8631d61674cd84c629e7bea1018ba29b91329a3920d --apply
+          python manage.py verify_brain_publication
+          python ../scripts/profile_atlas_integration.py ./data/atlas-integration-profile-postgres.json
+
   frontend-build:
     name: Frontend typecheck and build
     runs-on: ubuntu-latest
@@ -171,6 +179,9 @@ jobs:
 
       - name: TypeScript typecheck
         run: npm run typecheck
+
+      - name: Assessment navigation checks
+        run: node --experimental-strip-types app/assessments/assessment.selfcheck.mjs
 
       - name: Production build
         run: npm run build

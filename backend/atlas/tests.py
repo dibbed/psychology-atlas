@@ -2780,9 +2780,17 @@ class AtlasApiTests(APITestCase):
         with CaptureQueriesContext(connection) as captured:
             response = self.client.get("/api/concept-map/")
         self.assertEqual(response.status_code, 200)
-        # v0.6.5 adds three constant node-table reads (Psychologist/Theory/Timeline)
-        # while preserving the original non-scaling guarantee for Concept count.
-        self.assertLessEqual(len(captured), 13)
+        # Empty new domains add exactly three reads: public anatomy, resolved
+        # Assessment source IDs, and eligible instruments (measured 16 vs 13).
+        self.assertLessEqual(len(captured), 13 + 3)
+        # Also compare corpus growth directly to catch per-node work.
+        extra = Concept.objects.create(slug="query-concept-extra", name_en="Extra", simple_definition="definition")
+        ConceptRelationship.objects.create(source_concept=concepts[-1], target_concept=extra,
+                                           relationship_type=ConceptRelationship.Kind.RELATED)
+        with CaptureQueriesContext(connection) as expanded:
+            response = self.client.get("/api/concept-map/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(expanded), len(captured))
 
     def test_daily_challenge_rolls_back_attempt_if_side_effect_fails(self):
         challenge = DailyChallenge.objects.create(

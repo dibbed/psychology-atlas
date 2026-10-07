@@ -1,7 +1,9 @@
 from collections.abc import Mapping
+from uuid import uuid4
 
 from django.contrib.auth.models import User
-from django.db.models import Case, Count, F, IntegerField, Prefetch, Q, Value, When
+from django.db import connection
+from django.db.models import Case, Count, Exists, F, IntegerField, OuterRef, Prefetch, Q, Value, When
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, permissions, status
@@ -12,6 +14,10 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from . import models as atlas_models
+from .assessment_views import AssessmentSerializer, loaded_instruments, public_sets
+from .brain_publication import NESTED_LIMIT, NONBLANK_PATTERN, public_anatomy, resolved_sources
+from .brain_serializers import BrainAnatomyListSerializer
+from .brain_views import anatomy_queryset, valid_aliases
 from .learning import (
     activity_heatmap,
     available_flashcards,
@@ -51,7 +57,7 @@ from .models import (
     UserNote,
     UserProgress,
 )
-from .search_utils import icontains_any
+from .search_utils import icontains_any, ranked_public_search
 from .serializers import (
     BookmarkSerializer,
     CaseAttemptStateSerializer,
@@ -76,6 +82,7 @@ from .serializers import (
     TheoryListSerializer,
     TimelineEventDetailSerializer,
     TimelineEventListSerializer,
+    ScientificSourceSerializer,
     UserNoteSerializer,
     UserSerializer,
 )
@@ -964,6 +971,8 @@ def global_search(request):
         "psychologists": [],
         "theories": [],
         "timeline_events": [],
+        "brain_entities": [],
+        "assessments": [],
     }
     if len(q) < 2:
         return Response(empty_payload)
@@ -1174,6 +1183,18 @@ def global_search(request):
         ).order_by("_search_exact", "year_start", "exact_date", "title_en", "id")[:10]
     )
 
+    brain_entities = ranked_public_search(
+        anatomy_queryset(), q, valid_aliases().filter(entity_id=OuterRef("pk")),
+        ("slug", "name_en", "name_fa", "description_en", "description_fa"),
+    )[:10]
+    assessment_sets = public_sets()
+    assessments = ranked_public_search(
+        loaded_instruments(assessment_sets), q, assessment_sets["aliases"].filter(instrument_id=OuterRef("pk")),
+        ("slug", "name_en", "name_fa", "description", "construct_overview"),
+        extra_match=Exists(assessment_sets["versions"].filter(instrument_id=OuterRef("pk")).filter(
+            icontains_any(("label", "key"), q))),
+    )[:10]
+
     return Response({
         "query": q,
         "disorders": DisorderListSerializer(disorders, many=True).data,
@@ -1201,6 +1222,8 @@ def global_search(request):
         "psychologists": PsychologistListSerializer(psychologists, many=True).data,
         "theories": TheoryListSerializer(theories, many=True).data,
         "timeline_events": TimelineEventListSerializer(timeline_events, many=True).data,
+        "brain_entities": BrainAnatomyListSerializer(brain_entities, many=True).data,
+        "assessments": AssessmentSerializer(assessments, many=True).data,
     })
 
 
@@ -1707,6 +1730,13 @@ from .validation import positive_int
 
 
 
+
+
+GRAPH_NODE_TYPES = (
+    "concept", "disorder", "symptom", "therapy", "technique",
+    "psychologist", "theory", "timeline", "brain_anatomy", "assessment",
+)
+STRUCTURAL_EDGE_KINDS = {"dsm_nearby", "brain_part_of"}
 
 
 def _build_atlas_graph():
@@ -2308,6 +2338,58 @@ def _build_atlas_graph():
         "href": f"/search?q={symptom.slug}",
     } for symptom in sorted(symptom_by_id.values(), key=lambda row: row.name_en))
 
+    anatomy = list(public_anatomy().order_by("name_en", "id").prefetch_related(Prefetch(
+        "aliases", queryset=valid_aliases().order_by("language", "text", "pk")[:NESTED_LIMIT + 1],
+        to_attr="public_aliases",
+    )))
+    for entity in anatomy:
+        nodes.append({
+            "id": f"brain_anatomy:{entity.slug}", "type": "brain_anatomy", "slug": entity.slug,
+            "label": entity.name_fa or entity.name_en, "name_en": entity.name_en, "name_fa": entity.name_fa,
+            "kind": entity.kind, "group": entity.get_kind_display(), "laterality": entity.laterality,
+            "domain": "brain_anatomy", "summary": entity.description_fa or entity.description_en,
+            "review_status": entity.review_status, "href": f"/brain/{entity.slug}",
+            "aliases": [alias.text for alias in entity.public_aliases[:NESTED_LIMIT]],
+            "aliases_truncated": len(entity.public_aliases) > NESTED_LIMIT,
+        })
+    anatomy_ids = {entity.pk for entity in anatomy}
+    hierarchy_sources = atlas_models.BrainHierarchyLinkSource.objects.filter(
+        source__in=resolved_sources(), note__regex=NONBLANK_PATTERN,
+    ).select_related("source").order_by("source_id", "pk")
+    for link in atlas_models.BrainHierarchyLink.objects.filter(
+        is_active=True, review_status="reviewed", child_id__in=anatomy_ids, parent_id__in=anatomy_ids,
+        source_version__regex=NONBLANK_PATTERN,
+    ).filter(Exists(hierarchy_sources.filter(relationship_id=OuterRef("pk")))).select_related(
+        "child", "parent",
+    ).order_by("child_id", "parent_id", "pk").prefetch_related(
+        Prefetch("source_links", queryset=hierarchy_sources[:NESTED_LIMIT + 1], to_attr="public_sources"),
+    ):
+        edges.append({
+            "source": f"brain_anatomy:{link.child.slug}", "target": f"brain_anatomy:{link.parent.slug}",
+            "kind": "brain_part_of", "predicate": "part_of", "structural": True,
+            "direction": "child_to_parent", "review_status": link.review_status,
+            "source_version": link.source_version, "explanation": link.explanation_fa or link.explanation_en,
+            "sources": [{**ScientificSourceSerializer(row.source).data, "note": row.note}
+                        for row in link.public_sources[:NESTED_LIMIT]],
+            "sources_truncated": len(link.public_sources) > NESTED_LIMIT,
+        })
+    assessment_sets = public_sets()
+    instruments = assessment_sets["instruments"].order_by("name_en", "id").prefetch_related(Prefetch(
+        "aliases", queryset=assessment_sets["aliases"]
+        .order_by("language", "text", "pk")[:NESTED_LIMIT + 1], to_attr="public_aliases",
+    ))
+    for instrument in instruments:
+        nodes.append({
+            "id": "assessment:" + instrument.slug, "type": "assessment", "slug": instrument.slug,
+            "label": instrument.name_fa or instrument.name_en,
+            "name_en": instrument.name_en, "name_fa": instrument.name_fa,
+            "kind": "instrument", "group": "Assessment", "domain": "assessment",
+            "summary": instrument.description, "review_status": instrument.review_status,
+            "href": "/assessments/" + instrument.slug,
+            "aliases": [alias.text for alias in instrument.public_aliases[:NESTED_LIMIT]],
+            "aliases_truncated": len(instrument.public_aliases) > NESTED_LIMIT,
+        })
+
     degree = {node["id"]: 0 for node in nodes}
     edge_kinds = {}
     for edge in edges:
@@ -2321,14 +2403,23 @@ def _build_atlas_graph():
 
 
 def invalidate_atlas_graph_cache():
-    cache.delete("atlas_graph")
+    from .signals import invalidate_graph_caches
+    invalidate_graph_caches()
 
 
 def _get_atlas_graph():
-    payload = cache.get("atlas_graph")
+    # Never share uncommitted data, including rolled-back curator previews.
+    payload = None
+    if not connection.in_atomic_block:
+        revision = cache.get_or_set("atlas_graph_revision", lambda: uuid4().hex, timeout=None)
+        cached = cache.get("atlas_graph")
+        if isinstance(cached, dict) and cached.get("revision") == revision:
+            payload = cached["payload"]
     if payload is None:
         payload = _build_atlas_graph()
-        cache.set("atlas_graph", payload, timeout=300)
+        if not connection.in_atomic_block and cache.get("atlas_graph_revision") == revision:
+            # Tagging also covers invalidation between the revision check and set.
+            cache.set("atlas_graph", {"revision": revision, "payload": payload}, timeout=300)
     nodes, edges, edge_kinds = payload
     return [dict(node) for node in nodes], [dict(edge) for edge in edges], dict(edge_kinds)
 
@@ -2347,10 +2438,7 @@ def _filter_graph(nodes, edges, request):
     relation = request.query_params.get("relation", "").strip()
     raw_degree = request.query_params.get("min_degree", "").strip()
 
-    valid_node_types = {
-        "all", "concept", "disorder", "symptom", "therapy", "technique",
-        "psychologist", "theory", "timeline",
-    }
+    valid_node_types = {"all", *GRAPH_NODE_TYPES}
     if node_type and node_type not in valid_node_types:
         raise ValidationError({"node_type": "نوع گره معتبر نیست."})
     if review_status and review_status not in atlas_models.ScientificReviewStatus.values:
@@ -2368,9 +2456,9 @@ def _filter_graph(nodes, edges, request):
     for node in nodes:
         if node_type and node_type != "all" and node["type"] != node_type:
             continue
-        if domain and (node["type"] != "concept" or node.get("domain") != domain):
+        if domain and (node["type"] not in {"concept", "brain_anatomy", "assessment"} or node.get("domain") != domain):
             continue
-        if kind and (node["type"] != "concept" or node.get("kind") != kind):
+        if kind and (node["type"] not in {"concept", "brain_anatomy", "assessment"} or node.get("kind") != kind):
             continue
         if subtype and (node["type"] != "concept" or node.get("subtype") != subtype):
             continue
@@ -2427,16 +2515,7 @@ def _filter_graph(nodes, edges, request):
 def concept_map(request):
     nodes, edges, all_edge_kinds = _get_atlas_graph()
     filtered_nodes, filtered_edges = _filter_graph(nodes, edges, request)
-    node_types = {
-        "concept": sum(1 for node in filtered_nodes if node["type"] == "concept"),
-        "disorder": sum(1 for node in filtered_nodes if node["type"] == "disorder"),
-        "symptom": sum(1 for node in filtered_nodes if node["type"] == "symptom"),
-        "therapy": sum(1 for node in filtered_nodes if node["type"] == "therapy"),
-        "technique": sum(1 for node in filtered_nodes if node["type"] == "technique"),
-        "psychologist": sum(1 for node in filtered_nodes if node["type"] == "psychologist"),
-        "theory": sum(1 for node in filtered_nodes if node["type"] == "theory"),
-        "timeline": sum(1 for node in filtered_nodes if node["type"] == "timeline"),
-    }
+    node_types = {kind: sum(node["type"] == kind for node in filtered_nodes) for kind in GRAPH_NODE_TYPES}
     edge_kinds = {}
     for edge in filtered_edges:
         edge_kinds[edge["kind"]] = edge_kinds.get(edge["kind"], 0) + 1
@@ -2462,10 +2541,7 @@ def concept_neighborhood(request, slug):
     depth = int(raw_depth)
     relation = request.query_params.get("relation", "").strip()
     node_type = request.query_params.get("node_type", "").strip()
-    if node_type and node_type not in {
-        "all", "concept", "disorder", "symptom", "therapy", "technique",
-        "psychologist", "theory", "timeline",
-    }:
+    if node_type and node_type not in {"all", *GRAPH_NODE_TYPES}:
         raise ValidationError({"node_type": "نوع گره معتبر نیست."})
 
     nodes, edges, all_edge_kinds = _get_atlas_graph()
@@ -2545,7 +2621,7 @@ def graph_path(request):
     for index, edge in enumerate(edges):
         if relation and edge["kind"] != relation:
             continue
-        if not relation and not include_structural and edge["kind"] == "dsm_nearby":
+        if not relation and not include_structural and edge["kind"] in STRUCTURAL_EDGE_KINDS:
             continue
         adjacency.setdefault(edge["source"], []).append((edge["target"], index, "forward"))
         adjacency.setdefault(edge["target"], []).append((edge["source"], index, "reverse"))
@@ -2593,7 +2669,7 @@ def graph_path(request):
         "to": target_id,
         "found": True,
         "hops": len(path_edges),
-        "structural_edges_included": include_structural or relation == "dsm_nearby",
+        "structural_edges_included": include_structural or relation in STRUCTURAL_EDGE_KINDS,
         "nodes": [node_by_id[node_id] for node_id in path_ids],
         "edges": path_edges,
     })
