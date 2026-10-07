@@ -92,6 +92,17 @@ class AssessmentIdentityTests(CuratedFixture, TestCase):
         with self.assertRaises(ValidationError):
             obj.save()
 
+    def test_derivation_uses_current_chain_instead_of_cached_version_objects(self):
+        a = m.AssessmentVersion.objects.create(instrument=self.instrument, key="synthetic-a", label="Synthetic A")
+        b = m.AssessmentVersion.objects.create(instrument=self.instrument, key="synthetic-b", label="Synthetic B")
+        c = m.AssessmentVersion.objects.create(instrument=self.instrument, key="synthetic-c", label="Synthetic C", derived_from=a)
+        fresh_b = m.AssessmentVersion.objects.get(pk=b.pk)
+        fresh_b.derived_from = c
+        fresh_b.save()
+        a.derived_from = b  # This cached B still has no parent, but the stored chain is B -> C -> A.
+        with self.assertRaises(ValidationError):
+            a.save()
+
     def test_multiple_persian_forms_can_coexist(self):
         other = m.AssessmentLanguageForm.objects.create(version=self.version, key="synthetic-other-translation", language="fa", label="Test-only translation", form_kind="translation")
         self.assertNotEqual(other.pk, self.form.pk)
@@ -512,6 +523,25 @@ class AssessmentAPITests(CuratedFixture, TestCase):
         self.assertEqual(version["validation_studies"]["results"], [])
         self.assertNotIn(self.form.key, [row["key"] for row in version["language_forms"]["results"]])
         self.assertFalse(any(row["language_form"] == self.form.key for row in version["access"]["results"]))
+
+    def test_derived_reference_hides_inactive_and_unreviewed_parent_versions(self):
+        full = m.AssessmentVersion.objects.get(key="dass-42")
+        for field, value in (("is_active", False), ("review_status", "unreviewed")):
+            full.is_active, full.review_status = True, "reviewed"
+            setattr(full, field, value)
+            full.save(update_fields=["is_active", "review_status"])
+            response = self.client.get("/api/assessments/depression-anxiety-stress-scales/")
+            versions = response.data["versions"]["results"]
+            self.assertEqual([row["key"] for row in versions], ["dass-21"])
+            self.assertIsNone(versions[0]["derived_from"])
+
+    def test_derived_reference_requires_public_parent_provenance(self):
+        full = m.AssessmentVersion.objects.get(key="dass-42")
+        QuerySet.update(full.source_links.all(), note="")  # Simulate damaged provenance, bypassing guarded saves.
+        response = self.client.get("/api/assessments/depression-anxiety-stress-scales/")
+        versions = response.data["versions"]["results"]
+        self.assertEqual([row["key"] for row in versions], ["dass-21"])
+        self.assertIsNone(versions[0]["derived_from"])
 
     def test_invalid_study_source_fails_closed_and_audit_detects(self):
         # Deliberately bypass model validation to represent a damaged legacy/admin database.

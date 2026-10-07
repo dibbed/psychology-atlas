@@ -108,7 +108,7 @@ def relation_data(relation):
 
 def version_data(version, detail=False):
     data = dict(**identity_data(version, ("key", "label", "form_kind", "publication_year", "construct", "intended_use", "administration", "informant", "population", "limitations", "review_status")),
-                derived_from=version.derived_from.key if version.derived_from_id else None,
+                derived_from=version.derived_from.key if version.derived_from_id and version.derived_from_public else None,
                 sources=bounded(version.public_sources, source_link))
     if detail:
         data.update(aliases=bounded(version.public_aliases, alias_data), language_forms=bounded(version.public_forms, form_data),
@@ -129,7 +129,8 @@ class AssessmentSerializer(serializers.BaseSerializer):
 def loaded_instruments(sets, *, detail=False):
     links = sets["links"].select_related("source").order_by("source_id", "pk")[:LIMIT + 1]
     aliases = sets["aliases"].select_related("source").order_by("language", "text", "pk")
-    versions = sets["versions"].select_related("derived_from").order_by("key", "pk").prefetch_related(
+    versions = sets["versions"].annotate(derived_from_public=Exists(sets["versions"].filter(
+        pk=OuterRef("derived_from_id"), instrument_id=OuterRef("instrument_id")))).select_related("derived_from").order_by("key", "pk").prefetch_related(
         Prefetch("source_links", queryset=links, to_attr="public_sources"))
     if detail:
         forms = sets["forms"].select_related("authorization_source").order_by("language", "key", "pk").prefetch_related(

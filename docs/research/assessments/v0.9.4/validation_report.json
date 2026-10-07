@@ -1,6 +1,6 @@
 {
   "date": "2026-10-07",
-  "scope": "Local validation of the final implementation before PR; GitHub and merged-main gates are reported separately.",
+  "scope": "Local validation of the final implementation; GitHub and merged-main gates are reported separately.",
   "baseline_sha": "0db337349ff892678f67e2c38c7f88648ea035eb",
   "branch": "feature/v0.9.4-assessments-atlas",
   "entry_gate": {
@@ -48,23 +48,23 @@
     "dossier_sha256": "6f42ca1c251ce45ab06a8bc3ffe81ec853bbb09c39c3acfe9d57d05956e5f9cf",
     "manifest_sha256": "fc7afe5047618ca568ed9f5981e1057d7687b9d143e7dc92b0cbcc49736c1ade",
     "staged_records": 43,
-    "first_apply_canonical_and_source_link_writes": 65,
     "repeat_canonical_writes": 0,
     "dry_run_net_writes": 0,
     "research_datasets": 4,
-    "research_records": 2294
+    "research_records": 2294,
+    "first_apply_records_created_including_sources_and_links": 65
   },
   "tests": {
     "assessment_sqlite": {
       "status": "PASS",
-      "tests": 77,
-      "seconds": 73.224,
+      "tests": 80,
+      "seconds": 56.009,
       "skipped": 1
     },
     "assessment_postgresql": {
       "status": "PASS",
-      "tests": 77,
-      "seconds": 84.06,
+      "tests": 80,
+      "seconds": 68.047,
       "skipped": 0
     },
     "brain_sqlite": {
@@ -81,8 +81,8 @@
     },
     "full_backend_sqlite": {
       "status": "PASS",
-      "tests": 538,
-      "seconds": 435.097,
+      "tests": 541,
+      "seconds": 416.136,
       "skipped": 6
     }
   },
@@ -153,7 +153,7 @@
             7,
             7
           ],
-          "median_ms": 41.283,
+          "median_ms": 35.395,
           "result_count": 4,
           "payload_bytes": 14132
         },
@@ -165,7 +165,7 @@
             13,
             13
           ],
-          "median_ms": 100.007,
+          "median_ms": 79.427,
           "result_count": null,
           "payload_bytes": 11946
         },
@@ -177,7 +177,7 @@
             7,
             7
           ],
-          "median_ms": 55.186,
+          "median_ms": 49.1,
           "result_count": 2,
           "payload_bytes": 8141
         },
@@ -189,7 +189,7 @@
             7,
             7
           ],
-          "median_ms": 52.715,
+          "median_ms": 53.432,
           "result_count": 2,
           "payload_bytes": 6928
         },
@@ -201,7 +201,7 @@
             7,
             7
           ],
-          "median_ms": 50.208,
+          "median_ms": 47.522,
           "result_count": 1,
           "payload_bytes": 3725
         },
@@ -213,7 +213,7 @@
             8,
             8
           ],
-          "median_ms": 46.388,
+          "median_ms": 41.963,
           "result_count": 1,
           "payload_bytes": 3725
         },
@@ -225,7 +225,7 @@
             8,
             8
           ],
-          "median_ms": 39.929,
+          "median_ms": 35.407,
           "result_count": 2,
           "payload_bytes": 6928
         },
@@ -237,7 +237,7 @@
             7,
             7
           ],
-          "median_ms": 52.855,
+          "median_ms": 45.253,
           "result_count": 1,
           "payload_bytes": 4938
         },
@@ -249,7 +249,7 @@
             8,
             8
           ],
-          "median_ms": 83.772,
+          "median_ms": 56.757,
           "result_count": 1,
           "payload_bytes": 3725
         }
@@ -266,7 +266,7 @@
             7,
             7
           ],
-          "median_ms": 43.982,
+          "median_ms": 39.602,
           "result_count": 4,
           "payload_bytes": 14100
         },
@@ -278,7 +278,7 @@
             13,
             13
           ],
-          "median_ms": 94.691,
+          "median_ms": 81.564,
           "result_count": null,
           "payload_bytes": 11924
         },
@@ -290,7 +290,7 @@
             7,
             7
           ],
-          "median_ms": 54.925,
+          "median_ms": 54.328,
           "result_count": 2,
           "payload_bytes": 8121
         },
@@ -302,7 +302,7 @@
             7,
             7
           ],
-          "median_ms": 54.05,
+          "median_ms": 52.509,
           "result_count": 2,
           "payload_bytes": 6914
         },
@@ -314,7 +314,7 @@
             7,
             7
           ],
-          "median_ms": 50.487,
+          "median_ms": 51.482,
           "result_count": 1,
           "payload_bytes": 3717
         },
@@ -326,7 +326,7 @@
             8,
             8
           ],
-          "median_ms": 45.316,
+          "median_ms": 43.488,
           "result_count": 1,
           "payload_bytes": 3717
         },
@@ -338,7 +338,7 @@
             8,
             8
           ],
-          "median_ms": 41.306,
+          "median_ms": 36.166,
           "result_count": 2,
           "payload_bytes": 6914
         },
@@ -350,7 +350,7 @@
             7,
             7
           ],
-          "median_ms": 58.141,
+          "median_ms": 50.504,
           "result_count": 1,
           "payload_bytes": 4924
         },
@@ -362,23 +362,29 @@
             8,
             8
           ],
-          "median_ms": 81.551,
+          "median_ms": 61.333,
           "result_count": 1,
           "payload_bytes": 3717
         }
       },
       "execution_plans": {
+        "list": {
+          "select_queries": 7,
+          "maximum_execution_ms": 5.396,
+          "summed_execution_ms": 5.997,
+          "maximum_planning_ms": 1.061
+        },
         "detail": {
           "select_queries": 13,
-          "maximum_execution_ms": 4.206,
-          "summed_execution_ms": 6.583,
-          "maximum_planning_ms": 2.074
+          "maximum_execution_ms": 3.084,
+          "summed_execution_ms": 5.004,
+          "maximum_planning_ms": 1.871
         },
         "language_license_filter": {
           "select_queries": 8,
-          "maximum_execution_ms": 5.531,
-          "summed_execution_ms": 8.285,
-          "maximum_planning_ms": 5.284
+          "maximum_execution_ms": 3.131,
+          "summed_execution_ms": 5.178,
+          "maximum_planning_ms": 4.757
         }
       }
     }
@@ -408,5 +414,10 @@
     "StudyPlan/Today integration",
     "v0.9.5",
     "v0.9 tag/release"
-  ]
+  ],
+  "review_regressions": [
+    "Inactive/unreviewed/unproven derivation targets are hidden without hiding the independent short form.",
+    "Derivation cycles are checked against the current stored chain, including cached-object regression."
+  ],
+  "ci_profiler_recovery": "Missing PostgreSQL output directory creation verified with a real request/profile run; no API/model behavior changed."
 }

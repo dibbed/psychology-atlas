@@ -178,6 +178,7 @@ class AssessmentVersion(AssessmentReviewedBase):
         if self.key != self.key.lower():
             raise ValidationError({"key": "Version keys are lowercase."})
         if self.derived_from_id:
+            self.derived_from = type(self).objects.get(pk=self.derived_from_id)
             if self.derived_from.instrument_id != self.instrument_id or self.derived_from_id == self.pk:
                 raise ValidationError({"derived_from": "Derivation must be another version of this family."})
             seen = {self.pk}

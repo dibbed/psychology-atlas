@@ -38,7 +38,7 @@ def profile():
                 queries.append(len(captured))
             result["measurements"][name] = dict(query_counts=queries, median_ms=round(statistics.median(elapsed), 3),
                 result_count=response.json().get("count"), payload_bytes=len(response.content))
-            if name in {"detail", "language_license_filter"}:
+            if name in {"list", "detail", "language_license_filter"}:
                 plan_queries[name] = list(captured.captured_queries)
         if connection.vendor == "postgresql":
             sql, params = loaded_instruments(public_sets(), detail=True).filter(slug="patient-health-questionnaire").query.sql_with_params()
@@ -59,5 +59,7 @@ if __name__ == "__main__":
     parser.add_argument("output")
     args = parser.parse_args()
     result = profile()
-    Path(args.output).write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({key: value for key,value in result.items() if key in {"vendor", "measurements"}}, ensure_ascii=False))
