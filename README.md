@@ -30,6 +30,8 @@ Runnable browser regression: pass the JavaScript function in [scripts/brain_brow
 
 Assessment, Global Search/Knowledge Graph integration, Study authority, diagnosis and release/tag creation remain outside this slice.
 
+The 2026-10-07 v0.9.3 hardening materializes PostgreSQL reviewed hierarchy-link checks once per SQL statement, preventing repeated provenance regex work when planner statistics underestimate a newly published corpus. Scientific filters and receipt verification remain unchanged. Brain CI reports its ten slowest tests and database setup/teardown times; the PostgreSQL health probe uses its configured test role and database. The 15-minute job limit is unchanged.
+
 ## Internal v0.9.2 — Brain infrastructure
 
 Internal v0.9.2 adds Brain API, staging validation, audit, and scientific relation infrastructure. The **2026-10-01 v0.9.2C controlled publication selection** contains 87 reviewed anatomical entities, 70 sourced hierarchy links, seven versioned network definitions, 50 aliases and 94 identifiers. FMA 5.1.0 replaces the rights-blocked Allen annotation provenance with independently checked human structural ontology data under CC BY 4.0. Publication requires the exact reviewed dossier and manifest hashes; `seed_mvp` and the read-only staging promoter never publish Brain data. See the [publication record and commands](docs/research/brain/v0.9.2c/README.md) and the [historical infrastructure record](docs/Psychology_Atlas_v0.9.2_Brain_Infrastructure_2026-09-30.md). No final v0.9 release/tag is created by this phase.

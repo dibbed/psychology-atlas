@@ -5,6 +5,7 @@ import re
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
 
+from django.db import connection
 from django.db.models import Q
 from django.db.models.expressions import RawSQL
 from django.db.models.functions import Length
@@ -88,8 +89,11 @@ def public_anatomy():
     ).order_by().values("pk").distinct().query.sql_with_params()
     entity_table = BrainAnatomicalEntity._meta.db_table
     hierarchy_table = BrainHierarchyLink._meta.db_table
+    # Empty/stale PostgreSQL statistics can inline these checks into a nested
+    # recursive join and revalidate source regexes thousands of times.
+    materialized = "MATERIALIZED " if connection.vendor == "postgresql" else ""
     sql = f"""
-        WITH RECURSIVE eligible(id) AS ({entity_sql}), checked_links(id) AS ({link_sql}), public_tree(id) AS (
+        WITH RECURSIVE eligible(id) AS ({entity_sql}), checked_links(id) AS {materialized}({link_sql}), public_tree(id) AS (
             SELECT e.id FROM eligible e WHERE NOT EXISTS (
                 SELECT 1 FROM {hierarchy_table} h WHERE h.child_id = e.id AND h.is_active
             )

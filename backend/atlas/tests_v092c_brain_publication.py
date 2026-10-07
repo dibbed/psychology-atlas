@@ -322,6 +322,22 @@ class PublishedCorpusTests(TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertLessEqual(len(queries), budget, (path, params, len(queries)))
 
+    @skipUnless(connection.vendor == "postgresql", "PostgreSQL execution-plan regression")
+    def test_primary_ancestry_checks_validate_links_once_per_query(self):
+        from .brain_publication import public_anatomy
+        sql, params = public_anatomy().order_by().values("pk").query.sql_with_params()
+        with connection.cursor() as cursor:
+            cursor.execute("EXPLAIN (ANALYZE, FORMAT JSON) " + sql, params)
+            plan = cursor.fetchone()[0][0]["Plan"]
+        nodes, checks = [plan], []
+        while nodes:
+            node = nodes.pop()
+            nodes.extend(node.get("Plans", []))
+            if node.get("Subplan Name") == "CTE checked_links":
+                checks.append((node["Actual Loops"], node["Actual Rows"]))
+        self.assertEqual(checks, [(1, 70)])
+        self.assertEqual(plan["Actual Rows"], 87)
+
 
 @skipUnless(connection.vendor == "postgresql", "Real concurrent publication requires PostgreSQL")
 class PostgreSQLControlledPublicationTests(TransactionTestCase):

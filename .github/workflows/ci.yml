@@ -94,7 +94,7 @@ jobs:
           POSTGRES_PASSWORD: disposable-ci-only
         ports: ["5432:5432"]
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U brain_test -d brain_publication_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -123,7 +123,7 @@ jobs:
       - name: Install PostgreSQL test driver
         run: python -m pip install --disable-pip-version-check "psycopg[binary]>=3.2,<4"
       - name: Brain regression and concurrent controlled publication tests
-        run: python manage.py test atlas.tests_v092c_brain_publication atlas.tests_v092_brain_api atlas.tests_v092_brain_staging atlas.tests_v092_brain_relations atlas.tests_v091_brain --noinput --verbosity 2
+        run: python manage.py test atlas.tests_v092c_brain_publication atlas.tests_v092_brain_api atlas.tests_v092_brain_staging atlas.tests_v092_brain_relations atlas.tests_v091_brain --noinput --verbosity 2 --durations 10 --timing
 
   frontend-build:
     name: Frontend typecheck and build
