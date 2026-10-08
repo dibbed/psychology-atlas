@@ -1,10 +1,11 @@
 {
   "project": "Psychology Atlas",
-  "version": "0.8.4",
-  "release_name": "Today Study Mode + Study Sessions",
-  "development_slice": "v0.8 Study Mode + Exam Planning + Advanced Recommendations ✅ COMPLETE",
+  "version": "0.9.0",
+  "release_name": "Brain Atlas + Assessments Atlas",
+  "development_slice": "v0.9.1–v0.9.5 implemented; final v0.9.0 publication gates pending",
+  "validation_context": "Legacy validation entries below retain their historical scope. Current v0.9 release evidence and blockers: docs/Psychology_Atlas_v0.9_Final_Release_Audit_2026-10-09.md. No final v0.9 tag or GitHub Release exists yet.",
   "stack": {
-    "frontend": "Next.js 16.3.5 + React 19.3 + TypeScript",
+    "frontend": "Next.js 16.3.8 + React 19.3 + TypeScript",
     "backend": "Django 5.2 + Django REST Framework",
     "auth": "JWT with refresh flow",
     "database_now": "SQLite",
@@ -463,7 +464,12 @@
     "0029_v082_study_blocks.py",
     "0030_studyblock_ck_study_block_started_status_and_more.py",
     "0031_v083_recommendation_feedback.py",
-    "0032_v084_study_sessions.py"
+    "0032_v084_study_sessions.py",
+    "0033_v091_brain_foundation.py",
+    "0034_v092_brain_relation_support.py",
+    "0035_v092_brain_alias_review.py",
+    "0036_v092_brain_identifier_review.py",
+    "0037_v094_assessments_atlas.py"
   ],
   "validation": {
     "django_check": "pass",
@@ -490,7 +496,7 @@
     "temporary_audit_user_cleanup": "pass · both v0.5.5 runtime-audit users deleted; 0 remaining",
     "therapy_foundation_tests": "3 targeted schema/provenance tests included in full suite",
     "canonical_module_cleanup": "pass · versioned backend runtime modules consolidated into views.py / serializers.py / seed_mvp.py",
-    "current_release": "v0.8.4 Today Study Mode + Study Sessions",
+    "current_release": "v0.8.4 remains the latest published release; implemented v0.9.0 awaits final publication gates",
     "v071_case_graph_audit": "pass · 6 current cases / 6 revisions / 18 nodes / 54 explicit transitions / 0 structural failures",
     "v071_case_seed_revision_idempotency": "pass · unchanged repeated seed remains 6 revisions / 18 nodes / 54 transitions; changed content publishes a new revision without mutating historical attempts",
     "v071_attempt_history_binding": "pass · legacy submit stores CaseAttempt.revision and prior attempts remain pinned after later case revisions",

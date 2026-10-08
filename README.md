@@ -1,10 +1,12 @@
-# Psychology Atlas — v0.8.4 · Today Study Mode + Study Sessions
+# Psychology Atlas — v0.9 · Brain Atlas + Assessments Atlas
 
 [![CI](https://github.com/dibbed/psychology-atlas/actions/workflows/ci.yml/badge.svg)](https://github.com/dibbed/psychology-atlas/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/dibbed/psychology-atlas/actions/workflows/codeql.yml/badge.svg)](https://github.com/dibbed/psychology-atlas/actions/workflows/codeql.yml)
 [![Latest release](https://img.shields.io/github/v/release/dibbed/psychology-atlas?display_name=tag)](https://github.com/dibbed/psychology-atlas/releases)
 
-یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. v0.8.4 یک نمای خواندنی «امروز» و جلسه‌های مطالعهٔ متمرکز را به StudyPlan، StudyBlock و Recommendation V2 وصل می‌کند. جلسه فقط بازهٔ زمانی و پایبندی به برنامه را ثبت می‌کند؛ تکمیل آن یادگیری، تسلط یا تکمیل خودکار Block را اثبات نمی‌کند. `/api/study/overview/`، رفتار Daily Challenge و موتورهای اصلی یادگیری حفظ شده‌اند.
+یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. پیاده‌سازی v0.9 اطلس مغز و اطلس ابزارهای سنجش را با هویت‌های مستقل، منابع علمی، حقوق ثبت‌شده و جست‌وجو/گراف سراسری ارائه می‌کند. این اطلس‌ها محتوای آموزشی‌اند؛ پرسش‌نامه، نمره‌گذاری یا استنتاج تشخیصی ارائه نمی‌کنند. قراردادهای StudyPlan، StudyBlock، StudySession و موتورهای یادگیری نسخه‌های پیشین حفظ شده‌اند.
+
+The final release target is **v0.9.0**, following the repository's full-SemVer annotated-tag convention. It is **not yet tagged or published**: fresh release browser/accessibility QA is blocked by the local frontend launch approval. The [2026-10-09 release audit](docs/Psychology_Atlas_v0.9_Final_Release_Audit_2026-10-09.md) records the verified implementation, current measurements and outstanding gates. The latest published release remains v0.8.4 until those gates pass.
 
 > این نرم‌افزار آموزشی است و ابزار تشخیص، درمان، ارزیابی صلاحیت بالینی یا جایگزین ارزیابی حرفه‌ای نیست.
 
@@ -18,7 +20,7 @@
 
 This code usage notice does not override licenses on credited third-party scientific data. The selected Brain FMA data are adapted under CC BY 4.0; CBIG network metadata retain their MIT notice. Those licenses permit commercial reuse within their respective scopes. See the [Brain data attribution](docs/research/brain/v0.9.2c/THIRD_PARTY_NOTICES.md).
 
-## Internal v0.9.5 — Assessment UI, Global Search and Knowledge Graph · 2026-10-08
+## Implemented v0.9.5 — Assessment UI, Global Search and Knowledge Graph · 2026-10-08
 
 `/assessments` and `/assessments/[slug]` now expose the existing reviewed registry with API-supported search, filters, pagination, exact versions/forms, contextual evidence and scoped rights. Global Search adds canonical Brain/Assessment results while preserving its existing domains. The graph adds public anatomical and instrument nodes plus sourced child-to-parent anatomical hierarchy; instruments remain isolated and no scientific cross-domain relationship is inferred.
 
@@ -26,13 +28,13 @@ Loading, retryable service failure, empty corpus, no matches, invalid addresses 
 
 Legacy relation counts use isolated correlated aggregates to avoid PostgreSQL join-product/JIT overhead while preserving filters and serialized counts. Next.js receives the 16.3.8 security patch with no new dependency.
 
-## Internal v0.9.4 — Assessment metadata foundation · 2026-10-07
+## Historical v0.9.4 slice — Assessment metadata foundation · 2026-10-07
 
 Read-only `/api/assessments/` and `/api/assessments/<slug>/` expose a curated educational registry of four instrument families and five exact versions. Six distinct language forms, two Persian PHQ-9 study contexts, two contextual reliability findings, eight aliases and ten sources preserve version, language, population and provenance. Six access records retain three unknown permissions, two official questionnaire public-domain statements and one restricted publisher-access scope. Persian display titles do not imply authorized or validated test forms.
 
 Additive migration `0037` separates family, version, language form, study, finding, access, alias, relation and source models. Explicit hash-pinned publication supports atomic dry runs, conflict detection, provenance verification and zero-write repeats; `seed_mvp` does not publish Assessments. No protected questionnaire content, scoring, diagnosis, frontend, global search/graph or Study integration is included. See the [scientific extraction, rights register and commands](docs/research/assessments/v0.9.4/README.md).
 
-## Internal v0.9.3 — Brain Atlas frontend · 2026-10-06
+## Historical v0.9.3 slice — Brain Atlas frontend · 2026-10-06
 
 `/brain` browses the public reviewed corpus with server-backed English/Persian/alias search, kind/laterality filters, pagination and published-parent navigation. `/brain/[slug]` presents bilingual names, sourced descriptions, hierarchy claims, aliases, identifiers and scientific provenance. The main atlas navigation includes Brain on desktop and mobile.
 
@@ -46,7 +48,7 @@ Assessment, Global Search/Knowledge Graph integration, Study authority, diagnosi
 
 The 2026-10-07 v0.9.3 hardening materializes PostgreSQL reviewed hierarchy-link checks once per SQL statement, preventing repeated provenance regex work when planner statistics underestimate a newly published corpus. Scientific filters and receipt verification remain unchanged. Brain CI reports its ten slowest tests and database setup/teardown times; the PostgreSQL health probe uses its configured test role and database. The 15-minute job limit is unchanged.
 
-## Internal v0.9.2 — Brain infrastructure
+## Historical v0.9.2 slice — Brain infrastructure
 
 Internal v0.9.2 adds Brain API, staging validation, audit, and scientific relation infrastructure. The **2026-10-01 v0.9.2C controlled publication selection** contains 87 reviewed anatomical entities, 70 sourced hierarchy links, seven versioned network definitions, 50 aliases and 94 identifiers. FMA 5.1.0 replaces the rights-blocked Allen annotation provenance with independently checked human structural ontology data under CC BY 4.0. Publication requires the exact reviewed dossier and manifest hashes; `seed_mvp` and the read-only staging promoter never publish Brain data. See the [publication record and commands](docs/research/brain/v0.9.2c/README.md) and the [historical infrastructure record](docs/Psychology_Atlas_v0.9.2_Brain_Infrastructure_2026-09-30.md). No final v0.9 release/tag is created by this phase.
 
@@ -65,7 +67,7 @@ desktop 1280x800 and mobile 390x844 Chromium QA            ✅
 
 `GET /api/study/today/` assembles study-local date, capacity, Plans, today/overdue Blocks, SRS review counts, current Session, Daily Challenge and the existing Recommendation V2 result. `POST /api/study/sessions/` starts a Block-anchored Session using a client UUID; current/detail/complete/abandon routes recover and end it. `/study` is the Today Command Center, and `/study/session/[id]` shows one focused Block action with a separate explicit Block-completion control. All personal routes require authentication and ownership. See [the v0.8.4 release record](docs/Psychology_Atlas_v0.8.4_Today_Study_Mode_Study_Sessions_2026-09-29.md) for contracts, migration and validation evidence.
 
-The v0.8 Study Mode + Exam Planning + Advanced Recommendations roadmap family is complete across v0.8.1–v0.8.4. The next roadmap boundary is **v0.9 — Brain Atlas + Assessments Atlas**.
+The v0.8 Study Mode + Exam Planning + Advanced Recommendations roadmap family is complete across v0.8.1–v0.8.4. The v0.9 implementation now exists; final publication is governed by the release audit above. The next product phase after release is **v1.0 — Admin CMS, Scientific Review Workflow, Research / Source Management, Full Cross-Domain Integration and final production hardening**; it has not started.
 
 ## v0.8.3 — Advanced Recommendations V2
 
@@ -1621,8 +1623,8 @@ v0.8.2  Study Blocks + Deterministic Scheduler ✅
 v0.8.3  Advanced Recommendations V2 ✅
 v0.8.4  Today Study Mode + Study Sessions + UI ✅
 v0.8    Study Mode + Exam Planning + Advanced Recommendations ✅ COMPLETE
-v0.9    Brain Atlas + Assessments Atlas (next)
-v1.0    Admin CMS + Scientific Review + Full cross-domain integration
+v0.9    Brain Atlas + Assessments Atlas implemented; final release gates pending
+v1.0    Admin CMS + Scientific Review Workflow + Research / Source Management + Full Cross-Domain Integration + Final production hardening (deferred)
 ```
 
 ## Deliberately not part of v0.5.5

@@ -1,8 +1,16 @@
 # Psychology Atlas Product Spec
 
-## Current release: v0.8.4 — Today Study Mode + Study Sessions
+## Current implementation: v0.9 — Brain Atlas + Assessments Atlas
 
-The v0.7 Clinical Case line remains frozen through v0.7.5. v0.8.1 established user-owned plan intent/configuration; v0.8.2 added deterministic, history-safe StudyBlock scheduling; v0.8.3 added explainable, bounded recommendations and owner-scoped feedback; **v0.8.4** adds owner-scoped focused Sessions and read-only Today orchestration. The v0.8 family is complete; v0.9 Brain Atlas + Assessments Atlas is the next boundary.
+The v0.7 Clinical Case line remains frozen through v0.7.5. v0.8.1–v0.8.4 completed personal study planning, scheduling, recommendations, focused Sessions and read-only Today orchestration. v0.9.1–v0.9.5 implement the Brain and Assessment atlases plus public Search/Graph discovery. The final release target is v0.9.0; the latest published release remains v0.8.4 pending the final gates in `docs/Psychology_Atlas_v0.9_Final_Release_Audit_2026-10-09.md`.
+
+### v0.9 implemented boundaries
+
+- Brain: 87 reviewed anatomical identities, 70 sourced primary hierarchy links, seven separate network definitions, 50 aliases and 94 external identifiers. Zero network memberships or functional associations are published. The hierarchy is partial; no coordinate, image, mesh, localization or Brain→Concept claim is fabricated.
+- Assessments: four instrument families, five exact versions, six language forms, two separate study contexts and two contextual findings. Six access records retain three unknown permissions, two official questionnaire public-domain scopes and one restricted scope. Display translations and validation publications do not establish translation authorization.
+- `/brain`, `/brain/[slug]`, `/assessments` and `/assessments/[slug]` provide Persian-first read-only browsing. Public API routes, Search and Graph reuse active/reviewed/provenance gates. The only new graph edges are sourced child-to-parent `brain_part_of`; Assessment nodes remain isolated.
+- Additive migrations 0033–0037 preserve the older domains. Controlled publication is explicit, hash-pinned, atomic, conflict-aware and verified on repeat. No protected test content, assessment scoring, user attempts, diagnosis or treatment behavior is added.
+- v1.0 is deferred: Admin CMS, Scientific Review Workflow, Research / Source Management, Full Cross-Domain Integration and final production hardening.
 
 Psychology Atlas is an interactive educational system for psychology students. It should behave as a connected learning system, not as a psychology blog and not as a diagnostic product.
 
@@ -800,8 +808,8 @@ v0.8.2  Study Blocks + Deterministic Scheduler ✅
 v0.8.3  Advanced Recommendations V2 ✅
 v0.8.4  Today Study Mode + Study Sessions + UI ✅
 v0.8  Study Mode + Exam Planning + Advanced Recommendations ✅ COMPLETE
-v0.9  Brain Atlas + Assessments Atlas (next)
-v1.0  Admin CMS + Scientific Review + Full cross-domain integration
+v0.9  Brain Atlas + Assessments Atlas implemented; final release gates pending
+v1.0  Admin CMS + Scientific Review Workflow + Research / Source Management + Full Cross-Domain Integration + Final production hardening (deferred)
 ```
 
-The current product version is v0.8.4 Today Study Mode + Study Sessions.
+The implemented product targets v0.9.0 Brain Atlas + Assessments Atlas. Publication remains pending the final release gates; v0.8.4 is still the latest published tag.
