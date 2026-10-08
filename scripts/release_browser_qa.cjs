@@ -30,7 +30,7 @@ function start(command, args, cwd, env, name) {
   return child;
 }
 async function stop(child) {
-  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  if (!child?.pid || child.exitCode !== null || child.signalCode !== null) { services.delete(child); return; }
   process.kill(-child.pid, "SIGCONT");
   process.kill(-child.pid, "SIGTERM");
   const exited = new Promise(resolve => child.once("exit", resolve));
@@ -97,6 +97,7 @@ async function main() {
   const longest = anatomy.results.reduce((a, b) => a.name_en.length > b.name_en.length ? a : b);
   const graph = await json("/concept-map/");
   report.corpus = { anatomy: anatomy.count, assessments: (await json("/assessments/")).count, graphNodes: graph.nodes.length, graphEdges: graph.edges.length };
+  check(report.corpus.anatomy === 87 && report.corpus.assessments === 4, "pinned public entity counts");
   const phqNode = graph.nodes.find(node => node.type === "assessment" && node.slug === "patient-health-questionnaire");
   const routes = ["/brain", "/brain/" + longest.slug, "/assessments", "/assessments/patient-health-questionnaire", "/search?q=PHQ-9", "/map?node=" + encodeURIComponent(phqNode.id)];
   for (const width of [1280, 390, 320]) {
@@ -106,7 +107,13 @@ async function main() {
       const scope = width + "px " + route;
       check(await page.locator("main:visible").count() === 1 && await page.locator("main:visible h1").count() === 1, "landmarks/headings " + scope);
       check(await page.locator("html").getAttribute("lang") === "fa" && await page.locator("html").getAttribute("dir") === "rtl", "Persian RTL " + scope);
-      await page.keyboard.press("Tab");
+      if (route.startsWith("/search")) {
+        check(await page.getByLabel("جست‌وجوی سراسری اطلس").evaluate(element => element === document.activeElement), "Search entry focus " + scope);
+        for (let step = 0; step < 20; step++) {
+          await page.keyboard.press("Shift+Tab");
+          if (await page.evaluate(() => document.activeElement.classList.contains("skip-link"))) break;
+        }
+      } else await page.keyboard.press("Tab");
       await page.waitForFunction(() => document.activeElement.classList.contains("skip-link") && getComputedStyle(document.activeElement).outlineStyle !== "none" && document.activeElement.getBoundingClientRect().top >= 0);
       check(true, "visible keyboard focus " + scope);
       if (index === 0) await page.screenshot({ path: path.join(output, "focus-" + width + ".png") });
@@ -191,7 +198,7 @@ async function main() {
   const finalGraph = await json("/concept-map/");
   check(finalGraph.nodes.some(node => node.type === "brain_anatomy") && finalGraph.nodes.some(node => node.type === "assessment"), "final Graph discovery");
   const unexpected = report.diagnostics.filter(item => {
-    if (["atlas_browser_resilience_checks", "supplemental-server-states"].includes(item.phase) && (item.kind === "requestfailed" || item.kind === "console" && /net::ERR_|Failed to load resource/.test(item.text))) return false;
+    if (item.phase === "atlas_browser_resilience_checks" && /127\.0\.0\.1:8015\/api\/(search|concept-map)\//.test(item.url || "") && (item.kind === "requestfailed" && /ERR_FAILED|ERR_CONNECTION_REFUSED/.test(item.text) || item.kind === "console" && /net::ERR_|Failed to load resource/.test(item.text))) return false;
     if (item.kind === "requestfailed" && /ERR_ABORTED/.test(item.text)) return false;
     if (item.kind === "http" && item.status === 404 && /not-an-approved-entity|v095-unknown-slug/.test(item.url)) return false;
     if (item.kind === "console" && /404 \(Not Found\)/.test(item.text) && ["brain_browser_checks", "atlas_browser_checks"].includes(item.phase)) return false;
@@ -204,7 +211,7 @@ async function main() {
 
 main().catch(async error => {
   report.status = "FAIL";
-  report.failure = { phase, message: error.message, stack: error.stack };
+  report.failure = { phase, message: error.message, stack: error.stack, url: page?.url(), focus: await page?.evaluate(() => document.activeElement.outerHTML).catch(() => "unavailable") };
   console.error(error);
   process.exitCode = 1;
   if (page) {
