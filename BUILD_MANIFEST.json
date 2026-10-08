@@ -1,10 +1,12 @@
 {
   "project": "Psychology Atlas",
-  "version": "0.8.4",
-  "release_name": "Today Study Mode + Study Sessions",
-  "development_slice": "v0.8 Study Mode + Exam Planning + Advanced Recommendations ✅ COMPLETE",
+  "version": "0.9.0",
+  "release_name": "Brain Atlas + Assessments Atlas",
+  "development_slice": "v0.9.1–v0.9.5 implemented; final v0.9.0 publication gates pending",
+  "validation_context": "Legacy validation entries below retain their historical scope. Current v0.9 release evidence and blockers: docs/Psychology_Atlas_v0.9_Final_Release_Audit_2026-10-09.md. No final v0.9 tag or GitHub Release exists yet.",
+  "content_context": "The content inventory below is the historical v0.8.4 snapshot. Current v0.9 counts, including 751 graph nodes / 1369 edges and four research archives / 2294 records, are recorded in the dated final-release audit; do not treat the older inventory as the candidate's live database.",
   "stack": {
-    "frontend": "Next.js 16.3.5 + React 19.3 + TypeScript",
+    "frontend": "Next.js 16.3.8 + React 19.3 + TypeScript",
     "backend": "Django 5.2 + Django REST Framework",
     "auth": "JWT with refresh flow",
     "database_now": "SQLite",
@@ -316,7 +318,17 @@
     "v084_today_read_api_and_next_action",
     "v084_today_command_center",
     "v084_focused_study_mode",
-    "v084_study_session_integrity_audit"
+    "v084_study_session_integrity_audit",
+    "v091_brain_anatomy_network_identity_and_provenance",
+    "v092_hash_pinned_brain_controlled_publication",
+    "v092_reviewed_brain_api_and_integrity_audit",
+    "v093_persian_brain_explorer_and_sourced_details",
+    "v093_postgresql_ancestry_materialization",
+    "v094_assessment_instrument_version_language_form_identity",
+    "v094_contextual_psychometric_evidence_and_scoped_rights",
+    "v094_hash_pinned_assessment_publication_and_read_only_api",
+    "v095_persian_assessment_explorer_and_sourced_details",
+    "v095_public_brain_assessment_search_and_structural_graph"
   ],
   "content": {
     "categories": 21,
@@ -463,7 +475,12 @@
     "0029_v082_study_blocks.py",
     "0030_studyblock_ck_study_block_started_status_and_more.py",
     "0031_v083_recommendation_feedback.py",
-    "0032_v084_study_sessions.py"
+    "0032_v084_study_sessions.py",
+    "0033_v091_brain_foundation.py",
+    "0034_v092_brain_relation_support.py",
+    "0035_v092_brain_alias_review.py",
+    "0036_v092_brain_identifier_review.py",
+    "0037_v094_assessments_atlas.py"
   ],
   "validation": {
     "django_check": "pass",
@@ -490,7 +507,7 @@
     "temporary_audit_user_cleanup": "pass · both v0.5.5 runtime-audit users deleted; 0 remaining",
     "therapy_foundation_tests": "3 targeted schema/provenance tests included in full suite",
     "canonical_module_cleanup": "pass · versioned backend runtime modules consolidated into views.py / serializers.py / seed_mvp.py",
-    "current_release": "v0.8.4 Today Study Mode + Study Sessions",
+    "current_release": "v0.8.4 remains the latest published release; implemented v0.9.0 awaits final publication gates",
     "v071_case_graph_audit": "pass · 6 current cases / 6 revisions / 18 nodes / 54 explicit transitions / 0 structural failures",
     "v071_case_seed_revision_idempotency": "pass · unchanged repeated seed remains 6 revisions / 18 nodes / 54 transitions; changed content publishes a new revision without mutating historical attempts",
     "v071_attempt_history_binding": "pass · legacy submit stores CaseAttempt.revision and prior attempts remain pinned after later case revisions",
