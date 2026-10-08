@@ -4,6 +4,7 @@
   "release_name": "Brain Atlas + Assessments Atlas",
   "development_slice": "v0.9.1–v0.9.5 implemented; final v0.9.0 publication gates pending",
   "validation_context": "Legacy validation entries below retain their historical scope. Current v0.9 release evidence and blockers: docs/Psychology_Atlas_v0.9_Final_Release_Audit_2026-10-09.md. No final v0.9 tag or GitHub Release exists yet.",
+  "content_context": "The content inventory below is the historical v0.8.4 snapshot. Current v0.9 counts, including 751 graph nodes / 1369 edges and four research archives / 2294 records, are recorded in the dated final-release audit; do not treat the older inventory as the candidate's live database.",
   "stack": {
     "frontend": "Next.js 16.3.8 + React 19.3 + TypeScript",
     "backend": "Django 5.2 + Django REST Framework",
