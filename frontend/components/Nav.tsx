@@ -13,6 +13,7 @@ const atlasGroups: { title: string; items: NavItem[] }[] = [
     { href: "/disorders", label: "اختلالات" }, { href: "/concepts", label: "مفاهیم" },
     { href: "/therapies", label: "درمان‌ها" }, { href: "/dsm", label: "مرجع DSM" },
     { href: "/brain", label: "اطلس مغز" },
+    { href: "/assessments", label: "ابزارهای ارزیابی" },
   ] },
   { title: "ارتباط‌ها و تاریخ", items: [
     { href: "/map", label: "نقشه دانش" }, { href: "/psychologists", label: "روان‌شناسان" },

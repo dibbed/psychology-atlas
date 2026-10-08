@@ -1,7 +1,7 @@
 """Read-only educational registry, with bounded context beside each finding."""
 import re
 
-from django.db.models import Case, Exists, F, IntegerField, OuterRef, Prefetch, Q, Value, When
+from django.db.models import Exists, F, OuterRef, Prefetch, Q
 from django.utils import timezone
 from rest_framework import generics, serializers
 from rest_framework.exceptions import ValidationError
@@ -9,7 +9,7 @@ from rest_framework.exceptions import ValidationError
 from . import models as m
 from .brain_publication import NONBLANK_PATTERN, resolved_sources
 from .pagination import AtlasPagination
-from .search_utils import icontains_any, search_variants
+from .search_utils import icontains_any, ranked_public_search
 
 LIMIT = 30
 INTERPRETATION = "Educational metadata. Screening and measurement do not establish a diagnosis. Findings apply only to the stated edition, form, population and study. Access does not grant redistribution or scoring permission."
@@ -198,15 +198,8 @@ class AssessmentListView(generics.ListAPIView):
             raise ValidationError({"q": "Search text must be at most 255 characters."})
         if q:
             aliases = sets["aliases"].filter(instrument_id=OuterRef("pk"))
-            qs = qs.filter(icontains_any(("name_en", "name_fa", "slug"), q) | Exists(aliases.filter(icontains_any(("text",), q)))
-                           | Exists(versions.filter(icontains_any(("label", "key"), q))))
-            exact, exact_alias = Q(), Q()
-            for variant in search_variants(q):
-                for field in ("name_en", "name_fa", "slug"):
-                    exact |= Q(**{field + "__iexact": variant})
-                exact_alias |= Q(text__iexact=variant)
-            qs = qs.annotate(search_rank=Case(When(exact | Exists(aliases.filter(exact_alias)), then=Value(0)), default=Value(1), output_field=IntegerField()))
-            return qs.order_by("search_rank", "name_en", "id")
+            return ranked_public_search(qs, q, aliases, ("name_en", "name_fa", "slug"),
+                extra_match=Exists(versions.filter(icontains_any(("label", "key"), q))))
         return qs.order_by("name_en", "id")
 
 

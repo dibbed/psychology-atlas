@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { dsmTypeLabel } from "@/lib/dsm";
@@ -14,6 +15,10 @@ export default function GlobalSearch({ initialQuery = "" }: { initialQuery?: str
   const [dsmData, setDsmData] = useState<DSMPaginatedRecords | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [retry, setRetry] = useState(0);
+  const urlQuery = useSearchParams().get("q") || "";
+
+  useEffect(() => setQuery(urlQuery), [urlQuery]);
 
   useEffect(() => {
     const q = query.trim();
@@ -32,11 +37,12 @@ export default function GlobalSearch({ initialQuery = "" }: { initialQuery?: str
         api<DSMPaginatedRecords>(`/dsm/records/?q=${encodeURIComponent(q)}&page_size=6`, { signal: controller.signal }),
       ])
         .then(([atlas, dsm]) => {
+          if (controller.signal.aborted) return;
           setData(atlas);
           setDsmData(dsm);
         })
         .catch((e: any) => {
-          if (e?.name !== "AbortError") {
+          if (!controller.signal.aborted && e?.name !== "AbortError") {
             setData(null);
             setDsmData(null);
             setError(e.message || "جست‌وجو انجام نشد.");
@@ -50,7 +56,15 @@ export default function GlobalSearch({ initialQuery = "" }: { initialQuery?: str
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query]);
+  }, [query, retry]);
+
+  function changeQuery(value: string) {
+    setQuery(value);
+    const url = new URL(window.location.href);
+    if (value) url.searchParams.set("q", value);
+    else url.searchParams.delete("q");
+    window.history.replaceState(window.history.state, "", url.pathname + url.search);
+  }
 
   const atlasTotal = data
     ? data.disorders.length
@@ -61,6 +75,8 @@ export default function GlobalSearch({ initialQuery = "" }: { initialQuery?: str
       + data.psychologists.length
       + data.theories.length
       + data.timeline_events.length
+      + data.brain_entities.length
+      + data.assessments.length
     : 0;
   const total = atlasTotal + (dsmData?.count || 0);
 
@@ -70,19 +86,51 @@ export default function GlobalSearch({ initialQuery = "" }: { initialQuery?: str
         autoFocus
         className="search global-search-input"
         value={query}
-        onChange={event => setQuery(event.target.value)}
-        placeholder="اختلال، مفهوم، درمان، روان‌شناس، نظریه، رویداد یا مرجع DSM..."
+        maxLength={255}
+        dir="auto"
+        onChange={event => changeQuery(event.target.value)}
+        placeholder="ساختار مغز، ابزار ارزیابی، مفهوم، اختلال یا مرجع DSM..."
         aria-label="جست‌وجوی سراسری اطلس"
       />
       {query.trim().length < 2 && <div className="card"><p>برای جست‌وجو در اطلس و مرجع DSM دست‌کم دو حرف بنویس.</p></div>}
       {loading && <p className="muted" role="status">در حال جست‌وجو…</p>}
-      {error && <div className="card error-state" role="alert"><p>{error}</p></div>}
+      {error && <div className="card error-state" role="alert"><p>{error}</p><button type="button" className="button" onClick={() => setRetry(value => value + 1)}>تلاش دوباره</button></div>}
       {data && dsmData && !loading && (
         <>
           <div className="results-count" role="status">{total.toLocaleString("fa-IR")} نتیجه پیدا شد.</div>
+          {total === 0 && <p className="card muted">نتیجه‌ای مطابق این عبارت پیدا نشد. نام یا اختصار دیگری را امتحان کنید.</p>}
+          <p className="muted">نتایج، هویت‌های ثبت‌شدهٔ اطلس هستند؛ جست‌وجو رابطهٔ علمی، محل عملکرد مغز یا تشخیص ایجاد نمی‌کند.</p>
           {total > 0 && <nav className="search-domain-jumps" aria-label="رفتن به دستهٔ نتایج">
+            {data.brain_entities.length > 0 && <a href="#search-brain">اطلس مغز <span>{data.brain_entities.length.toLocaleString("fa-IR")}</span></a>}
+            {data.assessments.length > 0 && <a href="#search-assessments">ابزارهای ارزیابی <span>{data.assessments.length.toLocaleString("fa-IR")}</span></a>}
             {([["search-dsm", "مرجع DSM", dsmData.count], ["search-disorders", "اختلالات", data.disorders.length], ["search-concepts", "مفاهیم", data.concepts.length], ["search-therapies", "درمان‌ها", data.therapies.length], ["search-techniques", "تکنیک‌ها", data.techniques.length], ["search-symptoms", "نشانه‌ها", data.symptoms.length], ["search-psychologists", "روان‌شناسان", data.psychologists.length], ["search-theories", "نظریه‌ها", data.theories.length], ["search-timeline", "تاریخ", data.timeline_events.length]] as const).filter(([, , count]) => count > 0).map(([id, label, count]) => <a href={`#${id}`} key={id}>{label} <span>{count.toLocaleString("fa-IR")}</span></a>)}
           </nav>}
+
+          <section className="search-section" id="search-brain">
+            <div className="search-section-head"><h2>ساختارهای مغز</h2><span>{data.brain_entities.length.toLocaleString("fa-IR")}</span></div>
+            <div className="grid">
+              {data.brain_entities.map(item => <Link className="card" href={`/brain/${item.slug}`} key={item.slug}>
+                <div className="meta">ساختار آناتومی · اطلس مغز</div>
+                <h3>{item.name_fa || <bdi lang="en">{item.name_en}</bdi>}</h3>
+                {item.name_fa && <div className="latin-label"><bdi lang="en">{item.name_en}</bdi></div>}
+                <ReviewStatus status={item.review_status} compact />
+              </Link>)}
+              {!data.brain_entities.length && <div className="card muted">ساختاری مطابق این عبارت پیدا نشد.</div>}
+            </div>
+          </section>
+          <section className="search-section" id="search-assessments">
+            <div className="search-section-head"><h2>ابزارهای ارزیابی</h2><span>{data.assessments.length.toLocaleString("fa-IR")}</span></div>
+            <div className="grid">
+              {data.assessments.map(item => <Link className="card" href={`/assessments/${item.slug}`} key={item.slug}>
+                <div className="meta">خانوادهٔ ابزار · اطلس ارزیابی</div>
+                <h3>{item.name_fa || <bdi lang="en">{item.name_en}</bdi>}</h3>
+                {item.name_fa && <div className="latin-label"><bdi lang="en">{item.name_en}</bdi></div>}
+                <p dir="auto">{item.description}</p>
+                <ReviewStatus status={item.review_status} compact />
+              </Link>)}
+              {!data.assessments.length && <div className="card muted">ابزاری مطابق این عبارت پیدا نشد.</div>}
+            </div>
+          </section>
 
           <section className="search-section dsm-search-results" id="search-dsm">
             <div className="search-section-head">

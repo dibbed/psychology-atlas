@@ -2,7 +2,7 @@ import Link from "next/link";
 import DSMGraphLoader from "@/components/DSMGraphLoader";
 import KnowledgeMapLoader from "@/components/KnowledgeMapLoader";
 import { publicFetch } from "@/lib/api";
-import type { AtlasOverview, DSMOverview } from "@/lib/types";
+import type { DSMOverview } from "@/lib/types";
 
 type MapPageProps = {
   searchParams: Promise<{ node?: string; scope?: string }>;
@@ -12,9 +12,8 @@ export default async function MapPage({ searchParams }: MapPageProps) {
   const params = await searchParams;
   const dsmScope = params.scope === "dsm";
 
-  const atlasOverview = dsmScope ? null : await publicFetch<AtlasOverview>("/atlas-overview/");
   const dsmOverview = dsmScope ? await publicFetch<DSMOverview>("/dsm/overview/") : null;
-  const nodeCount = dsmScope ? dsmOverview?.counts.records ?? 0 : atlasOverview?.graph.nodes ?? 0;
+  const nodeCount = dsmOverview?.counts.records ?? 0;
 
   return (
     <main className="shell page stack graph-page">
@@ -33,8 +32,8 @@ export default async function MapPage({ searchParams }: MapPageProps) {
           </div>
         </div>
         <div className="graph-page-note">
-          <strong>{nodeCount.toLocaleString("fa-IR")}</strong>
-          <span>{dsmScope ? "رکورد مرجع با پیوندهای ثبت‌شده" : "گره در دامنه‌های بالینی، مفهومی، درمانی و تاریخی"}</span>
+          <strong>{dsmScope ? nodeCount.toLocaleString("fa-IR") : "پیوندهای ثبت‌شده"}</strong>
+          <span>{dsmScope ? "رکورد مرجع با پیوندهای ثبت‌شده" : "ساختار مغز، ابزار ارزیابی و دامنه‌های بالینی، مفهومی، درمانی و تاریخی"}</span>
         </div>
       </header>
       {dsmScope ? (

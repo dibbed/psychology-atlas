@@ -1,6 +1,8 @@
 from django.core.cache import cache
+from django.db import transaction
 from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
+from uuid import uuid4
 
 from . import models as atlas_models
 from .models import (
@@ -65,6 +67,19 @@ V06_GRAPH_MODELS = (
 )
 
 
+V095_GRAPH_MODELS = (
+    atlas_models.BrainAnatomicalEntity,
+    atlas_models.BrainAnatomicalAlias,
+    atlas_models.BrainAnatomicalEntitySource,
+    atlas_models.BrainHierarchyLink,
+    atlas_models.BrainHierarchyLinkSource,
+    atlas_models.AssessmentInstrument,
+    atlas_models.AssessmentVersion,
+    atlas_models.AssessmentAlias,
+    atlas_models.AssessmentSource,
+)
+
+
 GRAPH_MODELS = (
     Category,
     Concept,
@@ -91,11 +106,18 @@ GRAPH_MODELS = (
     TherapyFamily,
     TherapyTechnique,
     TherapyTechniqueSource,
-) + V06_GRAPH_MODELS
+) + V06_GRAPH_MODELS + V095_GRAPH_MODELS
+
+
+def _clear_graph_cache():
+    cache.set("atlas_graph_revision", uuid4().hex, timeout=None)
+    cache.delete("atlas_graph")
 
 
 def invalidate_graph_caches(*_args, **_kwargs):
-    cache.delete("atlas_graph")
+    _clear_graph_cache()
+    # A concurrent reader may refill the old committed graph before this write commits.
+    transaction.on_commit(_clear_graph_cache, using=_kwargs.get("using"))
 
 
 for model in GRAPH_MODELS:
