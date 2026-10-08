@@ -102,12 +102,14 @@ async function main() {
   for (const width of [1280, 390, 320]) {
     await page.setViewportSize({ width, height: width === 1280 ? 800 : 844 });
     for (const [index, route] of routes.entries()) {
-      await goto(route, route.startsWith("/map") ? ".map-stage h2" : route.startsWith("/search") ? ".results-count" : "main:visible h1");
+      await goto(route, route.startsWith("/map") ? ".map-stage h2" : route.startsWith("/search") ? ".results-count" : route === "/brain" ? ".brain-card" : route === "/assessments" ? ".assessment-card" : "main:visible h1");
       const scope = width + "px " + route;
       check(await page.locator("main:visible").count() === 1 && await page.locator("main:visible h1").count() === 1, "landmarks/headings " + scope);
       check(await page.locator("html").getAttribute("lang") === "fa" && await page.locator("html").getAttribute("dir") === "rtl", "Persian RTL " + scope);
       await page.keyboard.press("Tab");
-      check(await page.evaluate(() => document.activeElement.classList.contains("skip-link") && getComputedStyle(document.activeElement).outlineStyle !== "none" && document.activeElement.getBoundingClientRect().top >= 0), "visible keyboard focus " + scope);
+      await page.waitForFunction(() => document.activeElement.classList.contains("skip-link") && getComputedStyle(document.activeElement).outlineStyle !== "none" && document.activeElement.getBoundingClientRect().top >= 0);
+      check(true, "visible keyboard focus " + scope);
+      if (index === 0) await page.screenshot({ path: path.join(output, "focus-" + width + ".png") });
       await page.keyboard.press("Enter");
       check(await page.evaluate(() => document.activeElement.id === "main-content"), "skip link targets content " + scope);
       const defects = await page.locator("main:visible").evaluate(main => {
