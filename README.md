@@ -1005,7 +1005,7 @@ GET /api/techniques/<slug>/
 
 ## Stack
 
-- **Frontend:** Next.js 16.3.3 + React 19 + TypeScript
+- **Frontend:** Next.js 16.3.8 + React 19.3 + TypeScript
 - **Backend:** Django 5.2 + Django REST Framework
 - **Auth:** JWT + automatic access-token refresh
 - **Database now:** SQLite
@@ -1144,7 +1144,9 @@ Each concept can include:
 
 Every curated seeded disorder has at least one Concept link. Every Cognitive Distortion subtype now has an active flashcard, and the dedicated practice bank covers definition recognition plus harder confusion/contrast cases. DSM-generated Disorder pages may rely primarily on their linked MASTER profile until dedicated cross-domain enrichment is added.
 
-### Knowledge Graph
+### Knowledge Graph (historical v0.5.4 snapshot)
+
+The layers, counts and examples in this subsection describe the earlier graph baseline. Current v0.9 has ten node types and a 751-node / 1,369-edge full graph, with sourced Brain containment and isolated Assessment families. See the final-release audit above for current types, path semantics and measured query costs.
 
 Route:
 
@@ -1421,7 +1423,9 @@ Django ORM
 SQLite now / PostgreSQL later
 ```
 
-Current migration history includes:
+The current Atlas migration tip is `0037_v094_assessments_atlas`. Additive `0033`–`0036` implement Brain storage/review protections; `0037` adds Assessment storage. Upgrade/preservation evidence is recorded in the final-release audit above.
+
+Historical migration inventory through v0.8.4:
 
 ```text
 0003_concept_dailychallenge_dailychallengechoice_and_more.py

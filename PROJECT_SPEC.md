@@ -544,7 +544,9 @@ Cross-domain integration from v0.5.4:
 Every one of the 30 curated seeded Disorders currently has at least one Concept link. DSM-generated Disorder pages may rely primarily on their MASTER profile until later cross-domain enrichment.
 The current seed has 44 concepts, 50 active flashcards and an 18-item Cognitive Distortion recognition bank. Practice scoring is server-side and feeds StudyActivity plus Concept Progress.
 
-### Knowledge Graph
+### Knowledge Graph (historical v0.5.4 snapshot)
+
+The layers, examples and five-type inventory below retain their original baseline scope. Current v0.9 has ten node types and a 751-node / 1,369-edge full graph, including sourced child-to-parent Brain containment and isolated Assessment families. Current public gates and structural-path semantics are documented in the final-release audit linked above.
 
 Current graph layers:
 
