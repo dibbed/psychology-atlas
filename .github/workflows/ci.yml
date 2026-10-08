@@ -146,14 +146,18 @@ jobs:
           python manage.py verify_brain_publication
           python ../scripts/profile_atlas_integration.py ./data/atlas-integration-profile-postgres.json --query-plans
 
+      - name: Global Search and Knowledge Graph integration tests
+        env:
+          PYTHONUNBUFFERED: "1"
+          PGOPTIONS: "-c statement_timeout=60000 -c lock_timeout=15000"
+        run: python manage.py test atlas.tests_v095_integration atlas.tests.V063KnowledgeApiTests --noinput --verbosity 2 --durations 10 --timing
+
       - name: Brain regression and concurrent controlled publication tests
         run: python manage.py test atlas.tests_v092c_brain_publication atlas.tests_v092_brain_api atlas.tests_v092_brain_staging atlas.tests_v092_brain_relations atlas.tests_v091_brain --noinput --verbosity 2 --durations 10 --timing
 
       - name: Assessment regression, migration and concurrent controlled publication tests
         run: python manage.py test atlas.tests_v094_assessments atlas.tests_v094_assessment_migrations --noinput --verbosity 2 --durations 10 --timing
 
-      - name: Global Search and Knowledge Graph integration tests
-        run: python manage.py test atlas.tests_v095_integration atlas.tests.V063KnowledgeApiTests --noinput --verbosity 2 --durations 10 --timing
 
   frontend-build:
     name: Frontend typecheck and build
