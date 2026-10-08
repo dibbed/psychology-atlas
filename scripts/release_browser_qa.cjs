@@ -60,7 +60,7 @@ async function newPage() {
   page.on("console", message => {
     if (["warning", "error"].includes(message.type())) report.diagnostics.push({ phase, kind: "console", text: message.text(), url: message.location().url });
   });
-  page.on("requestfailed", request => report.diagnostics.push({ phase, kind: "requestfailed", url: request.url(), text: request.failure()?.errorText }));
+  page.on("requestfailed", request => report.diagnostics.push({ phase, kind: "requestfailed", url: request.url(), text: request.failure()?.errorText, prefetch: !!request.headers()["next-router-prefetch"] }));
   page.on("response", response => {
     if (response.status() >= 400) report.diagnostics.push({ phase, kind: "http", url: response.url(), status: response.status() });
   });
@@ -120,7 +120,7 @@ async function main() {
       await page.keyboard.press("Enter");
       check(await page.evaluate(() => document.activeElement.id === "main-content"), "skip link targets content " + scope);
       const defects = await page.locator("main:visible").evaluate(main => {
-        const visible = element => !!element.getClientRects().length;
+        const visible = element => element.checkVisibility();
         const named = element => element.getAttribute("aria-label") || element.getAttribute("aria-labelledby") || element.labels?.length;
         return {
           unlabeled: [...main.querySelectorAll("input:not([type=hidden]), select, textarea")].filter(visible).filter(element => !named(element)).length,
@@ -199,9 +199,9 @@ async function main() {
   check(finalGraph.nodes.some(node => node.type === "brain_anatomy") && finalGraph.nodes.some(node => node.type === "assessment"), "final Graph discovery");
   const unexpected = report.diagnostics.filter(item => {
     if (item.phase === "atlas_browser_resilience_checks" && /127\.0\.0\.1:8015\/api\/(search|concept-map)\//.test(item.url || "") && (item.kind === "requestfailed" && /ERR_FAILED|ERR_CONNECTION_REFUSED/.test(item.text) || item.kind === "console" && /net::ERR_|Failed to load resource/.test(item.text))) return false;
-    if (item.kind === "requestfailed" && /ERR_ABORTED/.test(item.text)) return false;
+    if (item.kind === "requestfailed" && /ERR_ABORTED/.test(item.text) && item.prefetch && new URL(item.url).origin === origin && new URL(item.url).searchParams.has("_rsc")) return false;
     if (item.kind === "http" && item.status === 404 && /not-an-approved-entity|v095-unknown-slug/.test(item.url)) return false;
-    if (item.kind === "console" && /404 \(Not Found\)/.test(item.text) && ["brain_browser_checks", "atlas_browser_checks"].includes(item.phase)) return false;
+    if (item.kind === "console" && /404 \(Not Found\)/.test(item.text) && /not-an-approved-entity|v095-unknown-slug/.test(item.url || "")) return false;
     return true;
   });
   report.unexpectedDiagnostics = unexpected;
