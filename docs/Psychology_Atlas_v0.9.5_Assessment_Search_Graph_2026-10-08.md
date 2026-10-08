@@ -12,7 +12,7 @@ This records implementation and executed local validation from base main `859d69
 - Graph type/domain/kind metadata and validation include the new domains. Isolated instruments remain usable through discovery, selection and canonical navigation. Structural edges are excluded from default paths; explicit `include_structural=1` or `relation=brain_part_of` enables traversal while retaining original edge direction/provenance.
 - Cache revision tags reject stale cold builders; atomic reads do not populate shared cache. Signals invalidate immediately and after commit for included entities, public aliases/versions, ancestry and bibliography/claim links. The configured default remains Django LocMem: invalidation is process-local, not a demonstrated distributed multi-worker guarantee.
 
-No schema, seed/publication policy, protected test content, scoring, diagnosis, Study/CMS feature, dependency, tag or release is changed.
+No schema, seed/publication policy, protected test content, scoring, diagnosis, Study/CMS feature, tag or release is changed. Next.js and its locked platform packages receive the security patch from 16.3.6 to 16.3.8; no dependency is added.
 
 ## Observed corpus and scientific limits
 
@@ -55,7 +55,7 @@ The final full suite includes all later integration regressions and migration te
 python manage.py test atlas.tests_v095_integration atlas.tests.TherapyCrossDomainGraphTests atlas.tests.V063KnowledgeApiTests atlas.tests.AtlasApiTests.test_concept_map_returns_concept_and_disorder_edges atlas.tests.AtlasApiTests.test_global_search_hides_orphan_symptoms atlas.tests.AtlasApiTests.test_global_search_matches_disorder_and_concept_slugs atlas.tests.AtlasApiTests.test_concept_map_query_count_does_not_scale_per_concept atlas.tests.AtlasApiTests.test_search_normalizes_common_arabic_and_persian_letter_variants atlas.tests.AtlasApiTests.test_graph_exposes_node_metadata_degree_and_edge_explanation atlas.tests.AtlasApiTests.test_graph_filters_by_domain_and_relation atlas.tests.AtlasApiTests.test_neighborhood_supports_depth_two atlas.tests.AtlasApiTests.test_graph_path_finds_shortest_structured_route atlas.tests.AtlasApiTests.test_neighborhood_node_type_never_returns_disconnected_second_level_node atlas.tests.AtlasApiTests.test_graph_min_degree_is_applied_after_relation_filter atlas.tests.AtlasApiTests.test_graph_path_marks_reverse_traversal atlas.tests.AtlasApiTests.test_graph_path_excludes_dsm_nearby_shortcuts_by_default atlas.tests.AtlasApiTests.test_graph_cache_invalidates_after_model_change --noinput --verbosity 1
 ```
 
-The PostgreSQL job extends the existing Brain/Assessment API, migration and concurrent publication suites with all `atlas.tests_v095_integration` tests and read-only profiling on the approved selection in a disposable PostgreSQL 17 database. No local PostgreSQL result is claimed: a password-free connection probe raised `OperationalError`, with its specific cause unrecorded. Its exact PR/main run must be inspected. Deterministic cache race tests simulate adverse ordering; they do not establish distributed cache behavior.
+The PostgreSQL job extends the existing Brain/Assessment API, migration and concurrent publication suites with all `atlas.tests_v095_integration` tests and read-only profiling on the approved selection in a disposable PostgreSQL 17 database. Initial PR head `012177b` passed 122 Brain, 80 Assessment/migration and 26 integration PostgreSQL tests. Diagnostic head `76e4176` passed the first two suites but timed out at the existing 15-minute job limit before finishing integration; it is not a passing head. The following diagnostic head runs profiling first, without increasing that limit. An isolated local PostgreSQL 17.5 cluster on loopback port 55495 was subsequently initialized with approved existing publication commands; all migrations were applied. Its Windows build has no JIT, so its timing cannot establish Linux JIT behavior. Its 91-node/70-edge selection contains the approved Brain/Assessment corpus only. Exact final PR/main runs remain separate gates. Deterministic cache race tests simulate adverse ordering; they do not establish distributed cache behavior.
 
 ## Real browser evidence and runnable QA
 
@@ -76,6 +76,8 @@ To rerun, start the documented backend/frontend with `NEXT_PUBLIC_API_URL=http:/
 ## Query and performance evidence
 
 `python ../scripts/profile_atlas_integration.py <output.json>` uses Django's real HTTP client, `perf_counter`, `CaptureQueriesContext`, one cache-cold sample and five subsequent samples. No SQL writes are allowed. Cold means only graph cache cleared; database/OS caches remain. Bytes are uncompressed serialized response bytes; timings include eligibility, serialization and response handling. Search has no application cache. Raw profiles/logs stay outside the PR.
+
+`--query-plans` additionally runs PostgreSQL `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` for the three slowest captured SELECTs of the first `PHQ-9` request, outside the timed sample. Initial Linux CI search medians were 1,865.906–2,113.390 ms; Windows PostgreSQL plans exposed high legacy count-query estimates, but no JIT. These findings prompted investigation rather than a new benchmark target or relaxed limit.
 
 | SQLite request / representative query | Cold / warm SQL | Warm median ms | Payload bytes |
 | --- | --- | --- | --- |
