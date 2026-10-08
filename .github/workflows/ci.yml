@@ -195,6 +195,71 @@ jobs:
       - name: Dependency vulnerability audit
         run: npm audit --audit-level=high
 
+  browser-release-qa:
+    name: Browser release QA
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DEBUG: "1"
+      DB_ENGINE: sqlite
+      PYTHONUNBUFFERED: "1"
+      NEXT_TELEMETRY_DISABLED: "1"
+      NEXT_PUBLIC_API_URL: http://127.0.0.1:8015/api
+      CORS_ALLOWED_ORIGINS: http://127.0.0.1:3015
+      DRF_ANON_RATE: 20000/min
+      SQLITE_PATH: ${{ runner.temp }}/browser-release.sqlite3
+      EMPTY_SQLITE_PATH: ${{ runner.temp }}/browser-empty.sqlite3
+      BROWSER_QA_OUTPUT: ${{ runner.temp }}/browser-qa
+      NODE_PATH: ${{ runner.temp }}/browser-tools/node_modules
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Set up Node.js 22
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install existing backend and frontend dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -r backend/requirements.txt
+          npm ci --prefix frontend
+      - name: Install pinned isolated browser tooling
+        run: |
+          npm install --prefix "$RUNNER_TEMP/browser-tools" --no-package-lock --ignore-scripts playwright@1.64.0
+          "$RUNNER_TEMP/browser-tools/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Prepare reproducible reviewed and empty validation databases
+        working-directory: backend
+        run: |
+          SQLITE_PATH="$EMPTY_SQLITE_PATH" python manage.py migrate --noinput
+          python manage.py migrate --noinput
+          python manage.py seed_mvp
+          python manage.py publish_curated_brain --expected-dossier-sha256 50b6e33e25b76a77b6ef735503487ac5fab7832d7474e45ad6beb7acdc25a557 --expected-manifest-sha256 3f3538fd4f8195b0dbe1c8631d61674cd84c629e7bea1018ba29b91329a3920d --apply
+          python manage.py publish_curated_assessments --apply
+          python manage.py audit_brain_atlas
+          python manage.py audit_assessments
+          python manage.py verify_brain_publication
+          python manage.py verify_research_datasets
+      - name: Build production frontend
+        working-directory: frontend
+        run: npm run build
+      - name: Run all existing browser harnesses and scoped accessibility smoke
+        run: node scripts/release_browser_qa.cjs
+      - name: Preserve browser evidence and failure diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: browser-release-qa-${{ github.sha }}
+          path: ${{ runner.temp }}/browser-qa
+          if-no-files-found: warn
+          retention-days: 14
+
   repository-hygiene:
     name: Repository hygiene
     runs-on: ubuntu-latest
