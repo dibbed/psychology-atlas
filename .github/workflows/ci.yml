@@ -153,7 +153,7 @@ jobs:
         run: python manage.py test atlas.tests_v094_assessments atlas.tests_v094_assessment_migrations --noinput --verbosity 2 --durations 10 --timing
 
       - name: Global Search and Knowledge Graph integration tests
-        run: python manage.py test atlas.tests_v095_integration --noinput --verbosity 2 --durations 10 --timing
+        run: python manage.py test atlas.tests_v095_integration atlas.tests.V063KnowledgeApiTests --noinput --verbosity 2 --durations 10 --timing
 
   frontend-build:
     name: Frontend typecheck and build

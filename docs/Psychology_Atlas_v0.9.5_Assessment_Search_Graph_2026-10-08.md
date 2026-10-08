@@ -38,7 +38,7 @@ Environment: Windows/PowerShell, Python 3.12.8 with installed project dependenci
 | `python manage.py test atlas.tests.AtlasApiTests.test_concept_map_query_count_does_not_scale_per_concept atlas.tests_v095_integration --noinput --verbosity 1` | exit 0; 27 run / 27 passed; final focused checks |
 | `python manage.py test atlas.tests_v095_integration atlas.tests_v092_brain_api atlas.tests_v092_brain_relations atlas.tests_v092c_brain_publication atlas.tests_v091_brain atlas.tests_v094_assessments --noinput --verbosity 1` | exit 0; 200 run / 194 passed / 6 PostgreSQL-only skips; preceding snapshot |
 | Focused legacy search/graph compatibility invocation below | exit 0; 55 run / 55 passed; preceding snapshot |
-| `python manage.py test --noinput --durations 15 --timing` | exit 0; 567 run / 561 passed / 6 PostgreSQL-only skips; 412.499 s tests, 431.594 s total |
+| `python manage.py test --noinput --durations 15 --timing` | pre-count-fix snapshot: exit 0; 567 run / 561 passed / 6 PostgreSQL-only skips; 412.499 s tests, 431.594 s total |
 | `python manage.py check` | exit 0; zero issues |
 | `python manage.py makemigrations --check --dry-run` | exit 0; no changes |
 | `python manage.py showmigrations` | exit 0; all applied, single Atlas leaf `0037_v094_assessments_atlas` |
@@ -49,7 +49,9 @@ Environment: Windows/PowerShell, Python 3.12.8 with installed project dependenci
 | `node --experimental-strip-types app/assessments/assessment.selfcheck.mjs` | exit 0; normalization, duplicate/unsupported filter rejection, local pagination, filter preservation/reset |
 | `git diff --check` | exit 0 |
 
-The final full suite includes all later integration regressions and migration tests. The 55-test preceding invocation (log redirection omitted) was:
+After the count fix, `python manage.py test atlas.tests.V063KnowledgeApiTests atlas.tests_v095_integration --noinput --verbosity 1` ran 41 tests on each engine: SQLite 40 passed / one PostgreSQL-only skip (15.400 s), isolated PostgreSQL 41 passed (35.310 s), both exit 0. These cover all nine legacy search/catalog/detail callers, scoped distinct relation-row counts, inactive exclusions, integer zeros, canonical alias deduplication and the actual configured PostgreSQL JIT cost threshold. Final current-source Django check, migration drift/applied listing and every audit in the table also exited 0 after this edit.
+
+The 567-test snapshot includes the integration regressions and migration tests before the subsequent legacy count optimization; final-head CI reruns the full suite. The 55-test preceding invocation (log redirection omitted) was:
 
 ```sh
 python manage.py test atlas.tests_v095_integration atlas.tests.TherapyCrossDomainGraphTests atlas.tests.V063KnowledgeApiTests atlas.tests.AtlasApiTests.test_concept_map_returns_concept_and_disorder_edges atlas.tests.AtlasApiTests.test_global_search_hides_orphan_symptoms atlas.tests.AtlasApiTests.test_global_search_matches_disorder_and_concept_slugs atlas.tests.AtlasApiTests.test_concept_map_query_count_does_not_scale_per_concept atlas.tests.AtlasApiTests.test_search_normalizes_common_arabic_and_persian_letter_variants atlas.tests.AtlasApiTests.test_graph_exposes_node_metadata_degree_and_edge_explanation atlas.tests.AtlasApiTests.test_graph_filters_by_domain_and_relation atlas.tests.AtlasApiTests.test_neighborhood_supports_depth_two atlas.tests.AtlasApiTests.test_graph_path_finds_shortest_structured_route atlas.tests.AtlasApiTests.test_neighborhood_node_type_never_returns_disconnected_second_level_node atlas.tests.AtlasApiTests.test_graph_min_degree_is_applied_after_relation_filter atlas.tests.AtlasApiTests.test_graph_path_marks_reverse_traversal atlas.tests.AtlasApiTests.test_graph_path_excludes_dsm_nearby_shortcuts_by_default atlas.tests.AtlasApiTests.test_graph_cache_invalidates_after_model_change --noinput --verbosity 1
@@ -71,6 +73,8 @@ The existing Playwright MCP harness ran against an actual Next.js production bui
 
 Successful real journeys collected zero runtime/console errors or unexpected failed HTTP responses; expected invalid-address responses and intentional network failures were kept separate. Desktop/mobile screenshots were visually inspected and kept outside tracked evidence. This is keyboard/reflow smoke, not full accessibility compliance.
 
+Those completed journeys used Next 16.3.6. A later smoke restart failed because the QA backend omitted the port-3015 CORS origin; the local launch environment was corrected and the real API now returns HTTP 200 with the matching origin header. The browser restart is not a passing journey. After the Next patch, the command approval layer repeatedly rejected localhost frontend startup with `blocked by policy`; the alternate installed process connector was also unavailable. Final browser/post-merge smoke remains unverified until a permitted actual server/browser run succeeds; build success does not replace it.
+
 To rerun, start the documented backend/frontend with `NEXT_PUBLIC_API_URL=http://127.0.0.1:8015/api`, navigate to the local frontend, then pass each script's function to Playwright MCP `browser_run_code_unsafe`. For real service-failure QA stop only that disposable backend, inspect index/detail retryable errors, restart it and retry. Empty-corpus QA used a second copy with individually validated deactivation of four instrument families; the reviewed integration copy was preserved. Do not publish/seed or mutate production data for QA.
 
 ## Query and performance evidence
@@ -79,20 +83,24 @@ To rerun, start the documented backend/frontend with `NEXT_PUBLIC_API_URL=http:/
 
 `--query-plans` additionally runs PostgreSQL `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` for the three slowest captured SELECTs of the first `PHQ-9` request, outside the timed sample. Initial Linux CI search medians were 1,865.906–2,113.390 ms; Windows PostgreSQL plans exposed high legacy count-query estimates, but no JIT. These findings prompted investigation rather than a new benchmark target or relaxed limit.
 
+Linux diagnostic head `1559ff9` confirmed the cause: legacy psychologist/theory count joins estimated costs 728,025.60 / 16,290,453.13 and triggered JIT compilation costing 967.792 / 865.856 ms, against complete executions of 968.078 / 866.150 ms. Brain search cost was 543.03, execution 60.924 ms, without JIT. `PHQ-9` remained 15 queries / 3,847 bytes and measured 2,037.836 ms warm median. That head passed all 122 / 80 / 26 PostgreSQL tests within the unchanged limit; its frontend audit failed on newly reported Next advisories. Local patch validation on exact installed/locked 16.3.8 passed typecheck, build, navigation selfcheck and `npm audit` (zero vulnerabilities). The failed CI head is not merge evidence.
+
+The fix isolates each existing filtered `Count(distinct=True)` in a correlated subquery against the same caller queryset, avoiding independent relation-branch join products without changing relation counts or activity gates. Final Windows PostgreSQL plans cost 1,363.93 / 1,696.12 / 265.60; `PHQ-9` measured 15 queries, 3,851 bytes and 116.383 ms warm median. Its smaller corpus and absent LLVM JIT prevent direct comparison to SQLite or proof of Linux latency; final CI profiles independently validate Linux. No database JIT setting, query budget or test timeout was raised.
+
 | SQLite request / representative query | Cold / warm SQL | Warm median ms | Payload bytes |
 | --- | --- | --- | --- |
-| Full graph, 751 nodes / 1,369 edges | 52 / 0 | 13.599 | 1,330,845 |
-| Brain graph contribution, 87 anatomies | 52 / 0 | 5.400 | 193,166 |
-| Assessment graph contribution, 4 instruments | 52 / 0 | 4.023 | 4,354 |
-| Global Search `PHQ-9` | 15 / 15 | 82.179 | 3,855 |
-| Global Search `پرسش‌نامه` | 15 / 15 | 71.518 | 7,072 |
-| Global Search `brain` | 13 / 13 | 71.326 | 16,033 |
-| Global Search legacy `corpus` | 13 / 13 | 68.358 | 8,605 |
-| Brain list/search contribution `brain` | 4 / 4 | 43.398 | 14,960 |
-| Assessment list/search contribution `PHQ-9` | 7 / 7 | 39.061 | 3,725 |
-| Path, structural disabled / explicitly enabled | 52 / 0 | 4.402 / 4.699 | 117 / 3,578 |
+| Full graph, 751 nodes / 1,369 edges | 52 / 0 | 14.815 | 1,330,845 |
+| Brain graph contribution, 87 anatomies | 52 / 0 | 6.072 | 193,166 |
+| Assessment graph contribution, 4 instruments | 52 / 0 | 5.586 | 4,354 |
+| Global Search `PHQ-9` | 15 / 15 | 85.754 | 3,855 |
+| Global Search `پرسش‌نامه` | 15 / 15 | 85.775 | 7,072 |
+| Global Search `brain` | 13 / 13 | 90.044 | 16,033 |
+| Global Search legacy `corpus` | 13 / 13 | 113.351 | 8,605 |
+| Brain list/search contribution `brain` | 4 / 4 | 73.915 | 14,960 |
+| Assessment list/search contribution `PHQ-9` | 7 / 7 | 52.194 | 3,725 |
+| Path, structural disabled / explicitly enabled | 52 / 0 | 7.899 / 6.526 | 117 / 3,578 |
 
-First graph cold sample was 621.005 ms including initialization; subsequent cold filtered/path samples were 323.747–339.336 ms. Before integration the same local corpus measured graph 45 cold / 0 warm queries, 337.6 ms cold / 12.85 ms warm and 1,137,169 bytes; old Global Search `PHQ-9` measured eight queries / 20.62 ms / 145 bytes because it lacked the new domain. These are illustrative same-machine samples, not a production SLA or controlled benchmark: active test/browser work, initialization and corpus matches affect timings.
+The final post-count-fix graph cold sample was 665.127 ms including initialization; subsequent cold filtered/path samples were 350.600–469.084 ms. The preceding integration snapshot measured graph 621.005 ms cold / 13.599 ms warm and global `PHQ-9` 82.179 ms, Persian 71.518 ms, `brain` 71.326 ms and legacy `corpus` 68.358 ms. The final SQLite sample is slower while concurrent validation runs; it does not establish a SQLite performance improvement. Query counts and payload bytes are unchanged by the count fix. Before integration the same local corpus measured graph 45 cold / 0 warm queries, 337.6 ms cold / 12.85 ms warm and 1,137,169 bytes; old Global Search `PHQ-9` measured eight queries / 20.62 ms / 145 bytes because it lacked the new domain. These are illustrative same-machine samples, not a production SLA or controlled benchmark: active test/browser work, initialization and corpus matches affect timings.
 
 The legacy synthetic absolute graph budget is retained as measured 13 + 3 fixed reads = 16 (public anatomy, resolved Assessment source IDs, instruments); growth checks still reject per-node queries. The real corpus adds seven fixed graph reads. New search prefetches bounded rows/collections; there is no whole-table per-result retrieval. Eligibility still reads the shared resolved source registry once per Assessment request.
 

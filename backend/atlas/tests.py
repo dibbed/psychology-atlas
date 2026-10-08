@@ -5491,6 +5491,124 @@ class V063KnowledgeApiTests(APITestCase):
         self.assertEqual(short["theories"], [])
         self.assertEqual(short["timeline_events"], [])
 
+    def test_v095_relation_counts_preserve_scope_multiplicity_and_alias_dedup(self):
+        atlas_models.PsychologistTheory.objects.create(
+            psychologist=self.psychologist, theory=self.theory, relationship_type="contributed_to",
+        )
+        atlas_models.PsychologistTheory.objects.create(
+            psychologist=self.psychologist, theory=self.related_theory, relationship_type="proposed",
+        )
+        atlas_models.PsychologistTheory.objects.create(
+            psychologist=self.other_psychologist, theory=self.theory, relationship_type="proposed",
+        )
+        atlas_models.PsychologistConcept.objects.create(
+            psychologist=self.psychologist, concept=self.concept, relationship_type="contributed_to",
+        )
+        atlas_models.TheoryConcept.objects.create(
+            theory=self.theory, concept=self.concept, relationship_type="associated_with",
+        )
+        atlas_models.TimelinePsychologist.objects.create(
+            event=self.event, psychologist=self.psychologist, role="context",
+        )
+        atlas_models.TimelineTheory.objects.create(event=self.event, theory=self.theory, role="context")
+        atlas_models.TimelineTheory.objects.create(event=self.event, theory=self.related_theory, role="context")
+        atlas_models.PsychologistAlias.objects.create(psychologist=self.psychologist, text="J. Researcher alternate")
+        atlas_models.TheoryAlias.objects.create(theory=self.theory, text="V63M alternate")
+
+        cases = (
+            ("psychologists", self.psychologist, "J. Researcher", {
+                "theory_count": 3, "concept_count": 2, "therapy_count": 1, "timeline_event_count": 2,
+            }, {"theory": self.theory.slug}, "theory_count"),
+            ("theories", self.theory, "V63M", {
+                "psychologist_count": 3, "concept_count": 2, "therapy_count": 1,
+                "technique_count": 1, "timeline_event_count": 2,
+            }, {"psychologist": self.psychologist.slug}, "psychologist_count"),
+            ("timeline", self.event, self.event.slug, {
+                "psychologist_count": 2, "theory_count": 3, "therapy_count": 1,
+                "technique_count": 1, "concept_count": 1,
+            }, {"theory": self.theory.slug}, "theory_count"),
+        )
+        for route, owner, query, expected, filters, scoped_count in cases:
+            with self.subTest(route=route):
+                catalog_filters = ({"year_from": owner.year_start, "year_to": owner.year_start}
+                                   if route == "timeline" else {"q": query})
+                catalog = self.client.get(f"/api/{route}/", catalog_filters)
+                self.assertEqual(catalog.status_code, 200)
+                self.assertEqual(catalog.json()["count"], 1)
+                detail = self.client.get(f"/api/{route}/{owner.slug}/")
+                self.assertEqual(detail.status_code, 200)
+                search = self.client.get("/api/search/", {"q": query})
+                self.assertEqual(search.status_code, 200)
+                rows = search.json()["timeline_events" if route == "timeline" else route]
+                self.assertEqual([row["slug"] for row in rows], [owner.slug])
+                for row in (catalog.json()["results"][0], detail.json(), rows[0]):
+                    self.assertEqual({key: row[key] for key in expected}, expected)
+                filtered = self.client.get(f"/api/{route}/", filters)
+                self.assertEqual(filtered.status_code, 200)
+                row = next(row for row in filtered.json()["results"] if row["slug"] == owner.slug)
+                self.assertEqual(row[scoped_count], 2)
+                self.assertEqual(
+                    {key: row[key] for key in expected if key != scoped_count},
+                    {key: value for key, value in expected.items() if key != scoped_count},
+                )
+
+    def test_v095_relation_counts_keep_zero_rows_and_public_activity_filters(self):
+        cases = (
+            ("psychologists", self.other_psychologist, self.psychologist,
+             ("theory_count", "concept_count", "therapy_count", "timeline_event_count")),
+            ("theories", self.related_theory, self.theory,
+             ("psychologist_count", "concept_count", "therapy_count", "technique_count", "timeline_event_count")),
+            ("timeline", self.later_event, self.event,
+             ("psychologist_count", "theory_count", "therapy_count", "technique_count", "concept_count")),
+        )
+        for phase in ("without_links", "inactive_links_or_endpoints"):
+            if phase == "inactive_links_or_endpoints":
+                for obj in (self.person_theory, self.timeline_person, self.timeline_theory,
+                            self.concept, self.family, self.technique):
+                    obj.is_active = False
+                    obj.save(update_fields=["is_active"])
+            for route, empty_owner, linked_owner, keys in cases:
+                owner = empty_owner if phase == "without_links" else linked_owner
+                with self.subTest(phase=phase, route=route):
+                    catalog_filters = ({"year_from": owner.year_start, "year_to": owner.year_start}
+                                       if route == "timeline" else {"q": owner.slug})
+                    catalog = self.client.get(f"/api/{route}/", catalog_filters)
+                    self.assertEqual(catalog.status_code, 200)
+                    self.assertEqual(catalog.json()["count"], 1)
+                    detail = self.client.get(f"/api/{route}/{owner.slug}/")
+                    self.assertEqual(detail.status_code, 200)
+                    search = self.client.get("/api/search/", {"q": owner.slug})
+                    self.assertEqual(search.status_code, 200)
+                    rows = search.json()["timeline_events" if route == "timeline" else route]
+                    self.assertEqual([row["slug"] for row in rows], [owner.slug])
+                    for row in (catalog.json()["results"][0], detail.json(), rows[0]):
+                        for key in keys:
+                            self.assertIs(type(row[key]), int)
+                            self.assertEqual(row[key], 0)
+
+    def test_v095_global_search_plans_stay_below_jit_threshold(self):
+        if connection.vendor != "postgresql":
+            self.skipTest("PostgreSQL execution-plan regression")
+        with connection.cursor() as cursor:
+            cursor.execute("SHOW jit_above_cost")
+            jit_threshold = float(cursor.fetchone()[0])
+        if jit_threshold < 0:
+            self.skipTest("PostgreSQL jit_above_cost is disabled")
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.get("/api/search/", {"q": "PHQ-9"})
+        self.assertEqual(response.status_code, 200)
+        for model in (atlas_models.Psychologist, atlas_models.Theory, atlas_models.TimelineEvent):
+            table = model._meta.db_table
+            with self.subTest(table=table):
+                selects = [query["sql"] for query in queries if query["sql"].startswith("SELECT")
+                           and "COUNT(" in query["sql"] and f' FROM "{table}"' in query["sql"]]
+                self.assertEqual(len(selects), 1)
+                with connection.cursor() as cursor:
+                    cursor.execute("EXPLAIN (FORMAT JSON) " + selects[0])
+                    plan = cursor.fetchone()[0][0]["Plan"]
+                self.assertLess(plan["Total Cost"], jit_threshold,
+                                f"{table} search plan unnecessarily crosses PostgreSQL's JIT threshold")
+
     def test_v065_graph_contains_v06_nodes_explicit_edges_and_provenance(self):
         cache.clear()
         response = self.client.get("/api/concept-map/")

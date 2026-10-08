@@ -24,6 +24,8 @@ This code usage notice does not override licenses on credited third-party scient
 
 Loading, retryable service failure, empty corpus, no matches, invalid addresses and absent optional evidence remain separate. See the [implementation and validation record](docs/Psychology_Atlas_v0.9.5_Assessment_Search_Graph_2026-10-08.md) for runnable browser checks, measured query/payload costs and corpus limitations. No schema migration or final v0.9 release/tag is introduced.
 
+Legacy relation counts use isolated correlated aggregates to avoid PostgreSQL join-product/JIT overhead while preserving filters and serialized counts. Next.js receives the 16.3.8 security patch with no new dependency.
+
 ## Internal v0.9.4 — Assessment metadata foundation · 2026-10-07
 
 Read-only `/api/assessments/` and `/api/assessments/<slug>/` expose a curated educational registry of four instrument families and five exact versions. Six distinct language forms, two Persian PHQ-9 study contexts, two contextual reliability findings, eight aliases and ten sources preserve version, language, population and provenance. Six access records retain three unknown permissions, two official questionnaire public-domain statements and one restricted publisher-access scope. Persian display titles do not imply authorized or validated test forms.

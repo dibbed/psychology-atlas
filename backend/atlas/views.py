@@ -3,7 +3,8 @@ from uuid import uuid4
 
 from django.contrib.auth.models import User
 from django.db import connection
-from django.db.models import Case, Count, Exists, F, IntegerField, OuterRef, Prefetch, Q, Value, When
+from django.db.models import Case, Count, Exists, F, IntegerField, OuterRef, Prefetch, Q, Subquery, Value, When
+from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, permissions, status
@@ -3185,8 +3186,21 @@ def _v063_year_param(request, key):
     return value
 
 
+def _v063_relation_counts(qs, **counts):
+    # Isolate independent relation branches to avoid join products and costly PG JIT.
+    # Reuse the filtered queryset: catalog relation filters also scope these counts.
+    return qs.annotate(**{
+        name: Coalesce(Subquery(
+            qs.filter(pk=OuterRef("pk")).order_by().values("pk")
+            .annotate(_total=expression).values("_total")[:1],
+            output_field=IntegerField(),
+        ), Value(0))
+        for name, expression in counts.items()
+    })
+
+
 def _v063_psychologist_counts(qs):
-    return qs.annotate(
+    return _v063_relation_counts(qs,
         theory_count=Count(
             "theory_links",
             filter=Q(theory_links__is_active=True, theory_links__theory__is_active=True),
@@ -3215,7 +3229,7 @@ def _v063_psychologist_counts(qs):
 
 
 def _v063_theory_counts(qs):
-    return qs.annotate(
+    return _v063_relation_counts(qs,
         psychologist_count=Count(
             "psychologist_links",
             filter=Q(psychologist_links__is_active=True, psychologist_links__psychologist__is_active=True),
@@ -3249,7 +3263,7 @@ def _v063_theory_counts(qs):
 
 
 def _v063_timeline_counts(qs):
-    return qs.annotate(
+    return _v063_relation_counts(qs,
         psychologist_count=Count(
             "psychologist_links",
             filter=Q(psychologist_links__is_active=True, psychologist_links__psychologist__is_active=True),
