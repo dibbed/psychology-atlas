@@ -318,7 +318,17 @@
     "v084_today_read_api_and_next_action",
     "v084_today_command_center",
     "v084_focused_study_mode",
-    "v084_study_session_integrity_audit"
+    "v084_study_session_integrity_audit",
+    "v091_brain_anatomy_network_identity_and_provenance",
+    "v092_hash_pinned_brain_controlled_publication",
+    "v092_reviewed_brain_api_and_integrity_audit",
+    "v093_persian_brain_explorer_and_sourced_details",
+    "v093_postgresql_ancestry_materialization",
+    "v094_assessment_instrument_version_language_form_identity",
+    "v094_contextual_psychometric_evidence_and_scoped_rights",
+    "v094_hash_pinned_assessment_publication_and_read_only_api",
+    "v095_persian_assessment_explorer_and_sourced_details",
+    "v095_public_brain_assessment_search_and_structural_graph"
   ],
   "content": {
     "categories": 21,

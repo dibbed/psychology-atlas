@@ -1027,7 +1027,9 @@ GET /api/techniques/<slug>/
 - با `DEBUG=0` backend بدون `SECRET_KEY` بالا نمی‌آید و HTTPS redirect، secure cookies و `SECURE_HSTS_SECONDS` به‌صورت امن پیش‌فرض فعال می‌شوند؛ `SECURE_HSTS_INCLUDE_SUBDOMAINS` و `SECURE_HSTS_PRELOAD` عمداً opt-in هستند چون فعال‌سازی کورکورانه آن‌ها می‌تواند deployment را قفل کند. GZip، DRF throttling، CSP/security headers و JWT refresh blacklist/logout نیز فعال‌اند.
 - Frontend raceهای Practice/Neighborhood/Path، stale Compare و DSM Graph URL/count state اصلاح شده‌اند.
 
-## Current content inventory
+## Historical content inventory (baseline through v0.8.4)
+
+The counts and graph budget below preserve the older baseline. Current v0.9 has four research archives / 2,294 records and a 751-node / 1,369-edge full graph, including the Brain/Assessment additions. Use the dated final-release audit above for current counts and measurements.
 
 موجودی زیر **runtime live فعلی در v0.6.6** است، نه فقط seed baseline اولیه:
 
@@ -1525,7 +1527,9 @@ GET  /api/cases/<slug>/
 POST /api/cases/<slug>/submit/
 ```
 
-## Release validation baseline
+## Historical release validation baseline (through v0.8.4)
+
+These results retain their original phase scope. Fresh v0.9 checks and outstanding release gates are recorded in the final-release audit above.
 
 Current validation baseline:
 

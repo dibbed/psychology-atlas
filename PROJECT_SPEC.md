@@ -371,7 +371,9 @@ docs/Psychology_Atlas_v0.6.1_Architecture_Foundation_2026-09-05.md
 - Server controls quiz/case scoring and SRS scheduling
 - Do not couple frontend logic to SQLite
 
-### Research dataset ingestion
+### Historical research dataset ingestion snapshot (v0.5.5–v0.6)
+
+The counts, source-resolution description and graph budget in this subsection describe that historical ingestion baseline. Current v0.9 uses four archived datasets / 2,294 records and a 751-node / 1,369-edge full graph; its separately controlled Brain/Assessment publishers and current measurements are documented in the final-release audit linked above.
 
 v0.5.5 stores the two research corpora fully inside the database. The original JSON files were removed from the project root only after exact SHA-256/byte-size round-trip verification from DB storage. New external research files can still be imported explicitly by path.
 
