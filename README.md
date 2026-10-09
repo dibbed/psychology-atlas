@@ -6,7 +6,7 @@
 
 یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. پیاده‌سازی v0.9 اطلس مغز و اطلس ابزارهای سنجش را با هویت‌های مستقل، منابع علمی، حقوق ثبت‌شده و جست‌وجو/گراف سراسری ارائه می‌کند. این اطلس‌ها محتوای آموزشی‌اند؛ پرسش‌نامه، نمره‌گذاری یا استنتاج تشخیصی ارائه نمی‌کنند. قراردادهای StudyPlan، StudyBlock، StudySession و موتورهای یادگیری نسخه‌های پیشین حفظ شده‌اند.
 
-The final release target is **v0.9.0**, following the repository's full-SemVer annotated-tag convention. It is **not yet tagged or published**: fresh release browser/accessibility QA is blocked by the local frontend launch approval. The [2026-10-09 release audit](docs/Psychology_Atlas_v0.9_Final_Release_Audit_2026-10-09.md) records the verified implementation, current measurements and outstanding gates. The latest published release remains v0.8.4 until those gates pass.
+The v0.9 implementation targets **v0.9.0**, following the repository's full-SemVer annotated-tag convention. The [2026-10-09 release audit](docs/Psychology_Atlas_v0.9_Final_Release_Audit_2026-10-09.md) records scientific/data verification, measured performance and the final production-browser/accessibility gates. [GitHub Releases](https://github.com/dibbed/psychology-atlas/releases) is the authority for published tags and release status; implementation records do not imply deployment.
 
 > این نرم‌افزار آموزشی است و ابزار تشخیص، درمان، ارزیابی صلاحیت بالینی یا جایگزین ارزیابی حرفه‌ای نیست.
 

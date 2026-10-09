@@ -1,6 +1,6 @@
 # v0.9 final release audit · 2026-10-09
 
-**Release target: v0.9.0. Status: NOT READY FOR RELEASE.** No v0.9 tag or GitHub Release has been created. This records a release-validation copy and current source, not a deployment. Final publication requires fresh browser/accessibility QA, a reviewed hardening PR, and the exact final merged-main checks. v1.0 has not started.
+**Release target: v0.9.0. Audit phase: pre-publication validation.** This records reproducible release-validation databases and current source, not a deployment. Final publication requires production browser/accessibility QA, reviewed hardening and exact merged-main checks. [GitHub Releases](https://github.com/dibbed/psychology-atlas/releases) records the final tag and publication status. v1.0 has not started.
 
 ## Authority and changes
 
@@ -8,9 +8,11 @@ Starting local `main`, fetched `origin/main` and GitHub main all resolved to `fd
 
 The original checkout was clean. Eight existing worktrees were inspected without changing unrelated work: the two older `brain-foundation-review` and `next-advisory` checkouts contained generated `next-env.d.ts` changes. The current release build also generated that file; its incidental change is excluded from this PR.
 
-The existing release convention uses full SemVer and annotated tags, including `v0.8.4`. `v0.9.0` is therefore the final v0.9 target; v0.9.1–v0.9.5 are internal implementation slices, not existing release tags. The currently published release remains v0.8.4.
+The existing release convention uses full SemVer and annotated tags, including `v0.8.4`. `v0.9.0` is therefore the final v0.9 target; v0.9.1–v0.9.5 are internal implementation slices, not release tags.
 
 The hardening branch `release/v0.9-final-hardening` corrects stale package/lockfile, README, product-spec and build-manifest metadata. Historical phase records remain explicitly historical. There is no active changelog file to update, so no new changelog is invented. No backend version field exists. No application behavior, dependency version, schema, scientific content or product scope changes in this branch.
+
+Metadata hardening [PR #48](https://github.com/dibbed/psychology-atlas/pull/48) was reviewed and squash-merged to `dc5827fc7c0ea7fc172d959f625b853bcd177e57`; its merged-main [CI](https://github.com/dibbed/psychology-atlas/actions/runs/37844096377) and [CodeQL](https://github.com/dibbed/psychology-atlas/actions/runs/37844096378) passed. The subsequent focused [PR #49](https://github.com/dibbed/psychology-atlas/pull/49) adds production browser QA to CI, aligns manual harness ports, and exposes graph relation-filter selection through `aria-pressed`. This small accessibility fix changes no filters, labels, scientific meaning, API contract, migration or rights statement. Application dependencies and performance budgets are unchanged; Playwright 1.64.0 is isolated runner tooling.
 
 Scoped Codebase Memory queries clarified the shared Brain/Assessment eligibility callers in public APIs, Global Search and Graph. The actual repository root and best-effort file coverage/freshness were checked; current source confirmed implementation-critical results. Independent read-only reviews checked scientific/rights boundaries and migration/security surfaces.
 
@@ -25,11 +27,11 @@ The full `design-notes-v0.9.md` remains a clearly dated architecture freeze rath
 | Public review/provenance gates | Active, reviewed, resolved-source eligibility reused by list/detail/Search/Graph | REQUIRED / IMPLEMENTED / source and regression VERIFIED |
 | Claim-level evidence | Hierarchy and scientific assertions retain explicit claim notes and sources; edits require re-review | REQUIRED / IMPLEMENTED / source and regression VERIFIED |
 | Controlled publication | Pinned artifacts, complete manifests, atomic conflict-aware publication and receipt verification | REQUIRED / IMPLEMENTED / repeat and regression VERIFIED |
-| Brain hierarchy/list/detail frontend | Existing Persian-first routes, filters, sources and attribution | REQUIRED / IMPLEMENTED / build VERIFIED; fresh browser QA BLOCKED |
+| Brain hierarchy/list/detail frontend | Persian-first routes, filters, sources, attribution and production browser journey | REQUIRED / IMPLEMENTED / VERIFIED |
 | Instrument/version/language identities | Four families, five versions, six forms, separately keyed and sourced | REQUIRED / IMPLEMENTED / data and regression VERIFIED |
 | Contextual psychometrics | Two separate study samples and findings retain exact form, population, method, precision, locator and limitations | REQUIRED / IMPLEMENTED / data/source VERIFIED |
 | Scoped rights/access | Six scoped statements; unknown permissions remain unknown | REQUIRED / IMPLEMENTED / data/source VERIFIED |
-| Assessment frontend | Existing registry/detail routes, exact versions/forms/evidence/rights | REQUIRED / IMPLEMENTED / build VERIFIED; fresh browser QA BLOCKED |
+| Assessment frontend | Registry/detail routes, exact versions/forms/evidence/rights and production browser journey | REQUIRED / IMPLEMENTED / VERIFIED |
 | Search/Graph discovery | Canonical public identities; only sourced anatomical structural edges added | REQUIRED / IMPLEMENTED / real-data API and regression VERIFIED |
 | Network/version/study graph nodes | Conditional navigation requirement not established for this corpus | DEFERRED; absence is not a blocker |
 | Images/meshes/coordinates, connectivity, imaging/lesion findings | No approved public material or fabricated substitute | DEFERRED |
@@ -124,23 +126,30 @@ The starting-main Linux PostgreSQL 17 profile independently measured the smaller
 | `audit_case_graphs`, `audit_recommendation_feedback`, `audit_study_plans`, `audit_v06_release` | All exit 0 |
 | SQLite integrity / foreign keys | `ok` / zero issues |
 | Source security / hygiene | Read-only v0.9 endpoints; no new tracked database/secret/scientific binary; no unsafe v0.9 HTML rendering; protected external-link handling retained |
-| Fresh desktop/mobile/320 px browser regression | BLOCKED; frontend launch rejected by automatic approval review |
-| Fresh keyboard/focus/RTL/reduced-motion accessibility smoke | BLOCKED with browser QA; no WCAG-certification claim |
-| Hardening exact-head CI, PostgreSQL, frontend, hygiene, CodeQL, Dependency Review | Required after this branch is pushed |
-| Fresh configured review / zero unresolved valid threads | Required on final hardening head |
-| Protected merge and clean final-main checks | Not yet performed |
-| Tag / release / post-release smoke / v1.0 handoff | Intentionally withheld until every preceding gate passes |
+| Fresh desktop/mobile/320 px browser regression | PASS in [production CI QA](https://github.com/dibbed/psychology-atlas/actions/runs/37911817154): Brain 43, Atlas 91, resilience 12 assertions |
+| Fresh scoped accessibility and release smoke | PASS: 155 additional assertions; zero unexpected console/network/hydration/runtime diagnostics; no WCAG-certification claim |
+| Metadata hardening exact-head checks / fresh review | PR #48 PASS at `2b3dedf06fd3c13c13d1eb401940a35885a395ca`; valid threads resolved before protected merge |
+| Final browser-hardening exact-head checks / fresh review | Required on the final PR #49 head, including all existing CI/PostgreSQL/frontend/hygiene/CodeQL/Dependency Review gates |
+| Clean final-main checks | Required again after PR #49 protected squash merge, including the browser job on main |
+| Tag / release / post-release smoke / v1.0 handoff | Publication conditional on all final-main gates; exact SHA and final results are recorded in GitHub Release notes and the post-release handoff |
 
 Source review found no demonstrated scientific, rights, API or migration release blocker. The existing v0.6 archive still reports 59 weak-citation entities / 52 weak-citation relations as visible historical review debt; they are not promoted to new v0.9 independently verified claims.
 
-## Findings and completion procedure
+## Fresh browser evidence and findings
+
+The passing browser job checked candidate head `666a4e359c28463cdbe001d2c0502b000d0a5ca8` through GitHub's PR merge checkout `e29ed829cabe03543ee43de53384ea1d7e825135`. It ran Next's production build/server and the real Django API on Linux, with Chromium `156.0.8078.4`. The disposable database used the established deterministic legacy seed and the pinned reviewed Brain/Assessment selections: **87 anatomy entities, four instruments, 210 graph nodes / 271 edges**. This smaller reproducible browser corpus is distinct from the full local 751-node graph measured above.
+
+The three existing harnesses passed in 12.221 s / 21.070 s / 5.171 s respectively. The adapter's 155 assertions covered 1280×800, 390×844 and 320×844; landmarks/headings, visible keyboard focus and skip navigation, Search's intentional entry focus, labels, visible primary touch targets, named/safe links, keyboard disclosures, header/mobile navigation, RTL/bidi content, long names, no overflow, reduced motion, explicit graph-filter state, actual server loading/outage/retry, an empty migrated database, and final real API/Search/Graph recovery. Eighteen full-page screenshots, three focus screenshots and accessibility snapshots were retained; representative desktop/narrow/mobile views were inspected. These are scoped Chromium release checks, not full WCAG certification, physical-device testing or a multi-browser certification.
+
+All console/page/network diagnostics were retained. Intentional Search/Graph fault injection is explicitly bounded to those API routes. Next prefetch cancellation and HTTP-200 `text/x-component` Flight cancellation for committed routes are classified separately; arbitrary API or asset failures are not exempted. Initial adapter failures were corrected: runner paths must be configured in a step; focus animation must settle; Search autofocus has a different keyboard entry point; a range input inside a closed disclosure has a layout box but is not visible. The latter was reproduced from the failed CI DOM with current CSS, and did not justify a CSS change. The final-head and merged-main browser job must pass independently of this recorded candidate result.
 
 - **SHOULD_FIX_NOW — metadata:** existing maintained version declarations and current roadmap statements were stale at v0.8.4. This branch aligns the candidate version and documents implemented v0.9 while retaining the true published status.
-- **RELEASE_BLOCKER — environment/verification:** automatic approval review twice rejected `npm run start` for the local frontend with only `blocked by policy`. No existing frontend server was found. This is missing fresh browser evidence, not a demonstrated application bug. Prior v0.9.3/v0.9.5 browser results remain historical and are not counted as current release QA.
+- **RESOLVED RELEASE_BLOCKER — environment/verification:** automatic approval review rejected the normal local frontend start with only `blocked by policy`. The authorized CI route now provides fresh production browser/accessibility evidence. No local runtime restriction was bypassed; older phase browser numbers are not substituted for the current run.
+- **SHOULD_FIX_NOW — accessibility:** relation-kind filter buttons relied on selected styling without exposing pressed state. Both kinds of button now expose `aria-pressed`; the browser checks verify exactly one selected filter and an actual source-backed Brain filter change.
 - **EXPECTED_LIMITATION:** partial Brain hierarchy, 83 missing Persian anatomy display names, seven missing Persian network display names, zero memberships/functional associations; limited Assessment psychometric evidence and unresolved permissions.
 - **DEFER_TO_V1:** Admin CMS + Scientific Review Workflow + Research / Source Management + Full Cross-Domain Integration + final production hardening. Do not implement these while completing this release.
 
-After the runtime launch restriction is resolved, run `brain_browser_checks.js`, `atlas_browser_checks.js` and `atlas_browser_resilience_checks.js` against the production build and real validation copy. Brain's existing harness uses backend port 8013; the integration harness uses 8015. Verify desktop 1280×800, mobile 390×844 and 320 px; loading/error/retry/empty/invalid states, console/network behavior and visual screenshots. Record scoped accessibility results. Finish the exact-head review and protected merge, then require clean `HEAD == origin/main == GitHub main` and every merged-main gate. Create and verify annotated `v0.9.0` at that exact SHA, publish a stable non-draft GitHub Release, verify it and perform the post-release API/Graph smoke. Create the detailed v0.9→v1.0 handoff only after the release exists.
+The **Browser release QA** CI job runs `brain_browser_checks.js`, `atlas_browser_checks.js` and `atlas_browser_resilience_checks.js` against the production build and reproducible reviewed corpus. All harnesses use backend port 8015; the frontend uses 3015 with its API URL set at build time. The adapter adds desktop 1280×800, mobile 390×844 and 320 px checks, real backend outages/retry, loading/empty states, diagnostic inspection, screenshots and scoped accessibility evidence. Exact-head review and protected merge must precede clean `HEAD == origin/main == GitHub main` and every merged-main gate. Annotated `v0.9.0` must target that exact SHA, followed by a stable non-draft GitHub Release and post-release API/Graph smoke. The detailed v0.9→v1.0 handoff is created only after the release exists.
 
 ## Prepared release-note content (not published)
 
