@@ -4,7 +4,6 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 const { spawn } = require("node:child_process");
-const { chromium } = require("playwright");
 
 const root = path.resolve(__dirname, "..");
 const output = process.env.BROWSER_QA_OUTPUT;
@@ -30,14 +29,18 @@ function start(command, args, cwd, env, name) {
   services.add(child);
   return child;
 }
+function signalProcess(child, signal) {
+  try { process.kill(-child.pid, signal); } catch (error) { if (error.code !== "ESRCH") throw error; }
+}
 async function stop(child) {
   if (!child?.pid || child.exitCode !== null || child.signalCode !== null) { services.delete(child); return; }
-  process.kill(-child.pid, "SIGCONT");
-  process.kill(-child.pid, "SIGTERM");
   const exited = new Promise(resolve => child.once("exit", resolve));
-  await Promise.race([exited, delay(5000)]);
-  if (child.exitCode === null && child.signalCode === null) { process.kill(-child.pid, "SIGKILL"); await exited; }
-  services.delete(child);
+  try {
+    signalProcess(child, "SIGCONT");
+    signalProcess(child, "SIGTERM");
+    await Promise.race([exited, delay(5000)]);
+    if (child.exitCode === null && child.signalCode === null) { signalProcess(child, "SIGKILL"); await exited; }
+  } finally { services.delete(child); }
 }
 async function ready(url, child) {
   const deadline = Date.now() + 60000;
@@ -60,7 +63,7 @@ async function newPage() {
   let navigation = 0;
   const requestNavigation = new WeakMap();
   const requestResponses = new WeakMap();
-  const committedRoutes = new Set();
+  const committedAttempts = new Set();
   const pageFailures = [];
   const observedPage = page;
   // Chromium cancels old streams before emitting the next document request.
@@ -75,8 +78,9 @@ async function newPage() {
   page.on("framenavigated", frame => {
     if (frame === observedPage.mainFrame() && new URL(frame.url()).origin === origin) {
       const route = canonical(frame.url());
-      committedRoutes.add(route);
-      for (const failure of pageFailures) if (canonical(failure.url) === route) failure.committedRoute = true;
+      committedAttempts.add(navigation + ":" + route);
+      for (const failure of pageFailures) if (failure.attempt === navigation && canonical(failure.url) === route) failure.committedRoute = true;
+      navigation++;
     }
   });
   page.on("pageerror", error => report.diagnostics.push({ phase, kind: "pageerror", text: error.message }));
@@ -84,7 +88,8 @@ async function newPage() {
     if (["warning", "error"].includes(message.type())) report.diagnostics.push({ phase, kind: "console", text: message.text(), url: message.location().url });
   });
   page.on("requestfailed", request => {
-    const failure = { phase, kind: "requestfailed", url: request.url(), text: request.failure()?.errorText, prefetch: !!request.headers()["next-router-prefetch"], flight: request.headers().rsc === "1", supersededByNavigation: requestNavigation.get(request) < navigation, response: requestResponses.get(request), committedRoute: committedRoutes.has(canonical(request.url())) };
+    const attempt = requestNavigation.get(request);
+    const failure = { phase, kind: "requestfailed", url: request.url(), text: request.failure()?.errorText, prefetch: !!request.headers()["next-router-prefetch"], flight: request.headers().rsc === "1", attempt, response: requestResponses.get(request), committedRoute: committedAttempts.has(attempt + ":" + canonical(request.url())) };
     pageFailures.push(failure);
     report.diagnostics.push(failure);
   });
@@ -105,6 +110,7 @@ async function json(route) {
 }
 
 async function main() {
+  const { chromium } = require("playwright");
   await startBackend();
   const frontend = start(process.execPath, ["node_modules/next/dist/bin/next", "start", "--hostname", "127.0.0.1", "--port", "3015"], path.join(root, "frontend"), {}, "frontend");
   await ready(origin + "/brain", frontend);
@@ -232,7 +238,7 @@ async function main() {
   check(finalGraph.nodes.some(node => node.type === "brain_anatomy") && finalGraph.nodes.some(node => node.type === "assessment"), "final Graph discovery");
   const unexpected = report.diagnostics.filter(item => {
     if (item.phase === "atlas_browser_resilience_checks" && /127\.0\.0\.1:8015\/api\/(search|concept-map)\//.test(item.url || "") && (item.kind === "requestfailed" && /ERR_FAILED|ERR_CONNECTION_REFUSED/.test(item.text) || item.kind === "console" && /net::ERR_|Failed to load resource/.test(item.text))) return false;
-    if (item.kind === "requestfailed" && /ERR_ABORTED/.test(item.text) && (item.prefetch || item.flight && (item.supersededByNavigation || item.committedRoute && item.response?.status === 200 && item.response.contentType.startsWith("text/x-component"))) && new URL(item.url).origin === origin && new URL(item.url).searchParams.has("_rsc")) return false;
+    if (item.kind === "requestfailed" && /ERR_ABORTED/.test(item.text) && (item.prefetch || item.flight && item.committedRoute && item.response?.status === 200 && item.response.contentType.startsWith("text/x-component")) && new URL(item.url).origin === origin && new URL(item.url).searchParams.has("_rsc")) return false;
     if (item.kind === "http" && item.status === 404 && /not-an-approved-entity|v095-unknown-slug/.test(item.url)) return false;
     if (item.kind === "console" && /404 \(Not Found\)/.test(item.text) && /not-an-approved-entity|v095-unknown-slug/.test(item.url || "")) return false;
     return true;
@@ -252,8 +258,9 @@ main().catch(async error => {
     fs.writeFileSync(path.join(output, "failure-accessibility.txt"), await page.locator("body").ariaSnapshot().catch(() => "unavailable"));
   }
 }).finally(async () => {
-  if (browser) await browser.close();
-  for (const child of services) await stop(child);
+  const cleanupFailure = error => { report.status = "FAIL"; process.exitCode = 1; report.diagnostics.push({ phase: "cleanup", kind: "service", text: error.message }); };
+  if (browser) await browser.close().catch(cleanupFailure);
+  for (const child of services) await stop(child).catch(cleanupFailure);
   fs.writeFileSync(path.join(output, "report.json"), JSON.stringify(report, null, 2));
   console.log("Browser release QA: " + report.status + "; supplemental assertions: " + report.checks.length);
 });
