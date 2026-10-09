@@ -20,6 +20,7 @@ let page;
 let phase = "startup";
 const check = (ok, label) => { assert(ok, label); report.checks.push(label); };
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+const canonical = value => { const url = new URL(value); url.searchParams.delete("_rsc"); url.hash = ""; return url.href; };
 
 function start(command, args, cwd, env, name) {
   const log = fs.openSync(path.join(output, name + ".log"), "a");
@@ -58,6 +59,8 @@ async function newPage() {
   page.setDefaultTimeout(15000);
   let navigation = 0;
   const requestNavigation = new WeakMap();
+  const requestResponses = new WeakMap();
+  const committedRoutes = new Set();
   const observedPage = page;
   // Chromium cancels old streams before emitting the next document request.
   for (const method of ["goto", "goBack", "reload"]) {
@@ -68,12 +71,16 @@ async function newPage() {
     if (request.isNavigationRequest() && request.frame() === observedPage.mainFrame()) navigation++;
     requestNavigation.set(request, navigation);
   });
+  page.on("framenavigated", frame => {
+    if (frame === observedPage.mainFrame() && new URL(frame.url()).origin === origin) committedRoutes.add(canonical(frame.url()));
+  });
   page.on("pageerror", error => report.diagnostics.push({ phase, kind: "pageerror", text: error.message }));
   page.on("console", message => {
     if (["warning", "error"].includes(message.type())) report.diagnostics.push({ phase, kind: "console", text: message.text(), url: message.location().url });
   });
-  page.on("requestfailed", request => report.diagnostics.push({ phase, kind: "requestfailed", url: request.url(), text: request.failure()?.errorText, prefetch: !!request.headers()["next-router-prefetch"], flight: request.headers().rsc === "1", supersededByNavigation: requestNavigation.get(request) < navigation }));
+  page.on("requestfailed", request => report.diagnostics.push({ phase, kind: "requestfailed", url: request.url(), text: request.failure()?.errorText, prefetch: !!request.headers()["next-router-prefetch"], flight: request.headers().rsc === "1", supersededByNavigation: requestNavigation.get(request) < navigation, response: requestResponses.get(request), committedRoute: committedRoutes.has(canonical(request.url())) }));
   page.on("response", response => {
+    requestResponses.set(response.request(), { status: response.status(), contentType: response.headers()["content-type"] || "" });
     if (response.status() >= 400) report.diagnostics.push({ phase, kind: "http", url: response.url(), status: response.status() });
   });
   await page.goto(origin + "/brain");
@@ -216,7 +223,7 @@ async function main() {
   check(finalGraph.nodes.some(node => node.type === "brain_anatomy") && finalGraph.nodes.some(node => node.type === "assessment"), "final Graph discovery");
   const unexpected = report.diagnostics.filter(item => {
     if (item.phase === "atlas_browser_resilience_checks" && /127\.0\.0\.1:8015\/api\/(search|concept-map)\//.test(item.url || "") && (item.kind === "requestfailed" && /ERR_FAILED|ERR_CONNECTION_REFUSED/.test(item.text) || item.kind === "console" && /net::ERR_|Failed to load resource/.test(item.text))) return false;
-    if (item.kind === "requestfailed" && /ERR_ABORTED/.test(item.text) && (item.prefetch || item.flight && item.supersededByNavigation) && new URL(item.url).origin === origin && new URL(item.url).searchParams.has("_rsc")) return false;
+    if (item.kind === "requestfailed" && /ERR_ABORTED/.test(item.text) && (item.prefetch || item.flight && (item.supersededByNavigation || item.committedRoute && item.response?.status === 200 && item.response.contentType.startsWith("text/x-component"))) && new URL(item.url).origin === origin && new URL(item.url).searchParams.has("_rsc")) return false;
     if (item.kind === "http" && item.status === 404 && /not-an-approved-entity|v095-unknown-slug/.test(item.url)) return false;
     if (item.kind === "console" && /404 \(Not Found\)/.test(item.text) && /not-an-approved-entity|v095-unknown-slug/.test(item.url || "")) return false;
     return true;
