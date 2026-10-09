@@ -462,9 +462,9 @@ export default function KnowledgeMap({ data, initialNodeId }: { data: KnowledgeG
             <div className="relation-toolbar">
               <div><strong>رابطه‌های مستقیم</strong><span>{visibleNeighbors.length.toLocaleString("fa-IR")} مورد نمایش داده می‌شود</span></div>
               <div className="relation-filter-row">
-                <button className={`chip ${edgeKind === "all" ? "active" : ""}`} onClick={() => setEdgeKind("all")}>همه {neighbors.length.toLocaleString("fa-IR")}</button>
+                <button className={`chip ${edgeKind === "all" ? "active" : ""}`} aria-pressed={edgeKind === "all"} onClick={() => setEdgeKind("all")}>همه {neighbors.length.toLocaleString("fa-IR")}</button>
                 {relationKinds.map(([kind, count]) => (
-                  <button className={`chip ${edgeKind === kind ? "active" : ""}`} onClick={() => setEdgeKind(kind)} key={kind}>
+                  <button className={`chip ${edgeKind === kind ? "active" : ""}`} aria-pressed={edgeKind === kind} onClick={() => setEdgeKind(kind)} key={kind}>
                     {relationLabel(kind)} {count.toLocaleString("fa-IR")}
                   </button>
                 ))}

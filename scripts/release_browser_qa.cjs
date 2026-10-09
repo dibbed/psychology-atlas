@@ -56,11 +56,18 @@ async function newPage() {
   const context = await browser.newContext();
   page = await context.newPage();
   page.setDefaultTimeout(15000);
+  let navigation = 0;
+  const requestNavigation = new WeakMap();
+  const observedPage = page;
+  page.on("request", request => {
+    if (request.isNavigationRequest() && request.frame() === observedPage.mainFrame()) navigation++;
+    requestNavigation.set(request, navigation);
+  });
   page.on("pageerror", error => report.diagnostics.push({ phase, kind: "pageerror", text: error.message }));
   page.on("console", message => {
     if (["warning", "error"].includes(message.type())) report.diagnostics.push({ phase, kind: "console", text: message.text(), url: message.location().url });
   });
-  page.on("requestfailed", request => report.diagnostics.push({ phase, kind: "requestfailed", url: request.url(), text: request.failure()?.errorText, prefetch: !!request.headers()["next-router-prefetch"] }));
+  page.on("requestfailed", request => report.diagnostics.push({ phase, kind: "requestfailed", url: request.url(), text: request.failure()?.errorText, prefetch: !!request.headers()["next-router-prefetch"], flight: request.headers().rsc === "1", supersededByNavigation: requestNavigation.get(request) < navigation }));
   page.on("response", response => {
     if (response.status() >= 400) report.diagnostics.push({ phase, kind: "http", url: response.url(), status: response.status() });
   });
@@ -107,6 +114,7 @@ async function main() {
       const scope = width + "px " + route;
       check(await page.locator("main:visible").count() === 1 && await page.locator("main:visible h1").count() === 1, "landmarks/headings " + scope);
       check(await page.locator("html").getAttribute("lang") === "fa" && await page.locator("html").getAttribute("dir") === "rtl", "Persian RTL " + scope);
+      if (route.startsWith("/map")) check(await page.locator('.relation-filter-row button[aria-pressed="true"]').count() === 1, "relation selection has explicit state " + scope);
       if (route.startsWith("/search")) {
         check(await page.getByLabel("جست‌وجوی سراسری اطلس").evaluate(element => element === document.activeElement), "Search entry focus " + scope);
         for (let step = 0; step < 20; step++) {
@@ -162,6 +170,10 @@ async function main() {
   await goto("/search?q=zzzz-release-no-match", ".results-count");
   await page.getByText("نتیجه‌ای مطابق این عبارت پیدا نشد. نام یا اختصار دیگری را امتحان کنید.").waitFor();
   check(await page.locator('main:visible [role="alert"]').count() === 0, "search no-results is not error");
+  const relatedBrain = graph.nodes.find(node => node.type === "brain_anatomy" && node.degree > 0);
+  await goto("/map?node=" + encodeURIComponent(relatedBrain.id), ".map-stage h2");
+  await page.locator(".relation-filter-row button").last().click();
+  check(await page.locator(".relation-filter-row button").first().getAttribute("aria-pressed") === "false" && await page.locator(".relation-filter-row button").last().getAttribute("aria-pressed") === "true", "source-backed relation filter exposes changed selection");
 
   phase = "supplemental-server-states";
   await newPage();
@@ -199,7 +211,7 @@ async function main() {
   check(finalGraph.nodes.some(node => node.type === "brain_anatomy") && finalGraph.nodes.some(node => node.type === "assessment"), "final Graph discovery");
   const unexpected = report.diagnostics.filter(item => {
     if (item.phase === "atlas_browser_resilience_checks" && /127\.0\.0\.1:8015\/api\/(search|concept-map)\//.test(item.url || "") && (item.kind === "requestfailed" && /ERR_FAILED|ERR_CONNECTION_REFUSED/.test(item.text) || item.kind === "console" && /net::ERR_|Failed to load resource/.test(item.text))) return false;
-    if (item.kind === "requestfailed" && /ERR_ABORTED/.test(item.text) && item.prefetch && new URL(item.url).origin === origin && new URL(item.url).searchParams.has("_rsc")) return false;
+    if (item.kind === "requestfailed" && /ERR_ABORTED/.test(item.text) && (item.prefetch || item.flight && item.supersededByNavigation) && new URL(item.url).origin === origin && new URL(item.url).searchParams.has("_rsc")) return false;
     if (item.kind === "http" && item.status === 404 && /not-an-approved-entity|v095-unknown-slug/.test(item.url)) return false;
     if (item.kind === "console" && /404 \(Not Found\)/.test(item.text) && /not-an-approved-entity|v095-unknown-slug/.test(item.url || "")) return false;
     return true;
