@@ -61,6 +61,7 @@ async function newPage() {
   const requestNavigation = new WeakMap();
   const requestResponses = new WeakMap();
   const committedRoutes = new Set();
+  const pageFailures = [];
   const observedPage = page;
   // Chromium cancels old streams before emitting the next document request.
   for (const method of ["goto", "goBack", "reload"]) {
@@ -72,13 +73,21 @@ async function newPage() {
     requestNavigation.set(request, navigation);
   });
   page.on("framenavigated", frame => {
-    if (frame === observedPage.mainFrame() && new URL(frame.url()).origin === origin) committedRoutes.add(canonical(frame.url()));
+    if (frame === observedPage.mainFrame() && new URL(frame.url()).origin === origin) {
+      const route = canonical(frame.url());
+      committedRoutes.add(route);
+      for (const failure of pageFailures) if (canonical(failure.url) === route) failure.committedRoute = true;
+    }
   });
   page.on("pageerror", error => report.diagnostics.push({ phase, kind: "pageerror", text: error.message }));
   page.on("console", message => {
     if (["warning", "error"].includes(message.type())) report.diagnostics.push({ phase, kind: "console", text: message.text(), url: message.location().url });
   });
-  page.on("requestfailed", request => report.diagnostics.push({ phase, kind: "requestfailed", url: request.url(), text: request.failure()?.errorText, prefetch: !!request.headers()["next-router-prefetch"], flight: request.headers().rsc === "1", supersededByNavigation: requestNavigation.get(request) < navigation, response: requestResponses.get(request), committedRoute: committedRoutes.has(canonical(request.url())) }));
+  page.on("requestfailed", request => {
+    const failure = { phase, kind: "requestfailed", url: request.url(), text: request.failure()?.errorText, prefetch: !!request.headers()["next-router-prefetch"], flight: request.headers().rsc === "1", supersededByNavigation: requestNavigation.get(request) < navigation, response: requestResponses.get(request), committedRoute: committedRoutes.has(canonical(request.url())) };
+    pageFailures.push(failure);
+    report.diagnostics.push(failure);
+  });
   page.on("response", response => {
     requestResponses.set(response.request(), { status: response.status(), contentType: response.headers()["content-type"] || "" });
     if (response.status() >= 400) report.diagnostics.push({ phase, kind: "http", url: response.url(), status: response.status() });
