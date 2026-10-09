@@ -1,11 +1,11 @@
 // Pass this function to Playwright MCP browser_run_code_unsafe (code or filename).
-// Use the real published backend at :8013 and a running local frontend page.
+// Use the real published backend at :8015 and a running local frontend page.
 // For retry coverage, invoke from the error page after restarting the backend.
 async (page) => {
   const current = new URL(page.url());
   if (!["localhost", "127.0.0.1"].includes(current.hostname)) throw new Error("Run on a local QA frontend.");
   const origin = current.origin;
-  const api = "http://127.0.0.1:8013/api";
+  const api = "http://127.0.0.1:8015/api";
   const checks = [];
   const assert = (condition, label) => {
     if (!condition) throw new Error(label);

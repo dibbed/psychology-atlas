@@ -2,7 +2,7 @@
 
 ## Current implementation: v0.9 — Brain Atlas + Assessments Atlas
 
-The v0.7 Clinical Case line remains frozen through v0.7.5. v0.8.1–v0.8.4 completed personal study planning, scheduling, recommendations, focused Sessions and read-only Today orchestration. v0.9.1–v0.9.5 implement the Brain and Assessment atlases plus public Search/Graph discovery. The final release target is v0.9.0; the latest published release remains v0.8.4 pending the final gates in `docs/Psychology_Atlas_v0.9_Final_Release_Audit_2026-10-09.md`.
+The v0.7 Clinical Case line remains frozen through v0.7.5. v0.8.1–v0.8.4 completed personal study planning, scheduling, recommendations, focused Sessions and read-only Today orchestration. v0.9.1–v0.9.5 implement the Brain and Assessment atlases plus public Search/Graph discovery. The final version is v0.9.0; validation is recorded in `docs/Psychology_Atlas_v0.9_Final_Release_Audit_2026-10-09.md`, and published tag/release status is maintained on [GitHub Releases](https://github.com/dibbed/psychology-atlas/releases).
 
 ### v0.9 implemented boundaries
 

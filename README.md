@@ -6,7 +6,7 @@
 
 یک وب‌اپ Full-Stack فارسی و RTL برای یادگیری تعاملی روان‌شناسی. پیاده‌سازی v0.9 اطلس مغز و اطلس ابزارهای سنجش را با هویت‌های مستقل، منابع علمی، حقوق ثبت‌شده و جست‌وجو/گراف سراسری ارائه می‌کند. این اطلس‌ها محتوای آموزشی‌اند؛ پرسش‌نامه، نمره‌گذاری یا استنتاج تشخیصی ارائه نمی‌کنند. قراردادهای StudyPlan، StudyBlock، StudySession و موتورهای یادگیری نسخه‌های پیشین حفظ شده‌اند.
 
-The final release target is **v0.9.0**, following the repository's full-SemVer annotated-tag convention. It is **not yet tagged or published**: fresh release browser/accessibility QA is blocked by the local frontend launch approval. The [2026-10-09 release audit](docs/Psychology_Atlas_v0.9_Final_Release_Audit_2026-10-09.md) records the verified implementation, current measurements and outstanding gates. The latest published release remains v0.8.4 until those gates pass.
+The v0.9 implementation targets **v0.9.0**, following the repository's full-SemVer annotated-tag convention. The [2026-10-09 release audit](docs/Psychology_Atlas_v0.9_Final_Release_Audit_2026-10-09.md) records scientific/data verification, measured performance and the final production-browser/accessibility gates. [GitHub Releases](https://github.com/dibbed/psychology-atlas/releases) is the authority for published tags and release status; implementation records do not imply deployment.
 
 > این نرم‌افزار آموزشی است و ابزار تشخیص، درمان، ارزیابی صلاحیت بالینی یا جایگزین ارزیابی حرفه‌ای نیست.
 
@@ -42,7 +42,7 @@ The optional `GET /api/brain-anatomy/?roots=true` filter selects public entities
 
 The interface uses existing CSS tokens, native GET forms/disclosures, canonical API helpers and ScientificMeta. Registry discovery informs filter grouping and progressive disclosure without adding Tailwind or a component runtime. Only the vulnerable locked transitive sharp/libvips and source-map-js versions are updated; direct dependencies are unchanged.
 
-Runnable browser regression: pass the JavaScript function in [scripts/brain_browser_checks.js](scripts/brain_browser_checks.js) to Playwright MCP's `browser_run_code_unsafe` against a local frontend (default port 3013) and the real published backend (port 8013). The check exercises real search, filters, roots, pagination, detail navigation, sources, keyboard, reduced motion and responsive reflow. For recovery QA, stop the local backend, open `/brain`, confirm the retryable error, restart the backend, then run the same check from that page. Backend regressions: `python manage.py test atlas.tests_v092_brain_api --noinput`.
+Runnable browser regression: pass the JavaScript function in [scripts/brain_browser_checks.js](scripts/brain_browser_checks.js) to Playwright MCP's `browser_run_code_unsafe` against a local frontend (QA port 3015) and the real published backend (port 8015), with `NEXT_PUBLIC_API_URL=http://127.0.0.1:8015/api` set during the frontend build. The check exercises real search, filters, roots, pagination, detail navigation, sources, keyboard, reduced motion and responsive reflow. For recovery QA, stop the local backend, open `/brain`, confirm the retryable error, restart the backend, then run the same check from that page. The CI **Browser release QA** job runs this and both Atlas harnesses automatically against disposable databases and retains browser evidence. Backend regressions: `python manage.py test atlas.tests_v092_brain_api --noinput`.
 
 Assessment, Global Search/Knowledge Graph integration, Study authority, diagnosis and release/tag creation remain outside this slice.
 
