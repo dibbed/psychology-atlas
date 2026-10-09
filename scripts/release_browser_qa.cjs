@@ -59,6 +59,11 @@ async function newPage() {
   let navigation = 0;
   const requestNavigation = new WeakMap();
   const observedPage = page;
+  // Chromium cancels old streams before emitting the next document request.
+  for (const method of ["goto", "goBack", "reload"]) {
+    const navigate = page[method].bind(page);
+    page[method] = (...args) => { navigation++; return navigate(...args); };
+  }
   page.on("request", request => {
     if (request.isNavigationRequest() && request.frame() === observedPage.mainFrame()) navigation++;
     requestNavigation.set(request, navigation);
