@@ -1,0 +1,33 @@
+{
+  "stage": "P10",
+  "status": "PASS",
+  "checks": [
+    "Guarded P10 NON-SCIENTIFIC fixture",
+    "Real isolated MFA session and CSRF",
+    "All 13 P10 models available to Owner",
+    "Private Brain tree has three synthetic nodes",
+    "Canonical parent anchored",
+    "Wrong laterality blocked",
+    "Cycle blocked without mutation",
+    "No canonical tree mutation",
+    "Real UI before/after impact check",
+    "320px Brain tree has no document overflow",
+    "Empty membership remains navigable",
+    "Brain viewer can view canonical tree",
+    "View-only cannot preview proposed parent",
+    "No unhandled browser errors"
+  ],
+  "screenshots": [
+    "p10-brain-tree-desktop.png",
+    "p10-brain-tree-mobile.png",
+    "p10-empty-membership-editor.png"
+  ],
+  "errors": [],
+  "limits": [
+    "No real Owner login",
+    "Synthetic scientific content and MFA",
+    "Local HTTP only",
+    "No P16 publication"
+  ],
+  "completed_at": "2026-10-31T20:17:20.245Z"
+}

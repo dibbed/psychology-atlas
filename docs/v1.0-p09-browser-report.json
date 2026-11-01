@@ -1,0 +1,32 @@
+{
+  "stage": "P09",
+  "status": "PASS",
+  "checks": [
+    "Guarded NON-SCIENTIFIC history fixture",
+    "Real session plus synthetic MFA",
+    "All 68 P07–P09 kinds scoped to Owner",
+    "All 34 P09 kinds mapped",
+    "Real chronology reader with 2 rows",
+    "Unknown date and missing source not invented",
+    "Legacy source debt stays unreviewed",
+    "320px chronology has no document overflow",
+    "Psychologist edit journey creates private draft only",
+    "No History reader capability blocks chronology",
+    "Citation debt is scoped",
+    "History schema hidden",
+    "No browser runtime error"
+  ],
+  "screenshots": [
+    "p09-chronology-desktop.png",
+    "p09-chronology-mobile.png",
+    "p09-person-draft.png"
+  ],
+  "errors": [],
+  "limits": [
+    "Synthetic MFA, not local real Owner",
+    "No P16 publication",
+    "Synthetic citations only",
+    "Local HTTP"
+  ],
+  "completed_at": "2026-10-31T19:46:43.432Z"
+}

@@ -1,0 +1,48 @@
+{
+  "stage": "P12",
+  "status": "PASS",
+  "checks": [
+    "Synthetic published case and scoped MFA-only reader in disposable SQLite",
+    "Owner session uses real MFA and CSRF against isolated backend",
+    "Existing case appears in real private catalog",
+    "Published fixture graph is structurally valid",
+    "Graph validity never permits unreviewed publication",
+    "Cloning keeps published revision selected and creates separate draft",
+    "Unsaved graph edit is visible before navigation",
+    "Canceling navigation preserves unsaved graph edits",
+    "Real form writes valid graph and reloads a new ETag {\"status\":200,\"valid\":true,\"titles\":[\"P12 updated fictional start\",\"Fictional finish\"]}",
+    "Canonical published revision is immutable across graph draft edit",
+    "Validation UI surfaces revision-scoped scientific review blocker",
+    "Case validation UI displays exact server-computed content fingerprint",
+    "Draft route simulation completes with no learner-write API",
+    "Draft metadata editor persists independently of graph edits {\"status\":200,\"objective\":\"Updated synthetic learning objective\",\"metadataRequests\":[{\"expected\":true,\"fieldNames\":[\"title\",\"patient_summary\",\"educational_objective\"]},{\"responseStatus\":308}]}",
+    "Canceling internal navigation preserves unsaved metadata edits {\"metadataDialogSeen\":true,\"valueAfterCancel\":\"Uncommitted fictional metadata change\"}",
+    "Live Case Builder forms fit 320px width with no horizontal overflow",
+    "Case list and editor entry fit 320px viewport without horizontal overflow",
+    "Publication preflight renders the same server-bound fingerprint and stays closed",
+    "Read-only role has no case create button",
+    "Scoped preview user can inspect but cannot edit draft",
+    "Scoped read-only case role cannot see mutation form",
+    "P16 UI presents the missing revision-scoped source review",
+    "P16 source review form records an exact-version decision",
+    "P16 scientific form records a separate privileged decision",
+    "P16 rights form requires explicit scope, holder and dated review",
+    "P16 server freezes a version-bound manifest",
+    "P16 manifest review is separate from publication activation",
+    "P16 browser confirms Freeze and approval cannot silently activate a draft",
+    "Browser emitted no uncaught runtime errors"
+  ],
+  "screenshots": [
+    "case-editor-desktop.png",
+    "case-editor-mobile.png",
+    "case-catalog-mobile.png",
+    "case-publication-before-apply.png"
+  ],
+  "errors": [],
+  "limits": [
+    "Synthetic, fresh isolated SQLite only",
+    "No actual reviewed publication",
+    "No existing user data or canonical database touched"
+  ],
+  "completed_at": "2026-11-01T22:09:23.971Z"
+}

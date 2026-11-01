@@ -1,0 +1,248 @@
+{
+  "phase": "P05",
+  "started_at": "2026-10-11T14:58:47.078Z",
+  "runtime": "Production Next / real Django session, CSRF, MFA, services / disposable SQLite / Chromium",
+  "browserPath": "Existing bundled Playwright QA harness",
+  "viewports": [
+    {
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "width": 320,
+      "height": 850
+    }
+  ],
+  "checks": [
+    "Password-only session remains outside the authenticated CMS boundary",
+    "Real MFA login establishes the private HttpOnly admin session",
+    "Source mutation without CSRF is rejected before any preview or canonical write",
+    "Public assessment response leaks no private metadata or governance histories",
+    "Owner source form persists a validated preview before any canonical creation",
+    "Desktop source create preview has no overflow",
+    "Desktop source create preview has no overflow: no framework overlay",
+    "Owner applies the exact persisted source plan through the real UI",
+    "Source creation preserves normalized title and visibly synthetic provenance",
+    "Source update has a valid persisted preview before impact changes",
+    "A real claim-context mutation rejects an otherwise unchanged source preview",
+    "Stale source UI disables replay and requires a new preview",
+    "Stale apply leaves the retained plan unapplied without a receipt",
+    "Stale apply preserves original canonical source values",
+    "Merge UI persists explicit per-field survivor choices for matching synthetic identity",
+    "Split UI shows a server-validated explicit claim mapping to distinct synthetic publications",
+    "Desktop split plan has no document overflow",
+    "Desktop split plan has no document overflow: no framework overlay",
+    "320px split mapping and persisted plan have no document overflow",
+    "320px split mapping and persisted plan have no document overflow: no framework overlay",
+    "320px primary governance action is reachable with Tab",
+    "320px keyboard Enter creates a fresh real server preview from the focused action",
+    "320px keyboard-generated plan remains within the document viewport",
+    "320px keyboard-generated plan remains within the document viewport: no framework overlay",
+    "Rights UI binds the selected server resource version, material and use exactly",
+    "rights: real UI assigns the exact immutable proposal to the selected reviewer",
+    "unknown: an approved proposal and publicly accessible evidence do not imply permission",
+    "unknown: real exact-scope rights selector remains fail closed",
+    "Rights UI binds the selected server resource version, material and use exactly",
+    "rights: real UI assigns the exact immutable proposal to the selected reviewer",
+    "restricted: an approved proposal and publicly accessible evidence do not imply permission",
+    "restricted: real exact-scope rights selector remains fail closed",
+    "Rights UI binds the selected server resource version, material and use exactly",
+    "rights: real UI assigns the exact immutable proposal to the selected reviewer",
+    "conflict: an approved proposal and publicly accessible evidence do not imply permission",
+    "conflict: real exact-scope rights selector remains fail closed",
+    "Rights UI binds the selected server resource version, material and use exactly",
+    "An expired allowed proposal is visibly ineligible before decision",
+    "rights: real UI assigns the exact immutable proposal to the selected reviewer",
+    "Real UI cannot approve an expired permission scope",
+    "Rights UI binds the selected server resource version, material and use exactly",
+    "Public assessment response leaks no private metadata or governance histories",
+    "A pending metadata proposal preserves legacy public eligibility and grants no permission",
+    "rights: real UI assigns the exact immutable proposal to the selected reviewer",
+    "Fresh metadata permission is approved through explicit owner self-review in UI",
+    "Public assessment response leaks no private metadata or governance histories",
+    "Allowed metadata/public-display rights grant neither commercial use nor a different resource version",
+    "Metadata permission does not manufacture item permission",
+    "Rights UI binds the selected server resource version, material and use exactly",
+    "Public assessment response leaks no private metadata or governance histories",
+    "rights: real UI assigns the exact immutable proposal to the selected reviewer",
+    "Item permission requires its own exact approval",
+    "Rights revocation through UI immediately denies the exact scope",
+    "Item revocation denies items while the independent metadata permission remains valid",
+    "Public assessment response leaks no private metadata or governance histories",
+    "Rights revocation through UI immediately denies the exact scope",
+    "Public assessment response leaks no private metadata or governance histories",
+    "Metadata revocation hides public Assessment metadata immediately",
+    "Metadata approval and revocation remain in immutable server history and visible UI",
+    "Governance rights actions preserve all canonical Assessment scientific and authorization fields",
+    "English and Persian terminology fields retain their explicit writing direction",
+    "320px EN/FA proposal, alternatives and source evidence form have no document overflow",
+    "320px EN/FA proposal, alternatives and source evidence form have no document overflow: no framework overlay",
+    "Real terminology submission preserves EN/FA, alternatives and the plain-text proposal preview",
+    "terminology: real UI assigns the exact immutable proposal to the selected reviewer",
+    "Password-only session remains outside the authenticated CMS boundary",
+    "Reviewer with domain view/decision authority has no proposal creation control",
+    "Forged terminology creation by a non-editor reviewer is independently denied by the service",
+    "Independent assigned reviewer approves the exact terminology revision through real UI",
+    "Terminology history records independent approval without implicit self-review",
+    "Password-only session remains outside the authenticated CMS boundary",
+    "Terminology evidence mutation has a real validated source-edit preview",
+    "Real source-edit UI invalidates prior terminology approval when its exact evidence changes",
+    "Evidence invalidation preserves every frozen terminology revision and decision",
+    "320px stale terminology detail has no document overflow",
+    "320px stale terminology detail has no document overflow: no framework overlay",
+    "Terminology approval changes no canonical Assessment name or scientific/rights/translation status",
+    "/sources/2/: owner-facing bibliography/history exposes no raw private legacy metadata and is not cached",
+    "/sources/2/history/: owner-facing bibliography/history exposes no raw private legacy metadata and is not cached",
+    "/sources/export/: owner-facing bibliography/history exposes no raw private legacy metadata and is not cached",
+    "/governance/evidence/: owner-facing bibliography/history exposes no raw private legacy metadata and is not cached",
+    "Anonymous session cannot access private governance history",
+    "Password-only session remains outside the authenticated CMS boundary",
+    "Denied source role sees no source editing or preview controls",
+    "rights: out-of-domain reader receives no private history or record existence details",
+    "rights: queue counts and pagination exclude inaccessible Assessment records",
+    "terminology: out-of-domain reader receives no private history or record existence details",
+    "terminology: queue counts and pagination exclude inaccessible Assessment records",
+    "Denied rights UI contains no proposal payload or private-history tab",
+    "320px denied rights page has no document overflow",
+    "320px denied rights page has no document overflow: no framework overlay",
+    "Password-only session remains outside the authenticated CMS boundary",
+    "Brain-only role cannot infer Assessment rights counts or terminology histories",
+    "Governance/auth flows store no credentials, private histories or proposal snapshots in browser storage",
+    "All HTTP failures are explicit CSRF/MFA/stale/expired/role-denial probes",
+    "Resource console errors are accounted for by explicit expected HTTP denials",
+    "No unexplained Chromium console, runtime or request errors"
+  ],
+  "journey": [
+    {
+      "event": "source_created",
+      "operation": "create",
+      "plan_version": 2
+    },
+    {
+      "event": "impact_mutation_stale_preview",
+      "error": "STALE_SOURCE_PLAN"
+    },
+    {
+      "event": "merge_plan_visible",
+      "can_apply": true
+    },
+    {
+      "event": "split_plan_visible",
+      "can_apply": true,
+      "moved": 1
+    },
+    {
+      "event": "rights_unknown",
+      "material": "image",
+      "eligible": false
+    },
+    {
+      "event": "rights_restricted",
+      "material": "text",
+      "eligible": false
+    },
+    {
+      "event": "rights_conflict",
+      "material": "translation",
+      "eligible": false
+    },
+    {
+      "event": "rights_expired_approval_denied",
+      "material": "instruction",
+      "error": "RIGHTS_NOT_ELIGIBLE"
+    },
+    {
+      "event": "metadata_allowed",
+      "public_metadata": true
+    },
+    {
+      "event": "item_revoked",
+      "public_metadata": true
+    },
+    {
+      "event": "metadata_revoked",
+      "public_metadata": false
+    },
+    {
+      "event": "terminology_independent_approval",
+      "eligible": true,
+      "alternatives": 2
+    },
+    {
+      "event": "terminology_evidence_mutation_stale",
+      "eligible": false,
+      "blockers": [
+        "DEPENDENCY_CHANGED"
+      ]
+    },
+    {
+      "event": "denied_roles_and_private_histories",
+      "private_leakage": false
+    }
+  ],
+  "browserErrors": [],
+  "expectedHttpErrors": [
+    {
+      "path": "/api/admin/me",
+      "status": 403
+    },
+    {
+      "path": "/api/admin/sources/preview",
+      "status": 403
+    },
+    {
+      "path": "/api/admin/sources/plans/89a142f2-7ec2-4147-a883-6ada6e621511/apply",
+      "status": 412
+    },
+    {
+      "path": "/api/admin/governance/rights/c3594e7a-32b3-43d8-8168-dcbaab57cb82/decide",
+      "status": 409
+    },
+    {
+      "path": "/api/admin/me",
+      "status": 403
+    },
+    {
+      "path": "/api/admin/me",
+      "status": 403
+    },
+    {
+      "path": "/api/admin/me",
+      "status": 403
+    },
+    {
+      "path": "/api/admin/governance/rights/37ca8ece-c35a-4d36-a2bf-226a3ec862bd",
+      "status": 404
+    },
+    {
+      "path": "/api/admin/me",
+      "status": 403
+    }
+  ],
+  "screenshots": [
+    "qa/p05-browser/p05-source-create-preview.png",
+    "qa/p05-browser/p05-source-stale-impact.png",
+    "qa/p05-browser/p05-source-merge-plan.png",
+    "qa/p05-browser/p05-source-split-plan.png",
+    "qa/p05-browser/p05-source-split-320.png",
+    "qa/p05-browser/p05-rights-expired-rejected.png",
+    "qa/p05-browser/p05-rights-metadata-allowed.png",
+    "qa/p05-browser/p05-rights-revoked-history.png",
+    "qa/p05-browser/p05-terminology-form-320.png",
+    "qa/p05-browser/p05-terminology-approved.png",
+    "qa/p05-browser/p05-terminology-evidence-stale.png",
+    "qa/p05-browser/p05-terminology-stale-320.png",
+    "qa/p05-browser/p05-denied-rights-320.png"
+  ],
+  "limitations": [
+    "Visibly synthetic .invalid evidence; no scientific or legal validation",
+    "Chromium only, no real mobile device or screen reader",
+    "Local HTTP; no deployment rehearsal",
+    "Claim-context and duplicate-identity setup use guarded synthetic fixture injection; source operations use real UI plans",
+    "Mutation response capture observes a clone of the native browser fetch response before navigation; no HTTP response is mocked",
+    "Merge/split canonical application is outside this browser run"
+  ],
+  "build_id": "gz80sNTG4D3ZpBv8kCW3m",
+  "chromium": "151.0.7922.34",
+  "status": "passed"
+}

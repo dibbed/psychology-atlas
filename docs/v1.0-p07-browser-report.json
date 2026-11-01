@@ -1,0 +1,38 @@
+{
+  "stage": "P07",
+  "environment": "Windows/Chromium/Next production/Django/disposable SQLite/real MFA",
+  "started_at": "2026-10-31T16:32:23.617Z",
+  "checks": [
+    "Actual owner signed in with MFA and session",
+    "Schema response includes all 17 P07 kinds",
+    "Concept and DSM relations are authorized typed schemas",
+    "Browser creates Concept draft without canonical write",
+    "Browser edits Concept draft revision with ETag",
+    "Candidate validate uses real backend and shows P16 publication blocker",
+    "Private Concept preview has no canonical side effect",
+    "DSM tree reads real canonical metadata by corpus",
+    "DSM version comparison exposes changed fields without raw archive",
+    "DSM study and graph previews are real, private, no-publication",
+    "DSM raw archive is omitted from ordinary viewers",
+    "320px DSM workspace has no horizontal document overflow",
+    "Scoped Brain staff sees zero Core/DSM schemas",
+    "Scoped staff cannot read DSM tree via direct API",
+    "Scoped staff cannot see Concept draft through direct page",
+    "No unexpected uncaught browser page errors"
+  ],
+  "screenshots": [
+    "p07-concept-preview-desktop.png",
+    "p07-dsm-tree-desktop.png",
+    "p07-dsm-mobile.png"
+  ],
+  "errors": [],
+  "limits": [
+    "Synthetic NON-SCIENTIFIC fixture only",
+    "No canonical publication/withdrawal (P16)",
+    "Local HTTP only, not production TLS",
+    "No actual user database is opened"
+  ],
+  "browser_version": "156.0.8078.74",
+  "status": "PASS",
+  "completed_at": "2026-10-31T16:32:53.502Z"
+}

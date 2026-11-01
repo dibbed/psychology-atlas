@@ -1,0 +1,240 @@
+{
+  "phase": "P06",
+  "started_at": "2026-10-30T10:35:25.809Z",
+  "runtime": "Production Next / real Django session, MFA, CSRF, API and cms_worker --once / owned disposable SQLite and private storage / Chromium",
+  "viewports": [
+    {
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "width": 320,
+      "height": 850
+    }
+  ],
+  "checks": [
+    "Fresh owned SQLite fixture applies actual migration 0043 with purged_at",
+    "Password and one-time MFA establish a real HttpOnly CMS session",
+    "UI prevents uploading without a selected file",
+    "Real artifact metadata exposes typed cleanup_supported platform capability",
+    "Real multipart UI upload creates quarantined bytes with matching SHA-256",
+    "Quarantine has no enqueue control before separate validation",
+    "Missing-CSRF native browser mutation is denied without creating a job",
+    "320px quarantine upload: no document overflow",
+    "320px quarantine upload: RTL layout",
+    "320px validation is reachable with Tab",
+    "Keyboard validation transitions quarantine to ready with a new server version",
+    "Authorised UI download returns the exact uploaded bytes",
+    "Private UI download records a real audit event",
+    "UI creates a durable queued job without running intake in the request",
+    "Real same-key replay returns the existing job without duplication",
+    "Queued job UI shows actual zero numerator and unknown total",
+    "320px queued job: no document overflow",
+    "320px queued job: RTL layout",
+    "Visible job page performs real automatic queued-state polling",
+    "DB-backed cms_worker --once completes three records and UI polling shows the true numerator",
+    "Intake preserves exact original JSON, an inactive archive and unpromoted records",
+    "Jobs list filters succeeded work and displays persisted progress",
+    "320px jobs list: no document overflow",
+    "320px jobs list: RTL layout",
+    "Research dataset UI displays the actual completed import",
+    "Dataset records UI contains all three imported records",
+    "320px dataset records: no document overflow",
+    "320px dataset records: RTL layout",
+    "Research metadata API omits private payload and raw text",
+    "Metadata-only actor sees neither raw control nor private raw text",
+    "Direct raw-preview is denied without raw_read and creates no successful access audit",
+    "Explicit two-step UI mapping appends the first immutable decision",
+    "UI stages the prior mapping for future review without canonical promotion",
+    "320px research decision and history: no document overflow",
+    "320px research decision and history: RTL layout",
+    "320px research decision selector is reachable with Tab",
+    "Server rejects a stale decision version instead of overwriting history",
+    "Explicit UI defer appends a derived decision while preserving the archive",
+    "Explicit UI reject appends a derived decision while preserving the archive",
+    "Map/stage/defer/reject leave canonical rows, all raw payloads and archived bytes unchanged",
+    "Server history retains both immutable mapping and stage decisions in order",
+    "Equally permitted foreign actor cannot enumerate another user's datasets, jobs or artifacts",
+    "Foreign actor direct artifact/download/job/dataset/record requests all fail closed with 404",
+    "Foreign actor with raw_read and decision permissions still cannot read or mutate another actor's private record",
+    "Foreign job deep link renders an error without leaking artifact metadata",
+    "Authorised owner UI raw-preview returns preserved payload and records a real access audit",
+    "Closing private raw preview removes it from the rendered page",
+    "Explicit UI revocation changes the current private artifact state",
+    "Revoked artifact removes the UI download control",
+    "Previously valid download URL is denied after revocation without returning bytes",
+    "Revocation preserves already imported historical records and original JSON",
+    "Private CMS flow stores no credentials or raw data in browser local/session storage",
+    "Governance UI retains restricted as a distinct rights state",
+    "Governance UI prevents attaching an unvalidated private manifest",
+    "Governance multipart upload binds a quarantined private manifest to the exact server target version without exposing storage",
+    "Governance separate schema validation makes the evidence manifest ready",
+    "Governance UI attaches the validated private manifest as an explicit evidence item",
+    "320px governance private evidence form: no document overflow",
+    "320px governance private evidence form: RTL layout",
+    "Real governance UI creates an exact-version unknown rights proposal with the private artifact attached and no permission granted",
+    "Authorised rights_review download returns the exact private evidence manifest through the guarded endpoint",
+    "Private governance evidence creates no canonical change or scientific research decision",
+    "Research archive: guarded fixture ages only synthetic owned bytes beyond seven days",
+    "Research archive: real cleanup API returns 409 ARTIFACT_RETENTION_HOLD without a job or byte deletion",
+    "Governance evidence: guarded fixture ages only synthetic owned bytes beyond seven days",
+    "Governance evidence: real cleanup API returns 409 ARTIFACT_RETENTION_HOLD without a job or byte deletion",
+    "Native Windows runtime and real artifact cleanup_supported:true are required for physical cleanup acceptance",
+    "Fresh quarantine cannot request cleanup through the UI",
+    "Real cleanup API denies a fresh artifact with 409 ARTIFACT_NOT_EXPIRED",
+    "One unreferenced synthetic UI upload is aged beyond seven days inside the owned fixture only",
+    "Desktop expired cleanup: no document overflow",
+    "Desktop expired cleanup: RTL layout",
+    "320px expired cleanup: no document overflow",
+    "320px expired cleanup: RTL layout",
+    "320px cleanup action is reachable with Tab",
+    "Cleanup first step shows irreversible-deletion confirmation without enqueueing or deleting",
+    "Real UI sends empty JSON and current If-Match, enqueues artifact_cleanup and leaves bytes for the worker",
+    "Actual DB-backed cms_worker --once completes artifact_cleanup with succeeded, cleaned:true and 1/1 progress",
+    "Cleanup job UI polls the actual successful receipt and displays server-confirmed deletion",
+    "320px cleanup receipt: no document overflow",
+    "320px cleanup receipt: RTL layout",
+    "Stdlib execution trace proves real Windows CreateFileW/GetFileInformationByHandle/ReadFile/SetFileInformationByHandle/CloseHandle call sites ran without adapter mocks",
+    "Persisted native cleanup receipt is complete and matches the current owned private directory and original file identity",
+    "DB and real metadata API persist purged_at/expired and retained hash/size while the exact owned physical bytes are gone",
+    "Retention worker deletes only the one unreferenced synthetic private file; historical private bytes remain identical",
+    "Cleanup and retention denials preserve canonical data, immutable decisions and research archives with only one new cleanup job",
+    "Purged artifact UI retains metadata and timestamp, disables repeated cleanup and exposes no download link",
+    "All browser HTTP errors correspond to explicit MFA/CSRF/ownership/retention denial probes",
+    "Browser resource errors are accounted for by expected denials",
+    "No unexplained browser console, runtime or request errors"
+  ],
+  "journey": [
+    "multipart quarantine",
+    "separate validation",
+    "authorised audited download",
+    "queued durable job",
+    "same-key replay",
+    "real worker",
+    "automatic UI polling and true progress",
+    "dataset and record UI",
+    "map/stage/defer/reject",
+    "raw permission denial and audited owner access",
+    "foreign ownership denials",
+    "revocation denial",
+    "320px RTL keyboard and overflow",
+    "canonical and raw preservation",
+    "governance exact-version private manifest upload, validation, attachment and unknown rights proposal",
+    "real two-step cleanup UI, empty If-Match POST, durable worker receipt and physical byte removal",
+    "expired research archive and governance evidence retention holds preserve owned bytes"
+  ],
+  "browserErrors": [],
+  "expectedHttpErrors": [
+    {
+      "path": "/api/admin/me",
+      "status": 403
+    },
+    {
+      "path": "/api/admin/research/imports",
+      "status": 403
+    },
+    {
+      "path": "/api/admin/me",
+      "status": 403
+    },
+    {
+      "path": "/api/admin/jobs/f1bfc719-8fc1-401a-a61c-a1d03df972c3",
+      "status": 404
+    },
+    {
+      "path": "/api/admin/me",
+      "status": 403
+    },
+    {
+      "path": "/api/admin/me",
+      "status": 403
+    },
+    {
+      "path": "/api/admin/me",
+      "status": 403
+    }
+  ],
+  "screenshots": [
+    "qa/p06-browser/p06-mobile-ready.png",
+    "qa/p06-browser/p06-mobile-job-complete.png",
+    "qa/p06-browser/p06-mobile-staged-record.png",
+    "qa/p06-browser/p06-foreign-job-denied.png",
+    "qa/p06-browser/p06-owner-raw-masked.png",
+    "qa/p06-browser/p06-artifact-revoked.png",
+    "qa/p06-browser/p06-governance-private-evidence-form.png",
+    "qa/p06-browser/p06-governance-unknown-proposal.png",
+    "qa/p06-browser/p06-desktop-cleanup-expired.png",
+    "qa/p06-browser/p06-mobile-cleanup-confirmation.png",
+    "qa/p06-browser/p06-mobile-cleanup-complete.png",
+    "qa/p06-browser/p06-mobile-artifact-purged.png"
+  ],
+  "limitations": [
+    "NON-SCIENTIFIC .invalid fixtures; no scientific or legal attestation",
+    "Chromium desktop and 320px viewport only; no physical mobile, screen reader, Firefox or WebKit",
+    "Local HTTP and SQLite; no production deployment, PostgreSQL, proxy/HTTPS or full regression suite",
+    "Worker finishes a small three-record job; queued and completed counters/polling are tested, not a visible intermediate running checkpoint",
+    "Governance private evidence covers upload/validation/attachment to an unknown rights proposal; no legal attestation or rights approval",
+    "Unsupported-POSIX cleanup refusal and its disabled UI notice are not exercised by this native Windows browser run",
+    "Native happy-path deletion and retention holds are covered; adversarial directory-swap race replay belongs to the separate backend regression checks."
+  ],
+  "build_id": "Aqasq_heCalINy9TKxH9C",
+  "backend_checks": {
+    "system_check": "passed",
+    "migration_drift_check": "passed",
+    "migration_0043_applied": true
+  },
+  "isolation": {
+    "database": "new TEMP/atlas-p06-browser-*/cms-journey.sqlite3",
+    "private_storage": "same owned directory/private",
+    "original_database_selected": false,
+    "response_mocks": false
+  },
+  "chromium": "151.0.7922.34",
+  "cleanup_evidence": {
+    "age_days": 8,
+    "job_status": "succeeded",
+    "result_cleaned": true,
+    "progress_done": 1,
+    "progress_total": 1,
+    "artifact_state": "expired",
+    "purged_at_persisted": true,
+    "owned_physical_bytes_removed": true,
+    "historical_private_files_unchanged": true,
+    "archive_hold": "409 ARTIFACT_RETENTION_HOLD",
+    "governance_hold": "409 ARTIFACT_RETENTION_HOLD",
+    "native_windows_calls": {
+      "CreateFileW": 18,
+      "GetFileInformationByHandle": 20,
+      "ReadFile": 4,
+      "SetFileInformationByHandle": 1,
+      "CloseHandle": 18
+    },
+    "adapter_source": "backend/atlas/cms_artifacts.py",
+    "adapter_source_sha256": "89cfacf40bc2f67d96c22e07d543021cfd4de6f511fed48dc8bd08fab8525d0d",
+    "directory_and_file_identity_receipt_verified": true,
+    "acceptance": "passed on current native Windows adapter"
+  },
+  "status": "passed",
+  "cleanup": {
+    "services_stopped": true,
+    "disposable_database_and_private_bytes_removed": true
+  },
+  "finished_at": "2026-10-30T10:36:53.197Z",
+  "frontend_checks": {
+    "typecheck": "passed",
+    "production_build": "passed",
+    "build_id": "Aqasq_heCalINy9TKxH9C",
+    "build_started_at": "2026-10-30T10:34:43.000Z",
+    "build_finished_at": "2026-10-30T10:34:57.467Z",
+    "runtime_source_files": 321,
+    "runtime_sources_unchanged_through_build_startup_and_finish": true,
+    "runtime_sources_sha256": "6d723cb3d390a75258cbe68e2877fd140480d30ee3b8b98ab68f6b613d780ff8"
+  },
+  "harness_checks": {
+    "javascript_syntax": "passed",
+    "python_fixture_syntax": "passed",
+    "environment_guard_self_check": "passed",
+    "fixture_ownership_rejections": "passed",
+    "stdlib_trace_persistence_self_check": "passed"
+  }
+}
