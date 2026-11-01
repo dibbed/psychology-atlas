@@ -71,4 +71,5 @@ class AssessmentMigrationTests(TransactionTestCase):
                 self.assertEqual(database.execute("PRAGMA integrity_check").fetchall(), [("ok",)])
                 self.assertEqual(database.execute("PRAGMA foreign_key_check").fetchall(), [])
                 self.assertEqual(database.execute("SELECT COUNT(*) FROM atlas_assessmentinstrument").fetchone()[0], 0)
-                self.assertEqual(database.execute("SELECT name FROM django_migrations WHERE app='atlas' ORDER BY id DESC LIMIT 1").fetchone()[0], LATEST[1])
+                tip = MigrationExecutor(connection).loader.graph.leaf_nodes("atlas")[0][1]
+                self.assertEqual(database.execute("SELECT name FROM django_migrations WHERE app='atlas' ORDER BY id DESC LIMIT 1").fetchone()[0], tip)

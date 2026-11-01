@@ -1,0 +1,20 @@
+{% load i18n %}{% get_current_language as language %}
+<!doctype html>
+<html lang="{{ language }}" {% if language == "fa" %}dir="rtl"{% endif %}>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{% endblock %}</title>
+  <style>
+    body { font: 1rem/1.6 system-ui, sans-serif; margin: 0; color: #172230; background: #f5f7fa; }
+    main { max-width: 38rem; margin: 2rem auto; padding: 1.5rem; background: white; }
+    input, button, select { font: inherit; max-width: 100%; }
+    button, input[type=submit] { padding: .5rem 1rem; cursor: pointer; }
+    a { color: #174f9c; } :focus-visible { outline: 3px solid #174f9c; outline-offset: 3px; }
+    img { max-width: 100%; } code, a { overflow-wrap: anywhere; }
+    .errorlist { color: #9e2020; } table { width: 100%; } th { text-align: start; }
+  </style>
+  {% block extra_media %}{% endblock %}
+</head>
+<body><main>{% block content_wrapper %}{% block content %}{% endblock %}{% endblock %}</main></body>
+</html>

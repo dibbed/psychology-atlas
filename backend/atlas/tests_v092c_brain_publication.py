@@ -312,11 +312,11 @@ class PublishedCorpusTests(TestCase):
         self.assertEqual(self.client.get("/api/brain-anatomy/frontal-lobe/").status_code, 404)
 
     def test_real_data_query_budgets_do_not_increase_synthetic_limits(self):
-        for path, params, budget in (("/api/brain-anatomy/", {}, 4),
-             ("/api/brain-anatomy/ca1-field/", {}, 11),
-             ("/api/brain-anatomy/", {"q": "Locus coeruleus"}, 4),
-             ("/api/brain-anatomy/", {"parent": "frontal-lobe"}, 5),
-             ("/api/brain-anatomy/", {"kind": "subcortical_structure", "laterality": "left"}, 5)):
+        for path, params, budget in (("/api/brain-anatomy/", {}, 5),
+             ("/api/brain-anatomy/ca1-field/", {}, 12),
+             ("/api/brain-anatomy/", {"q": "Locus coeruleus"}, 5),
+             ("/api/brain-anatomy/", {"parent": "frontal-lobe"}, 6),
+             ("/api/brain-anatomy/", {"kind": "subcortical_structure", "laterality": "left"}, 6)):
             with CaptureQueriesContext(connection) as queries:
                 response = self.client.get(path, params)
             self.assertEqual(response.status_code, 200)

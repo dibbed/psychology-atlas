@@ -1,0 +1,13 @@
+{% extends "two_factor/_base_focus.html" %}{% load i18n %}
+{% block title %}{% trans "Recovery codes" %}{% endblock %}
+{% block content %}
+<h1>{% trans "Recovery codes" %}</h1>
+{% if codes %}
+  <p>{% trans "Save these codes offline. Each code works once. They will not be displayed again." %}</p>
+  <ul>{% for code in codes %}<li><code>{{ code }}</code></li>{% endfor %}</ul>
+{% else %}
+  <p>{% trans "Remaining codes" %}: {{ remaining }}</p>
+{% endif %}
+<p>{% trans "Generating new codes replaces all previous codes and requires a fresh verification." %}</p>
+<form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">{% trans "Generate recovery codes" %}</button></form>
+{% endblock %}

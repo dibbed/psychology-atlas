@@ -1,14 +1,64 @@
 from django.core.cache import cache
-from django.db.models import Count, Q
+from django.db.models import Count, Prefetch, Q
+from django.db import connection
+from django.utils import timezone
+from uuid import uuid4
 from django.shortcuts import get_object_or_404
 from rest_framework import generics
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from .dsm_serializers import DSMRecordBriefSerializer, DSMRecordDetailSerializer
+from .dsm_serializers import DSMRecordBriefSerializer as BaseDSMRecordBriefSerializer, DSMRecordDetailSerializer as BaseDSMRecordDetailSerializer
+from .cms_public_rights import public_cache_safe, public_resources, public_rights, public_visible, scope_visible
+from .serializers import PublicModelSerializer, PublicListSerializer, public_text
 from .models import DSMCorpus, DSMRecord, DSMRecordRelation
 from .pagination import AtlasPagination
 from .search_utils import icontains_any
+
+
+DSM_TEXT_FIELDS = {
+    "summary", "key_features", "assessment", "differential", "comorbidity", "course", "management",
+    "assessment_tools", "context_considerations", "red_flags", "pitfalls", "exam_tip", "self_test", "source_payload",
+}
+
+
+class DSMRecordBriefSerializer(PublicModelSerializer, BaseDSMRecordBriefSerializer):
+    class Meta(BaseDSMRecordBriefSerializer.Meta):
+        list_serializer_class = PublicListSerializer
+
+    def to_representation(self, instance):
+        return public_text(instance, super().to_representation(instance), DSM_TEXT_FIELDS)
+
+
+class DSMRecordDetailSerializer(DSMRecordBriefSerializer, BaseDSMRecordDetailSerializer):
+    class Meta(BaseDSMRecordDetailSerializer.Meta):
+        list_serializer_class = PublicListSerializer
+
+    def get_parent(self, obj):
+        return DSMRecordBriefSerializer(obj.parent).data if obj.parent_id and public_visible(obj.parent) else None
+
+    def get_children(self, obj):
+        rows = public_rights(obj.children.filter(is_active=True), "dsm_record").select_related("linked_disorder").order_by("sort_index")
+        return DSMRecordBriefSerializer(rows, many=True).data
+
+    def get_relations(self, obj):
+        rows = []
+        seen = set()
+        for direction, relations, field in (("out", obj.outgoing_dsm_relations.all(), "target"),
+                                             ("in", obj.incoming_dsm_relations.all(), "source")):
+            for relation in relations:
+                target = getattr(relation, field)
+                key = (target.pk, relation.relationship_type, direction)
+                if not target.is_active or not public_visible(target) or key in seen:
+                    continue
+                seen.add(key)
+                rows.append({"direction": direction, "relationship_type": relation.relationship_type,
+                             "explanation": relation.explanation, "record": DSMRecordBriefSerializer(target).data})
+        return rows
+
+
+def public_dsm_records(corpus):
+    return public_rights(corpus.records.all(), "dsm_record")
 
 
 def _active_corpus():
@@ -21,7 +71,7 @@ def dsm_overview(request):
     if not corpus:
         return Response({"detail": "DSM MASTER هنوز وارد نشده است."}, status=404)
 
-    records = corpus.records.filter(is_active=True)
+    records = public_dsm_records(corpus).filter(is_active=True)
     type_counts = {
         row["display_type"]: row["count"]
         for row in records.values("display_type").annotate(count=Count("id")).order_by("display_type")
@@ -93,7 +143,7 @@ class DSMRecordListView(generics.ListAPIView):
         if not corpus:
             return DSMRecord.objects.none()
 
-        qs = corpus.records.filter(is_active=True).select_related("linked_disorder", "linked_disorder__category")
+        qs = public_dsm_records(corpus).filter(is_active=True).select_related("linked_disorder", "linked_disorder__category")
         q = self.request.query_params.get("q", "").strip()
         display_type = self.request.query_params.get("type", "").strip()
         root = self.request.query_params.get("root", "").strip()
@@ -145,7 +195,7 @@ class DSMRecordDetailView(generics.RetrieveAPIView):
         if not corpus:
             return DSMRecord.objects.none()
         return (
-            corpus.records.filter(is_active=True)
+            public_dsm_records(corpus).filter(is_active=True)
             .select_related("corpus", "parent", "linked_disorder", "linked_disorder__category")
             .prefetch_related(
                 "children__linked_disorder__category",
@@ -161,14 +211,14 @@ def dsm_record_by_disorder(request, slug):
     if not corpus:
         return Response({"detail": "DSM MASTER هنوز وارد نشده است."}, status=404)
     record = get_object_or_404(
-        corpus.records.select_related("corpus", "parent", "linked_disorder", "linked_disorder__category"),
+        public_dsm_records(corpus).select_related("corpus", "parent", "linked_disorder", "linked_disorder__category"),
         linked_disorder__slug=slug,
         is_active=True,
     )
     detailed = request.query_params.get("detail", "").strip().lower() in {"1", "true", "yes"}
     if detailed:
         record = (
-            corpus.records.filter(pk=record.pk)
+            public_dsm_records(corpus).filter(pk=record.pk)
             .select_related("corpus", "parent", "linked_disorder", "linked_disorder__category")
             .prefetch_related(
                 "children__linked_disorder__category",
@@ -186,7 +236,7 @@ def dsm_study_kit(request):
     corpus = _active_corpus()
     if not corpus:
         return Response({"detail": "DSM MASTER هنوز وارد نشده است."}, status=404)
-    records = list(corpus.records.filter(is_active=True).only("self_test", "exam_tip", "display_type"))
+    records = list(public_dsm_records(corpus).filter(is_active=True).only("self_test", "exam_tip", "display_type"))
     glossary = corpus.metadata.get("واژه‌نامه_مطالعاتی", {})
     return Response({
         "glossary": glossary if isinstance(glossary, dict) else {},
@@ -209,11 +259,12 @@ def dsm_graph(request):
     if not corpus:
         return Response({"detail": "DSM MASTER هنوز وارد نشده است."}, status=404)
 
-    cache_key = f"dsm_graph_v2:{corpus.id}:{int(corpus.updated_at.timestamp())}"
-    payload = cache.get(cache_key)
+    revision = cache.get_or_set("atlas_graph_revision", lambda: uuid4().hex, timeout=None)
+    cache_key = f"dsm_graph_v3:{corpus.id}:{int(corpus.updated_at.timestamp())}:{revision}:{timezone.localdate()}"
+    payload = cache.get(cache_key) if not connection.in_atomic_block and public_cache_safe() else None
     if payload is None:
         records = list(
-            corpus.records.filter(is_active=True)
+            public_dsm_records(corpus).filter(is_active=True)
             .values(
                 "id",
                 "master_id",
@@ -227,6 +278,7 @@ def dsm_graph(request):
                 "group_name",
                 "summary",
                 "linked_disorder__slug",
+                "linked_disorder_id",
             )
             .order_by("sort_index", "master_id")
         )
@@ -285,15 +337,16 @@ def dsm_graph(request):
                     "chapter_number": row["chapter_number"],
                     "chapter_name_fa": row["chapter_name_fa"],
                     "group_name": row["group_name"],
-                    "summary": row["summary"],
+                    "summary": row["summary"] if scope_visible("dsm_record", row["id"], "text") else "",
                     "degree": degree[row["master_id"]],
                     "href": f"/dsm/{row['master_id']}",
-                    "linked_disorder_slug": row["linked_disorder__slug"],
+                    "linked_disorder_slug": row["linked_disorder__slug"] if scope_visible("disorder", row["linked_disorder_id"]) else None,
                 }
                 for row in records
             ],
             "edges": edges,
         }
-        cache.set(cache_key, payload, timeout=300)
+        if not connection.in_atomic_block and cache.get("atlas_graph_revision") == revision:
+            cache.set(cache_key, payload, timeout=300)
 
     return Response(payload)

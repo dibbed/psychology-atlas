@@ -4,7 +4,7 @@ from rest_framework import serializers
 
 from .brain_publication import NESTED_LIMIT
 from .models import BrainAnatomicalEntity
-from .serializers import ScientificSourceSerializer
+from .serializers import PublicModelSerializer, ScientificSourceSerializer
 
 
 def anatomy_brief(entity):
@@ -25,13 +25,13 @@ def hierarchy(link, endpoint):
     }
 
 
-class BrainAnatomyListSerializer(serializers.ModelSerializer):
+class BrainAnatomyListSerializer(PublicModelSerializer):
     aliases = serializers.SerializerMethodField()
     sources = serializers.SerializerMethodField()
     aliases_truncated = serializers.SerializerMethodField()
     sources_truncated = serializers.SerializerMethodField()
 
-    class Meta:
+    class Meta(PublicModelSerializer.Meta):
         model = BrainAnatomicalEntity
         fields = ("id", "slug", "name_en", "name_fa", "kind", "laterality", "review_status",
                   "aliases", "sources", "aliases_truncated", "sources_truncated")

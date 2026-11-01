@@ -6,6 +6,7 @@ from rest_framework import serializers
 
 from . import models as atlas_models
 from .services import build_case_attempt_dimension_feedback
+from .cms_public_rights import public_summary, public_visible
 from .models import (
     Bookmark,
     CaseAttempt,
@@ -24,6 +25,43 @@ from .models import (
     UserNote,
     UserProgress,
 )
+
+
+PUBLIC_TEXT_FIELDS = {
+    "short_description", "overview", "clinical_features", "risk_factors", "treatment_overview", "assessment_overview",
+    "simple_definition", "academic_definition", "example", "counterexample", "recognition_cues", "common_confusions",
+    "summary", "description", "description_en", "description_fa", "summary_en", "summary_fa", "biography_en", "biography_fa",
+    "historical_context", "historical_context_en", "historical_context_fa", "core_principles", "typical_structure",
+    "appropriate_contexts", "limitations", "safety_notes", "evidence_note", "application_notes", "patient_summary",
+    "educational_objective", "core_proposition_en", "core_proposition_fa", "key_claims_en", "key_claims_fa",
+    "criticisms_en", "criticisms_fa", "limitations_en", "limitations_fa", "historical_importance_en", "historical_importance_fa",
+}
+
+
+def public_text(obj, data, fields=PUBLIC_TEXT_FIELDS):
+    denied_text = not public_visible(obj, "text")
+    denied_translation = not public_visible(obj, "translation")
+    for field in fields & data.keys():
+        if denied_text or (denied_translation and field.endswith("_fa")):
+            value = data[field]
+            data[field] = [] if isinstance(value, list) else {} if isinstance(value, dict) else ""
+    return data
+
+
+class PublicListSerializer(serializers.ListSerializer):
+    def to_representation(self, data):
+        rows = data.all() if hasattr(data, "all") else data
+        return super().to_representation([obj for obj in rows if public_visible(obj)])
+
+
+class PublicModelSerializer(serializers.ModelSerializer):
+    class Meta:
+        list_serializer_class = PublicListSerializer
+
+    def to_representation(self, instance):
+        if not public_visible(instance):
+            return {}
+        return public_text(instance, super().to_representation(instance))
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -81,23 +119,30 @@ class RelatedDisorderSerializer(serializers.ModelSerializer):
         fields = ("slug", "name_en", "name_fa", "relationship_type", "explanation")
 
 
-class SourceSerializer(serializers.ModelSerializer):
-    class Meta:
+class SourceSerializer(PublicModelSerializer):
+    class Meta(PublicModelSerializer.Meta):
         model = SourceReference
         fields = ("id", "title", "organization", "citation", "url", "publication_year", "source_type")
 
 
-class DisorderListSerializer(serializers.ModelSerializer):
+class DisorderListSerializer(PublicModelSerializer):
     category = serializers.CharField(source="category.name_fa")
     category_slug = serializers.CharField(source="category.slug")
 
-    class Meta:
+    class Meta(PublicModelSerializer.Meta):
         model = Disorder
         fields = ("id", "slug", "name_en", "name_fa", "short_description", "category", "category_slug", "data_origin")
 
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if not public_visible(instance.category):
+            data.update(category=None, category_slug=None)
+        return data
+
+
 class DisorderDetailSerializer(DisorderListSerializer):
-    symptoms = SymptomLinkSerializer(source="symptom_links", many=True)
+    symptoms = serializers.SerializerMethodField()
     related = serializers.SerializerMethodField()
     sources = serializers.SerializerMethodField()
     study_resources = serializers.SerializerMethodField()
@@ -121,12 +166,15 @@ class DisorderDetailSerializer(DisorderListSerializer):
             "therapies",
         )
 
+    def get_symptoms(self, obj):
+        return SymptomLinkSerializer([row for row in obj.symptom_links.all() if public_visible(row.symptom)], many=True).data
+
     def get_related(self, obj):
         rows = []
         seen = set()
         for relation in obj.outgoing_relationships.all():
             other = relation.related_disorder
-            if not other.is_active:
+            if not (other.is_active and public_visible(other)):
                 continue
             key = (other.slug, relation.relationship_type)
             if key in seen:
@@ -141,7 +189,7 @@ class DisorderDetailSerializer(DisorderListSerializer):
             })
         for relation in obj.incoming_relationships.all():
             other = relation.disorder
-            if not other.is_active:
+            if not (other.is_active and public_visible(other)):
                 continue
             key = (other.slug, relation.relationship_type)
             if key in seen:
@@ -160,8 +208,10 @@ class DisorderDetailSerializer(DisorderListSerializer):
         return SourceSerializer([x.source for x in obj.source_links.all()], many=True).data
 
     def get_study_resources(self, obj):
-        quizzes = sorted((q for q in obj.quizzes.all() if q.is_active), key=lambda q: q.title)[:4]
-        case_revisions = list(getattr(obj, "current_case_revisions", ()))[:4]
+        quizzes = sorted((q for q in obj.quizzes.all() if (q.is_active and public_visible(q))), key=lambda q: q.title)[:4]
+        from .cms_case_publication import current_publication_allowed
+        case_revisions = [row for row in getattr(obj, "current_case_revisions", ())
+                          if public_visible(row.case) and current_publication_allowed(row.case)][:4]
         return {
             "quizzes": [{"slug": q.slug, "title": q.title} for q in quizzes],
             "cases": [
@@ -185,20 +235,20 @@ class DisorderDetailSerializer(DisorderListSerializer):
                 "explanation": link.explanation,
             }
             for link in obj.concept_links.all()
-            if link.concept.is_active
+            if (link.concept.is_active and public_visible(link.concept))
         ]
 
     def get_therapies(self, obj):
         rows = []
         for link in obj.therapy_links.all():
             therapy = link.therapy
-            if not link.is_active or not therapy.is_active or not therapy.family.is_active:
+            if not link.is_active or not (therapy.is_active and public_visible(therapy)) or not therapy.family.is_active:
                 continue
             rows.append({
                 "slug": therapy.slug,
                 "name_en": therapy.name_en,
                 "name_fa": therapy.name_fa,
-                "summary": therapy.summary,
+                "summary": public_summary(therapy, therapy.summary),
                 "family": {
                     "slug": therapy.family.slug,
                     "name_en": therapy.family.name_en,
@@ -232,11 +282,11 @@ class QuizQuestionSerializer(serializers.ModelSerializer):
         return QuizChoiceSerializer(obj.choices.filter(is_active=True).order_by("sort_order", "id"), many=True).data
 
 
-class QuizListSerializer(serializers.ModelSerializer):
+class QuizListSerializer(PublicModelSerializer):
     disorder = DisorderListSerializer(read_only=True)
     question_count = serializers.SerializerMethodField()
 
-    class Meta:
+    class Meta(PublicModelSerializer.Meta):
         model = Quiz
         fields = ("id", "slug", "title", "description", "disorder", "question_count")
 
@@ -251,6 +301,8 @@ class QuizDetailSerializer(QuizListSerializer):
         fields = QuizListSerializer.Meta.fields + ("questions",)
 
     def get_questions(self, obj):
+        if not public_visible(obj, "item"):
+            return []
         return QuizQuestionSerializer(obj.questions.filter(is_active=True).order_by("sort_order", "id"), many=True).data
 
 
@@ -286,7 +338,7 @@ class CaseStepSerializer(serializers.ModelSerializer):
         return CaseQuestionSerializer(questions, many=True).data
 
 
-class ClinicalCaseListSerializer(serializers.ModelSerializer):
+class ClinicalCaseListSerializer(PublicModelSerializer):
     title = serializers.SerializerMethodField()
     patient_summary = serializers.SerializerMethodField()
     difficulty = serializers.SerializerMethodField()
@@ -295,7 +347,7 @@ class ClinicalCaseListSerializer(serializers.ModelSerializer):
     revision_number = serializers.SerializerMethodField()
     rubric_version = serializers.SerializerMethodField()
 
-    class Meta:
+    class Meta(PublicModelSerializer.Meta):
         model = ClinicalCase
         fields = (
             "id",
@@ -327,7 +379,7 @@ class ClinicalCaseListSerializer(serializers.ModelSerializer):
 
     def get_primary_disorder(self, obj):
         disorder = obj.current_revision.primary_disorder if obj.current_revision_id else obj.primary_disorder
-        return DisorderListSerializer(disorder).data if disorder is not None else None
+        return DisorderListSerializer(disorder).data if disorder is not None and public_visible(disorder) else None
 
     def get_step_count(self, obj):
         if not obj.current_revision_id:
@@ -354,7 +406,7 @@ class ClinicalCaseDetailSerializer(ClinicalCaseListSerializer):
         return obj.current_revision.educational_objective
 
     def get_steps(self, obj):
-        if not obj.current_revision_id or obj.structure_mode == ClinicalCase.StructureMode.BRANCHING:
+        if not obj.current_revision_id or obj.structure_mode == ClinicalCase.StructureMode.BRANCHING or not public_visible(obj, "item"):
             return []
         steps = [step for step in obj.current_revision.steps.all() if step.is_active]
         return CaseStepSerializer(steps, many=True).data
@@ -481,13 +533,13 @@ class ConceptAliasSerializer(serializers.ModelSerializer):
         fields = ("text", "language", "alias_type")
 
 
-class ConceptListSerializer(serializers.ModelSerializer):
+class ConceptListSerializer(PublicModelSerializer):
     kind_label = serializers.CharField(source="get_kind_display", read_only=True)
     domain_label = serializers.CharField(source="get_domain_display", read_only=True)
     subtype_label = serializers.CharField(source="get_subtype_display", read_only=True)
     aliases = ConceptAliasSerializer(many=True, read_only=True)
 
-    class Meta:
+    class Meta(PublicModelSerializer.Meta):
         model = Concept
         fields = (
             "id",
@@ -518,14 +570,14 @@ class ConceptCatalogSerializer(ConceptListSerializer):
         )
 
     def get_disorder_count(self, obj):
-        return sum(1 for link in obj.disorder_links.all() if link.disorder.is_active)
+        return sum(1 for link in obj.disorder_links.all() if (link.disorder.is_active and public_visible(link.disorder)))
 
     def get_flashcard_count(self, obj):
-        return sum(1 for card in obj.flashcards.all() if card.is_active)
+        return sum(1 for card in obj.flashcards.all() if (card.is_active and public_visible(card)))
 
     def get_relationship_count(self, obj):
-        outgoing = sum(1 for row in obj.outgoing_concept_relationships.all() if row.target_concept.is_active)
-        incoming = sum(1 for row in obj.incoming_concept_relationships.all() if row.source_concept.is_active)
+        outgoing = sum(1 for row in obj.outgoing_concept_relationships.all() if (row.target_concept.is_active and public_visible(row.target_concept)))
+        incoming = sum(1 for row in obj.incoming_concept_relationships.all() if (row.source_concept.is_active and public_visible(row.source_concept)))
         return outgoing + incoming
 
 
@@ -558,7 +610,7 @@ class ConceptDetailSerializer(ConceptCatalogSerializer):
         seen = set()
         for relation in obj.outgoing_concept_relationships.all():
             other = relation.target_concept
-            if not other.is_active:
+            if not (other.is_active and public_visible(other)):
                 continue
             key = (other.slug, relation.relationship_type, "outgoing")
             if key in seen:
@@ -575,7 +627,7 @@ class ConceptDetailSerializer(ConceptCatalogSerializer):
             })
         for relation in obj.incoming_concept_relationships.all():
             other = relation.source_concept
-            if not other.is_active:
+            if not (other.is_active and public_visible(other)):
                 continue
             key = (other.slug, relation.relationship_type, "incoming")
             if key in seen:
@@ -600,7 +652,7 @@ class ConceptDetailSerializer(ConceptCatalogSerializer):
                 "disorder": DisorderListSerializer(link.disorder).data,
             }
             for link in obj.disorder_links.all()
-            if link.disorder.is_active
+            if (link.disorder.is_active and public_visible(link.disorder))
         ]
 
     def get_symptoms(self, obj):
@@ -613,14 +665,14 @@ class ConceptDetailSerializer(ConceptCatalogSerializer):
                 "relationship_type": link.relationship_type,
                 "explanation": link.explanation,
             }
-            for link in obj.symptom_links.all()
+            for link in obj.symptom_links.all() if public_visible(link.symptom)
         ]
 
     def get_therapies(self, obj):
         rows = []
         for link in obj.therapy_links.all():
             therapy = link.therapy
-            if not link.is_active or not therapy.is_active or not therapy.family.is_active:
+            if not link.is_active or not (therapy.is_active and public_visible(therapy)) or not therapy.family.is_active:
                 continue
             rows.append({
                 "relationship_type": link.relationship_type,
@@ -629,7 +681,7 @@ class ConceptDetailSerializer(ConceptCatalogSerializer):
                     "slug": therapy.slug,
                     "name_en": therapy.name_en,
                     "name_fa": therapy.name_fa,
-                    "summary": therapy.summary,
+                    "summary": public_summary(therapy, therapy.summary),
                     "family": {
                         "slug": therapy.family.slug,
                         "name_en": therapy.family.name_en,
@@ -644,7 +696,7 @@ class ConceptDetailSerializer(ConceptCatalogSerializer):
         rows = []
         for link in obj.technique_links.all():
             technique = link.technique
-            if not link.is_active or not technique.is_active:
+            if not link.is_active or not (technique.is_active and public_visible(technique)):
                 continue
             rows.append({
                 "relationship_type": link.relationship_type,
@@ -653,7 +705,7 @@ class ConceptDetailSerializer(ConceptCatalogSerializer):
                     "slug": technique.slug,
                     "name_en": technique.name_en,
                     "name_fa": technique.name_fa,
-                    "summary": technique.summary,
+                    "summary": public_summary(technique, technique.summary),
                 },
                 "sources": SourceSerializer([row.source for row in link.source_links.all()], many=True).data,
             })
@@ -663,11 +715,11 @@ class ConceptDetailSerializer(ConceptCatalogSerializer):
         return SourceSerializer([link.source for link in obj.source_links.all()], many=True).data
 
 
-class FlashcardSerializer(serializers.ModelSerializer):
+class FlashcardSerializer(PublicModelSerializer):
     concept = ConceptListSerializer(read_only=True)
     disorder = DisorderListSerializer(read_only=True)
 
-    class Meta:
+    class Meta(PublicModelSerializer.Meta):
         model = Flashcard
         fields = (
             "id",
@@ -679,6 +731,13 @@ class FlashcardSerializer(serializers.ModelSerializer):
             "concept",
             "disorder",
         )
+
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if data and not public_visible(instance, "item"):
+            data.update(front="", back="", hint="")
+        return data
 
 
 class FlashcardProgressSerializer(serializers.ModelSerializer):
@@ -773,12 +832,12 @@ class TechniqueAliasSerializer(serializers.ModelSerializer):
         fields = ("text", "language", "alias_type")
 
 
-class TechniqueListSerializer(serializers.ModelSerializer):
+class TechniqueListSerializer(PublicModelSerializer):
     aliases = TechniqueAliasSerializer(many=True, read_only=True)
     therapy_count = serializers.SerializerMethodField()
     concept_count = serializers.SerializerMethodField()
 
-    class Meta:
+    class Meta(PublicModelSerializer.Meta):
         model = Technique
         fields = (
             "id", "slug", "name_en", "name_fa", "summary", "review_status",
@@ -788,14 +847,14 @@ class TechniqueListSerializer(serializers.ModelSerializer):
     def get_therapy_count(self, obj):
         return sum(
             1 for link in obj.therapy_links.all()
-            if link.is_active and link.therapy.is_active and link.therapy.family.is_active
+            if link.is_active and (link.therapy.is_active and public_visible(link.therapy)) and link.therapy.family.is_active
         )
 
     def get_concept_count(self, obj):
-        return sum(1 for link in obj.concept_links.all() if link.is_active and link.concept.is_active)
+        return sum(1 for link in obj.concept_links.all() if link.is_active and (link.concept.is_active and public_visible(link.concept)))
 
 
-class TherapyListSerializer(serializers.ModelSerializer):
+class TherapyListSerializer(PublicModelSerializer):
     family = TherapyFamilySerializer(read_only=True)
     aliases = TherapyAliasSerializer(many=True, read_only=True)
     classifications = serializers.SerializerMethodField()
@@ -803,7 +862,7 @@ class TherapyListSerializer(serializers.ModelSerializer):
     disorder_count = serializers.SerializerMethodField()
     concept_count = serializers.SerializerMethodField()
 
-    class Meta:
+    class Meta(PublicModelSerializer.Meta):
         model = Therapy
         fields = (
             "id", "slug", "name_en", "name_fa", "summary", "family", "aliases",
@@ -817,13 +876,13 @@ class TherapyListSerializer(serializers.ModelSerializer):
         ).data
 
     def get_technique_count(self, obj):
-        return sum(1 for link in obj.technique_links.all() if link.is_active and link.technique.is_active)
+        return sum(1 for link in obj.technique_links.all() if link.is_active and (link.technique.is_active and public_visible(link.technique)))
 
     def get_disorder_count(self, obj):
-        return sum(1 for link in obj.disorder_links.all() if link.is_active and link.disorder.is_active)
+        return sum(1 for link in obj.disorder_links.all() if link.is_active and (link.disorder.is_active and public_visible(link.disorder)))
 
     def get_concept_count(self, obj):
-        return sum(1 for link in obj.concept_links.all() if link.is_active and link.concept.is_active)
+        return sum(1 for link in obj.concept_links.all() if link.is_active and (link.concept.is_active and public_visible(link.concept)))
 
 
 class TherapyBookmarkSerializer(serializers.ModelSerializer):
@@ -863,7 +922,7 @@ class TherapyDetailSerializer(TherapyListSerializer):
     def get_techniques(self, obj):
         rows = []
         for link in obj.technique_links.all():
-            if not link.is_active or not link.technique.is_active:
+            if not link.is_active or not (link.technique.is_active and public_visible(link.technique)):
                 continue
             rows.append({
                 "role": link.role,
@@ -876,7 +935,7 @@ class TherapyDetailSerializer(TherapyListSerializer):
     def get_disorders(self, obj):
         rows = []
         for link in obj.disorder_links.all():
-            if not link.is_active or not link.disorder.is_active:
+            if not link.is_active or not (link.disorder.is_active and public_visible(link.disorder)):
                 continue
             rows.append({
                 "clinical_role": link.clinical_role,
@@ -893,7 +952,7 @@ class TherapyDetailSerializer(TherapyListSerializer):
     def get_concepts(self, obj):
         rows = []
         for link in obj.concept_links.all():
-            if not link.is_active or not link.concept.is_active:
+            if not link.is_active or not (link.concept.is_active and public_visible(link.concept)):
                 continue
             rows.append({
                 "relationship_type": link.relationship_type,
@@ -921,7 +980,7 @@ class TechniqueDetailSerializer(TechniqueListSerializer):
     def get_therapies(self, obj):
         rows = []
         for link in obj.therapy_links.all():
-            if not link.is_active or not link.therapy.is_active or not link.therapy.family.is_active:
+            if not link.is_active or not (link.therapy.is_active and public_visible(link.therapy)) or not link.therapy.family.is_active:
                 continue
             rows.append({
                 "role": link.role,
@@ -939,7 +998,7 @@ class TechniqueDetailSerializer(TechniqueListSerializer):
     def get_concepts(self, obj):
         rows = []
         for link in obj.concept_links.all():
-            if not link.is_active or not link.concept.is_active:
+            if not link.is_active or not (link.concept.is_active and public_visible(link.concept)):
                 continue
             rows.append({
                 "relationship_type": link.relationship_type,
@@ -950,8 +1009,8 @@ class TechniqueDetailSerializer(TechniqueListSerializer):
         return rows
 
 
-class ScientificSourceSerializer(serializers.ModelSerializer):
-    class Meta:
+class ScientificSourceSerializer(PublicModelSerializer):
+    class Meta(PublicModelSerializer.Meta):
         model = atlas_models.SourceReference
         fields = (
             "id", "title", "organization", "citation", "url", "publication_year",
@@ -979,7 +1038,7 @@ def _entity_source_links(links):
             "note": link.note,
             "source": ScientificSourceSerializer(link.source).data,
         }
-        for link in links
+        for link in links if public_visible(link.source)
     ]
 
 
@@ -1067,14 +1126,14 @@ def _annotated_or_prefetched_count(obj, annotation, manager_name, predicate):
     return sum(1 for row in getattr(obj, manager_name).all() if predicate(row))
 
 
-class PsychologistListSerializer(serializers.ModelSerializer):
+class PsychologistListSerializer(PublicModelSerializer):
     aliases = PsychologistAliasV6Serializer(many=True, read_only=True)
     theory_count = serializers.SerializerMethodField()
     concept_count = serializers.SerializerMethodField()
     therapy_count = serializers.SerializerMethodField()
     timeline_event_count = serializers.SerializerMethodField()
 
-    class Meta:
+    class Meta(PublicModelSerializer.Meta):
         model = atlas_models.Psychologist
         fields = (
             "id", "slug", "name_en", "name_fa", "summary_en", "summary_fa",
@@ -1098,7 +1157,7 @@ class PsychologistListSerializer(serializers.ModelSerializer):
     def get_therapy_count(self, obj):
         return _annotated_or_prefetched_count(
             obj, "therapy_count", "therapy_links",
-            lambda row: row.is_active and row.therapy.is_active and row.therapy.family.is_active,
+            lambda row: row.is_active and (row.therapy.is_active and public_visible(row.therapy)) and row.therapy.family.is_active,
         )
 
     def get_timeline_event_count(self, obj):
@@ -1138,7 +1197,7 @@ class PsychologistDetailSerializer(PsychologistListSerializer):
                 "sources": _relation_sources(link),
             }
             for link in obj.theory_links.all()
-            if link.is_active and link.theory.is_active
+            if link.is_active and (link.theory.is_active and public_visible(link.theory))
         ]
 
     def get_concepts(self, obj):
@@ -1153,7 +1212,7 @@ class PsychologistDetailSerializer(PsychologistListSerializer):
                 "sources": _relation_sources(link),
             }
             for link in obj.concept_links.all()
-            if link.is_active and link.concept.is_active
+            if link.is_active and (link.concept.is_active and public_visible(link.concept))
         ]
 
     def get_therapies(self, obj):
@@ -1168,13 +1227,13 @@ class PsychologistDetailSerializer(PsychologistListSerializer):
                 "sources": _relation_sources(link),
             }
             for link in obj.therapy_links.all()
-            if link.is_active and link.therapy.is_active and link.therapy.family.is_active
+            if link.is_active and (link.therapy.is_active and public_visible(link.therapy)) and link.therapy.family.is_active
         ]
 
     def get_related_psychologists(self, obj):
         rows = []
         for link in obj.outgoing_psychologist_links.all():
-            if link.is_active and link.related_psychologist.is_active:
+            if link.is_active and (link.related_psychologist.is_active and public_visible(link.related_psychologist)):
                 rows.append({
                     "direction": "outgoing",
                     "relationship_type": link.relationship_type,
@@ -1186,7 +1245,7 @@ class PsychologistDetailSerializer(PsychologistListSerializer):
                     "sources": _relation_sources(link),
                 })
         for link in obj.incoming_psychologist_links.all():
-            if link.is_active and link.psychologist.is_active:
+            if link.is_active and (link.psychologist.is_active and public_visible(link.psychologist)):
                 rows.append({
                     "direction": "incoming",
                     "relationship_type": link.relationship_type,
@@ -1209,11 +1268,11 @@ class PsychologistDetailSerializer(PsychologistListSerializer):
                 "sources": _relation_sources(link),
             }
             for link in obj.timeline_links.all()
-            if link.is_active and link.event.is_active
+            if link.is_active and (link.event.is_active and public_visible(link.event))
         ]
 
 
-class TheoryListSerializer(serializers.ModelSerializer):
+class TheoryListSerializer(PublicModelSerializer):
     aliases = TheoryAliasV6Serializer(many=True, read_only=True)
     psychologist_count = serializers.SerializerMethodField()
     concept_count = serializers.SerializerMethodField()
@@ -1221,7 +1280,7 @@ class TheoryListSerializer(serializers.ModelSerializer):
     technique_count = serializers.SerializerMethodField()
     timeline_event_count = serializers.SerializerMethodField()
 
-    class Meta:
+    class Meta(PublicModelSerializer.Meta):
         model = atlas_models.Theory
         fields = (
             "id", "slug", "name_en", "name_fa", "domain", "period_text",
@@ -1245,13 +1304,13 @@ class TheoryListSerializer(serializers.ModelSerializer):
     def get_therapy_count(self, obj):
         return _annotated_or_prefetched_count(
             obj, "therapy_count", "therapy_links",
-            lambda row: row.is_active and row.therapy.is_active and row.therapy.family.is_active,
+            lambda row: row.is_active and (row.therapy.is_active and public_visible(row.therapy)) and row.therapy.family.is_active,
         )
 
     def get_technique_count(self, obj):
         return _annotated_or_prefetched_count(
             obj, "technique_count", "technique_links",
-            lambda row: row.is_active and row.technique.is_active,
+            lambda row: row.is_active and (row.technique.is_active and public_visible(row.technique)),
         )
 
     def get_timeline_event_count(self, obj):
@@ -1295,7 +1354,7 @@ class TheoryDetailSerializer(TheoryListSerializer):
                 "sources": _relation_sources(link),
             }
             for link in obj.psychologist_links.all()
-            if link.is_active and link.psychologist.is_active
+            if link.is_active and (link.psychologist.is_active and public_visible(link.psychologist))
         ]
 
     def get_concepts(self, obj):
@@ -1310,7 +1369,7 @@ class TheoryDetailSerializer(TheoryListSerializer):
                 "sources": _relation_sources(link),
             }
             for link in obj.concept_links.all()
-            if link.is_active and link.concept.is_active
+            if link.is_active and (link.concept.is_active and public_visible(link.concept))
         ]
 
     def get_therapies(self, obj):
@@ -1325,7 +1384,7 @@ class TheoryDetailSerializer(TheoryListSerializer):
                 "sources": _relation_sources(link),
             }
             for link in obj.therapy_links.all()
-            if link.is_active and link.therapy.is_active and link.therapy.family.is_active
+            if link.is_active and (link.therapy.is_active and public_visible(link.therapy)) and link.therapy.family.is_active
         ]
 
     def get_techniques(self, obj):
@@ -1340,13 +1399,13 @@ class TheoryDetailSerializer(TheoryListSerializer):
                 "sources": _relation_sources(link),
             }
             for link in obj.technique_links.all()
-            if link.is_active and link.technique.is_active
+            if link.is_active and (link.technique.is_active and public_visible(link.technique))
         ]
 
     def get_related_theories(self, obj):
         rows = []
         for link in obj.outgoing_theory_links.all():
-            if link.is_active and link.related_theory.is_active:
+            if link.is_active and (link.related_theory.is_active and public_visible(link.related_theory)):
                 rows.append({
                     "direction": "outgoing",
                     "relationship_type": link.relationship_type,
@@ -1358,7 +1417,7 @@ class TheoryDetailSerializer(TheoryListSerializer):
                     "sources": _relation_sources(link),
                 })
         for link in obj.incoming_theory_links.all():
-            if link.is_active and link.theory.is_active:
+            if link.is_active and (link.theory.is_active and public_visible(link.theory)):
                 rows.append({
                     "direction": "incoming",
                     "relationship_type": link.relationship_type,
@@ -1381,11 +1440,11 @@ class TheoryDetailSerializer(TheoryListSerializer):
                 "sources": _relation_sources(link),
             }
             for link in obj.timeline_links.all()
-            if link.is_active and link.event.is_active
+            if link.is_active and (link.event.is_active and public_visible(link.event))
         ]
 
 
-class TimelineEventListSerializer(serializers.ModelSerializer):
+class TimelineEventListSerializer(PublicModelSerializer):
     event_type_label = serializers.CharField(source="get_event_type_display", read_only=True)
     date_precision_label = serializers.CharField(source="get_date_precision_display", read_only=True)
     psychologist_count = serializers.SerializerMethodField()
@@ -1394,7 +1453,7 @@ class TimelineEventListSerializer(serializers.ModelSerializer):
     technique_count = serializers.SerializerMethodField()
     concept_count = serializers.SerializerMethodField()
 
-    class Meta:
+    class Meta(PublicModelSerializer.Meta):
         model = atlas_models.TimelineEvent
         fields = (
             "id", "slug", "title_en", "title_fa", "event_type", "event_type_label",
@@ -1418,13 +1477,13 @@ class TimelineEventListSerializer(serializers.ModelSerializer):
     def get_therapy_count(self, obj):
         return _annotated_or_prefetched_count(
             obj, "therapy_count", "therapy_links",
-            lambda row: row.is_active and row.therapy.is_active and row.therapy.family.is_active,
+            lambda row: row.is_active and (row.therapy.is_active and public_visible(row.therapy)) and row.therapy.family.is_active,
         )
 
     def get_technique_count(self, obj):
         return _annotated_or_prefetched_count(
             obj, "technique_count", "technique_links",
-            lambda row: row.is_active and row.technique.is_active,
+            lambda row: row.is_active and (row.technique.is_active and public_visible(row.technique)),
         )
 
     def get_concept_count(self, obj):
@@ -1462,7 +1521,7 @@ class TimelineEventDetailSerializer(TimelineEventListSerializer):
                 "sources": _relation_sources(link),
             }
             for link in obj.psychologist_links.all()
-            if link.is_active and link.psychologist.is_active
+            if link.is_active and (link.psychologist.is_active and public_visible(link.psychologist))
         ]
 
     def get_theories(self, obj):
@@ -1475,7 +1534,7 @@ class TimelineEventDetailSerializer(TimelineEventListSerializer):
                 "sources": _relation_sources(link),
             }
             for link in obj.theory_links.all()
-            if link.is_active and link.theory.is_active
+            if link.is_active and (link.theory.is_active and public_visible(link.theory))
         ]
 
     def get_therapies(self, obj):
@@ -1488,7 +1547,7 @@ class TimelineEventDetailSerializer(TimelineEventListSerializer):
                 "sources": _relation_sources(link),
             }
             for link in obj.therapy_links.all()
-            if link.is_active and link.therapy.is_active and link.therapy.family.is_active
+            if link.is_active and (link.therapy.is_active and public_visible(link.therapy)) and link.therapy.family.is_active
         ]
 
     def get_techniques(self, obj):
@@ -1501,7 +1560,7 @@ class TimelineEventDetailSerializer(TimelineEventListSerializer):
                 "sources": _relation_sources(link),
             }
             for link in obj.technique_links.all()
-            if link.is_active and link.technique.is_active
+            if link.is_active and (link.technique.is_active and public_visible(link.technique))
         ]
 
     def get_concepts(self, obj):
@@ -1514,5 +1573,5 @@ class TimelineEventDetailSerializer(TimelineEventListSerializer):
                 "sources": _relation_sources(link),
             }
             for link in obj.concept_links.all()
-            if link.is_active and link.concept.is_active
+            if link.is_active and (link.concept.is_active and public_visible(link.concept))
         ]

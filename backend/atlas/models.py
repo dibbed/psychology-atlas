@@ -4228,3 +4228,15 @@ from .assessment_models import (  # noqa: E402,F401 — Django discovers these c
     AssessmentPsychometricEvidence, AssessmentRelation, AssessmentSource,
     AssessmentValidationStudy, AssessmentVersion,
 )
+
+from .cms_models import (  # noqa: E402,F401
+    AccountSecurityState, AdminLoginThrottle, AdminAuditEvent, AdminSession, RolePolicy,
+)
+from .cms_content_models import ContentRevision, ContentState  # noqa: E402,F401
+from .cms_review_models import ReviewPolicy, ReviewPolicyRevision, ReviewTask, ReviewDecision  # noqa: E402,F401
+from .cms_governance_models import GovernanceRecord, GovernanceRevision, GovernanceDecision  # noqa: E402,F401
+from .cms_source_models import SourceState, SourcePlan, SourcePlanReceipt, SourceHistory, SourceSuccessor  # noqa: E402,F401
+from .cms_job_models import AdminArtifact, AdminJob, ResearchRecordDecision  # noqa: E402,F401
+from .cms_case_publication_models import (  # noqa: E402,F401
+    CasePublicationReview, CasePublicationPlan, CasePublicationReceipt,
+)

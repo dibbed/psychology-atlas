@@ -845,11 +845,11 @@ class AtlasApiTests(APITestCase):
         with CaptureQueriesContext(connection) as list_queries:
             list_response = self.client.get("/api/cases/?page_size=100")
         self.assertEqual(list_response.status_code, 200)
-        self.assertLessEqual(len(list_queries), 3)
+        self.assertLessEqual(len(list_queries), 5)  # P16 adds one fixed fail-closed publication freshness lookup.
         with CaptureQueriesContext(connection) as detail_queries:
             detail_response = self.client.get(f"/api/cases/{case.slug}/")
         self.assertEqual(detail_response.status_code, 200)
-        self.assertLessEqual(len(detail_queries), 4)
+        self.assertLessEqual(len(detail_queries), 6)  # P16 freshness check; no per-case N+1 without plans.
 
     def test_seed_creates_new_case_revision_without_mutating_attempt_history(self):
         from atlas.management.commands import seed_mvp as seed_module
@@ -1781,7 +1781,7 @@ class AtlasApiTests(APITestCase):
         with CaptureQueriesContext(connection) as detail_queries:
             detail = self.client.get(f"/api/case-analytics/cases/{fixture['case'].slug}/")
         self.assertEqual(detail.status_code, 200)
-        self.assertLessEqual(len(detail_queries), 4)
+        self.assertLessEqual(len(detail_queries), 6)  # P16 adds one fixed runtime source/rights freshness check.
 
     def test_v0743_case_analytics_contract_v1_keys_are_frozen(self):
         fixture = self.create_branching_case_fixture(slug="v0743-contract", scored=True)
@@ -2288,7 +2288,7 @@ class AtlasApiTests(APITestCase):
         self.assertEqual(overview.status_code, 200)
         self.assertEqual(detail.status_code, 200)
         self.assertLessEqual(len(overview_queries), 3)
-        self.assertLessEqual(len(detail_queries), 4)
+        self.assertLessEqual(len(detail_queries), 6)  # Historical row growth adds no N+1; P16 adds one fixed publication-freshness lookup.
         self.assertEqual(overview.json()["attempts"]["total"], 40)
         data = detail.json()
         self.assertEqual(data["attempts"]["total"], 40)
@@ -2781,8 +2781,8 @@ class AtlasApiTests(APITestCase):
             response = self.client.get("/api/concept-map/")
         self.assertEqual(response.status_code, 200)
         # Empty new domains add exactly three reads: public anatomy, resolved
-        # Assessment source IDs, and eligible instruments (measured 16 vs 13).
-        self.assertLessEqual(len(captured), 13 + 3)
+        # Assessment source IDs, and eligible instruments; P05 adds one scoped-rights read.
+        self.assertLessEqual(len(captured), 13 + 3 + 1)
         # Also compare corpus growth directly to catch per-node work.
         extra = Concept.objects.create(slug="query-concept-extra", name_en="Extra", simple_definition="definition")
         ConceptRelationship.objects.create(source_concept=concepts[-1], target_concept=extra,
@@ -3929,7 +3929,7 @@ class TherapyPersonalCompareTests(APITestCase):
                 "/api/therapies/compare/?slugs=cognitive-behavioral-therapy,behavioral-activation"
             )
         self.assertEqual(response.status_code, 200)
-        self.assertLessEqual(len(captured), 14)
+        self.assertLessEqual(len(captured), 15)  # P05 adds one fixed rights/lifecycle read.
 
     def test_therapy_compare_rejects_invalid_sets_and_inactive_rows(self):
         one = self.client.get("/api/therapies/compare/?slugs=cognitive-behavioral-therapy")
@@ -5883,7 +5883,7 @@ class V075CaseConcurrencyTests(TransactionTestCase):
             attempt, created = start_or_resume_case_attempt(user=user, clinical_case=clinical_case)
             return attempt.id, created
         finally:
-            close_old_connections()
+            connection.close()
 
     def _advance(self, attempt_id):
         close_old_connections()
@@ -5899,7 +5899,7 @@ class V075CaseConcurrencyTests(TransactionTestCase):
             )
             return event.id, idempotent
         finally:
-            close_old_connections()
+            connection.close()
 
     def test_v075_concurrent_start_returns_one_shared_attempt_without_sqlite_lock_error(self):
         for _ in range(25):

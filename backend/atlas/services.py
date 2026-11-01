@@ -15,6 +15,7 @@ from .models import (
     CaseStep,
     CaseTransition,
     ClinicalCase,
+    Quiz,
     QuizAttempt,
     QuizAttemptAnswer,
     StudyActivity,
@@ -53,6 +54,10 @@ def _normalize_answers(answers, expected_question_ids, *, label):
 
 @transaction.atomic
 def submit_quiz(*, user, quiz, answers):
+    # Synchronize learner submissions with P13 private editorial writes on
+    # PostgreSQL. The CMS editor locks the same Quiz row before replacing any
+    # unpublished question set; historical answer rows remain protected.
+    quiz = Quiz.objects.select_for_update().get(pk=quiz.pk)
     question_ids = set(quiz.questions.filter(is_active=True).values_list("id", flat=True))
     if not question_ids:
         raise ValidationError("این آزمون هنوز سؤال قابل پاسخ ندارد.")
@@ -268,12 +273,12 @@ def _validate_resumable_case_attempt(attempt):
 @transaction.atomic
 def _start_or_resume_case_attempt_once(*, user, clinical_case):
     locked_case = (
-        ClinicalCase.objects.select_for_update()
+        ClinicalCase.objects.select_for_update(of=("self",))
         .select_related("current_revision__entry_step")
         .get(pk=clinical_case.pk)
     )
     existing_attempts = list(
-        CaseAttempt.objects.select_for_update()
+        CaseAttempt.objects.select_for_update(of=("self",))
         .filter(user=user, case=locked_case, status=CaseAttempt.Status.IN_PROGRESS)
         .select_related("revision", "current_step")
         .order_by("-created_at", "-id")[:2]
@@ -283,7 +288,16 @@ def _start_or_resume_case_attempt_once(*, user, clinical_case):
     if existing_attempts:
         return _validate_resumable_case_attempt(existing_attempts[0]), False
 
+    # Archival prevents new learning attempts, but does not invalidate a
+    # revision-pinned in-progress attempt that started before archival.
+    if not locked_case.is_active:
+        raise ValidationError("این کیس برای شروع تلاش جدید فعال نیست.")
+
     revision = locked_case.current_revision
+    if revision is not None:
+        from .cms_case_publication import current_publication_allowed
+        if not current_publication_allowed(locked_case):
+            raise ValidationError("مجوز انتشار علمی یا حقوقی این نسخه دیگر معتبر نیست.")
     if revision is None or revision.status != revision.Status.PUBLISHED:
         raise ValidationError("این کیس revision منتشرشده و قابل شروع ندارد.")
     entry_step = revision.entry_step
@@ -429,7 +443,7 @@ def build_case_attempt_dimension_feedback(attempt):
 @transaction.atomic
 def _advance_case_attempt_once(*, user, attempt, step_id, choice_id, state_version):
     locked = (
-        CaseAttempt.objects.select_for_update()
+        CaseAttempt.objects.select_for_update(of=("self",))
         .select_related("case", "revision__primary_disorder", "current_step")
         .get(pk=attempt.pk, user=user)
     )

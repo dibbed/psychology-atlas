@@ -121,6 +121,8 @@ def validate_case_revision_graph(revision: CaseRevision):
         elif step.node_kind == CaseStep.NodeKind.INFORMATION:
             if active_questions:
                 issues.append(f"step:{step.id}:information_has_questions")
+            if any(t.choice_id is not None for t in source_transitions):
+                issues.append(f"step:{step.id}:information_has_choice_transition")
             automatic = [t for t in source_transitions if t.choice_id is None]
             if len(automatic) != 1:
                 issues.append(f"step:{step.id}:information_requires_one_automatic_transition")
@@ -173,4 +175,8 @@ def validate_case_revision_graph(revision: CaseRevision):
         return result
     if not can_complete(revision.entry_step_id, set()):
         issues.append("entry_has_no_completion_path")
+    # Check every reachable branch, not only whether some successful path exists.
+    for step_id in sorted(visited):
+        if step_by_id[step_id].node_kind != CaseStep.NodeKind.TERMINAL and not can_complete(step_id, set()):
+            issues.append(f"step:{step_id}:dead_end")
     return issues

@@ -7,9 +7,11 @@ from rest_framework import generics, serializers
 from rest_framework.exceptions import ValidationError
 
 from . import models as m
-from .brain_publication import NONBLANK_PATTERN, resolved_sources
+from .brain_publication import NONBLANK_PATTERN, public_sources
 from .pagination import AtlasPagination
+from .serializers import public_text
 from .search_utils import icontains_any, ranked_public_search
+from .cms_public_rights import public_rights, public_resources, public_visible, registered_scopes
 
 LIMIT = 30
 INTERPRETATION = "Educational metadata. Screening and measurement do not establish a diagnosis. Findings apply only to the stated edition, form, population and study. Access does not grant redistribution or scoring permission."
@@ -17,22 +19,24 @@ INTERPRETATION = "Educational metadata. Screening and measurement do not establi
 
 def public_sets():
     # Resolve shared bibliographies once, rather than repeating provenance regex work in every nested subquery.
-    source_ids = list(resolved_sources().values_list("pk", flat=True))
+    source_ids = list(public_sources().values_list("pk", flat=True))
     checked = dict(is_active=True, review_status="reviewed")
     links = m.AssessmentSource.objects.filter(source_id__in=source_ids, note__regex=NONBLANK_PATTERN)
-    instruments = m.AssessmentInstrument.objects.filter(**checked).filter(Exists(links.filter(instrument_id=OuterRef("pk"))))
-    versions = m.AssessmentVersion.objects.filter(**checked, instrument__in=instruments).filter(Exists(links.filter(version_id=OuterRef("pk"))))
-    forms = m.AssessmentLanguageForm.objects.filter(**checked, version__in=versions).filter(Exists(links.filter(language_form_id=OuterRef("pk"))))
+    instruments = public_rights(m.AssessmentInstrument.objects.filter(**checked).filter(Exists(links.filter(instrument_id=OuterRef("pk")))), "assessment_instrument")
+    versions = public_rights(m.AssessmentVersion.objects.filter(**checked, instrument__in=instruments).filter(Exists(links.filter(version_id=OuterRef("pk")))), "assessment_version")
+    forms = public_rights(m.AssessmentLanguageForm.objects.filter(**checked, version__in=versions).filter(Exists(links.filter(language_form_id=OuterRef("pk")))), "assessment_language_form")
     forms = forms.filter(Q(authorization_status="unknown") | Q(authorization_status="authorized", authorization_source_id__in=source_ids,
                                                              authorization_note__regex=NONBLANK_PATTERN))
     studies = m.AssessmentValidationStudy.objects.filter(**checked, version__in=versions, language_form__in=forms,
         language_form__version_id=F("version_id"), source_id__in=source_ids)
     for field in ("source_note", "design", "population", "sample_context", "administration", "informant", "method", "limitations"):
         studies = studies.filter(**{field + "__regex": NONBLANK_PATTERN})
+    studies = public_rights(studies, "assessment_validation_study")
     findings = m.AssessmentPsychometricEvidence.objects.filter(**checked, study__in=studies,
         measurement_property__in=m.AssessmentPsychometricEvidence.Property.values)
     for field in ("statistic", "method", "finding", "limitations", "extraction_locator"):
         findings = findings.filter(**{field + "__regex": NONBLANK_PATTERN})
+    findings = public_rights(findings, "assessment_psychometric_evidence")
     aliases = m.AssessmentAlias.objects.filter(**checked, instrument__in=instruments, source_id__in=source_ids,
         source_note__regex=NONBLANK_PATTERN, alias_type__in=m.AssessmentAlias.Kind.values).filter(
         Q(version__isnull=True) | Q(version__in=versions, version__instrument_id=F("instrument_id")))
@@ -42,13 +46,27 @@ def public_sets():
         Q(language_form__isnull=True) | Q(language_form__in=forms, language_form__version_id=F("version_id"))).filter(
         Q(expires_on__isnull=True) | Q(expires_on__gte=timezone.localdate())).filter(
         Q(license_status="unknown", availability="unknown") | Q(verified_on__isnull=False))
+    aliases = public_rights(aliases, "assessment_alias")
+    access = public_rights(access, "assessment_access")
+    # Access describes a material/use scope distinct from public metadata display.
+    access_scopes = {
+        "assessment_access": (m.AssessmentAccess, "pk"),
+        "assessment_version": (m.AssessmentVersion, "version_id"),
+        "assessment_language_form": (m.AssessmentLanguageForm, "language_form_id"),
+    }
+    for kind, pk, material, use in registered_scopes():
+        if kind in access_scopes and (material, use) != ("metadata", "public_display"):
+            model, field = access_scopes[kind]
+            eligible = public_rights(model.objects.filter(pk=pk), kind, material, use)
+            access = access.exclude(Q(**{field: pk}, material_type=material, use=use)
+                                    & ~Q(**{field + "__in": eligible}))
     relations = m.AssessmentRelation.objects.filter(**checked, version__in=versions).filter(
         Exists(links.filter(relation_id=OuterRef("pk")))).filter(
         Q(language_form__isnull=True) | Q(language_form__in=forms, language_form__version_id=F("version_id")))
     relations = relations.filter(
-        Q(predicate__in=("measures", "research_measure_of", "monitors"), concept__is_active=True, symptom__isnull=True, disorder__isnull=True)
-        | Q(predicate__in=("screens_for", "monitors"), symptom__isnull=False, concept__isnull=True, disorder__isnull=True)
-        | Q(predicate__in=("screens_for", "monitors", "diagnostic_support_for"), disorder__is_active=True, concept__isnull=True, symptom__isnull=True))
+        Q(predicate__in=("measures", "research_measure_of", "monitors"), concept__in=public_resources(m.Concept).filter(is_active=True), symptom__isnull=True, disorder__isnull=True)
+        | Q(predicate__in=("screens_for", "monitors"), symptom__in=public_resources(m.Symptom), concept__isnull=True, disorder__isnull=True)
+        | Q(predicate__in=("screens_for", "monitors", "diagnostic_support_for"), disorder__in=public_resources(m.Disorder).filter(is_active=True), concept__isnull=True, symptom__isnull=True))
     return dict(source_ids=source_ids, instruments=instruments, versions=versions, forms=forms, studies=studies,
                 findings=findings, aliases=aliases, access=access, relations=relations, links=links)
 
@@ -70,12 +88,12 @@ def alias_data(alias):
 
 
 def identity_data(obj, fields):
-    return {field: getattr(obj, field) for field in fields}
+    return public_text(obj, {field: getattr(obj, field) for field in fields}, {"description", "construct_overview", "finding", "value_text", "extraction_locator", "terms", "authorization_note"})
 
 
 def form_data(form):
     return dict(**identity_data(form, ("key", "language", "label", "form_kind", "owner", "authorization_status", "authorization_note", "review_status")),
-                authorization_source=source_data(form.authorization_source) if form.authorization_source_id else None,
+                authorization_source=source_data(form.authorization_source) if form.authorization_source_id and public_visible(form.authorization_source) else None,
                 sources=bounded(form.public_sources, source_link))
 
 

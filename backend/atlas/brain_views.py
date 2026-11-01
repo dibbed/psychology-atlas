@@ -5,8 +5,9 @@ from rest_framework import generics
 from rest_framework.exceptions import ValidationError
 
 from . import models
-from .brain_publication import NESTED_LIMIT, NONBLANK_PATTERN, URL_PATTERN, public_anatomy, resolved_sources
+from .brain_publication import NESTED_LIMIT, NONBLANK_PATTERN, URL_PATTERN, public_anatomy, public_sources
 from .brain_serializers import BrainAnatomyDetailSerializer, BrainAnatomyListSerializer
+from .cms_public_rights import public_resources
 from .pagination import AtlasPagination
 from .search_utils import ranked_public_search
 
@@ -16,7 +17,7 @@ def anatomy_queryset():
         Prefetch("aliases", queryset=valid_aliases().order_by("language", "text", "pk")[:NESTED_LIMIT + 1],
                  to_attr="public_aliases"),
         Prefetch("source_links", queryset=models.BrainAnatomicalEntitySource.objects.filter(
-            source__in=resolved_sources(),
+            source__in=public_sources(),
         ).select_related("source").order_by("source_id", "pk")[:NESTED_LIMIT + 1], to_attr="public_sources"),
     )
 
@@ -25,7 +26,7 @@ def valid_aliases():
     return models.BrainAnatomicalAlias.objects.filter(
         language__in=models.BrainAnatomicalAlias.Language.values,
         alias_type__in=models.BrainAnatomicalAlias.AliasType.values, text__regex=NONBLANK_PATTERN,
-        review_status="reviewed", source__in=resolved_sources(), source_note__regex=NONBLANK_PATTERN,
+        review_status="reviewed", source__in=public_sources(), source_note__regex=NONBLANK_PATTERN,
     ).select_related("source")
 
 
@@ -77,7 +78,7 @@ class BrainAnatomyDetailView(generics.RetrieveAPIView):
 
     def get_queryset(self):
         relation_sources = models.BrainHierarchyLinkSource.objects.filter(
-            source__in=resolved_sources(), note__regex=NONBLANK_PATTERN,
+            source__in=public_sources(), note__regex=NONBLANK_PATTERN,
         ).select_related("source").order_by("source_id", "pk")
         links = models.BrainHierarchyLink.objects.filter(
             is_active=True, review_status=models.ScientificReviewStatus.REVIEWED,
@@ -86,17 +87,17 @@ class BrainAnatomyDetailView(generics.RetrieveAPIView):
             Prefetch("source_links", queryset=relation_sources[:NESTED_LIMIT + 1], to_attr="public_sources"),
         )
         memberships = supported_relations(models.BrainNetworkMembership).filter(
-            network__in=models.BrainNetwork.objects.filter(is_active=True, review_status="reviewed",
-                                                          source_links__source__in=resolved_sources()),
+            network__in=public_resources(models.BrainNetwork).filter(is_active=True, review_status="reviewed",
+                                                          source_links__source__in=public_sources()),
         ).select_related("network")
         associations = supported_relations(models.BrainFunctionalAssociation).filter(
-            network__isnull=True, concept__is_active=True,
+            network__isnull=True, concept__in=public_resources(models.Concept).filter(is_active=True),
         ).select_related("concept")
         return anatomy_queryset().prefetch_related(
             Prefetch("parent_links", queryset=links.order_by("pk")[:1], to_attr="public_parents"),
             Prefetch("child_links", queryset=links.order_by("child__name_en", "child_id", "pk")[:NESTED_LIMIT + 1], to_attr="public_children"),
             Prefetch("external_identifiers", queryset=models.BrainExternalIdentifier.objects.filter(
-                review_status=models.ScientificReviewStatus.REVIEWED, source__in=resolved_sources(),
+                review_status=models.ScientificReviewStatus.REVIEWED, source__in=public_sources(),
                 source_note__regex=NONBLANK_PATTERN, namespace__regex=NONBLANK_PATTERN,
                 identifier__regex=NONBLANK_PATTERN, source_version__regex=NONBLANK_PATTERN,
             ).filter(Q(url="") | Q(url__regex=URL_PATTERN)).select_related("source")
@@ -109,11 +110,11 @@ class BrainAnatomyDetailView(generics.RetrieveAPIView):
 def supported_relations(model):
     source_model = model._meta.get_field("source_links").related_model
     qs = model.objects.filter(is_active=True, review_status="reviewed", evidence_key__regex=r"^[a-z0-9_-]+$").filter(
-        Exists(source_model.objects.filter(relationship_id=OuterRef("pk"), source__in=resolved_sources(), note__regex=NONBLANK_PATTERN)),
+        Exists(source_model.objects.filter(relationship_id=OuterRef("pk"), source__in=public_sources(), note__regex=NONBLANK_PATTERN)),
     )
     for field in model.required_context:
         qs = qs.filter(**{f"{field}__regex": NONBLANK_PATTERN})
     return qs.order_by("sort_order", "evidence_key", "pk").prefetch_related(
-        Prefetch("source_links", queryset=source_model.objects.filter(source__in=resolved_sources(), note__regex=NONBLANK_PATTERN)
+        Prefetch("source_links", queryset=source_model.objects.filter(source__in=public_sources(), note__regex=NONBLANK_PATTERN)
                  .select_related("source").order_by("source_id", "pk")[:NESTED_LIMIT + 1], to_attr="public_sources"),
     )
