@@ -34,11 +34,21 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   allowedDevOrigins: ["127.0.0.1", "localhost"],
+  async rewrites() {
+    return [
+      { source: "/api/admin/:path*", destination: `${apiUrl}/admin/:path*/` },
+      { source: "/account/:path*", destination: `${apiOrigin}/account/:path*/` },
+    ];
+  },
   async headers() {
     return [
       {
         source: "/(.*)",
         headers: securityHeaders,
+      },
+      {
+        source: "/admin-console/:path*",
+        headers: [{ key: "Cache-Control", value: "no-store" }],
       },
     ];
   },

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import "./redesign.css";
 import Nav from "@/components/Nav";
+import PublicChrome from "@/components/PublicChrome";
 
 export const metadata: Metadata = {
   title: "اطلس روان‌شناسی",
@@ -12,13 +13,13 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="fa" dir="rtl">
       <body>
-        <Nav />
+        <PublicChrome><Nav /></PublicChrome>
         <div id="main-content" tabIndex={-1}>{children}</div>
-        <footer className="footer">
+        <PublicChrome><footer className="footer">
           <div className="shell">
             اطلس روان‌شناسی یک پلتفرم آموزشی است و برای تشخیص پزشکی یا درمان طراحی نشده است.
           </div>
-        </footer>
+        </footer></PublicChrome>
       </body>
     </html>
   );
