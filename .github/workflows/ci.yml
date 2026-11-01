@@ -18,7 +18,7 @@ jobs:
   backend-tests:
     name: Backend tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: backend
@@ -94,7 +94,7 @@ jobs:
   brain-postgresql:
     name: Brain PostgreSQL publication and concurrency
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:17
@@ -158,6 +158,9 @@ jobs:
           PGOPTIONS: "-c statement_timeout=60000 -c lock_timeout=15000"
         run: python manage.py test atlas.tests_v095_integration atlas.tests.V063KnowledgeApiTests --noinput --verbosity 2 --durations 10 --timing
 
+      - name: Admin security, revision, audit, migration and concurrency tests
+        run: python manage.py test atlas.tests_v100_p01 atlas.tests_v100_p02 atlas.tests_v100_p03 atlas.tests_v100_p04 atlas.tests_v100_p05_sources atlas.tests_v100_p05_governance atlas.tests_v100_p05_integration atlas.tests_v100_p05_public atlas.tests_v100_p06_jobs atlas.tests_v100_p06_artifacts atlas.tests_v100_p06_research atlas.tests_v100_p06_integration atlas.tests_v100_p07_domains atlas.tests_v100_p07_content atlas.tests_v100_p07_integration atlas.tests_v100_p08_therapy atlas.tests.V075CaseConcurrencyTests --noinput --verbosity 2 --timing
+
 
   frontend-build:
     name: Frontend typecheck and build
@@ -186,6 +189,9 @@ jobs:
       - name: TypeScript typecheck
         run: npm run typecheck
 
+      - name: P07 typed authoring and transport checks
+        run: node components/cms/CmsDomains.test.cjs
+
       - name: Assessment navigation checks
         run: node --experimental-strip-types app/assessments/assessment.selfcheck.mjs
 
@@ -198,7 +204,7 @@ jobs:
   browser-release-qa:
     name: Browser release QA
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       DEBUG: "1"
       DB_ENGINE: sqlite
@@ -253,12 +259,28 @@ jobs:
         run: npm run build
       - name: Run all existing browser harnesses and scoped accessibility smoke
         run: node scripts/release_browser_qa.cjs
+      - name: Build and exercise the real CMS journey
+        env:
+          NEXT_PUBLIC_API_URL: http://127.0.0.1:8023/api
+          CMS_QA_PYTHON: python
+          CMS_QA_OUTPUT: ${{ runner.temp }}/browser-qa/cms
+        run: |
+          npm run build --prefix frontend
+          export CMS_QA_BUILD_ID="$(cat frontend/.next/BUILD_ID)"
+          node scripts/cms_browser_qa.cjs
+          node scripts/cms_review_browser_qa.cjs
+          node scripts/cms_governance_browser_qa.cjs
+          node scripts/cms_intake_browser_qa.cjs
+          CMS_QA_PHASE=p07 CMS_QA_PYTHON=python CMS_QA_ORIGIN=http://127.0.0.1:3023 CMS_QA_API_ORIGIN=http://127.0.0.1:8023 CMS_QA_OUTPUT="$RUNNER_TEMP/browser-qa/cms-p07" node scripts/cms_p07_browser_qa.cjs
+          CMS_QA_PHASE=p08 CMS_QA_PYTHON=python CMS_QA_ORIGIN=http://127.0.0.1:3023 CMS_QA_API_ORIGIN=http://127.0.0.1:8023 CMS_QA_OUTPUT="$RUNNER_TEMP/browser-qa/cms-p08" node scripts/cms_p08_browser_qa.cjs
       - name: Preserve browser evidence and failure diagnostics
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: browser-release-qa-${{ github.sha }}
-          path: ${{ runner.temp }}/browser-qa
+          path: |
+            ${{ runner.temp }}/browser-qa
+            qa/p05-browser
           if-no-files-found: warn
           retention-days: 14
 

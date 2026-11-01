@@ -17,3 +17,6 @@ frontend/*.tsbuildinfo
 .idea/
 .DS_Store
 .freebuff/
+/qa/
+.private-artifacts/
+.local-runtime/
