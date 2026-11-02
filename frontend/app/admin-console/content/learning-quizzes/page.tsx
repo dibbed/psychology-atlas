@@ -7,6 +7,7 @@ type Row={quiz_id:number;slug:string;title:string;is_active:boolean;seed_managed
 type Choice={id?:number;text:string;is_correct:boolean;is_active?:boolean};
 type Question={id?:number;prompt:string;explanation:string;is_active?:boolean;choices:Choice[]};
 type Details={quiz_id:number;slug:string;title:string;description:string;is_active:boolean;
+  disorder_id:number|null;
   seed_managed:boolean;history_protected:boolean;questions:Question[];
   valid:boolean;issues:string[];publication_available:false};
 type Result={score_percent:number;preview_only:true;correct_count:number;total_questions:number;
@@ -35,6 +36,9 @@ export default function LearningQuizEditor(){
   const [slug,setSlug]=useState("");
   const [title,setTitle]=useState("");
   const [description,setDescription]=useState("");
+  const [metadata,setMetadata]=useState({title:"",description:"",disorder_id:""});
+  const metadataDirty=!!selected&&(metadata.title!==selected.title||metadata.description!==selected.description||
+    metadata.disorder_id!==String(selected.disorder_id??""));
   useEffect(()=>{
     if(!allowed)return;
     let valid=true;
@@ -44,20 +48,22 @@ export default function LearningQuizEditor(){
     return ()=>{valid=false;};
   },[allowed,page]);
   useEffect(()=>{
-    if(!dirty)return;
+    if(!dirty&&!metadataDirty)return;
     const prevent=(e:BeforeUnloadEvent)=>{e.preventDefault();e.returnValue="";};
     window.addEventListener("beforeunload",prevent);
     return ()=>window.removeEventListener("beforeunload",prevent);
-  },[dirty]);
+  },[dirty,metadataDirty]);
   const load=async(id:number)=>{
     const result=await cms<Details>("/learning/quizzes/"+id+"/");
     setSelected(result.data);setEtag(result.etag);
+    setMetadata({title:result.data.title,description:result.data.description,
+      disorder_id:String(result.data.disorder_id??"")});
     setDraft(result.data.questions.map(q=>({...q,
       choices:q.choices.map(c=>({...c}))})));
     setFeedback(undefined);setAnswers({});setDirty(false);
   };
   const open=async(id:number)=>{
-    if(dirty&&!window.confirm("تغییرات ذخیره‌نشده کنار گذاشته شوند؟"))return;
+    if((dirty||metadataDirty)&&!window.confirm("تغییرات ذخیره‌نشده کنار گذاشته شوند؟"))return;
     setBusy(true);setError("");
     try{await load(id);}catch(e){setError(errorMessage(e));}
     finally{setBusy(false);}
@@ -65,6 +71,7 @@ export default function LearningQuizEditor(){
   const refresh=async()=>{const r=await cms<CmsPage<Row>>("/learning/quizzes/?page="+page+"&page_size=30");setList(r.data.results);setCount(r.data.count);};
   const create=async(e:FormEvent<HTMLFormElement>)=>{
     e.preventDefault();if(busy||!can("cms_learning_create"))return;
+    if((dirty||metadataDirty)&&!window.confirm("تغییرات ذخیره‌نشده کنار گذاشته شوند؟"))return;
     setBusy(true);setError("");
     try{
       const r=await cms<{quiz_id:number}>("/learning/quizzes/",{method:"POST",
@@ -90,7 +97,7 @@ export default function LearningQuizEditor(){
   };
   const save=async(e:FormEvent<HTMLFormElement>)=>{
     e.preventDefault();
-    if(!selected||!etag||!can("cms_learning_edit")||busy)return;
+    if(!selected||!etag||!can("cms_learning_edit")||busy||metadataDirty)return;
     setBusy(true);setError("");
     try{
       const response=await cms("/learning/quizzes/"+selected.quiz_id+"/questions/replace/",{
@@ -102,6 +109,23 @@ export default function LearningQuizEditor(){
       });
       await load(selected.quiz_id);
       if(response.data)setError("");
+    }catch(e){setError(errorMessage(e));}
+    finally{setBusy(false);}
+  };
+  const saveMetadata=async(e:FormEvent<HTMLFormElement>)=>{
+    e.preventDefault();
+    if(!selected||!etag||busy||dirty||!can("cms_learning_edit"))return;
+    const disorderId=metadata.disorder_id===""?null:Number(metadata.disorder_id);
+    if(disorderId!==null&&(!Number.isSafeInteger(disorderId)||disorderId<1)){
+      setError("شناسهٔ اختلال باید عدد صحیح مثبت باشد.");return;
+    }
+    setBusy(true);setError("");
+    try{
+      await cms("/learning/quizzes/"+selected.quiz_id+"/metadata/",{
+        method:"POST",headers:{"If-Match":etag},
+        body:JSON.stringify({...metadata,disorder_id:disorderId}),
+      });
+      await load(selected.quiz_id);await refresh();
     }catch(e){setError(errorMessage(e));}
     finally{setBusy(false);}
   };
@@ -159,7 +183,21 @@ export default function LearningQuizEditor(){
       <p className="muted">نسخهٔ داخلی #{selected.quiz_id} | {selected.is_active?"فعال":"غیرفعال"} | اعتبار ساختاری: {selected.valid?"معتبر":"نیازمند اصلاح"}</p>
       {!editable&&<p>سؤال‌های این آزمون به علت فعال بودن، مدیریت Seed یا وجود تلاش‌های قدیمی قفل هستند. کلید پاسخ و تاریخچه از این ویرایشگر تغییر نمی‌کنند.</p>}
       {selected.issues.length>0&&<ul>{selected.issues.map((issue,i)=><li key={i}><code dir="ltr">{issue}</code></li>)}</ul>}
+      {editable&&<form className="stack" onSubmit={saveMetadata}>
+        <fieldset className="stack" disabled={busy||dirty}>
+          <legend>اطلاعات آزمون غیرفعال</legend>
+          <label>عنوان آزمون<input required maxLength={255} value={metadata.title}
+            onChange={e=>setMetadata(old=>({...old,title:e.target.value}))}/></label>
+          <label>شرح آزمون<textarea maxLength={20000} value={metadata.description}
+            onChange={e=>setMetadata(old=>({...old,description:e.target.value}))}/></label>
+          <label>شناسهٔ اختلال مرتبط (اختیاری)<input type="number" min="1" step="1" dir="ltr"
+            value={metadata.disorder_id} onChange={e=>setMetadata(old=>({...old,disorder_id:e.target.value}))}/></label>
+          <button className="button secondary" type="submit" disabled={!metadataDirty||!etag}>ذخیرهٔ اطلاعات آزمون</button>
+        </fieldset>
+        {metadataDirty&&<p role="status">اطلاعات آزمون تغییر ذخیره‌نشده دارد.</p>}
+      </form>}
       {editable&&<form className="stack" onSubmit={save}>
+        <fieldset className="stack" disabled={busy||metadataDirty}>
         <h3>سؤال‌ها ({draft.length})</h3>
         {draft.map((q,i)=><details className="card stack" key={i}>
           <summary>سؤال {i+1}: {q.prompt.slice(0,60)||"بدون متن"}</summary>
@@ -203,8 +241,9 @@ export default function LearningQuizEditor(){
           {busy?"در حال ذخیره…":"ذخیرهٔ سؤال‌ها در Draft"}
         </button>
         {dirty&&<p className="muted" role="status">تغییر ذخیره‌نشده دارید. در صورت خروج هشدار نمایش داده می‌شود.</p>}
+        </fieldset>
       </form>}
-      {!dirty&&selected.valid&&can("cms_learning_preview")&&
+      {!dirty&&!metadataDirty&&selected.valid&&can("cms_learning_preview")&&
         <form className="stack" onSubmit={simulate}>
           <h3>آزمون فرضی، بدون ذخیرهٔ پاسخ یا امتیاز دانشجو</h3>
           {selected.questions.filter(q=>q.is_active!==false).map(q=><fieldset className="stack" key={q.id}>

@@ -15,7 +15,7 @@ artifact_command = sys.argv[1:] if len(sys.argv) > 1 else []
 if artifact_command and (phase != "p06" or len(artifact_command) != 3
         or artifact_command[:2] not in (["--p06-artifact", "age"], ["--p06-artifact", "state"])):
     raise RuntimeError("Only explicit P06 artifact age/state commands are supported")
-guarded_prefix = {"p05": "atlas-p05-browser-", "p06": "atlas-p06-browser-", "p07": "atlas-p07-browser-", "p08": "atlas-p08-browser-", "p09": "atlas-p09-browser-", "p10": "atlas-p10-browser-", "p11": "atlas-p11-browser-", "p12": "atlas-p12-browser-"}.get(phase)
+guarded_prefix = {"p05": "atlas-p05-browser-", "p06": "atlas-p06-browser-", "p07": "atlas-p07-browser-", "p08": "atlas-p08-browser-", "p09": "atlas-p09-browser-", "p10": "atlas-p10-browser-", "p11": "atlas-p11-browser-", "p12": "atlas-p12-browser-", "p13": "atlas-p13-browser-"}.get(phase)
 if guarded_prefix and (
         not database.is_relative_to(Path(tempfile.gettempdir()).resolve())
         or database.name != "cms-journey.sqlite3"
@@ -577,6 +577,26 @@ if phase == "p12":
         doi="10.1234/synthetic.p16", verification_status="source_checked")
     review_fixture = {"p12": {"case": case.pk, "slug": case.slug, "revision": revision.pk,
                                "first": start.pk, "end": end.pk, "source": source.pk, "attempt": attempt.pk}}
+
+if phase == "p13":
+    from atlas.models import Quiz, QuizQuestion, QuizChoice
+    from atlas.services import submit_quiz
+    viewer = User.objects.create_user("qa_p13_learning_reader", password=password, is_staff=True)
+    viewer.user_permissions.add(*Permission.objects.filter(content_type__app_label="atlas",
+        content_type__model="rolepolicy", codename__in=["cms_enter", "cms_learning_view"]))
+    TOTPDevice.objects.create(user=viewer, name="default", confirmed=True)
+    backup = StaticDevice.objects.create(user=viewer, name="backup", confirmed=True)
+    users["learning_reader"] = {"username": viewer.username, "password": password,
+        "tokens": [StaticToken.objects.create(device=backup, token=StaticToken.random_token()).token for _ in range(2)]}
+    quiz = Quiz.objects.create(slug="p13-historical-fixture", title="Synthetic historical quiz")
+    question = QuizQuestion.objects.create(quiz=quiz, prompt="Synthetic historical question")
+    choice = QuizChoice.objects.create(question=question, text="Historical correct answer", is_correct=True)
+    QuizChoice.objects.create(question=question, text="Historical distractor", is_correct=False)
+    submit_quiz(user=User.objects.get(username="qa_owner"), quiz=quiz,
+                answers=[{"question_id": question.pk, "choice_id": choice.pk}])
+    quiz.is_active = False
+    quiz.save(update_fields=["is_active"])
+    review_fixture = {"p13": {"historical_quiz": quiz.pk}}
 
 # Credentials go only to the harness's private pipe, never into reports or logs.
 print(json.dumps({"users": users, "category": str(state.pk), **review_fixture}))

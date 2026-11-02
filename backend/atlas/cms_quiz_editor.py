@@ -92,17 +92,24 @@ def _snapshot(quiz):
     return result, issues
 
 
+def _metadata_values(data):
+    title, description, disorder_id = data["title"], data["description"], data["disorder_id"]
+    if (type(title) is not str or not title.strip() or len(title) > 255
+            or type(description) is not str or len(description) > 20000):
+        raise CMSFailure("INVALID_FIELDS", 400)
+    if disorder_id is not None and (type(disorder_id) is not int or not 1 <= disorder_id <= 2**63 - 1):
+        raise CMSFailure("INVALID_FIELDS", 400)
+    return {"title": title.strip(), "description": description, "disorder_id": disorder_id}
+
+
 def create_quiz(actor_id, session_id, data, request_id):
     if type(data) is not dict or set(data) != {"slug", "title", "description", "disorder_id"}:
         raise CMSFailure("INVALID_FIELDS", 400)
-    slug, title, description = data["slug"], data["title"], data["description"]
-    if (type(slug) is not str or len(slug) > 160 or not _SLUG.fullmatch(slug)
-            or type(title) is not str or not title.strip() or len(title) > 255
-            or type(description) is not str or len(description) > 20000):
+    slug = data["slug"]
+    if type(slug) is not str or len(slug) > 160 or not _SLUG.fullmatch(slug):
         raise CMSFailure("INVALID_FIELDS", 400)
-    disorder_id = data["disorder_id"]
-    if disorder_id is not None and (type(disorder_id) is not int or disorder_id < 1):
-        raise CMSFailure("INVALID_FIELDS", 400)
+    metadata = _metadata_values(data)
+    disorder_id = metadata["disorder_id"]
     with policy_lock():
         actor = get_user_model().objects.get(pk=actor_id)
         current_session(session_id, actor)
@@ -113,14 +120,39 @@ def create_quiz(actor_id, session_id, data, request_id):
         if disorder_id is not None and not Disorder.objects.filter(pk=disorder_id, is_active=True).exists():
             raise CMSFailure("INVALID_REFERENCE", 400)
         quiz = Quiz.objects.create(
-            slug=slug, title=title.strip(), description=description,
-            disorder_id=disorder_id, is_active=False, seed_managed=False,
+            slug=slug, **metadata, is_active=False, seed_managed=False,
         )
         AdminAuditEvent.objects.create(
             actor=actor, outcome="success", action="quiz.draft_created",
             target_kind="quiz", target_id=quiz.pk, request_id=request_id,
             reason="DRAFT_CREATION", diff=[],
         )
+        return quiz
+
+
+def update_metadata(actor_id, session_id, quiz_id, expected, data, request_id):
+    if type(data) is not dict or set(data) != {"title", "description", "disorder_id"}:
+        raise CMSFailure("INVALID_FIELDS", 400)
+    metadata = _metadata_values(data)
+    with policy_lock():
+        actor = get_user_model().objects.get(pk=actor_id)
+        current_session(session_id, actor)
+        quiz = _quiz(actor, quiz_id)
+        _require_private_edit(actor, quiz)
+        if revision_etag(quiz) != expected:
+            raise CMSFailure("STALE_REVISION", 412)
+        if metadata["disorder_id"] is not None and not Disorder.objects.filter(
+                pk=metadata["disorder_id"], is_active=True).exists():
+            raise CMSFailure("INVALID_REFERENCE", 400)
+        changed = [field for field, value in metadata.items() if getattr(quiz, field) != value]
+        if changed:
+            for field in changed:
+                setattr(quiz, field, metadata[field])
+            quiz.updated_at = max(timezone.now(), quiz.updated_at + timedelta(microseconds=1))
+            quiz.save(update_fields=[*changed, "updated_at"])
+            AdminAuditEvent.objects.create(actor=actor, outcome="success", action="quiz.draft_updated",
+                target_kind="quiz", target_id=quiz.pk, request_id=request_id, reason="CONTENT_UPDATE",
+                diff=["disorder" if field == "disorder_id" else field for field in changed])
         return quiz
 
 
@@ -197,6 +229,18 @@ class QuizDetailView(AdminAPIView):
             })
             response["ETag"] = f'"{revision_etag(quiz)}"'
             return response
+
+
+class QuizMetadataView(AdminAPIView):
+    capability = "cms_learning_edit"
+
+    def post(self, request, quiz_id):
+        data = payload(request, {"title", "description", "disorder_id"})
+        quiz = update_metadata(request.user.pk, request.cms_session.pk, quiz_id,
+                               expected_version(request), data, self.request_id)
+        response = Response({"quiz_id": quiz.pk, "publication_available": False})
+        response["ETag"] = f'"{revision_etag(quiz)}"'
+        return response
 
 
 class QuizReplaceView(AdminAPIView):

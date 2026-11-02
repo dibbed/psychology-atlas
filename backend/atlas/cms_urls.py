@@ -58,6 +58,7 @@ urlpatterns = [
     path("learning/flashcards/<int:card_id>/metadata/", flashcard_editor.FlashcardMetadataView.as_view()),
     path("learning/quizzes/", quiz_editor.QuizCatalogView.as_view()),
     path("learning/quizzes/<int:quiz_id>/", quiz_editor.QuizDetailView.as_view()),
+    path("learning/quizzes/<int:quiz_id>/metadata/", quiz_editor.QuizMetadataView.as_view()),
     path("learning/quizzes/<int:quiz_id>/questions/replace/", quiz_editor.QuizReplaceView.as_view()),
     path("learning/quizzes/<int:quiz_id>/simulate/", quiz_editor.QuizSimulationView.as_view()),
     path("cases/", case_catalog.CaseCatalogView.as_view()),

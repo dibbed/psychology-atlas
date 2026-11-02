@@ -9,7 +9,7 @@ const py=process.env.CMS_QA_PYTHON||(process.platform==='win32'?path.join(root,'
 const origin=process.env.CMS_QA_ORIGIN||'http://127.0.0.1:3000';
 const api=process.env.CMS_QA_API_ORIGIN||'http://127.0.0.1:8000';
 const env={...process.env,CMS_QA_PHASE:'p12',SQLITE_PATH:path.join(tmp,'cms-journey.sqlite3'),
-  DB_ENGINE:'sqlite',NEXT_PUBLIC_API_URL:api+'/api',CSRF_TRUSTED_ORIGINS:origin,DEBUG:'1'};
+  DB_ENGINE:'sqlite',NEXT_PUBLIC_API_URL:api+'/api',CSRF_TRUSTED_ORIGINS:origin,CORS_ALLOWED_ORIGINS:origin,DEBUG:'1'};
 const report={stage:'P12',status:'RUNNING',checks:[],screenshots:[],errors:[],
   limits:['Synthetic, fresh isolated SQLite only','Fictional review evidence confers no real scientific or legal approval','No existing user data or canonical database touched']};
 const processes=[];let browser;
