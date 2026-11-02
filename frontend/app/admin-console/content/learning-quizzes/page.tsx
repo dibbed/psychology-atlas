@@ -2,12 +2,14 @@
 import {useEffect, useState, type FormEvent} from "react";
 import {cms, CmsError, type CmsPage} from "@/lib/cms";
 import {CmsState, useCms} from "@/components/cms/CmsShell";
+import {LearningArchiveAction} from "@/components/cms/LearningArchiveAction";
 
-type Row={quiz_id:number;slug:string;title:string;is_active:boolean;seed_managed:boolean};
+type Row={quiz_id:number;slug:string;title:string;is_active:boolean;seed_managed:boolean;archived_at:string|null};
 type Choice={id?:number;text:string;is_correct:boolean;is_active?:boolean};
 type Question={id?:number;prompt:string;explanation:string;is_active?:boolean;choices:Choice[]};
 type Details={quiz_id:number;slug:string;title:string;description:string;is_active:boolean;
   disorder_id:number|null;
+  archived_at:string|null;
   seed_managed:boolean;history_protected:boolean;questions:Question[];
   valid:boolean;issues:string[];publication_available:false};
 type Result={score_percent:number;preview_only:true;correct_count:number;total_questions:number;
@@ -143,7 +145,7 @@ export default function LearningQuizEditor(){
     finally{setBusy(false);}
   };
   if(!allowed)return <CmsState empty="برای مدیریت سؤال‌های آموزشی، مجوز مدیریت محتوای یادگیری لازم است."/>;
-  const editable=selected&&!selected.is_active&&!selected.seed_managed&&!selected.history_protected&&can("cms_learning_edit");
+  const editable=selected&&!selected.archived_at&&!selected.is_active&&!selected.seed_managed&&!selected.history_protected&&can("cms_learning_edit");
   return <div className="stack" dir="rtl">
     <a href="/admin-console/content" className="cms-link">بازگشت به محتوا</a>
     <div className="cms-title"><p className="eyebrow">P13 | Learning editor</p>
@@ -155,7 +157,7 @@ export default function LearningQuizEditor(){
       <h2>فهرست آزمون‌ها</h2>
       {loading?<CmsState loading/>:<ul>{list.map(item=><li key={item.quiz_id}>
         <strong>{item.title}</strong> <small dir="ltr">{item.slug}</small>
-        <span> | {item.is_active?"فعال":"غیرفعال"} </span>
+        <span> | {item.archived_at?"بایگانی‌شده":item.is_active?"فعال":"غیرفعال"} </span>
         <button type="button" className="button secondary" disabled={busy}
           onClick={()=>void open(item.quiz_id)}>باز کردن</button>
       </li>)}</ul>}
@@ -181,7 +183,13 @@ export default function LearningQuizEditor(){
     {selected&&<section className="card stack">
       <h2>{selected.title}</h2>
       <p className="muted">نسخهٔ داخلی #{selected.quiz_id} | {selected.is_active?"فعال":"غیرفعال"} | اعتبار ساختاری: {selected.valid?"معتبر":"نیازمند اصلاح"}</p>
-      {!editable&&<p>سؤال‌های این آزمون به علت فعال بودن، مدیریت Seed یا وجود تلاش‌های قدیمی قفل هستند. کلید پاسخ و تاریخچه از این ویرایشگر تغییر نمی‌کنند.</p>}
+      {!editable&&<p>سؤال‌های این آزمون به علت بایگانی، فعال بودن، مدیریت Seed یا وجود تلاش‌های قدیمی قفل هستند. کلید پاسخ و تاریخچه از این ویرایشگر تغییر نمی‌کنند.</p>}
+      <LearningArchiveAction key={"archive-quiz-"+selected.quiz_id} kind="quiz" itemId={selected.quiz_id}
+        etag={etag} archivedAt={selected.archived_at} blocked={busy||dirty||metadataDirty} onBusyChange={setBusy}
+        onArchived={async at=>{
+          const id=selected.quiz_id;setSelected(old=>old?.quiz_id===id?{...old,is_active:false,archived_at:at}:old);
+          await Promise.all([load(id),refresh()]);
+        }}/>
       {selected.issues.length>0&&<ul>{selected.issues.map((issue,i)=><li key={i}><code dir="ltr">{issue}</code></li>)}</ul>}
       {editable&&<form className="stack" onSubmit={saveMetadata}>
         <fieldset className="stack" disabled={busy||dirty}>

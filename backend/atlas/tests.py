@@ -6753,10 +6753,10 @@ class V081StudyPlanningMigrationTests(TransactionTestCase):
 
     migrate_from = ("atlas", "0027_v075_case_attempt_concurrency_guard")
     migrate_to = ("atlas", "0028_v081_study_plan_foundation")
-    restore_to = ("atlas", "0032_v084_study_sessions")
 
     def tearDown(self):
-        MigrationExecutor(connection).migrate([self.restore_to])
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
         super().tearDown()
 
     def test_v081_upgrade_preserves_existing_user_progress_and_creates_no_personal_planning_rows(self):
@@ -7737,10 +7737,10 @@ class V082StudyBlockMigrationTests(TransactionTestCase):
     reset_sequences = True
     migrate_from = ("atlas", "0028_v081_study_plan_foundation")
     migrate_to = ("atlas", "0029_v082_study_blocks")
-    restore_to = ("atlas", "0032_v084_study_sessions")
 
     def tearDown(self):
-        MigrationExecutor(connection).migrate([self.restore_to])
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
         super().tearDown()
 
     def test_v082_upgrade_preserves_plan_scope_and_creates_no_blocks(self):

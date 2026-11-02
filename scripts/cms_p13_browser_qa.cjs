@@ -8,9 +8,10 @@ const py=process.env.CMS_QA_PYTHON||(process.platform==='win32'?path.join(root,'
 const origin=process.env.CMS_QA_ORIGIN||'http://127.0.0.1:3000',api=process.env.CMS_QA_API_ORIGIN||'http://127.0.0.1:8000';
 assert(new URL(origin).hostname==='127.0.0.1'&&new URL(api).hostname==='127.0.0.1');
 const env={...process.env,DB_ENGINE:'sqlite',SQLITE_PATH:path.join(tmp,'cms-journey.sqlite3'),
+  SQLITE_TEST_PATH:path.join(tmp,'tests.sqlite3'),
   CMS_QA_PHASE:'p13',NEXT_PUBLIC_API_URL:api+'/api',CSRF_TRUSTED_ORIGINS:origin,CORS_ALLOWED_ORIGINS:origin,DEBUG:'1'};
 const report={stage:'P13',status:'RUNNING',checks:[],screenshots:[],errors:[],
-  limits:['Synthetic isolated SQLite only','Quiz metadata/authoring slice; P13 publication, archive and import/export remain incomplete']};
+  limits:['Synthetic isolated SQLite only','No scientific/rights approval or publication; import/export is a separate gate']};
 const processes=[];let browser;
 function check(ok,message){assert(ok,message);report.checks.push(message);}
 function start(exe,args,cwd,name){
@@ -53,11 +54,35 @@ async function request(page,route,body,etag){
 function history(){return JSON.parse(execFileSync(py,['-c',[
   'import os,sqlite3,json,hashlib','from pathlib import Path',
   'c=sqlite3.connect(Path(os.environ["SQLITE_PATH"]).as_uri()+"?mode=ro",uri=True)',
-  'rows={t:c.execute("SELECT * FROM "+t+" ORDER BY id").fetchall() for t in ["atlas_quizattempt","atlas_quizattemptanswer","atlas_studyactivity","atlas_userflashcardprogress"]}',
+  'rows={t:c.execute("SELECT * FROM "+t+" ORDER BY id").fetchall() for t in ["atlas_quizattempt","atlas_quizattemptanswer","atlas_studyactivity","atlas_userflashcardprogress","atlas_dailychallengeattempt","atlas_cognitivedistortionpracticeattempt","atlas_userprogress","atlas_userconceptprogress"]}',
   'print(json.dumps({"counts":[len(v) for v in rows.values()],"digest":hashlib.sha256(json.dumps(rows,sort_keys=True).encode()).hexdigest()}))','c.close()',
 ].join('\n')],{env,encoding:'utf8'}));}
 function writeResponse(page,suffix){return page.waitForResponse(r=>r.url().replace(/\/$/,'').endsWith(suffix)&&
   r.request().method()==='POST'&&!(r.status()>=300&&r.status()<400));}
+function archiveEvidence(){return JSON.parse(execFileSync(py,['-c',[
+  'import os,sqlite3,json','from pathlib import Path',
+  'c=sqlite3.connect(Path(os.environ["SQLITE_PATH"]).as_uri()+"?mode=ro",uri=True)',
+  'print(json.dumps({"receipts":c.execute("SELECT kind,resource_id,COUNT(*) FROM atlas_learningarchivereceipt GROUP BY kind,resource_id ORDER BY kind").fetchall(),"audit":c.execute("SELECT target_kind,target_id,COUNT(*) FROM atlas_adminauditevent WHERE action=\'learning.archived\' GROUP BY target_kind,target_id ORDER BY target_kind").fetchall()}))','c.close()',
+].join('\n')],{env,encoding:'utf8'}));}
+function archiveControl(page){return page.getByRole('heading',{name:'بایگانی کنترل‌شدهٔ محتوا',exact:true}).locator('..');}
+async function prepareArchive(page,token){
+  const form=archiveControl(page);
+  await form.getByRole('checkbox').check();
+  await form.getByLabel('روش تأیید بایگانی').selectOption('recovery');
+  await form.getByLabel('کد MFA برای بایگانی').fill(token);
+  await form.getByRole('button',{name:'بایگانی با تأیید دومرحله‌ای',exact:true}).focus();
+}
+async function learnerToken(user){
+  const response=await fetch(api+'/api/auth/login/',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(user)});
+  assert.equal(response.status,200);return (await response.json()).access;
+}
+async function learnerRequest(page,token,route,body){
+  return page.evaluate(async({token,route,body,api})=>{
+    const response=await fetch(api+'/api'+route,{cache:'no-store',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+      ...(body===undefined?{}:{method:'POST',body:JSON.stringify(body)})});
+    return {status:response.status,data:await response.json()};
+  },{token,route,body,api});
+}
 (async()=>{try{
   const fixture=JSON.parse(execFileSync(py,[path.join(root,'scripts/cms_browser_fixture.py')],{cwd:path.join(root,'backend'),env,encoding:'utf8',timeout:180000}));
   const before=history();check(before.counts.every(n=>n>0),'Existing synthetic quiz answers, learning activity and SRS are nonempty');
@@ -119,7 +144,7 @@ function writeResponse(page,suffix){return page.waitForResponse(r=>r.url().repla
   const historicalRoute='/learning/quizzes/'+fixture.p13.historical_quiz+'/',historical=await request(owner,historicalRoute);
   check(historical.data.history_protected&&await owner.getByRole('group',{name:'اطلاعات آزمون غیرفعال'}).count()===0&&
     (await request(owner,historicalRoute+'metadata/',{title:'Forbidden historical rewrite',description:'',disorder_id:null},historical.etag)).status===409&&history().digest===before.digest,
-    'Historical inactive Quiz stays locked in UI/API and preserves actual answers/activity');
+    'Historical Quiz stays locked in UI/API and preserves actual answers/activity');
   await owner.setViewportSize({width:1280,height:850});
   await owner.goto(origin+'/admin-console/content/learning-flashcards');
   await owner.getByRole('heading',{name:'کارت‌های آموزشی و حفاظت SRS',exact:true}).waitFor();
@@ -155,6 +180,101 @@ function writeResponse(page,suffix){return page.waitForResponse(r=>r.url().repla
   check(historicalCard.data.history_protected&&await owner.getByRole('group',{name:'ویرایش کارت خصوصی',exact:true}).count()===0&&
     (await request(owner,historicalCardRoute+'metadata/',{concept_id:fixture.p13.concept},historicalCard.etag)).status===409&&history().digest===before.digest,
     'Historical Flashcard relations cannot be changed; real SRS and all learner history stay unchanged');
+  const freshToken=await learnerToken(fixture.users.learning_fresh),historicalToken=await learnerToken(fixture.users.owner);
+  const historicalDashboard=await learnerRequest(owner,historicalToken,'/dashboard/');
+  check((await learnerRequest(owner,freshToken,'/quizzes/p13-historical-fixture/')).status===200&&
+    (await learnerRequest(owner,freshToken,'/flashcards/')).data.results.some(r=>r.slug==='p13-historical-card')&&
+    (await learnerRequest(owner,freshToken,'/daily-challenge/')).status===200&&
+    (await learnerRequest(owner,freshToken,'/cognitive-distortions/practice/')).data.items.some(r=>r.slug==='p13-archive-practice'),
+    'All four synthetic archive targets are available before the operation');
+  check(await archiveControl(reader).getByRole('button').count()===0&&
+    (await request(reader,'/learning/archive/quiz/'+id+'/',{reason:'CONTENT_ARCHIVE',idempotency_key:crypto.randomUUID()},changed.etag)).status===403,
+    'Read-only role has no Archive form and a forged Archive request is denied');
+  await owner.locator('li').filter({hasText:'p13-browser-card'}).getByRole('button',{name:'باز کردن',exact:true}).click();
+  await owner.getByRole('heading',{name:'کارت: p13-browser-card',exact:true}).waitFor();
+  const concurrentEdit=await request(owner,cardRoute+'metadata/',{front:'Synthetic concurrent update'},cardAfter.etag);
+  assert.equal(concurrentEdit.status,200);
+  await prepareArchive(owner,fixture.users.owner.tokens[1]);
+  const staleArchive=writeResponse(owner,'/archive/flashcard/'+cardId);
+  await owner.keyboard.press('Enter');
+  check((await staleArchive).status()===412&&archiveEvidence().receipts.length===0,
+    'A concurrent edit makes the actual Archive form fail on stale ETag without a receipt');
+  await archiveControl(owner).getByRole('alert').waitFor();
+  const specs=[
+    {kind:'flashcard',id:fixture.p13.historical_card,page:'learning-flashcards',label:'p13-historical-card'},
+    {kind:'quiz',id:fixture.p13.historical_quiz,page:'learning-quizzes',label:'Synthetic historical quiz'},
+    {kind:'daily',id:fixture.p13.daily,page:'learning-practice',label:'Synthetic archive daily question'},
+    {kind:'distortions',id:fixture.p13.practice,page:'learning-practice',label:'Synthetic archive practice question'},
+  ];
+  let tokenIndex=2;
+  for(const spec of specs){
+    await owner.goto(origin+'/admin-console/content/'+spec.page);
+    if(spec.kind==='daily'||spec.kind==='distortions')await owner.getByLabel('نوع تمرین').selectOption(spec.kind);
+    await owner.locator('li').filter({hasText:spec.label}).getByRole('button',{name:'باز کردن',exact:true}).click();
+    await archiveControl(owner).waitFor();
+    const suffix='/archive/'+spec.kind+'/'+spec.id;
+    if(spec.kind==='flashcard'){
+      await prepareArchive(owner,'invalid-synthetic-mfa');
+      const denied=writeResponse(owner,'/auth/step-up');await owner.keyboard.press('Enter');
+      check((await denied).status()===403&&archiveEvidence().receipts.length===0,
+        'Invalid MFA from the actual Archive form cannot archive content');
+      // The installed otp_static device throttles the first failed proof for one second.
+      await new Promise(resolve=>setTimeout(resolve,1100));
+      let committed,originalKey;
+      const pattern='**/api/admin/learning/archive/flashcard/'+spec.id+'/';
+      await owner.route(pattern,async intercepted=>{
+        originalKey=JSON.parse(intercepted.request().postData()).idempotency_key;
+        const response=await intercepted.fetch();assert.equal(response.status(),200);committed=await response.json();
+        await intercepted.abort('failed');
+      });
+      await prepareArchive(owner,fixture.users.owner.tokens[tokenIndex++]);
+      const lostResponse=owner.waitForEvent('requestfailed',{predicate:r=>r.url().endsWith('/learning/archive/flashcard/'+spec.id+'/')});
+      await owner.keyboard.press('Enter');await lostResponse;
+      await archiveControl(owner).getByRole('alert').waitFor();
+      await owner.unroute(pattern);
+      check(committed?.newly_archived===true&&archiveEvidence().receipts.length===1,
+        'Response is deliberately lost after the real Archive commit');
+      await prepareArchive(owner,fixture.users.owner.tokens[tokenIndex++]);
+      const retried=writeResponse(owner,suffix);await owner.keyboard.press('Enter');
+      const response=await retried,body=await response.json();
+      check(response.status()===200&&!body.newly_archived&&body.receipt_id===committed.receipt_id&&
+        response.request().postDataJSON().idempotency_key===originalKey,
+        'UI retry keeps the same key and reconciles the single committed receipt');
+    }else{
+      await prepareArchive(owner,fixture.users.owner.tokens[tokenIndex++]);
+      const archived=writeResponse(owner,suffix);await owner.keyboard.press('Enter');
+      const response=await archived;
+      check(response.status()===200&&(await response.json()).newly_archived===true,
+        spec.kind+' archives through the actual keyboard-submitted MFA form');
+    }
+    await archiveControl(owner).getByText(/محتوا بایگانی شده است/).waitFor();
+    check(history().digest===before.digest,spec.kind+' archive preserves all eight history/progress/SRS table digests');
+    check(await archiveControl(owner).getByRole('button').count()===0&&
+      await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth&&getComputedStyle(document.querySelector('[dir="rtl"]')).direction==='rtl'),
+      spec.kind+' archive receipt is read-only and fits the RTL mobile layout');
+    const filename='archive-'+spec.kind+'-mobile.png';
+    await owner.screenshot({path:path.join(out,filename),fullPage:true});report.screenshots.push(filename);
+  }
+  const evidence=archiveEvidence();
+  check(evidence.receipts.length===4&&evidence.audit.length===4&&
+    evidence.receipts.every(row=>row[2]===1)&&evidence.audit.every(row=>row[2]===1),
+    'Exactly one Receipt and one Audit exist per archived kind, including lost-response retry');
+  check((await learnerRequest(owner,freshToken,'/quizzes/p13-historical-fixture/')).status===404&&
+    !(await learnerRequest(owner,freshToken,'/flashcards/')).data.results.some(r=>r.slug==='p13-historical-card')&&
+    (await learnerRequest(owner,freshToken,'/daily-challenge/')).status===404&&
+    !(await learnerRequest(owner,freshToken,'/cognitive-distortions/practice/')).data.items.some(r=>r.slug==='p13-archive-practice'),
+    'Fresh public reads immediately exclude all four archives');
+  for(const [route,body] of [
+    ['/quizzes/p13-historical-fixture/submit/',{answers:[{question_id:fixture.p13.quiz_question,choice_id:fixture.p13.quiz_choice}]}],
+    ['/flashcards/p13-historical-card/review/',{rating:'good'}],
+    ['/daily-challenge/',{choice_id:fixture.p13.daily_choice}],
+    ['/cognitive-distortions/practice/p13-archive-practice/submit/',{choice_id:fixture.p13.practice_choice}],
+  ])check((await learnerRequest(owner,freshToken,route,body)).status===404,'Fresh learner writes are denied after Archive: '+route);
+  const preservedDashboard=await learnerRequest(owner,historicalToken,'/dashboard/');
+  const preservedDaily=await learnerRequest(owner,historicalToken,'/daily-challenge/');
+  check(preservedDashboard.status===200&&preservedDashboard.data.quizzes_completed===historicalDashboard.data.quizzes_completed&&
+    preservedDaily.status===200&&preservedDaily.data.attempt.selected_choice_id===fixture.p13.daily_choice&&history().digest===before.digest,
+    'Authorized historical quiz totals and pinned Daily result survive; all eight tables are unchanged');
   check(report.errors.length===0,'No uncaught browser runtime errors');report.status='PASS';
   await readerContext.close();await ownerContext.close();
 }catch(e){

@@ -2,9 +2,10 @@
 import {useEffect,useState,type FormEvent} from "react";
 import {cms,CmsError,type CmsPage} from "@/lib/cms";
 import {CmsState,useCms} from "@/components/cms/CmsShell";
+import {LearningArchiveAction} from "@/components/cms/LearningArchiveAction";
 
 type Kind="daily"|"distortions";
-type Item={item_id:number;prompt:string;is_active:boolean;seed_managed:boolean};
+type Item={item_id:number;prompt:string;is_active:boolean;seed_managed:boolean;archived_at:string|null};
 type Choice={id?:number;text:string;is_correct:boolean;is_active?:boolean;concept_id?:number};
 type Detail=Item&{kind:Kind;explanation:string;choices:Choice[];valid:boolean;issues:string[];
   history_protected:boolean;publication_available:false;target_concept_id?:number;
@@ -58,6 +59,7 @@ export default function PracticeCMS(){
     finally{setBusy(false);}
   };
   const switchKind=(value:Kind)=>{
+    if(busy)return;
     if(dirty&&!window.confirm("ویرایش‌های ثبت‌نشده کنار گذاشته شوند؟"))return;
     setKind(value);setPage(1);setSelected(undefined);setError("");setLoading(true);setDirty(false);
   };
@@ -126,7 +128,7 @@ export default function PracticeCMS(){
     finally{setBusy(false);}
   };
   if(!allowed)return <CmsState empty="برای ویرایش تمرین‌های آموزشی به مجوز اختصاصی نیاز است."/>;
-  const editable=Boolean(selected&&!selected.is_active&&!selected.seed_managed&&!selected.history_protected&&can("cms_learning_edit"));
+  const editable=Boolean(selected&&!selected.archived_at&&!selected.is_active&&!selected.seed_managed&&!selected.history_protected&&can("cms_learning_edit"));
   return <div className="stack" dir="rtl">
     <a className="cms-link" href="/admin-console/content">بازگشت به محتوای مرجع</a>
     <div className="cms-title"><p className="eyebrow">P13 | Practice</p>
@@ -134,7 +136,7 @@ export default function PracticeCMS(){
       <p className="muted">متن و کلید پاسخ فقط برای آیتم غیرفعال و بدون سابقه قابل‌ویرایش است. پیش‌نمایش هیچ رکورد یادگیری نمی‌سازد.</p>
     </div>
     <label>نوع تمرین
-      <select value={kind} onChange={e=>switchKind(e.target.value as Kind)}>
+      <select disabled={busy} value={kind} onChange={e=>switchKind(e.target.value as Kind)}>
         <option value="daily">چالش روزانه</option>
         <option value="distortions">تمرین خطاهای شناختی</option>
       </select>
@@ -143,7 +145,7 @@ export default function PracticeCMS(){
     <section className="card stack">
       <h2>فهرست {kind==="daily"?"چالش‌ها":"تمرین خطاهای شناختی"}</h2>
       {loading?<CmsState loading/>:<ul>{items.map(item=><li key={item.item_id}>
-        <strong>{item.prompt.slice(0,90)}</strong> | {item.is_active?"فعال":"غیرفعال"}
+        <strong>{item.prompt.slice(0,90)}</strong> | {item.archived_at?"بایگانی‌شده":item.is_active?"فعال":"غیرفعال"}
         <button className="button secondary" type="button" disabled={busy}
           onClick={()=>void open(item.item_id)}>باز کردن</button>
       </li>)}</ul>}
@@ -183,8 +185,15 @@ export default function PracticeCMS(){
       <h2>ویرایش آیتم #{selected.item_id}</h2>
       <p>وضعیت اعتبار: {selected.valid?"معتبر":"نیازمند اصلاح"} |
         {selected.history_protected?" حفاظت‌شده به‌علت سابقهٔ پاسخ":""}</p>
-      {!editable&&<p className="muted">ویرایش آیتم فعال، Seed یا دارای attempt مسدود است؛ تاریخچهٔ دانشجو حفظ می‌شود.</p>}
+      {!editable&&<p className="muted">ویرایش آیتم بایگانی، فعال، Seed یا دارای attempt مسدود است؛ تاریخچهٔ دانشجو حفظ می‌شود.</p>}
+      <LearningArchiveAction key={"archive-"+kind+"-"+selected.item_id} kind={kind} itemId={selected.item_id}
+        etag={etag} archivedAt={selected.archived_at} blocked={busy||dirty} onBusyChange={setBusy}
+        onArchived={async at=>{
+          const id=selected.item_id;setSelected(old=>old?.item_id===id?{...old,is_active:false,archived_at:at}:old);
+          await Promise.all([reload(id),refresh()]);
+        }}/>
       {editable&&<form className="stack" onSubmit={save}>
+        <fieldset className="stack" disabled={busy}><legend>ویرایش محتوای تمرین</legend>
         <label>سؤال<textarea required rows={3} maxLength={20000} value={draft.prompt}
           onChange={e=>change("prompt",e.target.value)}/></label>
         <label>توضیح<textarea rows={2} maxLength={20000} value={draft.explanation}
@@ -207,6 +216,7 @@ export default function PracticeCMS(){
         </fieldset>
         <button className="button" type="submit" disabled={busy||!dirty||!etag}>ذخیرهٔ پیش‌نویس</button>
         {dirty&&<p role="status">ویرایش ذخیره‌نشده دارید.</p>}
+        </fieldset>
       </form>}
       {selected.valid&&!dirty&&can("cms_learning_preview")&&
         <form className="stack" onSubmit={simulate}>

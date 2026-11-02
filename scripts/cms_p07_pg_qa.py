@@ -43,6 +43,8 @@ with tempfile.TemporaryDirectory(prefix="atlas-p07-pg-") as directory:
         port = sock.getsockname()[1]
     env = os.environ.copy()
     env.update({"DB_ENGINE": "postgres", "POSTGRES_HOST": "127.0.0.1",
+                "SQLITE_PATH": str(owned / "unused-runtime.sqlite3"),
+                "SQLITE_TEST_PATH": str(owned / "unused-tests.sqlite3"),
                 "POSTGRES_PORT": str(port), "POSTGRES_DB": "atlas_p07_disposable",
                 "POSTGRES_USER": "p07_disposable", "POSTGRES_PASSWORD": "disposable-local-only",
                 "DEBUG": "1", "PYTHONDONTWRITEBYTECODE": "1", "PYTHONUNBUFFERED": "1"})

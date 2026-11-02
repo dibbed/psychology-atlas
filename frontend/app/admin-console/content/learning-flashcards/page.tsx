@@ -2,8 +2,9 @@
 import {useEffect, useState, type FormEvent} from "react";
 import {cms, type CmsPage} from "@/lib/cms";
 import {CmsState,useCms} from "@/components/cms/CmsShell";
+import {LearningArchiveAction} from "@/components/cms/LearningArchiveAction";
 
-type Item={flashcard_id:number;slug:string;is_active:boolean;seed_managed:boolean};
+type Item={flashcard_id:number;slug:string;is_active:boolean;seed_managed:boolean;archived_at:string|null};
 type Detail=Item&{front:string;back:string;hint:string;difficulty:string;
   concept_id:number|null;disorder_id:number|null;history_protected:boolean;
   publication_available:false};
@@ -87,7 +88,7 @@ export default function FlashcardCMS(){
     finally{setBusy(false);}
   };
   if(!allowed)return <CmsState empty="دسترسی اختصاصی مدیریت محتوای یادگیری لازم است."/>;
-  const edit=Boolean(selected&&!selected.is_active&&!selected.seed_managed&&!selected.history_protected&&can("cms_learning_edit"));
+  const edit=Boolean(selected&&!selected.archived_at&&!selected.is_active&&!selected.seed_managed&&!selected.history_protected&&can("cms_learning_edit"));
   const fields=(value:FormData,change:(field:keyof FormData,val:string)=>void)=>(
     <>
       <label>روی کارت<textarea required rows={3} maxLength={20000}
@@ -118,7 +119,7 @@ export default function FlashcardCMS(){
     <section className="card stack">
       <h2>کارت‌های ثبت‌شده</h2>
       {loading?<CmsState loading/>:<ul>{items.map(item=><li key={item.flashcard_id}>
-        <strong>{item.slug}</strong> | {item.is_active?"فعال":"غیرفعال"}
+        <strong>{item.slug}</strong> | {item.archived_at?"بایگانی‌شده":item.is_active?"فعال":"غیرفعال"}
         <button type="button" className="button secondary" disabled={busy}
           onClick={()=>void pick(item.flashcard_id)}>باز کردن</button>
       </li>)}</ul>}
@@ -144,7 +145,13 @@ export default function FlashcardCMS(){
     {selected&&<section className="card stack">
       <h2>کارت: {selected.slug}</h2>
       <p>{selected.front}</p><details><summary>نمای خصوصی پشت کارت</summary><p>{selected.back}</p></details>
-      {!edit&&<p>ویرایش قفل است: کارت فعال است یا از Seed آمده یا پیشرفت یادگیرنده دارد. دادهٔ SRS دست‌نخورده می‌ماند.</p>}
+      {!edit&&<p>ویرایش قفل است: کارت بایگانی یا فعال است، از Seed آمده یا پیشرفت یادگیرنده دارد. دادهٔ SRS دست‌نخورده می‌ماند.</p>}
+      <LearningArchiveAction key={"archive-card-"+selected.flashcard_id} kind="flashcard" itemId={selected.flashcard_id}
+        etag={etag} archivedAt={selected.archived_at} blocked={busy||dirty} onBusyChange={setBusy}
+        onArchived={async at=>{
+          const id=selected.flashcard_id;setSelected(old=>old?.flashcard_id===id?{...old,is_active:false,archived_at:at}:old);
+          await Promise.all([reload(id),refresh()]);
+        }}/>
       {edit&&<form className="stack" onSubmit={save}>
         <fieldset className="stack" disabled={busy}><legend>ویرایش کارت خصوصی</legend>
         {fields(draft,(key,val)=>{setDraft(o=>({...o,[key]:val}));setDirty(true);})}

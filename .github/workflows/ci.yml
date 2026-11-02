@@ -163,7 +163,7 @@ jobs:
 
 
       - name: Learning editor metadata and history preservation
-        run: python manage.py test atlas.tests_v100_p13_learning atlas.tests_v100_p13_flashcards atlas.tests_v100_p13_practice --noinput --verbosity 2 --timing
+        run: python manage.py test atlas.tests_v100_p13_learning atlas.tests_v100_p13_flashcards atlas.tests_v100_p13_practice atlas.tests_v100_p13_archive --noinput --verbosity 2 --timing
 
   frontend-build:
     name: Frontend typecheck and build

@@ -9,7 +9,7 @@ from datetime import date, datetime, time as datetime_time, timedelta
 from zoneinfo import ZoneInfo
 
 from django.db import OperationalError, connection, transaction
-from django.db.models import Max, Q, Sum
+from django.db.models import Exists, Max, OuterRef, Q, Sum
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 
@@ -177,7 +177,10 @@ def _generation_window(plan, today):
 
 
 def _block_queryset():
-    return models.StudyBlock.objects.select_related(
+    return models.StudyBlock.objects.annotate(
+        has_available_distortion=Exists(models.CognitiveDistortionPracticeItem.objects.filter(
+            target_concept_id=OuterRef("concept_id"), is_active=True, archived_at__isnull=True)),
+    ).select_related(
         "plan",
         "scope",
         "disorder",
@@ -214,11 +217,15 @@ def _block_target(block):
     return None, None
 
 
-def _block_target_active(block):
+def _block_target_active(block, *, for_display=False):
     if block.block_kind == models.StudyBlock.Kind.DISTORTION_PRACTICE:
-        return bool(block.concept_id and block.concept.is_active and
-            models.CognitiveDistortionPracticeItem.objects.filter(
-                target_concept_id=block.concept_id, is_active=True, archived_at__isnull=True).exists())
+        if not block.concept_id or not block.concept.is_active:
+            return False
+        if for_display and hasattr(block, "has_available_distortion"):
+            return bool(block.has_available_distortion)
+        # Mutations recheck availability after any row-lock wait.
+        return models.CognitiveDistortionPracticeItem.objects.filter(
+            target_concept_id=block.concept_id, is_active=True, archived_at__isnull=True).exists()
     target_type, target = _block_target(block)
     if target is None:
         return True
@@ -265,7 +272,7 @@ def study_block_payload(block):
         "metadata": block.metadata,
         "target_type": target_type,
         "target_slug": target.slug if target is not None else None,
-        "target_active": _block_target_active(block),
+        "target_active": _block_target_active(block, for_display=True),
         "action_href": _block_href(block),
         "evidence_required": block.block_kind in CANONICAL_EVIDENCE_KINDS,
         "started_at": block.started_at.isoformat() if block.started_at else None,

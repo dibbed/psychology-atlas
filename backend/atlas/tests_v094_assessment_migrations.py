@@ -63,7 +63,8 @@ class AssessmentMigrationTests(TransactionTestCase):
     def test_zero_to_latest_sqlite_integrity_and_foreign_keys(self):
         with tempfile.TemporaryDirectory(prefix="assessment-migration-") as directory:
             path = Path(directory) / "fresh.sqlite3"
-            env = dict(os.environ, DB_ENGINE="sqlite", SQLITE_PATH=str(path), DEBUG="1")
+            env = dict(os.environ, DB_ENGINE="sqlite", SQLITE_PATH=str(path),
+                       SQLITE_TEST_PATH=str(Path(directory) / "tests.sqlite3"), DEBUG="1")
             manage = Path(__file__).resolve().parents[1] / "manage.py"
             run = subprocess.run([sys.executable, str(manage), "migrate", "--noinput"], env=env, capture_output=True, text=True, timeout=120)
             self.assertEqual(run.returncode, 0, run.stderr[-2000:])

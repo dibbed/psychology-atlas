@@ -93,7 +93,8 @@ class V083RecommendationFeedbackMigrationTests(TransactionTestCase):
     migrate_to = ("atlas", "0031_v083_recommendation_feedback")
 
     def tearDown(self):
-        MigrationExecutor(connection).migrate([("atlas", "0032_v084_study_sessions")])
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
         super().tearDown()
 
     def test_historical_upgrade_preserves_canonical_state_without_backfill(self):
@@ -166,6 +167,7 @@ class V083RecommendationFeedbackMigrationTests(TransactionTestCase):
             database = Path(temp_dir) / "fresh.sqlite3"
             environment = os.environ.copy()
             environment["SQLITE_PATH"] = str(database)
+            environment["SQLITE_TEST_PATH"] = str(Path(temp_dir) / "tests.sqlite3")
             result = subprocess.run(
                 [sys.executable, "manage.py", "migrate", "--noinput", "--skip-checks", "--verbosity", "0"],
                 cwd=Path(__file__).resolve().parents[1],

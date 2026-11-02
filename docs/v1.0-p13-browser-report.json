@@ -13,23 +13,51 @@
     "Unreviewed Quiz remains absent from the public API",
     "Quiz editor fits 320px viewport",
     "View-only MFA role has no metadata form and cannot forge an edit",
-    "Historical inactive Quiz stays locked in UI/API and preserves actual answers/activity",
+    "Historical Quiz stays locked in UI/API and preserves actual answers/activity",
     "Flashcard form creates a private card with validated Concept/Disorder relationships",
     "Flashcard relationship update succeeds through the real audited API",
     "Clearing one relationship preserves the other, card identity and private visibility",
     "Flashcard relationship editor fits 320px viewport",
     "Historical Flashcard relations cannot be changed; real SRS and all learner history stay unchanged",
+    "All four synthetic archive targets are available before the operation",
+    "Read-only role has no Archive form and a forged Archive request is denied",
+    "A concurrent edit makes the actual Archive form fail on stale ETag without a receipt",
+    "Invalid MFA from the actual Archive form cannot archive content",
+    "Response is deliberately lost after the real Archive commit",
+    "UI retry keeps the same key and reconciles the single committed receipt",
+    "flashcard archive preserves all eight history/progress/SRS table digests",
+    "flashcard archive receipt is read-only and fits the RTL mobile layout",
+    "quiz archives through the actual keyboard-submitted MFA form",
+    "quiz archive preserves all eight history/progress/SRS table digests",
+    "quiz archive receipt is read-only and fits the RTL mobile layout",
+    "daily archives through the actual keyboard-submitted MFA form",
+    "daily archive preserves all eight history/progress/SRS table digests",
+    "daily archive receipt is read-only and fits the RTL mobile layout",
+    "distortions archives through the actual keyboard-submitted MFA form",
+    "distortions archive preserves all eight history/progress/SRS table digests",
+    "distortions archive receipt is read-only and fits the RTL mobile layout",
+    "Exactly one Receipt and one Audit exist per archived kind, including lost-response retry",
+    "Fresh public reads immediately exclude all four archives",
+    "Fresh learner writes are denied after Archive: /quizzes/p13-historical-fixture/submit/",
+    "Fresh learner writes are denied after Archive: /flashcards/p13-historical-card/review/",
+    "Fresh learner writes are denied after Archive: /daily-challenge/",
+    "Fresh learner writes are denied after Archive: /cognitive-distortions/practice/p13-archive-practice/submit/",
+    "Authorized historical quiz totals and pinned Daily result survive; all eight tables are unchanged",
     "No uncaught browser runtime errors"
   ],
   "screenshots": [
     "quiz-metadata-desktop.png",
     "quiz-metadata-mobile.png",
-    "flashcard-relationships-mobile.png"
+    "flashcard-relationships-mobile.png",
+    "archive-flashcard-mobile.png",
+    "archive-quiz-mobile.png",
+    "archive-daily-mobile.png",
+    "archive-distortions-mobile.png"
   ],
   "errors": [],
   "limits": [
     "Synthetic isolated SQLite only",
-    "Quiz metadata/authoring slice; P13 publication, archive and import/export remain incomplete"
+    "No scientific/rights approval or publication; import/export is a separate gate"
   ],
-  "completed_at": "2026-11-02T06:50:55.174Z"
+  "completed_at": "2026-11-02T16:18:25.647Z"
 }

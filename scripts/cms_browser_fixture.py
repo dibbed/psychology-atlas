@@ -579,7 +579,8 @@ if phase == "p12":
                                "first": start.pk, "end": end.pk, "source": source.pk, "attempt": attempt.pk}}
 
 if phase == "p13":
-    from atlas.models import Quiz, QuizQuestion, QuizChoice, Concept, Disorder, Flashcard
+    from atlas.models import (Quiz, QuizQuestion, QuizChoice, Concept, Disorder, Flashcard,
+        DailyChallenge, DailyChallengeChoice, CognitiveDistortionPracticeItem, CognitiveDistortionPracticeChoice)
     from atlas.services import submit_quiz
     from atlas.learning import review_flashcard
     viewer = User.objects.create_user("qa_p13_learning_reader", password=password, is_staff=True)
@@ -589,22 +590,51 @@ if phase == "p13":
     backup = StaticDevice.objects.create(user=viewer, name="backup", confirmed=True)
     users["learning_reader"] = {"username": viewer.username, "password": password,
         "tokens": [StaticToken.objects.create(device=backup, token=StaticToken.random_token()).token for _ in range(2)]}
-    quiz = Quiz.objects.create(slug="p13-historical-fixture", title="Synthetic historical quiz")
+    concept = Concept.objects.create(slug="p13-synthetic-concept", name_en="Synthetic fixture concept")
+    disorder = Disorder.objects.create(category=category, slug="p13-synthetic-disorder", name_en="Synthetic fixture disorder")
+    quiz = Quiz.objects.create(slug="p13-historical-fixture", title="Synthetic historical quiz", disorder=disorder)
     question = QuizQuestion.objects.create(quiz=quiz, prompt="Synthetic historical question")
     choice = QuizChoice.objects.create(question=question, text="Historical correct answer", is_correct=True)
     QuizChoice.objects.create(question=question, text="Historical distractor", is_correct=False)
     submit_quiz(user=User.objects.get(username="qa_owner"), quiz=quiz,
                 answers=[{"question_id": question.pk, "choice_id": choice.pk}])
-    quiz.is_active = False
-    quiz.save(update_fields=["is_active"])
-    concept = Concept.objects.create(slug="p13-synthetic-concept", name_en="Synthetic fixture concept")
-    disorder = Disorder.objects.create(category=category, slug="p13-synthetic-disorder", name_en="Synthetic fixture disorder")
-    card = Flashcard.objects.create(slug="p13-historical-card", front="Synthetic historical front", back="Synthetic historical back")
+    card = Flashcard.objects.create(slug="p13-historical-card", front="Synthetic historical front", back="Synthetic historical back",
+        concept=concept, disorder=disorder)
     review_flashcard(user=User.objects.get(username="qa_owner"), flashcard=card, rating="good")
-    card.is_active = False
-    card.save(update_fields=["is_active"])
+    public_card = Flashcard.objects.create(slug="p13-public-archive-card", front="Synthetic public archive front",
+        back="Synthetic public archive back")
+    daily = DailyChallenge.objects.create(prompt="Synthetic archive daily question", explanation="Fictional only",
+        concept=concept, disorder=disorder)
+    daily_choice = DailyChallengeChoice.objects.create(challenge=daily, text="Synthetic correct", is_correct=True)
+    DailyChallengeChoice.objects.create(challenge=daily, text="Synthetic distractor", is_correct=False)
+    distortion = Concept.objects.create(slug="p13-synthetic-distortion", name_en="Synthetic fixture distortion",
+        subtype=Concept.Subtype.COGNITIVE_DISTORTION)
+    other_distortion = Concept.objects.create(slug="p13-synthetic-other-distortion", name_en="Synthetic other distortion",
+        subtype=Concept.Subtype.COGNITIVE_DISTORTION)
+    practice = CognitiveDistortionPracticeItem.objects.create(slug="p13-archive-practice",
+        prompt="Synthetic archive practice question", explanation="Fictional only", target_concept=distortion)
+    practice_choice = CognitiveDistortionPracticeChoice.objects.create(item=practice, concept=distortion,
+        text="Synthetic correct distortion", is_correct=True)
+    CognitiveDistortionPracticeChoice.objects.create(item=practice, concept=other_distortion,
+        text="Synthetic other distortion", is_correct=False)
+    # Real learner endpoints create only fictional fixture history in the guarded TEMP DB.
+    from rest_framework.test import APIClient
+    learner = APIClient()
+    login_response = learner.post("/api/auth/login/", {"username": "qa_owner", "password": password},
+        format="json", HTTP_HOST="127.0.0.1")
+    assert login_response.status_code == 200
+    learner.credentials(HTTP_AUTHORIZATION="Bearer " + login_response.json()["access"])
+    daily_response = learner.post("/api/daily-challenge/", {"choice_id": daily_choice.pk}, format="json", HTTP_HOST="127.0.0.1")
+    assert daily_response.status_code == 200, "Synthetic daily history fixture failed"
+    practice_response = learner.post("/api/cognitive-distortions/practice/p13-archive-practice/submit/",
+        {"choice_id": practice_choice.pk}, format="json", HTTP_HOST="127.0.0.1")
+    assert practice_response.status_code == 201, "Synthetic practice history fixture failed"
+    fresh_learner = User.objects.create_user("qa_p13_fresh_learner", password=password)
+    users["learning_fresh"] = {"username": fresh_learner.username, "password": password}
     review_fixture = {"p13": {"historical_quiz": quiz.pk, "historical_card": card.pk,
-                               "concept": concept.pk, "disorder": disorder.pk}}
+        "public_card": public_card.pk, "daily": daily.pk, "practice": practice.pk,
+        "concept": concept.pk, "disorder": disorder.pk, "quiz_question": question.pk,
+        "quiz_choice": choice.pk, "daily_choice": daily_choice.pk, "practice_choice": practice_choice.pk}}
 
 # Credentials go only to the harness's private pipe, never into reports or logs.
 print(json.dumps({"users": users, "category": str(state.pk), **review_fixture}))

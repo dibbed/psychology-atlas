@@ -225,7 +225,6 @@ class LearningArchiveTests(SecurityFixture, TestCase):
         self.assertFalse(public_resources(Flashcard).exists())
         self.assertFalse(public_visible(self.quiz))  # supplied instance was admitted before archive
         self.assertEqual(self.client_owner.get("/api/quizzes/" + self.quiz.slug + "/").status_code, 404)
-        self.assertEqual(self.client_owner.get("/api/flashcards/" + card.slug + "/").status_code, 404)
         with self.assertRaises(ValidationError):
             submit_quiz(user=self.normal, quiz=self.quiz,
                 answers=[{"question_id": q.pk, "choice_id": c.pk}])
@@ -235,6 +234,65 @@ class LearningArchiveTests(SecurityFixture, TestCase):
         self.assertEqual(before, (progress.pk, progress.repetitions, progress.interval_days, progress.ease_factor))
         self.assertFalse(QuizAttempt.objects.exists())
         self.assertFalse(StudyActivity.objects.exists())
+
+    def test_flashcard_public_list_queue_and_review_before_and_after_archive(self):
+        _, card, path = self.learning_items()[1]
+        learner = APIClient()
+        learner.force_authenticate(self.normal)
+        listing = learner.get("/api/flashcards/")
+        self.assertEqual(listing.status_code, 200)
+        rows = listing.json()
+        self.assertIn(card.slug, [row["slug"] for row in rows["results"]])
+        queue = learner.get("/api/flashcards/review-queue/")
+        self.assertEqual(queue.status_code, 200)
+        self.assertIn(card.slug, [row["flashcard"]["slug"] for row in queue.json()["items"]])
+        review_url = f"/api/flashcards/{card.slug}/review/"
+        response = learner.post(review_url, {"rating": "good"}, format="json")
+        self.assertEqual(response.status_code, 200, response.content[:300])
+        before_progress = list(UserFlashcardProgress.objects.values())
+        before_activity = list(StudyActivity.objects.values())
+        self.archive_fixture("flashcard", card, path)
+        listing = learner.get("/api/flashcards/")
+        self.assertEqual(listing.status_code, 200)
+        self.assertNotIn(card.slug, [row["slug"] for row in listing.json()["results"]])
+        queue = learner.get("/api/flashcards/review-queue/")
+        self.assertEqual(queue.status_code, 200)
+        self.assertNotIn(card.slug, [row["flashcard"]["slug"] for row in queue.json()["items"]])
+        self.assertEqual(learner.post(review_url, {"rating": "good"}, format="json").status_code, 404)
+        self.assertEqual(list(UserFlashcardProgress.objects.values()), before_progress)
+        self.assertEqual(list(StudyActivity.objects.values()), before_activity)
+
+    def test_distortion_schedule_queries_do_not_scale_with_blocks(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from .models import StudyPlan, StudyBlock
+        from .study_scheduler import get_study_plan_schedule
+        practice = self.learning_items()[3][1]
+        day = timezone.localdate()
+        plan = StudyPlan.objects.create(user=self.normal, name="Synthetic scaling", start_date=day)
+
+        def add_block(sequence):
+            StudyBlock.objects.create(plan=plan, block_kind="distortion_practice",
+                concept=practice.target_concept, scheduled_date=day, sequence=sequence,
+                estimated_minutes=10, snapshot_title="Synthetic scaling block")
+
+        add_block(0)
+        get_study_plan_schedule(self.normal, plan.pk)
+        with CaptureQueriesContext(connection) as small:
+            initial = get_study_plan_schedule(self.normal, plan.pk)
+        self.assertTrue(initial["days"][0]["blocks"][0]["target_active"])
+        for sequence in range(1, 13):
+            add_block(sequence)
+        with CaptureQueriesContext(connection) as expanded:
+            schedule = get_study_plan_schedule(self.normal, plan.pk)
+        self.assertEqual(len(schedule["days"][0]["blocks"]), 13)
+        self.assertTrue(all(block["target_active"] for block in schedule["days"][0]["blocks"]))
+        self.assertEqual(len(expanded), len(small), "Schedule queries must not grow per distortion block")
+        CognitiveDistortionPracticeItem.objects.filter(pk=practice.pk).update(archived_at=timezone.now())
+        with CaptureQueriesContext(connection) as archived:
+            schedule = get_study_plan_schedule(self.normal, plan.pk)
+        self.assertFalse(any(block["target_active"] for block in schedule["days"][0]["blocks"]))
+        self.assertEqual(len(archived), len(small))
 
     def test_today_scheduler_recommendations_and_publication_inventory_exclude_archives(self):
         from .models import StudyPlan, StudyPlanScope, StudyBlock
