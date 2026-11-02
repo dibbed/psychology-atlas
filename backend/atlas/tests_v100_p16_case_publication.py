@@ -1,19 +1,23 @@
 """P16 case publishing: real guarded routes, synthetic educational fixtures only."""
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
+from threading import Barrier
+from unittest.mock import patch
 
-from django.test import TestCase, override_settings
+from django.db import close_old_connections, connection
+from django.test import TestCase, TransactionTestCase, override_settings, skipUnlessDBFeature
 from django.utils import timezone
 
 from .cms_case_publication_models import CasePublicationPlan, CasePublicationReceipt, CasePublicationReview
-from .models import (CaseAttempt, CaseRevision, CaseStep, CaseTransition,
+from .models import (CaseAttempt, CaseAttemptAnswer, CaseRevision, CaseStep, CaseTransition,
+                     CaseQuestion, CaseChoice, CaseScoringDimension,
                      ClinicalCase, SourceReference, StudyActivity)
 from .services import start_or_resume_case_attempt
 from .tests_v100_p01 import BASE, SecurityFixture
 
 
-@override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
-class CasePublicationContractTests(SecurityFixture, TestCase):
+class CasePublicationFixture(SecurityFixture):
     def setUp(self):
         super().setUp()
         self.client_owner = self.sign_in(self.owner)
@@ -59,14 +63,112 @@ class CasePublicationContractTests(SecurityFixture, TestCase):
             "review_on":(timezone.localdate()+timedelta(days=120)).isoformat(),
             "expires_on":(timezone.localdate()+timedelta(days=180)).isoformat()}
 
-    def approve_reviews(self):
+    def approve_reviews(self, rights_client=None):
         for kind in ("source","scientific","rights"):
-            r=self.review(kind,rights=self.permission() if kind=="rights" else None)
+            r=self.review(kind,rights=self.permission() if kind=="rights" else None,
+                          client=rights_client if kind=="rights" else None)
             self.assertEqual(r.status_code,201,r.content[:450])
 
     def freeze(self):
         return self.post(self.client_owner,self.root()+"freeze/",etag=self.client_owner.get(
             BASE+f"cases/{self.case.pk}/revisions/{self.rev.pk}/graph/")["ETag"])
+
+    def prepared_apply(self, rights_client=None):
+        self.approve_reviews(rights_client)
+        frozen = self.freeze()
+        self.assertEqual(frozen.status_code, 201, frozen.content[:450])
+        plan = frozen.json()
+        endpoint = f"publication/cases/plans/{plan['plan_id']}/"
+        self.assertEqual(self.post(self.client_owner, endpoint + "approve/", {
+            "manifest_digest": plan["manifest_digest"], "self_review_ack": True,
+        }).status_code, 200)
+        self.step_up(self.client_owner, self.owner, "case_publish", self.rev.pk,
+                     {"manifest_digest": plan["manifest_digest"]})
+        return endpoint, {"manifest_digest": plan["manifest_digest"], "idempotency_key": str(uuid.uuid4())}
+
+
+@override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
+class CasePublicationContractTests(CasePublicationFixture, TestCase):
+    def rights_reviewer(self):
+        reviewer = self.user("scoped-rights-reviewer", staff=True, caps=(
+            "cms_enter", "cms_cases_view", "cms_review_decide_cases_rights", "cms_rights_decide"))
+        return reviewer, self.sign_in(reviewer)
+
+    def revoke_rights_authority(self, reviewer):
+        from django.contrib.auth.models import Permission
+        reviewer.user_permissions.remove(Permission.objects.get(
+            content_type__app_label="atlas", content_type__model="rolepolicy", codename="cms_rights_decide"))
+
+    def test_revoked_rights_authority_blocks_freeze(self):
+        reviewer, client = self.rights_reviewer()
+        self.approve_reviews(client)
+        self.revoke_rights_authority(reviewer)
+        self.assertEqual(self.freeze().status_code, 409)
+        self.assertFalse(CasePublicationPlan.objects.exists())
+
+    def test_revoked_rights_authority_blocks_apply(self):
+        reviewer, client = self.rights_reviewer()
+        endpoint, body = self.prepared_apply(client)
+        self.revoke_rights_authority(reviewer)
+        self.assertEqual(self.post(self.client_owner, endpoint + "apply/", body).status_code, 409)
+        self.case.refresh_from_db()
+        self.assertFalse(self.case.is_active)
+        self.assertFalse(CasePublicationReceipt.objects.exists())
+
+    def test_revoked_rights_authority_hides_published_case_and_prevents_new_attempts(self):
+        from rest_framework.exceptions import ValidationError
+        from .views import public_available_clinical_cases
+        reviewer, client = self.rights_reviewer()
+        endpoint, body = self.prepared_apply(client)
+        self.assertEqual(self.post(self.client_owner, endpoint + "apply/", body).status_code, 200)
+        self.case.refresh_from_db()
+        self.assertTrue(public_available_clinical_cases().filter(pk=self.case.pk).exists())
+        historical, _ = start_or_resume_case_attempt(user=self.normal, clinical_case=self.case)
+        self.revoke_rights_authority(reviewer)
+        self.assertFalse(public_available_clinical_cases().filter(pk=self.case.pk).exists())
+        with self.assertRaises(ValidationError):
+            start_or_resume_case_attempt(user=self.owner, clinical_case=self.case)
+        resumed, created = start_or_resume_case_attempt(user=self.normal, clinical_case=self.case)
+        self.assertFalse(created)
+        self.assertEqual(resumed.pk, historical.pk)
+
+    def test_receipt_failure_rolls_back_apply_and_allows_same_key_retry(self):
+        from .cms_models import AdminAuditEvent
+        endpoint, body = self.prepared_apply()
+        before = (list(CaseAttempt.objects.values()), list(StudyActivity.objects.values()))
+        with patch("atlas.cms_case_publication._receipt", side_effect=RuntimeError("Synthetic receipt failure")):
+            self.assertEqual(self.post(self.client_owner, endpoint + "apply/", body).status_code, 503)
+        self.case.refresh_from_db()
+        self.rev.refresh_from_db()
+        self.assertFalse(self.case.is_active)
+        self.assertIsNone(self.case.current_revision_id)
+        self.assertEqual(self.rev.status, CaseRevision.Status.DRAFT)
+        self.assertIsNone(self.rev.published_at)
+        self.assertEqual(CasePublicationPlan.objects.get(revision=self.rev).status, "approved")
+        self.assertFalse(CasePublicationReceipt.objects.exists())
+        self.assertFalse(AdminAuditEvent.objects.filter(action="case.publication_applied").exists())
+        self.assertEqual(before, (list(CaseAttempt.objects.values()), list(StudyActivity.objects.values())))
+        retry = self.post(self.client_owner, endpoint + "apply/", body)
+        self.assertEqual(retry.status_code, 200, retry.content[:450])
+        self.assertTrue(retry.json()["newly_applied"])
+        self.assertEqual(CasePublicationReceipt.objects.count(), 1)
+
+    def test_receipt_failure_rolls_back_withdrawal_and_allows_retry(self):
+        endpoint, body = self.prepared_apply()
+        self.assertEqual(self.post(self.client_owner, endpoint + "apply/", body).status_code, 200)
+        self.step_up(self.client_owner, self.owner, "case_withdraw", self.rev.pk,
+                     {"manifest_digest": body["manifest_digest"]})
+        body["idempotency_key"] = str(uuid.uuid4())
+        with patch("atlas.cms_case_publication._receipt", side_effect=RuntimeError("Synthetic receipt failure")):
+            self.assertEqual(self.post(self.client_owner, endpoint + "withdraw/", body).status_code, 503)
+        self.case.refresh_from_db()
+        self.assertTrue(self.case.is_active)
+        self.assertEqual(CasePublicationPlan.objects.get(revision=self.rev).status, "applied")
+        self.assertEqual(CasePublicationReceipt.objects.count(), 1)
+        retry = self.post(self.client_owner, endpoint + "withdraw/", body)
+        self.assertEqual(retry.status_code, 200, retry.content[:450])
+        self.assertTrue(retry.json()["newly_withdrawn"])
+        self.assertEqual(CasePublicationReceipt.objects.count(), 2)
 
     def test_publication_requires_real_revision_bound_review_and_stepup(self):
         self.assertEqual(self.freeze().status_code,409)
@@ -141,17 +243,21 @@ class CasePublicationContractTests(SecurityFixture, TestCase):
         from .services import advance_case_attempt
         old = CaseRevision.objects.create(
             case=self.case, version=0, status=CaseRevision.Status.PUBLISHED,
+            rubric_version=1,
             title="Earlier fictional revision",
             patient_summary="Old synthetic story",
             educational_objective="Previously approved fictional learning")
         old_first = CaseStep.objects.create(case=self.case, revision=old,
-            stable_key="old-intro", node_kind=CaseStep.NodeKind.INFORMATION,
+            stable_key="old-intro", node_kind=CaseStep.NodeKind.DECISION,
             title="Old start", narrative="Prior synthetic content", sort_order=0)
         old_end = CaseStep.objects.create(case=self.case, revision=old,
             stable_key="old-end", node_kind=CaseStep.NodeKind.TERMINAL,
             title="Old end", narrative="Prior synthetic ending", sort_order=1)
+        dimension = CaseScoringDimension.objects.create(revision=old, stable_key="reasoning", label="Original rubric")
+        question = CaseQuestion.objects.create(step=old_first, prompt="Original question", scoring_dimension=dimension)
+        choice = CaseChoice.objects.create(question=question, text="Original scored answer", score_value=3)
         CaseTransition.objects.create(revision=old, source_step=old_first,
-            target_step=old_end, outcome="continue")
+            choice=choice, target_step=old_end, outcome="continue")
         old.entry_step=old_first
         old.save(update_fields=["entry_step"])
         self.case.current_revision=old
@@ -189,7 +295,7 @@ class CasePublicationContractTests(SecurityFixture, TestCase):
             plan_id=plan_id,event_type="applied").count(),1)
         first,event,retry=advance_case_attempt(
             user=self.normal,attempt=prior,step_id=old_first.pk,
-            choice_id=None,state_version=0)
+            choice_id=choice.pk,state_version=0)
         self.assertFalse(retry)
         self.assertEqual(first.current_step_id,old_end.pk)
         done,event,retry=advance_case_attempt(
@@ -198,6 +304,10 @@ class CasePublicationContractTests(SecurityFixture, TestCase):
         self.assertFalse(retry)
         self.assertEqual(done.revision_id,old.pk)
         self.assertEqual(done.status,CaseAttempt.Status.COMPLETED)
+        self.assertEqual((done.score, done.max_score), (3, 3))
+        answer = CaseAttemptAnswer.objects.get(attempt=done)
+        self.assertEqual((answer.question_id, answer.selected_choice_id, answer.scoring_dimension_id,
+                          answer.awarded_score), (question.pk, choice.pk, dimension.pk, 3))
         self.assertEqual([item.step_id for item in done.events.order_by(
             "state_version_before")],[old_first.pk,old_end.pk])
         newer,started=start_or_resume_case_attempt(user=self.normal,clinical_case=self.case)
@@ -310,3 +420,38 @@ class CasePublicationContractTests(SecurityFixture, TestCase):
         bad=self.permission();bad["review_on"]=(timezone.localdate()-timedelta(days=1)).isoformat()
         self.assertEqual(self.review("rights",rights=bad).status_code,400)
         self.assertFalse(self.case.is_active)
+
+
+@override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
+class CasePublicationConcurrencyTests(CasePublicationFixture, TransactionTestCase):
+    @skipUnlessDBFeature("has_select_for_update")
+    def test_concurrent_apply_with_same_key_commits_once(self):
+        from .cms_case_publication import apply_plan
+        from .cms_models import AdminAuditEvent
+        self.prepared_apply()
+        plan = CasePublicationPlan.objects.get(revision=self.rev)
+        session_id = self.client_owner.session["cms_session_id"]
+        key = str(uuid.uuid4())
+        barrier = Barrier(2)
+
+        def worker(_):
+            close_old_connections()
+            connection.ensure_connection()
+            identity = id(connection.connection)
+            try:
+                barrier.wait(timeout=15)
+                receipt, created = apply_plan(self.owner.pk, session_id, plan.pk,
+                    plan.manifest_digest, key, uuid.uuid4())
+                return identity, receipt.pk, created
+            finally:
+                connection.close()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(worker, range(2)))
+        self.assertEqual(len({identity for identity, _, _ in results}), 2)
+        self.assertEqual(len({receipt for _, receipt, _ in results}), 1)
+        self.assertCountEqual([created for _, _, created in results], [True, False])
+        self.assertEqual(CasePublicationReceipt.objects.count(), 1)
+        self.assertEqual(AdminAuditEvent.objects.filter(action="case.publication_applied").count(), 1)
+        self.case.refresh_from_db()
+        self.assertEqual(self.case.current_revision_id, self.rev.pk)

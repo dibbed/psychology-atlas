@@ -159,7 +159,7 @@ jobs:
         run: python manage.py test atlas.tests_v095_integration atlas.tests.V063KnowledgeApiTests --noinput --verbosity 2 --durations 10 --timing
 
       - name: Admin security, revision, audit, migration and concurrency tests
-        run: python manage.py test atlas.tests_v100_p01 atlas.tests_v100_p02 atlas.tests_v100_p03 atlas.tests_v100_p04 atlas.tests_v100_p05_sources atlas.tests_v100_p05_governance atlas.tests_v100_p05_integration atlas.tests_v100_p05_public atlas.tests_v100_p06_jobs atlas.tests_v100_p06_artifacts atlas.tests_v100_p06_research atlas.tests_v100_p06_integration atlas.tests_v100_p07_domains atlas.tests_v100_p07_content atlas.tests_v100_p07_integration atlas.tests_v100_p08_therapy atlas.tests.V075CaseConcurrencyTests --noinput --verbosity 2 --timing
+        run: python manage.py test atlas.tests_v100_p01 atlas.tests_v100_p02 atlas.tests_v100_p03 atlas.tests_v100_p04 atlas.tests_v100_p05_sources atlas.tests_v100_p05_governance atlas.tests_v100_p05_integration atlas.tests_v100_p05_public atlas.tests_v100_p06_jobs atlas.tests_v100_p06_artifacts atlas.tests_v100_p06_research atlas.tests_v100_p06_integration atlas.tests_v100_p07_domains atlas.tests_v100_p07_content atlas.tests_v100_p07_integration atlas.tests_v100_p08_therapy atlas.tests_v100_p12_case_preview atlas.tests_v100_p16_case_publication atlas.tests_v100_p16_publication_preflight atlas.tests.V075CaseConcurrencyTests --noinput --verbosity 2 --timing
 
 
   frontend-build:
@@ -273,6 +273,7 @@ jobs:
           node scripts/cms_intake_browser_qa.cjs
           CMS_QA_PHASE=p07 CMS_QA_PYTHON=python CMS_QA_ORIGIN=http://127.0.0.1:3023 CMS_QA_API_ORIGIN=http://127.0.0.1:8023 CMS_QA_OUTPUT="$RUNNER_TEMP/browser-qa/cms-p07" node scripts/cms_p07_browser_qa.cjs
           CMS_QA_PHASE=p08 CMS_QA_PYTHON=python CMS_QA_ORIGIN=http://127.0.0.1:3023 CMS_QA_API_ORIGIN=http://127.0.0.1:8023 CMS_QA_OUTPUT="$RUNNER_TEMP/browser-qa/cms-p08" node scripts/cms_p08_browser_qa.cjs
+          CMS_QA_PHASE=p12 CMS_QA_PYTHON=python CMS_QA_ORIGIN=http://127.0.0.1:3023 CMS_QA_API_ORIGIN=http://127.0.0.1:8023 CMS_QA_OUTPUT="$RUNNER_TEMP/browser-qa/cms-p12" node scripts/cms_p12_browser_qa.cjs
       - name: Preserve browser evidence and failure diagnostics
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

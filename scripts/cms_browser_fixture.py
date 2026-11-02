@@ -494,7 +494,8 @@ if phase == "p07":
 if phase == "p12":
     # Disposable, entirely fictional branching content. No real patient data or
     # reviewer sign-off, and no production publication or external side effects.
-    from atlas.models import ClinicalCase, CaseRevision, CaseStep, CaseTransition, SourceReference
+    from atlas.models import (ClinicalCase, CaseRevision, CaseStep, CaseTransition, SourceReference,
+                              CaseScoringDimension, CaseQuestion, CaseChoice, Quiz, QuizQuestion, QuizChoice, Flashcard)
     case = ClinicalCase.objects.create(
         slug="p12-fake-browser-case", title="P12 synthetic published fixture",
         patient_summary="Fictional narrative, not a patient",
@@ -503,7 +504,7 @@ if phase == "p12":
     )
     revision = CaseRevision.objects.create(
         case=case, version=1, status=CaseRevision.Status.PUBLISHED,
-        title="Synthetic v1", patient_summary="Fictional narrative only",
+        title="Synthetic v1", patient_summary="Fictional narrative only", rubric_version=1,
     )
     start = CaseStep.objects.create(
         case=case, revision=revision, stable_key="start",
@@ -513,16 +514,52 @@ if phase == "p12":
     end = CaseStep.objects.create(
         case=case, revision=revision, stable_key="end",
         node_kind=CaseStep.NodeKind.TERMINAL,
-        title="Fictional finish", narrative="Synthetic finish", sort_order=1,
+        title="Fictional finish", narrative="Synthetic finish", sort_order=2,
     )
+    decision = CaseStep.objects.create(case=case, revision=revision, stable_key="decision",
+        node_kind=CaseStep.NodeKind.DECISION, title="Fictional decision", narrative="Synthetic decision", sort_order=1)
+    dimension = CaseScoringDimension.objects.create(revision=revision, stable_key="reasoning", label="Synthetic reasoning")
+    question = CaseQuestion.objects.create(step=decision, scoring_dimension=dimension, prompt="Fictional question?")
+    choice = CaseChoice.objects.create(question=question, text="Synthetic scored choice", score_value=3)
     CaseTransition.objects.create(
-        revision=revision, source_step=start, target_step=end,
+        revision=revision, source_step=start, target_step=decision,
         outcome=CaseTransition.Outcome.CONTINUE,
     )
+    CaseTransition.objects.create(revision=revision, source_step=decision, choice=choice,
+        target_step=end, outcome=CaseTransition.Outcome.CONTINUE)
     revision.entry_step = start
     revision.save(update_fields=["entry_step"])
     case.current_revision = revision
     case.save(update_fields=["current_revision"])
+    from atlas.services import start_or_resume_case_attempt, advance_case_attempt, submit_quiz
+    from atlas.learning import review_flashcard
+    from atlas.cms_review_models import ReviewPolicy
+    ReviewPolicy.objects.update_or_create(pk=1, defaults={"mode": "two_person", "version": 1})
+    attempt, _ = start_or_resume_case_attempt(user=User.objects.get(username="qa_owner"), clinical_case=case)
+    attempt, _, _ = advance_case_attempt(user=attempt.user, attempt=attempt, step_id=start.pk,
+                                        choice_id=None, state_version=0)
+    advance_case_attempt(user=attempt.user, attempt=attempt, step_id=decision.pk,
+                         choice_id=choice.pk, state_version=1)
+    quiz = Quiz.objects.create(slug="p12-synthetic-history-quiz", title="Synthetic history quiz")
+    quiz_question = QuizQuestion.objects.create(quiz=quiz, prompt="Synthetic quiz question?")
+    quiz_choice = QuizChoice.objects.create(question=quiz_question, text="Synthetic correct answer", is_correct=True)
+    submit_quiz(user=attempt.user, quiz=quiz, answers=[{"question_id": quiz_question.pk, "choice_id": quiz_choice.pk}])
+    card = Flashcard.objects.create(slug="p12-synthetic-history-card", front="Synthetic front", back="Synthetic back")
+    review_flashcard(user=attempt.user, flashcard=card, rating="good")
+    for name, caps in (
+        ("case_reviewer", ["cms_review_decide_cases_source", "cms_review_decide_cases_rights", "cms_rights_decide"]),
+        ("case_approver", ["cms_review_decide_cases_scientific", "cms_publication_approve_cases", "cms_publication_verify_cases"]),
+    ):
+        user = User.objects.create_user("qa_p12_" + name, password=password, is_staff=True)
+        user.user_permissions.add(*Permission.objects.filter(
+            content_type__app_label="atlas", content_type__model="rolepolicy",
+            codename__in=["cms_enter", "cms_catalog", "cms_cases_view", "cms_cases_preview", "cms_cases_validate", *caps],
+        ))
+        TOTPDevice.objects.create(user=user, name="default", confirmed=True)
+        backup = StaticDevice.objects.create(user=user, name="backup", confirmed=True)
+        users[name] = {"username": user.username, "password": password,
+            "tokens": [StaticToken.objects.create(device=backup, token=StaticToken.random_token()).token
+                       for _ in range(8)]}
     viewer = User.objects.create_user("qa_p12_case_reader", password=password, is_staff=True)
     viewer.user_permissions.add(*Permission.objects.filter(
         content_type__app_label="atlas", content_type__model="rolepolicy",
@@ -538,8 +575,8 @@ if phase == "p12":
     source = SourceReference.objects.create(title="P16 synthetic source for isolated QA",
         citation="Fictional test citation, not real scientific evidence.",
         doi="10.1234/synthetic.p16", verification_status="source_checked")
-    review_fixture = {"p12": {"case": case.pk, "revision": revision.pk,
-                               "first": start.pk, "end": end.pk, "source": source.pk}}
+    review_fixture = {"p12": {"case": case.pk, "slug": case.slug, "revision": revision.pk,
+                               "first": start.pk, "end": end.pk, "source": source.pk, "attempt": attempt.pk}}
 
 # Credentials go only to the harness's private pipe, never into reports or logs.
 print(json.dumps({"users": users, "category": str(state.pk), **review_fixture}))

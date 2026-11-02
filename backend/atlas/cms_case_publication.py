@@ -145,7 +145,10 @@ def _review_status(revision, lock=True):
         if review.policy_version != policy.version or review.policy_mode != policy.mode:
             blockers.append("POLICY_CHANGED")
         reviewer = get_user_model().objects.filter(pk=review.actor_id, is_active=True, is_staff=True).first()
-        if reviewer is None or not {"cms_enter", "cms_cases_view", PERMISSIONS[kind]} <= effective_permissions(reviewer):
+        required = {"cms_enter", "cms_cases_view", PERMISSIONS[kind]}
+        if kind == "rights":
+            required.add("cms_rights_decide")
+        if reviewer is None or not required <= effective_permissions(reviewer):
             blockers.append("REVIEWER_PERMISSION_CHANGED")
         try:
             if _source_dependency(review.evidence, lock=lock) != review.source_digest:

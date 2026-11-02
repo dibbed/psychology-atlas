@@ -1,5 +1,5 @@
 "use client";
-import {useCallback,useEffect,useState,type FormEvent} from "react";
+import {useCallback,useEffect,useRef,useState,type FormEvent} from "react";
 import {cms,CmsError} from "@/lib/cms";
 import {useCms} from "@/components/cms/CmsShell";
 
@@ -36,6 +36,7 @@ export function CasePublicationWorkflow({caseId,revisionId,etag,digest,status,on
   const [token,setToken]=useState("");
   const [mfaMethod,setMfaMethod]=useState<"totp"|"recovery">("totp");
   const [actionAck,setActionAck]=useState(false);
+  const requestKeys=useRef<Record<string,string>>({});
   const canReview=(kind:Stage)=>can("cms_review_decide_cases_"+kind)&&
     (kind!=="rights"||can("cms_rights_decide"));
   const selectedStage=canReview(stage)?stage:stages.find(canReview)??"source";
@@ -131,7 +132,8 @@ export function CasePublicationWorkflow({caseId,revisionId,etag,digest,status,on
       const result=await cms<{status:string;newly_applied?:boolean;newly_withdrawn?:boolean}>(
         "/publication/cases/plans/"+plan.id+"/"+operation+"/",{
           method:"POST",body:JSON.stringify({
-            manifest_digest:plan.manifest_digest,idempotency_key:crypto.randomUUID(),
+            manifest_digest:plan.manifest_digest,
+            idempotency_key:requestKeys.current[plan.id+"/"+operation]??=crypto.randomUUID(),
           }),
         });
       await openPlan(plan.id);

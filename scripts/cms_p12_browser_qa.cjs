@@ -9,9 +9,9 @@ const py=process.env.CMS_QA_PYTHON||(process.platform==='win32'?path.join(root,'
 const origin=process.env.CMS_QA_ORIGIN||'http://127.0.0.1:3000';
 const api=process.env.CMS_QA_API_ORIGIN||'http://127.0.0.1:8000';
 const env={...process.env,CMS_QA_PHASE:'p12',SQLITE_PATH:path.join(tmp,'cms-journey.sqlite3'),
-  NEXT_PUBLIC_API_URL:api+'/api',CSRF_TRUSTED_ORIGINS:origin,DEBUG:'1'};
+  DB_ENGINE:'sqlite',NEXT_PUBLIC_API_URL:api+'/api',CSRF_TRUSTED_ORIGINS:origin,DEBUG:'1'};
 const report={stage:'P12',status:'RUNNING',checks:[],screenshots:[],errors:[],
-  limits:['Synthetic, fresh isolated SQLite only','No actual reviewed publication','No existing user data or canonical database touched']};
+  limits:['Synthetic, fresh isolated SQLite only','Fictional review evidence confers no real scientific or legal approval','No existing user data or canonical database touched']};
 const processes=[];let browser;
 function check(ok,description){assert(ok,description);report.checks.push(description);}
 function start(exe,args,cwd,name){
@@ -28,6 +28,8 @@ async function ready(url,proc){
   throw Error('P12 test server not ready');
 }
 async function login(page,user){
+  page.setDefaultTimeout(20000);
+  page.setDefaultNavigationTimeout(20000);
   await page.goto(origin+'/admin-console');
   await page.getByLabel('نام کاربری',{exact:true}).fill(user.username);
   await page.getByLabel('گذرواژه',{exact:true}).fill(user.password);
@@ -43,11 +45,44 @@ async function query(page,route){
     return {status:response.status,data:await response.json(),etag:response.headers.get('ETag')};
   },route);
 }
+async function post(page,route,body,etag){
+  return page.evaluate(async({route,body,etag})=>{
+    const csrf=await (await fetch('/api/admin/auth/csrf/',{cache:'no-store'})).json();
+    const response=await fetch('/api/admin'+route,{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json','X-CSRFToken':csrf.csrf_token,...(etag?{'If-Match':etag}:{})},
+      body:JSON.stringify(body)});
+    return {status:response.status,data:await response.json()};
+  },{route,body,etag});
+}
+async function publicRequest(page,route,token,body){
+  return page.evaluate(async({url,token,body})=>{
+    const response=await fetch(url,{cache:'no-store',
+      method:body===undefined?'GET':'POST',
+      headers:{...(token?{Authorization:'Bearer '+token}:{}),'Content-Type':'application/json'},
+      ...(body===undefined?{}:{body:JSON.stringify(body)})});
+    return {status:response.status,data:await response.json()};
+  },{url:api+'/api'+route,token,body});
+}
+function historySnapshot(){
+  return JSON.parse(execFileSync(py,['-c',[
+    'import os,sqlite3,json,hashlib',
+    'from pathlib import Path',
+    'c=sqlite3.connect(Path(os.environ["SQLITE_PATH"]).as_uri()+"?mode=ro",uri=True)',
+    'tables=["atlas_caseattempt","atlas_caseattemptevent","atlas_caseattemptanswer","atlas_studyactivity","atlas_quizattempt","atlas_quizattemptanswer","atlas_userflashcardprogress"]',
+    'rows={t:c.execute("SELECT * FROM "+t+" ORDER BY id").fetchall() for t in tables}',
+    'print(json.dumps({"counts":{t:len(r) for t,r in rows.items()},"digest":hashlib.sha256(json.dumps(rows,sort_keys=True).encode()).hexdigest()}))',
+    'c.close()',
+  ].join('\n')],{env,encoding:'utf8'}));
+}
 (async()=>{try{
   const fixture=JSON.parse(execFileSync(py,[path.join(root,'scripts/cms_browser_fixture.py')],{
     cwd:path.join(root,'backend'),env,encoding:'utf8',timeout:180000}));
   check(!!fixture.p12&&!!fixture.users.owner&&!!fixture.users.case_reader,
     'Synthetic published case and scoped MFA-only reader in disposable SQLite');
+  const historyBefore=historySnapshot();
+  check(historyBefore.counts.atlas_caseattempt===1&&historyBefore.counts.atlas_caseattemptevent===2&&
+    Object.values(historyBefore.counts).every(count=>count>0),
+    'Nonempty scored case answers, quiz answers, activity and SRS exist before publication');
   const django=start(py,['manage.py','runserver','127.0.0.1:'+new URL(api).port,'--noreload'],path.join(root,'backend'),'django');
   await ready(api+'/api/admin/auth/csrf/',django);
   const next=start(process.execPath,[path.join(root,'frontend/node_modules/next/dist/bin/next'),'start',
@@ -58,6 +93,11 @@ async function query(page,route){
   const owner=await ownerContext.newPage();
   owner.on('pageerror',e=>report.errors.push(String(e)));
   await login(owner,fixture.users.owner);
+  const learnerLogin=await publicRequest(owner,'/auth/login/',null,{
+    username:fixture.users.owner.username,password:fixture.users.owner.password});
+  check(learnerLogin.status===200&&!!learnerLogin.data.access,'Synthetic learner uses actual JWT authentication');
+  const learnerToken=learnerLogin.data.access;
+  const historicalState=await publicRequest(owner,'/case-attempts/'+fixture.p12.attempt+'/',learnerToken);
   check(true,'Owner session uses real MFA and CSRF against isolated backend');
   await owner.goto(origin+'/admin-console/content/cases');
   await owner.getByRole('heading',{name:'بازرسی گراف کیس آموزشی'}).waitFor();
@@ -87,13 +127,12 @@ async function query(page,route){
   await owner.getByRole('button',{name:'بازرسی همین نسخه'}).last().click();
   check(await firstStep.getByLabel('عنوان',{exact:true}).inputValue()==='P12 updated fictional start',
     'Canceling navigation preserves unsaved graph edits');
+  const graphWrite=owner.waitForResponse(r=>r.url().replace(/\/$/,'').endsWith(prefix+draft.revision_id+'/graph/edit')&&r.request().method()==='POST'&&!(r.status()>=300&&r.status()<400));
   await editor.getByRole('button',{name:'ذخیرهٔ ساختار Draft'}).click();
-  await owner.waitForFunction(async url=>{
-    const response=await fetch('/api/admin'+url,{cache:'no-store',credentials:'same-origin'});
-    if(!response.ok)return false;
-    const data=await response.json();
-    return data.valid&&data.steps.some(s=>s.title==='P12 updated fictional start');
-  },prefix+draft.revision_id+'/graph/',{timeout:15000});
+  const graphResponse=await graphWrite;
+  const graphResult=await graphResponse.json();
+  check(graphResponse.status()===200,'Graph save response commits before verification '+
+    JSON.stringify({status:graphResponse.status(),code:graphResult.code}));
   const updated=await query(owner,prefix+draft.revision_id+'/graph/');
   check(updated.status===200&&updated.data.valid&&updated.data.steps.some(s=>s.title==='P12 updated fictional start'),
     'Real form writes valid graph and reloads a new ETag '+JSON.stringify({status:updated.status,valid:updated.data.valid,titles:updated.data.steps.map(s=>s.title)}));
@@ -109,6 +148,7 @@ async function query(page,route){
   const displayedDigest=await owner.locator('section[aria-labelledby="case-validation-title"] code[dir="ltr"]').first().textContent();
   check(validated.status===200&&displayedDigest===validated.data.revision_digest,
     'Case validation UI displays exact server-computed content fingerprint');
+  await owner.getByLabel('انتخاب مسیر این گام').selectOption({label:'Synthetic scored choice'});
   await owner.getByRole('button',{name:'اجرای شبیه‌سازی بدون ثبت سابقه'}).focus();
   await owner.keyboard.press('Enter');
   await owner.getByText('شبیه‌سازی تکمیل شد.').waitFor();
@@ -127,12 +167,9 @@ async function query(page,route){
   });
   const metadata=owner.getByRole('heading',{name:'ویرایش اطلاعات پیش‌نویس'}).locator('..');
   await metadata.getByLabel('هدف آموزشی').fill('Updated synthetic learning objective');
+  const metadataWrite=owner.waitForResponse(r=>r.url().replace(/\/$/,'').endsWith(prefix+draft.revision_id+'/metadata')&&r.request().method()==='POST'&&!(r.status()>=300&&r.status()<400));
   await metadata.getByRole('button',{name:'ذخیرهٔ اطلاعات پیش‌نویس'}).click();
-  await owner.waitForFunction(async url=>{
-    const response=await fetch('/api/admin'+url,{cache:'no-store',credentials:'same-origin'});
-    if(!response.ok)return false;
-    return (await response.json()).educational_objective==='Updated synthetic learning objective';
-  },prefix+draft.revision_id+'/graph/',{timeout:15000});
+  check((await metadataWrite).status()===200,'Metadata save response commits before verification');
   await owner.waitForFunction(()=>{
     const button=document.querySelector('section[aria-labelledby="draft-metadata"] button[type="submit"]');
     return button&&!button.disabled;
@@ -183,43 +220,70 @@ async function query(page,route){
   await reader.getByRole('button',{name:'باز کردن Draft'}).first().click();
   check(await reader.getByRole('heading',{name:'ویرایش ساختار CaseRevision (فقط Draft)'}).count()===0,
     'Scoped read-only case role cannot see mutation form');
-  // P16 exercises the real review form on disposable fictional content only.
+  // Scoped reviewers are separate from the author/publisher under two-person policy.
+  const reviewerContext=await browser.newContext({viewport:{width:1280,height:850}});
+  const reviewer=await reviewerContext.newPage();
+  reviewer.on('pageerror',e=>report.errors.push(String(e)));
+  await login(reviewer,fixture.users.case_reviewer);
+  await reviewer.goto(origin+'/admin-console/content/cases');
+  await reviewer.getByRole('button',{name:'باز کردن Draft'}).first().click();
+  const reviewPanel=reviewer.getByRole('heading',{name:'مرکز انتشار نسخهٔ کیس (P16)'}).locator('..');
   await owner.setViewportSize({width:1280,height:850});
   await owner.goto(origin+'/admin-console/content/cases');
   await owner.getByRole('button',{name:'باز کردن Draft'}).first().click();
   const panel=owner.getByRole('heading',{name:'مرکز انتشار نسخهٔ کیس (P16)'}).locator('..');
   await panel.getByText('SOURCE_REVIEW_REQUIRED').first().waitFor();
   check(true,'P16 UI presents the missing revision-scoped source review');
-  await panel.getByLabel('شناسهٔ SourceReference تأییدشده').fill(String(fixture.p12.source));
-  await panel.getByLabel('محل دقیق مدرک برای همین ادعا').fill('Synthetic section 1, isolated QA');
-  await panel.getByRole('checkbox').first().check();
-  await panel.getByRole('button',{name:'ثبت تصمیم نسخه‌مند'}).click();
-  await panel.getByText('تأیید‌شده برای این نسخه').first().waitFor();
+  await reviewPanel.getByLabel('شناسهٔ SourceReference تأییدشده').fill(String(fixture.p12.source));
+  await reviewPanel.getByLabel('محل دقیق مدرک برای همین ادعا').fill('Synthetic section 1, isolated QA');
+  await reviewPanel.getByRole('checkbox').first().check();
+  await reviewPanel.getByRole('button',{name:'ثبت تصمیم نسخه‌مند'}).click();
+  await reviewPanel.getByText('تأیید‌شده برای این نسخه').first().waitFor();
   check(true,'P16 source review form records an exact-version decision');
-  await panel.getByLabel('نوع بررسی').selectOption('scientific');
-  await panel.getByRole('checkbox').first().check();
-  await panel.getByRole('button',{name:'ثبت تصمیم نسخه‌مند'}).click();
-  await panel.getByText('تأیید‌شده برای این نسخه').nth(1).waitFor();
+  const approverContext=await browser.newContext({viewport:{width:1280,height:850}});
+  const approver=await approverContext.newPage();
+  approver.on('pageerror',e=>report.errors.push(String(e)));
+  await login(approver,fixture.users.case_approver);
+  await approver.goto(origin+'/admin-console/content/cases');
+  await approver.getByRole('button',{name:'باز کردن Draft'}).first().click();
+  const approvalPanel=approver.getByRole('heading',{name:'مرکز انتشار نسخهٔ کیس (P16)'}).locator('..');
+  await approvalPanel.getByLabel('شناسهٔ SourceReference تأییدشده').fill(String(fixture.p12.source));
+  await approvalPanel.getByLabel('محل دقیق مدرک برای همین ادعا').fill('Synthetic independent science review');
+  await approvalPanel.getByRole('checkbox').first().check();
+  await approvalPanel.getByRole('button',{name:'ثبت تصمیم نسخه‌مند'}).click();
+  await approvalPanel.getByText('تأیید‌شده برای این نسخه').nth(1).waitFor();
   check(true,'P16 scientific form records a separate privileged decision');
-  await panel.getByLabel('نوع بررسی').selectOption('rights');
-  await panel.getByLabel('دارندهٔ حق',{exact:true}).fill('Synthetic original fixture owner');
-  await panel.getByLabel('مبنای شناسایی دارندهٔ حق').fill('Explicit fictional test declaration');
-  await panel.getByLabel('شرح دقیق اجازهٔ نمایش عمومی متن دیجیتال').fill('Isolated fictional rights claim for disposable QA only');
-  await panel.getByLabel('قلمرو مجوز').fill('Synthetic QA territory');
-  await panel.getByLabel('تاریخ بازبینی بعدی').fill('2027-01-01');
-  await panel.getByLabel('انقضای مجوز، در صورت وجود').fill('2027-02-01');
-  await panel.getByRole('checkbox').first().check();
-  await panel.getByRole('button',{name:'ثبت تصمیم نسخه‌مند'}).click();
-  await panel.getByText('تأیید‌شده برای این نسخه').nth(2).waitFor();
+  await reviewPanel.getByLabel('نوع بررسی').selectOption('rights');
+  await reviewPanel.getByLabel('دارندهٔ حق',{exact:true}).fill('Synthetic original fixture owner');
+  await reviewPanel.getByLabel('مبنای شناسایی دارندهٔ حق').fill('Explicit fictional test declaration');
+  await reviewPanel.getByLabel('شرح دقیق اجازهٔ نمایش عمومی متن دیجیتال').fill('Isolated fictional rights claim for disposable QA only');
+  await reviewPanel.getByLabel('قلمرو مجوز').fill('Synthetic QA territory');
+  const future=days=>new Date(Date.now()+days*86400000).toISOString().slice(0,10);
+  await reviewPanel.getByLabel('تاریخ بازبینی بعدی').fill(future(120));
+  await reviewPanel.getByLabel('انقضای مجوز، در صورت وجود').fill(future(180));
+  await reviewPanel.getByRole('checkbox').first().check();
+  await reviewPanel.getByRole('button',{name:'ثبت تصمیم نسخه‌مند'}).click();
+  await reviewPanel.getByText('تأیید‌شده برای این نسخه').nth(2).waitFor();
   check(true,'P16 rights form requires explicit scope, holder and dated review');
+  await panel.getByRole('button',{name:'تازه‌سازی وضعیت بررسی‌ها'}).click();
   await panel.getByRole('button',{name:'ساخت مانیفست ثابت سروری'}).click();
   await panel.getByText('وضعیت مانیفست:').waitFor();
   const p16Plan=await panel.getByPlaceholder('UUID مانیفست').inputValue();
   check(/^[0-9a-f-]{36}$/.test(p16Plan),'P16 server freezes a version-bound manifest');
-  await panel.getByRole('checkbox').last().check();
-  await panel.getByRole('button',{name:'تأیید مانیفست'}).click();
+  const planFrozen=await query(owner,'/publication/cases/plans/'+p16Plan+'/');
+  const planRoute='/publication/cases/plans/'+p16Plan+'/';
+  const applyBody={manifest_digest:planFrozen.data.manifest_digest,idempotency_key:crypto.randomUUID()};
+  check((await post(owner,planRoute+'apply/',applyBody)).status===409,
+    'Frozen manifest without independent approval cannot be applied');
+  await approvalPanel.getByPlaceholder('UUID مانیفست').fill(p16Plan);
+  await approvalPanel.getByRole('button',{name:'دریافت وضعیت و رسید'}).click();
+  await approvalPanel.getByText('frozen',{exact:true}).first().waitFor();
+  await approvalPanel.getByRole('checkbox').last().check();
+  await approvalPanel.getByRole('button',{name:'تأیید مانیفست'}).click();
+  await approvalPanel.getByText('approved',{exact:true}).first().waitFor();
+  await panel.getByRole('button',{name:'دریافت وضعیت و رسید'}).click();
   await panel.getByText('approved',{exact:true}).first().waitFor();
-  check(true,'P16 manifest review is separate from publication activation');
+  check(true,'A separate scoped MFA reviewer approves the frozen manifest');
   const planBeforeApply=await query(owner,'/publication/cases/plans/'+p16Plan+'/');
   const graphBeforeApply=await query(owner,prefix+draft.revision_id+'/graph/');
   check(planBeforeApply.status===200&&planBeforeApply.data.status==='approved'&&
@@ -228,9 +292,95 @@ async function query(page,route){
     'P16 browser confirms Freeze and approval cannot silently activate a draft');
   await owner.screenshot({path:path.join(out,'case-publication-before-apply.png'),fullPage:true});
   report.screenshots.push('case-publication-before-apply.png');
+  check((await post(reader,planRoute+'apply/',applyBody)).status===403,
+    'Read-only MFA user cannot publish through a forged direct request');
+  check((await post(owner,planRoute+'apply/',{...applyBody,manifest_digest:'0'.repeat(64)})).status===412,
+    'Stale manifest digest fails before any publication');
+  check((await post(owner,planRoute+'apply/',applyBody)).status===403,
+    'Approved manifest still requires action-bound fresh MFA');
+  await panel.getByRole('checkbox').last().check();
+  await panel.getByLabel('روش احراز دوباره').selectOption('recovery');
+  await panel.getByLabel('کد MFA').fill('invalid-recovery-code');
+  await panel.getByRole('button',{name:'تأیید نهایی و انتشار نسخه'}).click();
+  await panel.getByRole('alert').waitFor();
+  check((await query(owner,planRoute)).data.receipts.length===0,
+    'Invalid browser MFA cannot apply or create a receipt');
+  // django-otp throttles the recovery device for one second after a failed code.
+  await new Promise(resolve=>setTimeout(resolve,1100));
+  let firstApplyKey;
+  await owner.route('**'+planRoute+'apply/',async route=>{
+    firstApplyKey=route.request().postDataJSON().idempotency_key;
+    const response=await route.fetch();
+    check(response.status()===200,'Real Apply commits before simulated lost response');
+    await route.fulfill({status:200,contentType:'application/json',body:'unreadable lost response'});
+  },{times:1});
+  await panel.getByLabel('کد MFA').fill(fixture.users.owner.tokens[1]);
+  const lostApply=owner.waitForResponse(r=>r.url().endsWith(planRoute+'apply/')&&r.request().method()==='POST');
+  await panel.getByRole('button',{name:'تأیید نهایی و انتشار نسخه'}).click();
+  await lostApply;
+  await panel.getByRole('alert').waitFor();
+  const appliedOnce=await query(owner,planRoute);
+  check(appliedOnce.data.status==='applied'&&appliedOnce.data.receipts.length===1,
+    'Unknown browser outcome has exactly one server publication receipt');
+  const retriedRequest=owner.waitForRequest(r=>r.url().endsWith(planRoute+'apply/')&&r.method()==='POST');
+  await panel.getByLabel('کد MFA').fill(fixture.users.owner.tokens[2]);
+  await panel.getByRole('button',{name:'تأیید نهایی و انتشار نسخه'}).click();
+  check((await retriedRequest).postDataJSON().idempotency_key===firstApplyKey,
+    'Retry after an unknown Apply outcome reuses the original idempotency key');
+  await panel.getByText('applied',{exact:true}).first().waitFor();
+  const applied=await query(owner,planRoute);
+  const current=await query(owner,prefix+draft.revision_id+'/graph/');
+  const old=await query(owner,prefix+fixture.p12.revision+'/graph/');
+  check(applied.data.receipts.length===1&&applied.data.receipts[0].id===appliedOnce.data.receipts[0].id,
+    'Browser retry returns the original receipt without duplicate publication');
+  check(current.data.current_revision_id===draft.revision_id&&current.data.revision_status==='published',
+    'Successful browser Apply switches current revision to the reviewed draft');
+  check(JSON.stringify(old.data.steps)===JSON.stringify(unchanged.data.steps)&&old.data.revision_status==='published',
+    'Previous published revision graph remains unchanged after Apply');
+  check(historySnapshot().digest===historyBefore.digest,
+    'Apply and retry preserve historical attempts, events, answers, activity and SRS byte-for-byte');
+  const publicCase=await publicRequest(owner,'/cases/'+fixture.p12.slug+'/',null);
+  const publicList=await publicRequest(owner,'/cases/',null);
+  check(publicCase.status===200&&publicCase.data.title===current.data.title&&
+    publicList.data.results.some(item=>item.slug===fixture.p12.slug),
+    'Actual public case detail and list expose the newly published revision');
+  const publicPage=await ownerContext.newPage();
+  publicPage.setDefaultTimeout(20000);
+  publicPage.on('pageerror',e=>report.errors.push(String(e)));
+  await publicPage.goto(origin+'/cases/'+fixture.p12.slug);
+  await publicPage.getByRole('heading',{name:current.data.title,exact:true}).waitFor();
+  check(true,'Public case page renders the reviewed revision in the browser');
+  check(JSON.stringify((await publicRequest(owner,'/case-attempts/'+fixture.p12.attempt+'/',learnerToken)).data)===
+    JSON.stringify(historicalState.data),'Historical scored attempt API remains pinned after publication');
+  await owner.screenshot({path:path.join(out,'case-publication-receipt.png'),fullPage:true});
+  report.screenshots.push('case-publication-receipt.png');
+  await panel.getByRole('checkbox').last().check();
+  await panel.getByLabel('روش احراز دوباره').selectOption('recovery');
+  await panel.getByLabel('کد MFA').fill(fixture.users.owner.tokens[3]);
+  await panel.getByRole('button',{name:'لغو نمایش عمومی و ثبت رسید'}).click();
+  await panel.getByText('withdrawn',{exact:true}).first().waitFor();
+  check((await query(owner,planRoute)).data.receipts.length===2&&historySnapshot().digest===historyBefore.digest,
+    'Browser MFA withdrawal adds one compensating receipt and preserves all learner history');
+  check((await publicRequest(owner,'/cases/'+fixture.p12.slug+'/',null)).status===404&&
+    !(await publicRequest(owner,'/cases/',null)).data.results.some(item=>item.slug===fixture.p12.slug),
+    'Withdrawal removes the case from actual public detail and list');
+  const withdrawnPage=await publicPage.goto(origin+'/cases/'+fixture.p12.slug);
+  await publicPage.getByRole('heading',{name:'این صفحه پیدا نشد',exact:true}).waitFor();
+  check(await publicPage.getByRole('heading',{name:current.data.title,exact:true}).count()===0,
+    'Withdrawn public page renders not-found without case content (HTTP '+withdrawnPage.status()+')');
+  check((await publicRequest(owner,'/cases/'+fixture.p12.slug+'/attempts/',learnerToken,{})).status===404,
+    'Withdrawal rejects new learner start requests');
+  const resumed=await publicRequest(owner,'/cases/'+fixture.p12.slug+'/attempts/current/',learnerToken);
+  check(resumed.status===200&&JSON.stringify(resumed.data)===JSON.stringify(historicalState.data),
+    'Withdrawn case still resumes the unchanged historical scored attempt');
+  const completed=await publicRequest(owner,'/case-attempts/'+fixture.p12.attempt+'/decisions/',learnerToken,{
+    step_id:fixture.p12.end,state_version:historicalState.data.state_version,choice_id:null});
+  check(completed.status===200&&completed.data.status==='completed'&&completed.data.score===3&&
+    completed.data.case.revision_number===1&&completed.data.history.length===3,
+    'Historical scored attempt completes on its original revision after browser withdrawal');
   check(report.errors.length===0,'Browser emitted no uncaught runtime errors');
   report.status='PASS';
-  await readerContext.close();await ownerContext.close();
+  await approverContext.close();await reviewerContext.close();await readerContext.close();await ownerContext.close();
 }catch(e){report.status='FAIL';report.failure=String(e?.stack||e?.message||e).slice(0,1900);process.exitCode=1;}
 finally{
   report.completed_at=new Date().toISOString();

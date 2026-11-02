@@ -18,7 +18,7 @@ if os.name != "nt" or not PYTHON.is_file():
 for executable in ("initdb.exe", "pg_ctl.exe", "createdb.exe"):
     if not (BIN / executable).is_file():
         raise SystemExit(f"Disposable PostgreSQL binary unavailable: {executable}")
-TESTS = (
+TESTS = tuple(sys.argv[1:]) or (
     "atlas.tests_v100_p07_domains",
     "atlas.tests_v100_p07_content",
     "atlas.tests_v100_p07_integration",
@@ -29,7 +29,9 @@ TESTS = (
     "atlas.tests_v100_p02.RevisionConcurrencyTests",
     "atlas.tests_v100_p04.ReviewConcurrencyTests",
 )
-result = {"kind": "P07_P09_DISPOSABLE_POSTGRESQL", "tests": list(TESTS),
+if any(not label.startswith("atlas.tests") or not all(part.isidentifier() for part in label.split(".")) for label in TESTS):
+    raise SystemExit("Pass only dotted atlas.tests module/class/method labels")
+result = {"kind": "CMS_DISPOSABLE_POSTGRESQL", "tests": list(TESTS),
           "database": "fresh temporary cluster", "canonical_database_opened": False}
 with tempfile.TemporaryDirectory(prefix="atlas-p07-pg-") as directory:
     owned = Path(directory)
