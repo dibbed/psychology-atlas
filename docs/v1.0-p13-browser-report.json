@@ -1,0 +1,29 @@
+{
+  "stage": "P13",
+  "status": "PASS",
+  "checks": [
+    "Existing synthetic quiz answers and learning activity are nonempty",
+    "Owner opens the real Quiz editor using MFA and CSRF",
+    "Real question editor creates a valid private answer key",
+    "Unsaved metadata cannot be overwritten by a question save",
+    "Keyboard submission saves Quiz metadata through the real form",
+    "Metadata changes advance ETag and preserve question IDs, answer key and private visibility",
+    "Stale browser edit is rejected",
+    "Quiz preview and metadata edits preserve all historical quiz rows and activity",
+    "Unreviewed Quiz remains absent from the public API",
+    "Quiz editor fits 320px viewport",
+    "View-only MFA role has no metadata form and cannot forge an edit",
+    "Historical inactive Quiz stays locked in UI/API and preserves actual answers/activity",
+    "No uncaught browser runtime errors"
+  ],
+  "screenshots": [
+    "quiz-metadata-desktop.png",
+    "quiz-metadata-mobile.png"
+  ],
+  "errors": [],
+  "limits": [
+    "Synthetic isolated SQLite only",
+    "Quiz metadata/authoring slice; P13 publication, archive and import/export remain incomplete"
+  ],
+  "completed_at": "2026-11-02T06:23:07.667Z"
+}
