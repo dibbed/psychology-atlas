@@ -106,7 +106,7 @@ def update_card(actor_id, session_id, card_id, expected, data, request_id):
             AdminAuditEvent.objects.create(
                 actor=actor, outcome="success", action="flashcard.draft_updated",
                 target_kind="flashcard", target_id=card.pk, request_id=request_id,
-                reason="CONTENT_UPDATE", diff=[field for field in changed
+                reason="CONTENT_UPDATE", diff=[field.removesuffix("_id") for field in changed
                     if field in {"difficulty", "concept_id", "disorder_id"}],
             )
         return card

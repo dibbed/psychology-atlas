@@ -579,8 +579,9 @@ if phase == "p12":
                                "first": start.pk, "end": end.pk, "source": source.pk, "attempt": attempt.pk}}
 
 if phase == "p13":
-    from atlas.models import Quiz, QuizQuestion, QuizChoice
+    from atlas.models import Quiz, QuizQuestion, QuizChoice, Concept, Disorder, Flashcard
     from atlas.services import submit_quiz
+    from atlas.learning import review_flashcard
     viewer = User.objects.create_user("qa_p13_learning_reader", password=password, is_staff=True)
     viewer.user_permissions.add(*Permission.objects.filter(content_type__app_label="atlas",
         content_type__model="rolepolicy", codename__in=["cms_enter", "cms_learning_view"]))
@@ -596,7 +597,14 @@ if phase == "p13":
                 answers=[{"question_id": question.pk, "choice_id": choice.pk}])
     quiz.is_active = False
     quiz.save(update_fields=["is_active"])
-    review_fixture = {"p13": {"historical_quiz": quiz.pk}}
+    concept = Concept.objects.create(slug="p13-synthetic-concept", name_en="Synthetic fixture concept")
+    disorder = Disorder.objects.create(category=category, slug="p13-synthetic-disorder", name_en="Synthetic fixture disorder")
+    card = Flashcard.objects.create(slug="p13-historical-card", front="Synthetic historical front", back="Synthetic historical back")
+    review_flashcard(user=User.objects.get(username="qa_owner"), flashcard=card, rating="good")
+    card.is_active = False
+    card.save(update_fields=["is_active"])
+    review_fixture = {"p13": {"historical_quiz": quiz.pk, "historical_card": card.pk,
+                               "concept": concept.pk, "disorder": disorder.pk}}
 
 # Credentials go only to the harness's private pipe, never into reports or logs.
 print(json.dumps({"users": users, "category": str(state.pk), **review_fixture}))

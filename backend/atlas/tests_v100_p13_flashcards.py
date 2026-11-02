@@ -1,7 +1,8 @@
 """P13 flashcard editorial invariants: SRS identity is never reset by CMS."""
 from django.test import TestCase, override_settings
 
-from .models import Flashcard, UserFlashcardProgress, StudyActivity
+from .models import Flashcard, UserFlashcardProgress, StudyActivity, Concept, Category, Disorder
+from .cms_models import AdminAuditEvent
 from .tests_v100_p01 import BASE, SecurityFixture
 
 
@@ -53,6 +54,22 @@ class FlashcardCmsTests(SecurityFixture, TestCase):
         self.card.refresh_from_db()
         self.assertEqual(self.card.front, "Fictional prompt")
         self.assertEqual(StudyActivity.objects.count(), 0)
+
+    def test_relationship_edits_use_safe_audit_names_and_preserve_card_identity(self):
+        concept = Concept.objects.create(slug="p13-synthetic-related-concept", name_en="Synthetic concept")
+        category = Category.objects.create(slug="p13-synthetic-related-category", name_en="Synthetic category")
+        disorder = Disorder.objects.create(category=category, slug="p13-synthetic-related-disorder", name_en="Synthetic disorder")
+        tag = self.admin.get(BASE + self.path())["ETag"]
+        response = self.post(self.admin, self.path() + "metadata/", {
+            "concept_id": concept.pk, "disorder_id": disorder.pk}, etag=tag)
+        self.assertEqual(response.status_code, 200, response.content[:300])
+        self.card.refresh_from_db()
+        self.assertEqual((self.card.concept_id, self.card.disorder_id, self.card.is_active),
+                         (concept.pk, disorder.pk, False))
+        event = AdminAuditEvent.objects.get(action="flashcard.draft_updated", target_id=self.card.pk)
+        self.assertCountEqual(event.diff, ["concept", "disorder"])
+        self.assertFalse(UserFlashcardProgress.objects.exists())
+        self.assertFalse(StudyActivity.objects.exists())
 
     def test_viewer_cannot_create_edit_or_bypass_view_scope(self):
         viewer = self.user("p13-card-viewer", staff=True, caps=("cms_enter", "cms_learning_view"))

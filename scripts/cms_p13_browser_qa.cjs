@@ -53,14 +53,14 @@ async function request(page,route,body,etag){
 function history(){return JSON.parse(execFileSync(py,['-c',[
   'import os,sqlite3,json,hashlib','from pathlib import Path',
   'c=sqlite3.connect(Path(os.environ["SQLITE_PATH"]).as_uri()+"?mode=ro",uri=True)',
-  'rows={t:c.execute("SELECT * FROM "+t+" ORDER BY id").fetchall() for t in ["atlas_quizattempt","atlas_quizattemptanswer","atlas_studyactivity"]}',
+  'rows={t:c.execute("SELECT * FROM "+t+" ORDER BY id").fetchall() for t in ["atlas_quizattempt","atlas_quizattemptanswer","atlas_studyactivity","atlas_userflashcardprogress"]}',
   'print(json.dumps({"counts":[len(v) for v in rows.values()],"digest":hashlib.sha256(json.dumps(rows,sort_keys=True).encode()).hexdigest()}))','c.close()',
 ].join('\n')],{env,encoding:'utf8'}));}
 function writeResponse(page,suffix){return page.waitForResponse(r=>r.url().replace(/\/$/,'').endsWith(suffix)&&
   r.request().method()==='POST'&&!(r.status()>=300&&r.status()<400));}
 (async()=>{try{
   const fixture=JSON.parse(execFileSync(py,[path.join(root,'scripts/cms_browser_fixture.py')],{cwd:path.join(root,'backend'),env,encoding:'utf8',timeout:180000}));
-  const before=history();check(before.counts.every(n=>n>0),'Existing synthetic quiz answers and learning activity are nonempty');
+  const before=history();check(before.counts.every(n=>n>0),'Existing synthetic quiz answers, learning activity and SRS are nonempty');
   const django=start(py,['manage.py','runserver','127.0.0.1:'+new URL(api).port,'--noreload'],path.join(root,'backend'),'django');
   await ready(api+'/api/admin/auth/csrf/',django);
   const next=start(process.execPath,[path.join(root,'frontend/node_modules/next/dist/bin/next'),'start','-H','127.0.0.1','-p',new URL(origin).port],path.join(root,'frontend'),'next');
@@ -120,6 +120,41 @@ function writeResponse(page,suffix){return page.waitForResponse(r=>r.url().repla
   check(historical.data.history_protected&&await owner.getByRole('group',{name:'اطلاعات آزمون غیرفعال'}).count()===0&&
     (await request(owner,historicalRoute+'metadata/',{title:'Forbidden historical rewrite',description:'',disorder_id:null},historical.etag)).status===409&&history().digest===before.digest,
     'Historical inactive Quiz stays locked in UI/API and preserves actual answers/activity');
+  await owner.setViewportSize({width:1280,height:850});
+  await owner.goto(origin+'/admin-console/content/learning-flashcards');
+  await owner.getByRole('heading',{name:'کارت‌های آموزشی و حفاظت SRS',exact:true}).waitFor();
+  const createCard=owner.getByRole('group',{name:'محتوای کارت',exact:true});
+  await createCard.getByLabel('شناسهٔ لاتین').fill('p13-browser-card');
+  await createCard.getByLabel('روی کارت').fill('P13 fictional front');
+  await createCard.getByLabel('پشت کارت').fill('P13 fictional back');
+  await createCard.getByLabel('شناسهٔ مفهوم مرتبط (اختیاری)',{exact:true}).fill(String(fixture.p13.concept));
+  await createCard.getByLabel('شناسهٔ اختلال مرتبط (اختیاری)',{exact:true}).fill(String(fixture.p13.disorder));
+  await createCard.getByRole('button',{name:'ساخت کارت خصوصی'}).click();
+  await owner.getByRole('heading',{name:'کارت: p13-browser-card',exact:true}).waitFor();
+  const cardCatalog=await request(owner,'/learning/flashcards/');
+  const cardId=cardCatalog.data.results.find(row=>row.slug==='p13-browser-card').flashcard_id;
+  const cardRoute='/learning/flashcards/'+cardId+'/',cardBefore=await request(owner,cardRoute);
+  check(!cardBefore.data.is_active&&cardBefore.data.concept_id===fixture.p13.concept&&
+    cardBefore.data.disorder_id===fixture.p13.disorder,'Flashcard form creates a private card with validated Concept/Disorder relationships');
+  const editCard=owner.getByRole('group',{name:'ویرایش کارت خصوصی',exact:true});
+  await editCard.getByLabel('روی کارت').fill('P13 updated fictional front');
+  await editCard.getByLabel('شناسهٔ مفهوم مرتبط (اختیاری)',{exact:true}).fill('');
+  const cardWrite=writeResponse(owner,'/flashcards/'+cardId+'/metadata');
+  await editCard.getByRole('button',{name:'ذخیرهٔ Draft کارت'}).click();
+  check((await cardWrite).status()===200,'Flashcard relationship update succeeds through the real audited API');
+  const cardAfter=await request(owner,cardRoute);
+  check(cardAfter.data.front==='P13 updated fictional front'&&cardAfter.data.concept_id===null&&
+    cardAfter.data.disorder_id===fixture.p13.disorder&&!cardAfter.data.is_active&&cardAfter.etag!==cardBefore.etag,
+    'Clearing one relationship preserves the other, card identity and private visibility');
+  await owner.setViewportSize({width:320,height:790});
+  check(await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Flashcard relationship editor fits 320px viewport');
+  await owner.screenshot({path:path.join(out,'flashcard-relationships-mobile.png'),fullPage:true});report.screenshots.push('flashcard-relationships-mobile.png');
+  await owner.locator('li').filter({hasText:'p13-historical-card'}).getByRole('button',{name:'باز کردن',exact:true}).click();
+  await owner.getByRole('heading',{name:'کارت: p13-historical-card',exact:true}).waitFor();
+  const historicalCardRoute='/learning/flashcards/'+fixture.p13.historical_card+'/',historicalCard=await request(owner,historicalCardRoute);
+  check(historicalCard.data.history_protected&&await owner.getByRole('group',{name:'ویرایش کارت خصوصی',exact:true}).count()===0&&
+    (await request(owner,historicalCardRoute+'metadata/',{concept_id:fixture.p13.concept},historicalCard.etag)).status===409&&history().digest===before.digest,
+    'Historical Flashcard relations cannot be changed; real SRS and all learner history stay unchanged');
   check(report.errors.length===0,'No uncaught browser runtime errors');report.status='PASS';
   await readerContext.close();await ownerContext.close();
 }catch(e){

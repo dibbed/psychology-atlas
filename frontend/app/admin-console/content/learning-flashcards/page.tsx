@@ -1,15 +1,22 @@
 "use client";
 import {useEffect, useState, type FormEvent} from "react";
-import {cms, CmsError, type CmsPage} from "@/lib/cms";
+import {cms, type CmsPage} from "@/lib/cms";
 import {CmsState,useCms} from "@/components/cms/CmsShell";
 
 type Item={flashcard_id:number;slug:string;is_active:boolean;seed_managed:boolean};
 type Detail=Item&{front:string;back:string;hint:string;difficulty:string;
   concept_id:number|null;disorder_id:number|null;history_protected:boolean;
   publication_available:false};
-type FormData={front:string;back:string;hint:string;difficulty:string};
-const empty:FormData={front:"",back:"",hint:"",difficulty:"basic"};
-const message=(x:unknown)=>x instanceof CmsError?x.message:"درخواست انجام نشد.";
+type FormData={front:string;back:string;hint:string;difficulty:string;concept_id:string;disorder_id:string};
+const empty:FormData={front:"",back:"",hint:"",difficulty:"basic",concept_id:"",disorder_id:""};
+const message=(x:unknown)=>x instanceof Error?x.message:"درخواست انجام نشد.";
+function cardPayload(value:FormData){
+  const data={...value,concept_id:value.concept_id===""?null:Number(value.concept_id),
+    disorder_id:value.disorder_id===""?null:Number(value.disorder_id)};
+  if([data.concept_id,data.disorder_id].some(id=>id!==null&&(!Number.isSafeInteger(id)||id<1)))
+    throw new Error("شناسهٔ مفهوم و اختلال باید عدد صحیح مثبت باشند.");
+  return data;
+}
 export default function FlashcardCMS(){
   const {can}=useCms();
   const allowed=can("cms_learning_view");
@@ -43,7 +50,7 @@ export default function FlashcardCMS(){
     const res=await cms<Detail>("/learning/flashcards/"+id+"/");
     setSelected(res.data);setEtag(res.etag);
     setDraft({front:res.data.front,back:res.data.back,hint:res.data.hint,
-      difficulty:res.data.difficulty});
+      difficulty:res.data.difficulty,concept_id:String(res.data.concept_id??""),disorder_id:String(res.data.disorder_id??"")});
     setDirty(false);
   };
   const refresh=async()=>{
@@ -56,10 +63,12 @@ export default function FlashcardCMS(){
     try{await reload(id);}catch(e){setError(message(e));}finally{setBusy(false);}
   };
   const create=async(event:FormEvent<HTMLFormElement>)=>{
-    event.preventDefault();setBusy(true);setError("");
+    event.preventDefault();if(busy)return;
+    if(dirty&&!window.confirm("تغییر ذخیره‌نشده کنار گذاشته شود؟"))return;
+    setBusy(true);setError("");
     try{
       const res=await cms<{flashcard_id:number}>("/learning/flashcards/",{
-        method:"POST",body:JSON.stringify({...form,slug,concept_id:null,disorder_id:null}),
+        method:"POST",body:JSON.stringify({...cardPayload(form),slug}),
       });
       setSlug("");setForm(empty);await refresh();await reload(res.data.flashcard_id);
     }catch(e){setError(message(e));}
@@ -67,11 +76,11 @@ export default function FlashcardCMS(){
   };
   const save=async(event:FormEvent<HTMLFormElement>)=>{
     event.preventDefault();
-    if(!selected||!etag||!dirty)return;
+    if(!selected||!etag||!dirty||busy)return;
     setBusy(true);setError("");
     try{
       await cms("/learning/flashcards/"+selected.flashcard_id+"/metadata/",{
-        method:"POST",headers:{"If-Match":etag},body:JSON.stringify(draft),
+        method:"POST",headers:{"If-Match":etag},body:JSON.stringify(cardPayload(draft)),
       });
       await reload(selected.flashcard_id);
     }catch(e){setError(message(e));}
@@ -94,6 +103,10 @@ export default function FlashcardCMS(){
           <option value="advanced">پیشرفته</option>
         </select>
       </label>
+      <label>شناسهٔ مفهوم مرتبط (اختیاری)<input type="number" min="1" step="1" dir="ltr"
+        value={value.concept_id} onChange={e=>change("concept_id",e.target.value)}/></label>
+      <label>شناسهٔ اختلال مرتبط (اختیاری)<input type="number" min="1" step="1" dir="ltr"
+        value={value.disorder_id} onChange={e=>change("disorder_id",e.target.value)}/></label>
     </>);
   return <div className="stack" dir="rtl">
     <a className="cms-link" href="/admin-console/content">بازگشت به مدیریت محتوا</a>
@@ -120,10 +133,12 @@ export default function FlashcardCMS(){
     {can("cms_learning_create")&&<section className="card stack">
       <h2>ساخت Flashcard غیرفعال</h2>
       <form className="stack" onSubmit={create}>
+        <fieldset className="stack" disabled={busy}><legend>محتوای کارت</legend>
         <label>شناسهٔ لاتین<input dir="ltr" required pattern="[a-z0-9]+(-[a-z0-9]+)*"
           maxLength={180} value={slug} onChange={e=>setSlug(e.target.value)}/></label>
         {fields(form,(key,val)=>setForm(o=>({...o,[key]:val})))}
         <button className="button secondary" type="submit" disabled={busy}>ساخت کارت خصوصی</button>
+        </fieldset>
       </form>
     </section>}
     {selected&&<section className="card stack">
@@ -131,11 +146,13 @@ export default function FlashcardCMS(){
       <p>{selected.front}</p><details><summary>نمای خصوصی پشت کارت</summary><p>{selected.back}</p></details>
       {!edit&&<p>ویرایش قفل است: کارت فعال است یا از Seed آمده یا پیشرفت یادگیرنده دارد. دادهٔ SRS دست‌نخورده می‌ماند.</p>}
       {edit&&<form className="stack" onSubmit={save}>
+        <fieldset className="stack" disabled={busy}><legend>ویرایش کارت خصوصی</legend>
         {fields(draft,(key,val)=>{setDraft(o=>({...o,[key]:val}));setDirty(true);})}
         <button className="button" type="submit" disabled={busy||!dirty||!etag}>
           {busy?"در حال ذخیره…":"ذخیرهٔ Draft کارت"}
         </button>
         {dirty&&<p className="muted" role="status">ویرایش ذخیره‌نشده دارید.</p>}
+        </fieldset>
       </form>}
       <p className="muted">انتشار عمومی فقط پس از گیت علمی/حقوقی P16 ممکن می‌شود.</p>
     </section>}
