@@ -18,6 +18,7 @@ from . import cms_case_validation as case_validation
 from . import cms_quiz_editor as quiz_editor
 from . import cms_flashcard_editor as flashcard_editor
 from . import cms_practice_editor as practice_editor
+from .cms_learning_lifecycle import LearningArchiveView
 from . import cms_user_directory as user_directory
 from . import cms_study_ops as study_ops
 from . import cms_publication_preflight as publication_preflight
@@ -26,6 +27,7 @@ from . import cms_admin_search as admin_search
 from . import cms_operations_health as operations_health
 
 urlpatterns = [
+    path("learning/archive/<str:kind>/<int:item_id>/", LearningArchiveView.as_view()),
     path("", include(jobs.urlpatterns)),
     path("", include(artifacts.urlpatterns)),
     path("governance/", include(governance.urlpatterns)),

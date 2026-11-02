@@ -130,7 +130,7 @@ def _object_payload(request):
 
 
 def available_quizzes():
-    return Quiz.objects.filter(is_active=True).filter(
+    return Quiz.objects.filter(is_active=True, archived_at__isnull=True).filter(
         Q(disorder__isnull=True) | Q(disorder__is_active=True)
     )
 
@@ -647,8 +647,8 @@ def dashboard(request):
     progress_qs = UserProgress.objects.filter(user=request.user, disorder__is_active=True).select_related("disorder", "disorder__category").order_by("-last_viewed_at")
     quiz_attempts = request.user.quiz_attempts.filter(
         Q(quiz__disorder__isnull=True) | Q(quiz__disorder__is_active=True),
+        Q(quiz__is_active=True) | Q(quiz__archived_at__isnull=False),
         status="completed",
-        quiz__is_active=True,
     ).select_related("quiz", "quiz__disorder").order_by("-completed_at")
     case_attempts = request.user.case_attempts.filter(
         Q(revision__primary_disorder__isnull=True) | Q(revision__primary_disorder__is_active=True),
@@ -1284,7 +1284,7 @@ def atlas_overview(request):
         Q(disorder__isnull=True) | Q(disorder__is_active=True)
     )
     valid_cases = public_rights(public_available_clinical_cases(), "clinical_case")
-    valid_challenges = DailyChallenge.objects.filter(is_active=True).filter(
+    valid_challenges = DailyChallenge.objects.filter(is_active=True, archived_at__isnull=True).filter(
         Q(concept__isnull=True) | Q(concept__is_active=True),
         Q(disorder__isnull=True) | Q(disorder__is_active=True),
     )
@@ -1631,6 +1631,8 @@ def daily_challenge(request):
     choice = get_object_or_404(challenge.choices.filter(is_active=True), id=choice_id)
     try:
         with transaction.atomic():
+            challenge = get_object_or_404(DailyChallenge.objects.select_for_update(),
+                pk=challenge.pk, archived_at__isnull=True)
             attempt = DailyChallengeAttempt.objects.create(
                 user=request.user,
                 challenge=challenge,
@@ -2700,7 +2702,7 @@ def graph_path(request):
 def _practice_item_queryset(*, difficulty=""):
     qs = (
         CognitiveDistortionPracticeItem.objects.filter(
-            is_active=True,
+            archived_at__isnull=True, is_active=True,
             target_concept__is_active=True,
             target_concept__subtype=Concept.Subtype.COGNITIVE_DISTORTION,
         )
@@ -2809,6 +2811,8 @@ def distortion_practice_submit(request, slug):
     correct_choice = next(choice for choice in item.active_choices if choice.is_correct)
 
     with transaction.atomic():
+        item = get_object_or_404(CognitiveDistortionPracticeItem.objects.select_for_update(),
+            pk=item.pk, archived_at__isnull=True)
         attempt = CognitiveDistortionPracticeAttempt.objects.create(
             user=request.user,
             item=item,

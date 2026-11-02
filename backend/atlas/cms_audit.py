@@ -118,3 +118,8 @@ def failure_response(request, exc):
     except DatabaseError:
         code, status = "AUDIT_UNAVAILABLE", 503
     return JsonResponse({"code": code, "request_id": str(request_id)}, status=status)
+
+ACTIONS |= frozenset({"learning.archived"})
+REASONS |= frozenset({"CONTENT_ARCHIVE"})
+TARGET_KINDS |= frozenset({"daily", "distortions"})
+SAFE_FIELDS |= frozenset({"archived_at"})

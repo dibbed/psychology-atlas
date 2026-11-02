@@ -152,7 +152,7 @@ def update_item(actor_id, session_id, kind, identifier, expected, data, request_
         current_session(session_id, actor)
         require(actor, "cms_learning_edit")
         item = _read(actor, kind, identifier)
-        if item.is_active or item.seed_managed or item.attempts.exists():
+        if item.archived_at is not None or item.is_active or item.seed_managed or item.attempts.exists():
             raise CMSFailure("PRACTICE_HISTORY_OR_PUBLIC", 409)
         if revision_etag(item) != expected:
             raise CMSFailure("STALE_REVISION", 412)
@@ -179,7 +179,7 @@ def _result(kind, item):
     return {
         "kind": kind, "item_id": item.pk, "prompt": item.prompt,
         "explanation": item.explanation, "choices": choices,
-        "valid": not issues, "issues": issues, "is_active": item.is_active,
+        "valid": not issues, "issues": issues, "archived_at": item.archived_at, "is_active": item.is_active,
         "seed_managed": item.seed_managed, "history_protected": item.attempts.exists(),
         "publication_available": False,
         **({"target_concept_id": item.target_concept_id, "slug": item.slug,
@@ -198,7 +198,7 @@ class PracticeCatalogView(AdminAPIView):
             meta, rows = page(request, model.objects.order_by("-pk"))
             return Response({**meta, "kind": kind, "results": [{
                 "item_id": row.pk, "prompt": row.prompt[:180],
-                "is_active": row.is_active, "seed_managed": row.seed_managed,
+                "archived_at": row.archived_at, "is_active": row.is_active, "seed_managed": row.seed_managed,
             } for row in rows]})
 
     def post(self, request, kind):

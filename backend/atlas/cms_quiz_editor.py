@@ -23,7 +23,7 @@ _SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 def _require_private_edit(actor, quiz):
     require(actor, "cms_learning_edit")
     require(actor, "cms_learning_view")
-    if (quiz.seed_managed or quiz.is_active or QuizAttempt.objects.filter(quiz=quiz).exists()
+    if (quiz.archived_at is not None or quiz.seed_managed or quiz.is_active or QuizAttempt.objects.filter(quiz=quiz).exists()
             or StudyActivity.objects.filter(quiz=quiz).exists()):
         raise CMSFailure("QUIZ_HAS_HISTORY_OR_IS_PUBLIC", 409)
 
@@ -196,7 +196,7 @@ class QuizCatalogView(AdminAPIView):
             meta, rows = page(request, Quiz.objects.order_by("-pk"))
             return Response({**meta, "results": [{
                 "quiz_id": q.pk, "title": q.title, "slug": q.slug,
-                "is_active": q.is_active, "seed_managed": q.seed_managed,
+                "archived_at": q.archived_at, "is_active": q.is_active, "seed_managed": q.seed_managed,
             } for q in rows]})
 
     def post(self, request):
@@ -221,7 +221,7 @@ class QuizDetailView(AdminAPIView):
             response = Response({
                 "quiz_id": quiz.pk, "title": quiz.title, "slug": quiz.slug,
                 "description": quiz.description, "disorder_id": quiz.disorder_id,
-                "is_active": quiz.is_active, "seed_managed": quiz.seed_managed,
+                "archived_at": quiz.archived_at, "is_active": quiz.is_active, "seed_managed": quiz.seed_managed,
                 "history_protected": (quiz.attempts.exists() or
                                       StudyActivity.objects.filter(quiz=quiz).exists()),
                 "questions": questions, "valid": not issues, "issues": issues,

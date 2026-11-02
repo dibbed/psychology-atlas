@@ -36,6 +36,7 @@ class PublicRightsContextMiddleware:
 def _public_index():
     from .cms_governance_models import GovernanceRecord
     from .cms_source_models import SourceState
+    from .cms_learning_lifecycle_models import LearningArchiveReceipt
     holder = _request_index.get()
     token = (connection.atomic_blocks[-1] if connection.in_atomic_block else None, cache.get("atlas_public_rights_revision"))
     if holder is not None and holder.get("token") == token:
@@ -52,9 +53,14 @@ def _public_index():
         material=Value("__lifecycle__", output_field=CharField()),
         use=Value("public_display", output_field=CharField()),
     ).values_list("kind", "source_pk", "material", "use")
-    rows = list(scopes.union(inactive))
-    index = {"scopes": {row for row in rows if row[2] != "__lifecycle__"},
-             "inactive_sources": {row[1] for row in rows if row[2] == "__lifecycle__"}}
+    archived = LearningArchiveReceipt.objects.order_by().annotate(
+        material=Value("__archive__", output_field=CharField()),
+        use=Value("public_display", output_field=CharField()),
+    ).values_list("kind", "resource_id", "material", "use")
+    rows = list(scopes.union(inactive, archived))
+    index = {"scopes": {row for row in rows if row[2] not in {"__lifecycle__", "__archive__"}},
+             "inactive_sources": {row[1] for row in rows if row[2] == "__lifecycle__"},
+             "learning_archives": {(row[0], row[1]) for row in rows if row[2] == "__archive__"}}
     if holder is not None:
         holder.update(token=token, index=index)
     elif connection.in_atomic_block:
@@ -68,7 +74,11 @@ def registered_scopes():
 
 def public_cache_safe():
     index = _public_index()
-    return not index["scopes"] and not index["inactive_sources"]
+    return not index["scopes"] and not index["inactive_sources"] and not index["learning_archives"]
+
+
+def learning_archived(kind, pk):
+    return (kind, pk) in _public_index()["learning_archives"]
 
 
 def _eligible(resource_type, pk, material, intended_use):
@@ -82,6 +92,8 @@ def _eligible(resource_type, pk, material, intended_use):
 
 
 def public_rights(queryset, resource_type, material="metadata", intended_use="public_display"):
+    if queryset.model.__name__ in {"Quiz", "Flashcard", "DailyChallenge", "CognitiveDistortionPracticeItem"}:
+        queryset = queryset.filter(archived_at__isnull=True)
     blocked = set(_public_index()["inactive_sources"]) if resource_type == "source_reference" else set()
     targets = {pk for kind, pk, content, use in registered_scopes()
                if (kind, content, use) == (resource_type, material, intended_use)}
@@ -107,10 +119,14 @@ def public_visible(obj, material="metadata", intended_use="public_display"):
     kind = RESOURCE_TYPES.get(type(obj).__name__)
     if kind is None:
         return True
+    if kind in {"quiz", "flashcard"} and obj.archived_at is not None:
+        return False
     return scope_visible(kind, obj.pk, material, intended_use)
 
 
 def scope_visible(kind, pk, material="metadata", intended_use="public_display"):
+    if learning_archived(kind, pk):
+        return False
     if kind == "source_reference" and pk in _public_index()["inactive_sources"]:
         return False
     if (kind, pk, material, intended_use) not in registered_scopes():

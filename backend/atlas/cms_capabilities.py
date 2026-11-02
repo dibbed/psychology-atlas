@@ -302,3 +302,5 @@ READY_CAPABILITIES |= frozenset({"cms_learning_view", "cms_learning_create", "cm
 READY_CAPABILITIES |= frozenset("cms_assessment_" + action for action in
     ("view", "create", "edit", "submit", "validate", "preview", "archive"))
 READY_CAPABILITIES |= frozenset({"cms_review_decide_assessment_source", "cms_review_decide_assessment_scientific"})
+
+READY_CAPABILITIES |= frozenset({"cms_learning_archive"})

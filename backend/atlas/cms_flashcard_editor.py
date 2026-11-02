@@ -90,7 +90,7 @@ def update_card(actor_id, session_id, card_id, expected, data, request_id):
         current_session(session_id, actor)
         require(actor, "cms_learning_edit")
         card = _view(actor, card_id)
-        if card.is_active or card.seed_managed or _history_locked(card):
+        if card.archived_at is not None or card.is_active or card.seed_managed or _history_locked(card):
             raise CMSFailure("FLASHCARD_IN_USE_OR_PUBLIC", 409)
         if revision_etag(card) != expected:
             raise CMSFailure("STALE_REVISION", 412)
@@ -117,7 +117,7 @@ def _result(card):
         "flashcard_id": card.pk, "slug": card.slug, "front": card.front,
         "back": card.back, "hint": card.hint, "difficulty": card.difficulty,
         "concept_id": card.concept_id, "disorder_id": card.disorder_id,
-        "is_active": card.is_active, "seed_managed": card.seed_managed,
+        "archived_at": card.archived_at, "is_active": card.is_active, "seed_managed": card.seed_managed,
         "history_protected": _history_locked(card),
         "publication_available": False,
     }
@@ -132,7 +132,7 @@ class FlashcardCatalogView(AdminAPIView):
             meta, rows = page(request, Flashcard.objects.order_by("-pk"))
             return Response({**meta, "results": [{
                 "flashcard_id": card.pk, "slug": card.slug,
-                "is_active": card.is_active, "seed_managed": card.seed_managed,
+                "archived_at": card.archived_at, "is_active": card.is_active, "seed_managed": card.seed_managed,
             } for card in rows]})
 
     def post(self, request):

@@ -64,7 +64,7 @@ class PublicationPreflightView(AdminAPIView):
                     (CognitiveDistortionPracticeItem, "distortion_practice"),
                 ):
                     identifiers = list(model.objects.filter(
-                        is_active=False, seed_managed=False,
+                        is_active=False, seed_managed=False, archived_at__isnull=True,
                     ).order_by("-pk").values_list("pk", flat=True)[:1001])
                     if len(identifiers) > 1000:
                         raise CMSFailure("PREVIEW_LIMIT", 400)

@@ -111,7 +111,7 @@ GRAPH_MODELS = (
 
 GRAPH_MODELS += (atlas_models.GovernanceRecord, atlas_models.GovernanceRevision, atlas_models.GovernanceDecision,
                 atlas_models.SourceState, atlas_models.SourceSuccessor, atlas_models.ReviewPolicy,
-                atlas_models.RolePolicy, User, Group)
+                atlas_models.RolePolicy, atlas_models.LearningArchiveReceipt, User, Group)
 
 
 def _clear_graph_cache():
@@ -126,7 +126,8 @@ def _clear_public_scope_cache():
 
 def invalidate_graph_caches(*_args, **_kwargs):
     _clear_graph_cache()
-    if _kwargs.get("sender") in (atlas_models.GovernanceRecord, atlas_models.SourceState):
+    if _kwargs.get("sender") in (atlas_models.GovernanceRecord, atlas_models.SourceState,
+                                atlas_models.LearningArchiveReceipt):
         _clear_public_scope_cache()
         transaction.on_commit(_clear_public_scope_cache, using=_kwargs.get("using"))
     # A concurrent reader may refill the old committed graph before this write commits.

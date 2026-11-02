@@ -215,6 +215,10 @@ def _block_target(block):
 
 
 def _block_target_active(block):
+    if block.block_kind == models.StudyBlock.Kind.DISTORTION_PRACTICE:
+        return bool(block.concept_id and block.concept.is_active and
+            models.CognitiveDistortionPracticeItem.objects.filter(
+                target_concept_id=block.concept_id, is_active=True, archived_at__isnull=True).exists())
     target_type, target = _block_target(block)
     if target is None:
         return True
@@ -440,7 +444,7 @@ def _build_candidates(plan, scopes, start, end):
     if practice_disorder_scopes:
         quizzes = (
             models.Quiz.objects.filter(
-                is_active=True,
+                archived_at__isnull=True, is_active=True,
                 disorder_id__in=practice_disorder_scopes,
                 disorder__is_active=True,
             )
@@ -492,7 +496,7 @@ def _build_candidates(plan, scopes, start, end):
     if distortion_scopes:
         active_distortion_concepts = set(
             models.CognitiveDistortionPracticeItem.objects.filter(
-                is_active=True,
+                archived_at__isnull=True, is_active=True,
                 target_concept_id__in=distortion_scopes,
                 target_concept__is_active=True,
             ).values_list("target_concept_id", flat=True)

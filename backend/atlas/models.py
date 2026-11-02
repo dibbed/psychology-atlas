@@ -260,6 +260,7 @@ class Quiz(TimeStampedModel):
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     disorder = models.ForeignKey(Disorder, on_delete=models.SET_NULL, null=True, blank=True, related_name="quizzes")
+    archived_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     seed_managed = models.BooleanField(default=False)
 
@@ -993,6 +994,7 @@ class Flashcard(TimeStampedModel):
     disorder = models.ForeignKey(Disorder, on_delete=models.SET_NULL, null=True, blank=True, related_name="flashcards")
     difficulty = models.CharField(max_length=24, choices=Difficulty.choices, default=Difficulty.BASIC)
     sort_order = models.PositiveIntegerField(default=0)
+    archived_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     seed_managed = models.BooleanField(default=False)
 
@@ -1051,6 +1053,7 @@ class CognitiveDistortionPracticeItem(TimeStampedModel):
         limit_choices_to={"subtype": Concept.Subtype.COGNITIVE_DISTORTION},
     )
     sort_order = models.PositiveIntegerField(default=0)
+    archived_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     seed_managed = models.BooleanField(default=False)
 
@@ -1962,6 +1965,7 @@ class DailyChallenge(TimeStampedModel):
     concept = models.ForeignKey(Concept, on_delete=models.SET_NULL, null=True, blank=True, related_name="daily_challenges")
     disorder = models.ForeignKey(Disorder, on_delete=models.SET_NULL, null=True, blank=True, related_name="daily_challenges")
     sort_order = models.PositiveIntegerField(default=0)
+    archived_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     seed_managed = models.BooleanField(default=False)
 
@@ -4240,3 +4244,5 @@ from .cms_job_models import AdminArtifact, AdminJob, ResearchRecordDecision  # n
 from .cms_case_publication_models import (  # noqa: E402,F401
     CasePublicationReview, CasePublicationPlan, CasePublicationReceipt,
 )
+
+from .cms_learning_lifecycle_models import LearningArchiveReceipt  # noqa: E402,F401

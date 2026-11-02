@@ -58,6 +58,8 @@ def submit_quiz(*, user, quiz, answers):
     # PostgreSQL. The CMS editor locks the same Quiz row before replacing any
     # unpublished question set; historical answer rows remain protected.
     quiz = Quiz.objects.select_for_update().get(pk=quiz.pk)
+    if quiz.archived_at is not None:
+        raise ValidationError("این آزمون دیگر برای پاسخ فعال نیست.")
     question_ids = set(quiz.questions.filter(is_active=True).values_list("id", flat=True))
     if not question_ids:
         raise ValidationError("این آزمون هنوز سؤال قابل پاسخ ندارد.")

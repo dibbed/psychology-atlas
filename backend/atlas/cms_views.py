@@ -249,7 +249,7 @@ class StepUpView(AdminAPIView):
                 valid_target = True
             except (ValueError, TypeError, AttributeError):
                 valid_target = False
-        if action not in {"user", "group", "delete_group", "create_group", "revoke_account", "revoke_session", "revoke_mfa", "regenerate_recovery", "review_policy", "case_publish", "case_withdraw"} or not valid_target or not isinstance(bound, dict):
+        if action not in {"user", "group", "delete_group", "create_group", "revoke_account", "revoke_session", "revoke_mfa", "regenerate_recovery", "review_policy", "case_publish", "case_withdraw", "learning_archive"} or not valid_target or not isinstance(bound, dict):
             raise CMSFailure("INVALID_INPUT", 400)
         required = "cms_roles_edit" if action in {"user", "group", "delete_group", "create_group"} else "cms_user_revoke_sessions"
         if action == "review_policy":
@@ -260,6 +260,9 @@ class StepUpView(AdminAPIView):
         if action in {"case_publish", "case_withdraw"}:
             required = "cms_publication_apply_cases" if action == "case_publish" else "cms_publication_withdraw_cases"
             require(request.user, "cms_cases_view")
+        if action == "learning_archive":
+            required = "cms_learning_archive"
+            require(request.user, "cms_learning_view")
         if action in {"revoke_mfa", "regenerate_recovery"}:
             if target_id != request.user.pk:
                 raise CMSFailure("NOT_FOUND", 404)
@@ -269,6 +272,9 @@ class StepUpView(AdminAPIView):
         device = verify_mfa(request.user, data.get("token"), data.get("method", "totp"))
         with policy_lock():
             row = current_session(request.cms_session.pk, request.user)
+            if action == "learning_archive":
+                require(request.user, "cms_learning_view")
+                require(request.user, required)
             request.session.cycle_key()
             request.session.save()
             row.django_session_id = request.session.session_key

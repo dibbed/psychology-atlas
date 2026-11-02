@@ -20,7 +20,7 @@ from .models import (
 
 
 def available_flashcards():
-    return Flashcard.objects.filter(is_active=True).filter(
+    return Flashcard.objects.filter(is_active=True, archived_at__isnull=True).filter(
         Q(concept__isnull=True) | Q(concept__is_active=True),
         Q(disorder__isnull=True) | Q(disorder__is_active=True),
     )
@@ -99,7 +99,8 @@ def review_flashcard(*, user, flashcard: Flashcard, rating: str):
     valid = {choice for choice, _ in UserFlashcardProgress.Rating.choices}
     if rating not in valid:
         raise ValueError("invalid_rating")
-    if not flashcard.is_active:
+    flashcard = Flashcard.objects.select_for_update().get(pk=flashcard.pk)
+    if flashcard.archived_at is not None or not flashcard.is_active:
         raise ValueError("inactive_flashcard")
     if flashcard.concept_id and not flashcard.concept.is_active:
         raise ValueError("inactive_concept")
@@ -323,7 +324,7 @@ def get_recommendations(user, *, limit=6):
 
 def today_challenge(activity_date=None):
     challenges = list(
-        DailyChallenge.objects.filter(is_active=True)
+        DailyChallenge.objects.filter(is_active=True, archived_at__isnull=True)
         .filter(
             Q(concept__isnull=True) | Q(concept__is_active=True),
             Q(disorder__isnull=True) | Q(disorder__is_active=True),
