@@ -55,6 +55,7 @@
     "Withdrawal rejects new learner start requests",
     "Withdrawn case still resumes the unchanged historical scored attempt",
     "Historical scored attempt completes on its original revision after browser withdrawal",
+    "Personal analytics retain the original scored revision, events, rubric and completed path after withdrawal",
     "Browser emitted no uncaught runtime errors"
   ],
   "screenshots": [
@@ -70,5 +71,5 @@
     "Fictional review evidence confers no real scientific or legal approval",
     "No existing user data or canonical database touched"
   ],
-  "completed_at": "2026-11-02T06:03:11.713Z"
+  "completed_at": "2026-11-02T07:25:05.258Z"
 }

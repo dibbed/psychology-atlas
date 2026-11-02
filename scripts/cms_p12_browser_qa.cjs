@@ -378,6 +378,12 @@ function historySnapshot(){
   check(completed.status===200&&completed.data.status==='completed'&&completed.data.score===3&&
     completed.data.case.revision_number===1&&completed.data.history.length===3,
     'Historical scored attempt completes on its original revision after browser withdrawal');
+  const analytics=await publicRequest(owner,'/case-analytics/cases/'+fixture.p12.slug+'/',learnerToken);
+  check(analytics.status===200&&!analytics.data.case.is_runnable&&
+    analytics.data.attempts.completed===1&&analytics.data.attempts.average_completed_score_percent===100&&
+    analytics.data.recent_attempts[0].revision_number===1&&analytics.data.recent_attempts[0].event_count===3&&
+    analytics.data.completed_paths[0].revision_number===1&&analytics.data.dimensions[0].revision_number===1,
+    'Personal analytics retain the original scored revision, events, rubric and completed path after withdrawal');
   check(report.errors.length===0,'Browser emitted no uncaught runtime errors');
   report.status='PASS';
   await approverContext.close();await reviewerContext.close();await readerContext.close();await ownerContext.close();

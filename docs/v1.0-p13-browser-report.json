@@ -2,7 +2,7 @@
   "stage": "P13",
   "status": "PASS",
   "checks": [
-    "Existing synthetic quiz answers and learning activity are nonempty",
+    "Existing synthetic quiz answers, learning activity and SRS are nonempty",
     "Owner opens the real Quiz editor using MFA and CSRF",
     "Real question editor creates a valid private answer key",
     "Unsaved metadata cannot be overwritten by a question save",
@@ -14,16 +14,22 @@
     "Quiz editor fits 320px viewport",
     "View-only MFA role has no metadata form and cannot forge an edit",
     "Historical inactive Quiz stays locked in UI/API and preserves actual answers/activity",
+    "Flashcard form creates a private card with validated Concept/Disorder relationships",
+    "Flashcard relationship update succeeds through the real audited API",
+    "Clearing one relationship preserves the other, card identity and private visibility",
+    "Flashcard relationship editor fits 320px viewport",
+    "Historical Flashcard relations cannot be changed; real SRS and all learner history stay unchanged",
     "No uncaught browser runtime errors"
   ],
   "screenshots": [
     "quiz-metadata-desktop.png",
-    "quiz-metadata-mobile.png"
+    "quiz-metadata-mobile.png",
+    "flashcard-relationships-mobile.png"
   ],
   "errors": [],
   "limits": [
     "Synthetic isolated SQLite only",
     "Quiz metadata/authoring slice; P13 publication, archive and import/export remain incomplete"
   ],
-  "completed_at": "2026-11-02T06:23:07.667Z"
+  "completed_at": "2026-11-02T06:50:55.174Z"
 }
