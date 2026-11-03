@@ -1,6 +1,7 @@
 from django.urls import include, path
 
 from . import cms_views as v
+from . import cms_privacy as privacy
 from . import cms_content_views as content
 from . import cms_review_views as review
 from . import cms_source_views as sources
@@ -108,7 +109,9 @@ urlpatterns = [
     path("publication/cases/plans/<uuid:plan_id>/withdraw/", case_publication.CasePublicationWithdrawView.as_view()),
     path("study/overview/", study_ops.StudyOperationsOverviewView.as_view()),
     path("users/", user_directory.CMSUserDirectoryView.as_view()),
+    path("users/privacy/schema/", privacy.PrivacySchemaView.as_view()),
     path("users/<int:user_id>/", user_directory.CMSUserDetailView.as_view()),
+    path("users/<int:user_id>/privacy/read/", privacy.PrivacyReadView.as_view()),
     path("roles/permissions/", v.PermissionsView.as_view()),
     path("roles/groups/", v.GroupsView.as_view()),
     path("roles/groups/<int:target_id>/", v.GroupView.as_view()),

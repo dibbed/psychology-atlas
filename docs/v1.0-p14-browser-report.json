@@ -16,18 +16,27 @@
     "Last Owner removal rolls back and the real owner session remains valid",
     "Sensitive account deactivation uses existing security-generation revocation",
     "Account controls fit a 320px RTL viewport",
+    "No personal content is fetched or rendered before an explicit purpose-bound MFA read",
+    "Actual purpose/MFA form reads only the selected subject and excludes another user",
+    "Private text renders as escaped content in the 320px Persian layout",
+    "A controlled headless visibility event clears private results before return",
+    "A delayed real private-read response cannot repopulate results after hiding the page",
+    "Real permission revocation prevents new private reads and stale private results are cleared",
+    "Purpose reads preserve both private notes and append safe access audits without note content",
     "Maintained MFA flow generates ten replacement recovery codes once and never redisplays them",
     "New one-time recovery proof revokes own MFA and logs out the actual session",
     "No uncaught browser errors"
   ],
   "screenshots": [
-    "account-controls-mobile.png"
+    "account-controls-mobile.png",
+    "synthetic-private-read-mobile.png"
   ],
   "errors": [],
   "limits": [
     "Synthetic accounts only",
     "Privacy export/erase and approved retention remain separate gates",
-    "No offline owner identity approval or production recovery"
+    "No offline owner identity approval or production recovery",
+    "Headless visibility tests emulate document.hidden/visibilitychange; native tab occlusion is unverified"
   ],
-  "completed_at": "2026-11-03T19:00:41.927Z"
+  "completed_at": "2026-11-03T19:40:08.315Z"
 }

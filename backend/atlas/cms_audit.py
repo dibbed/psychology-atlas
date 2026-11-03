@@ -121,6 +121,12 @@ def failure_response(request, exc):
 
 ACTIONS |= frozenset({"learning.archived"})
 ACTIONS |= frozenset({"learning.imported", "learning.exported", "learning.transfer_prepared"})
+ACTIONS |= frozenset("privacy.read." + scope for scope in (
+    "disorder_notes", "concept_notes", "therapy_notes", "disorder_progress", "concept_progress", "flashcard_srs",
+    "quiz_attempts", "quiz_answers", "case_attempts", "case_events", "daily_attempts", "distortion_attempts",
+    "study_plans", "study_scopes", "study_blocks", "study_sessions", "activities", "recommendation_feedback",
+    "disorder_bookmarks", "concept_bookmarks", "therapy_bookmarks", "study_settings"))
+REASONS |= frozenset({"PRIVACY_SUPPORT"})
 REASONS |= frozenset({"LEARNING_TRANSFER"})
 REASONS |= frozenset({"CONTENT_ARCHIVE"})
 TARGET_KINDS |= frozenset({"daily", "distortions"})

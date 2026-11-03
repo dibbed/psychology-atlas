@@ -20,11 +20,27 @@ async function request(page,route,body,etag){return page.evaluate(async({route,b
   return {status:response.status,data:await response.json(),etag:response.headers.get('ETag')};
 },{route,body,etag});}
 function postResponse(page,suffix){return page.waitForResponse(response=>response.url().replace(/\/$/,'').endsWith(suffix)&&response.request().method()==='POST'&&!(response.status()>=300&&response.status()<400));}
+async function visibility(page,hidden){
+  await page.evaluate(hidden=>{
+    if(hidden){Object.defineProperty(document,'hidden',{configurable:true,get:()=>true});Object.defineProperty(document,'visibilityState',{configurable:true,get:()=>'hidden'});}
+    else{delete document.hidden;delete document.visibilityState;}
+    document.dispatchEvent(new Event('visibilitychange'));
+  },hidden);
+}
+function privacyState(){return JSON.parse(execFileSync(py,['-c',[
+  'import os,json,sqlite3,hashlib','from pathlib import Path',
+  'c=sqlite3.connect(Path(os.environ["SQLITE_PATH"]).as_uri()+"?mode=ro",uri=True)',
+  'rows=c.execute("SELECT * FROM atlas_usernote ORDER BY id").fetchall()',
+  'events=c.execute("SELECT COUNT(*) FROM atlas_adminauditevent WHERE action LIKE \'privacy.read.%\'").fetchone()[0]',
+  'leaks=c.execute("SELECT COUNT(*) FROM atlas_adminauditevent WHERE CAST(diff AS TEXT) LIKE \'%P14-SYNTHETIC%\' OR reason LIKE \'%P14-SYNTHETIC%\'").fetchone()[0]',
+  'print(json.dumps({"notes":len(rows),"digest":hashlib.sha256(json.dumps(rows).encode()).hexdigest(),"read_audits":events,"audit_content_leaks":leaks}))','c.close()',
+].join('\n')],{env,encoding:'utf8'}));}
 async function login(page,user){page.setDefaultTimeout(20000);page.on('pageerror',error=>report.errors.push(String(error)));await page.goto(origin+'/admin-console');await page.getByLabel('نام کاربری',{exact:true}).fill(user.username);await page.getByLabel('گذرواژه',{exact:true}).fill(user.password);await page.getByRole('button',{name:'ادامه با گذرواژه',exact:true}).click();await page.getByLabel('روش تأیید').selectOption('recovery');await page.getByLabel('کد تأیید',{exact:true}).fill(user.tokens[0]);await page.getByRole('button',{name:'تأیید و ورود',exact:true}).click();await page.getByRole('button',{name:'خروج',exact:true}).waitFor();}
 async function openAccount(page,username){await page.goto(origin+'/admin-console/accounts');await page.getByLabel('نام کاربری یا شناسه',{exact:true}).fill(username);await page.getByRole('button',{name:'جست‌وجو',exact:true}).click();await page.locator('li').filter({has:page.getByText(username,{exact:true})}).getByRole('button',{name:'جزئیات مجاز',exact:true}).click();await page.getByRole('heading',{name:'کنترل دسترسی و نشست حساب',exact:true}).waitFor();await page.getByText('فهرست مجوزهای مستقیم',{exact:true}).click();}
 async function confirmAccount(page,token){await page.getByLabel('روش تأیید تغییر حساب').selectOption('recovery');await page.getByLabel('کد MFA تغییر حساب',{exact:true}).fill(token);await page.getByRole('button',{name:'اعمال تغییر تأییدشدهٔ حساب',exact:true}).focus();await page.keyboard.press('Enter');}
 (async()=>{try{
   const fixture=JSON.parse(execFileSync(py,[path.join(root,'scripts/cms_browser_fixture.py')],{cwd:path.join(root,'backend'),env,encoding:'utf8',timeout:180000}));
+  const privateBefore=privacyState();assert.equal(privateBefore.notes,2);
   const backend=start(py,['manage.py','runserver','127.0.0.1:'+new URL(api).port,'--noreload'],path.join(root,'backend'),'django');await ready(api+'/api/admin/auth/csrf/',backend);
   // The production bundle uses the same-origin API rewrite compiled for port8000.
   const next=start(process.execPath,[path.join(root,'frontend/node_modules/next/dist/bin/next'),'start','-H','127.0.0.1','-p',new URL(origin).port],path.join(root,'frontend'),'next');await ready(origin+'/admin-console',next);
@@ -107,6 +123,70 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
   await owner.getByRole('heading',{name:'کنترل دسترسی و نشست حساب',exact:true}).scrollIntoViewIfNeeded();
   check(await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth&&getComputedStyle(document.querySelector('[dir="rtl"]')).direction==='rtl'),'Account controls fit a 320px RTL viewport');
   await owner.screenshot({path:path.join(out,'account-controls-mobile.png'),fullPage:true});report.screenshots.push('account-controls-mobile.png');
+  const privacyContext=await browser.newContext({viewport:{width:320,height:790}}),privacy=await privacyContext.newPage();
+  await login(privacy,fixture.users.privacy_operator);
+  await privacy.getByRole('navigation',{name:'بخش‌های مدیریت'}).getByRole('link',{name:'حساب‌ها',exact:true}).click();
+  await privacy.getByLabel('نام کاربری یا شناسه',{exact:true}).fill(fixture.p14.subject_username);
+  await privacy.getByRole('button',{name:'جست‌وجو',exact:true}).click();
+  await privacy.locator('li').filter({has:privacy.getByText(fixture.p14.subject_username,{exact:true})}).getByRole('button',{name:'جزئیات مجاز',exact:true}).click();
+  await privacy.getByRole('link',{name:'دسترسی هدفمند به اطلاعات شخصی این کاربر',exact:true}).click();
+  await privacy.getByRole('heading',{name:'دسترسی هدفمند به اطلاعات شخصی',exact:true}).waitFor();
+  check(await privacy.getByText('P14-SYNTHETIC-PRIVATE-NOTE <b>literal text</b>',{exact:true}).count()===0,
+    'No personal content is fetched or rendered before an explicit purpose-bound MFA read');
+  const reference=crypto.randomUUID();await privacy.getByLabel('شناسهٔ UUID درخواست پشتیبانی',{exact:true}).fill(reference);
+  await privacy.getByRole('checkbox').check();await privacy.getByLabel('روش تأیید مشاهده').selectOption('recovery');
+  await privacy.getByLabel('کد MFA مشاهدهٔ خصوصی',{exact:true}).fill(fixture.users.privacy_operator.tokens[1]);
+  const read=postResponse(privacy,'/users/'+fixture.p14.subject_id+'/privacy/read');
+  await privacy.getByRole('button',{name:'مشاهدهٔ هدفمند با تأیید دومرحله‌ای',exact:true}).focus();await privacy.keyboard.press('Enter');
+  const readResponse=await read;assert.equal(readResponse.status(),200);
+  const personal=(await readResponse.json());
+  check(personal.subject_id===fixture.p14.subject_id&&personal.results.length===1&&
+    personal.results[0].body==='P14-SYNTHETIC-PRIVATE-NOTE <b>literal text</b>'&&
+    await privacy.getByText('P14-OTHER-SUBJECT-NOTE',{exact:true}).count()===0,
+    'Actual purpose/MFA form reads only the selected subject and excludes another user');
+  await privacy.getByText('P14-SYNTHETIC-PRIVATE-NOTE <b>literal text</b>',{exact:true}).waitFor();
+  check(await privacy.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),
+    'Private text renders as escaped content in the 320px Persian layout');
+  await privacy.screenshot({path:path.join(out,'synthetic-private-read-mobile.png'),fullPage:true});report.screenshots.push('synthetic-private-read-mobile.png');
+  report.limits.push('Headless visibility tests emulate document.hidden/visibilitychange; native tab occlusion is unverified');
+  await visibility(privacy,true);await visibility(privacy,false);
+  check(await privacy.getByRole('region',{name:'نتیجهٔ خصوصی پشتیبانی',exact:true}).count()===0,
+    'A controlled headless visibility event clears private results before return');
+  const privatePath='/api/admin/users/'+fixture.p14.subject_id+'/privacy/read/';
+  let releaseReply,committed;
+  const replyGate=new Promise(resolve=>{releaseReply=resolve;}),serverCommitted=new Promise(resolve=>{committed=resolve;});
+  const privatePattern='**'+privatePath;
+  await privacy.route(privatePattern,async routed=>{
+    const response=await routed.fetch();assert.equal(response.status(),200);committed();await replyGate;
+    try{await routed.fulfill({response});}catch(error){
+      const failed=routed.request().failure();if(!failed)throw error;
+    }
+  });
+  const settled=Promise.race([
+    privacy.waitForResponse(response=>response.url().endsWith(privatePath)&&response.request().method()==='POST').then(async response=>{await response.finished();return 'response';}),
+    privacy.waitForEvent('requestfailed',{predicate:request=>request.url().endsWith(privatePath)&&request.method()==='POST'}).then(()=>'aborted'),
+  ]);
+  await privacy.getByLabel('کد MFA مشاهدهٔ خصوصی',{exact:true}).fill(fixture.users.privacy_operator.tokens[2]);
+  await privacy.getByRole('button',{name:'مشاهدهٔ هدفمند با تأیید دومرحله‌ای',exact:true}).click();
+  await serverCommitted;await visibility(privacy,true);releaseReply();await settled;await privacy.unroute(privatePattern);
+  await visibility(privacy,false);
+  await privacy.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  check(await privacy.getByRole('region',{name:'نتیجهٔ خصوصی پشتیبانی',exact:true}).count()===0,
+    'A delayed real private-read response cannot repopulate results after hiding the page');
+  await privacy.getByLabel('کد MFA مشاهدهٔ خصوصی',{exact:true}).fill(fixture.users.privacy_operator.tokens[3]);
+  const reread=postResponse(privacy,'/users/'+fixture.p14.subject_id+'/privacy/read');
+  await privacy.getByRole('button',{name:'مشاهدهٔ هدفمند با تأیید دومرحله‌ای',exact:true}).click();assert.equal((await reread).status(),200);
+  const policySnapshot=await request(owner,'/roles/users/'+fixture.p14.operator_id+'/');
+  assert.equal((await request(owner,'/roles/users/'+fixture.p14.operator_id+'/',{permissions:['cms_enter','cms_user_view']},policySnapshot.etag)).status,200);
+  await privacy.getByLabel('کد MFA مشاهدهٔ خصوصی',{exact:true}).fill(fixture.users.privacy_operator.tokens[4]);
+  const revokedRead=postResponse(privacy,'/auth/step-up');
+  await privacy.getByRole('button',{name:'مشاهدهٔ هدفمند با تأیید دومرحله‌ای',exact:true}).click();
+  check((await revokedRead).status()===403&&await privacy.getByText('P14-SYNTHETIC-PRIVATE-NOTE <b>literal text</b>',{exact:true}).count()===0,
+    'Real permission revocation prevents new private reads and stale private results are cleared');
+  const privateAfter=privacyState();
+  check(privateAfter.digest===privateBefore.digest&&privateAfter.read_audits===3&&privateAfter.audit_content_leaks===0,
+    'Purpose reads preserve both private notes and append safe access audits without note content');
+  await privacyContext.close();
   await openAccount(owner,fixture.users.owner.username);
   await owner.getByRole('button',{name:'بررسی ساخت کدهای بازیابی خودم',exact:true}).click();await confirmAccount(owner,fixture.users.owner.tokens[7]);
   await owner.waitForURL(url=>url.pathname.replace(/\/$/,'')==='/account/two_factor/backup/tokens');

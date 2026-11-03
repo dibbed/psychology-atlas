@@ -645,10 +645,23 @@ if phase == "p13":
 
 if phase == "p14":
     from django.contrib.auth.models import Group
+    from atlas.models import Disorder, UserNote
     permission = Permission.objects.get(content_type__app_label="atlas", content_type__model="rolepolicy", codename="cms_learning_view")
     for index in range(25):
         group = Group.objects.create(name=f"P14 pagination fixture {index:02}")
         group.permissions.add(permission)
+    subject = User.objects.create_user("qa_p14_private_subject", password=password)
+    private_disorder = Disorder.objects.create(category=category, slug="p14-private-fixture", name_en="Synthetic private fixture")
+    UserNote.objects.create(user=subject, disorder=private_disorder, body="P14-SYNTHETIC-PRIVATE-NOTE <b>literal text</b>")
+    UserNote.objects.create(user=User.objects.get(username="qa_scoped"), disorder=private_disorder, body="P14-OTHER-SUBJECT-NOTE")
+    operator = User.objects.create_user("qa_p14_privacy_operator", password=password, is_staff=True)
+    operator.user_permissions.add(*Permission.objects.filter(content_type__app_label="atlas", content_type__model="rolepolicy",
+        codename__in=("cms_enter", "cms_user_view", "cms_privacy_sensitive_read")))
+    TOTPDevice.objects.create(user=operator, name="default", confirmed=True)
+    backup = StaticDevice.objects.create(user=operator, name="backup", confirmed=True)
+    users["privacy_operator"] = {"username": operator.username, "password": password,
+        "tokens": [StaticToken.objects.create(device=backup, token=StaticToken.random_token()).token for _ in range(8)]}
+    review_fixture["p14"] = {"subject_id": subject.pk, "subject_username": subject.username, "operator_id": operator.pk}
 
 # Credentials go only to the harness's private pipe, never into reports or logs.
 print(json.dumps({"users": users, "category": str(state.pk), **review_fixture}))
