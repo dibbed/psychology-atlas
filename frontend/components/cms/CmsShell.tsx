@@ -140,7 +140,7 @@ export default function CmsShell({ children }: { children: React.ReactNode }) {
     { href: "/admin-console/terminology", label: "اصطلاحات فارسی", icon: BookOpenText, ready: governanceReady },
     { href: "/admin-console/research", label: "داده‌های پژوهشی", icon: BookOpenText, ready: can("cms_research_view") },
     { href: "/admin-console/research/intake", label: "ورود و فایل‌های خصوصی", icon: BookOpenText, ready: can("cms_enter") && (can("cms_artifact_upload") || can("cms_artifact_download")) },
-    { href: "/admin-console/jobs", label: "کارهای پردازش", icon: ListChecks, ready: can("cms_enter") && (can("cms_artifact_upload") || (can("cms_research_view") && can("cms_research_intake"))) },
+    { href: "/admin-console/jobs", label: "کارهای پردازش", icon: ListChecks, ready: can("cms_enter") && (can("cms_artifact_upload") || (can("cms_research_view") && can("cms_research_intake")) || (can("cms_learning_view") && can("cms_learning_export"))) },
     { href: "/admin-console/audit", label: "تاریخچهٔ عملیات", icon: History, ready: can("cms_audit_view") },
   ].filter(item => item.ready);
   const future = [

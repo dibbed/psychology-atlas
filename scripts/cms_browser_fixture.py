@@ -22,8 +22,8 @@ if guarded_prefix and (
         or not database.parent.name.startswith(guarded_prefix)
         or (database.exists() and not artifact_command)):
     raise RuntimeError(f"{phase.upper()} fixture requires a new harness-created temporary database")
-if phase == "p06" and Path(os.environ["CMS_ARTIFACT_ROOT"]).resolve() != database.parent / "private":
-    raise RuntimeError("P06 private storage must belong to the disposable harness directory")
+if phase in {"p06", "p13"} and Path(os.environ["CMS_ARTIFACT_ROOT"]).resolve() != database.parent / "private":
+    raise RuntimeError("Private storage must belong to the disposable harness directory")
 if phase == "p06":
     if (database.parent.parent != Path(tempfile.gettempdir()).resolve()
             or not re.fullmatch(r"atlas-p06-browser-[A-Za-z0-9]+", database.parent.name)):
@@ -50,8 +50,8 @@ if guarded_prefix:
             or Path(configured["NAME"]).resolve() != database
             or not database.parent.name.startswith(guarded_prefix)):
         raise RuntimeError(f"{phase.upper()} fixture requires the harness's disposable SQLite database")
-    if phase == "p06" and settings.CMS_ARTIFACT_ROOT.resolve() != database.parent / "private":
-        raise RuntimeError("P06 configured private storage escaped the disposable harness directory")
+    if phase in {"p06", "p13"} and settings.CMS_ARTIFACT_ROOT.resolve() != database.parent / "private":
+        raise RuntimeError("Configured private storage escaped the disposable harness directory")
 
 if artifact_command:
     import hashlib
@@ -589,6 +589,13 @@ if phase == "p13":
     TOTPDevice.objects.create(user=viewer, name="default", confirmed=True)
     backup = StaticDevice.objects.create(user=viewer, name="backup", confirmed=True)
     users["learning_reader"] = {"username": viewer.username, "password": password,
+        "tokens": [StaticToken.objects.create(device=backup, token=StaticToken.random_token()).token for _ in range(2)]}
+    exporter = User.objects.create_user("qa_p13_learning_exporter", password=password, is_staff=True)
+    exporter.user_permissions.add(*Permission.objects.filter(content_type__app_label="atlas",
+        content_type__model="rolepolicy", codename__in=["cms_enter", "cms_learning_view", "cms_learning_export", "cms_artifact_download"]))
+    TOTPDevice.objects.create(user=exporter, name="default", confirmed=True)
+    backup = StaticDevice.objects.create(user=exporter, name="backup", confirmed=True)
+    users["learning_exporter"] = {"username": exporter.username, "password": password,
         "tokens": [StaticToken.objects.create(device=backup, token=StaticToken.random_token()).token for _ in range(2)]}
     concept = Concept.objects.create(slug="p13-synthetic-concept", name_en="Synthetic fixture concept")
     disorder = Disorder.objects.create(category=category, slug="p13-synthetic-disorder", name_en="Synthetic fixture disorder")

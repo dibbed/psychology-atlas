@@ -8,10 +8,10 @@ const py=process.env.CMS_QA_PYTHON||(process.platform==='win32'?path.join(root,'
 const origin=process.env.CMS_QA_ORIGIN||'http://127.0.0.1:3000',api=process.env.CMS_QA_API_ORIGIN||'http://127.0.0.1:8000';
 assert(new URL(origin).hostname==='127.0.0.1'&&new URL(api).hostname==='127.0.0.1');
 const env={...process.env,DB_ENGINE:'sqlite',SQLITE_PATH:path.join(tmp,'cms-journey.sqlite3'),
-  SQLITE_TEST_PATH:path.join(tmp,'tests.sqlite3'),
+  SQLITE_TEST_PATH:path.join(tmp,'tests.sqlite3'),CMS_ARTIFACT_ROOT:path.join(tmp,'private'),
   CMS_QA_PHASE:'p13',NEXT_PUBLIC_API_URL:api+'/api',CSRF_TRUSTED_ORIGINS:origin,CORS_ALLOWED_ORIGINS:origin,DEBUG:'1'};
 const report={stage:'P13',status:'RUNNING',checks:[],screenshots:[],errors:[],
-  limits:['Synthetic isolated SQLite only','No scientific/rights approval or publication; import/export is a separate gate']};
+  limits:['Synthetic isolated SQLite only','No scientific/rights approval or publication; no production rollout']};
 const processes=[];let browser;
 function check(ok,message){assert(ok,message);report.checks.push(message);}
 function start(exe,args,cwd,name){
@@ -63,6 +63,27 @@ function archiveEvidence(){return JSON.parse(execFileSync(py,['-c',[
   'import os,sqlite3,json','from pathlib import Path',
   'c=sqlite3.connect(Path(os.environ["SQLITE_PATH"]).as_uri()+"?mode=ro",uri=True)',
   'print(json.dumps({"receipts":c.execute("SELECT kind,resource_id,COUNT(*) FROM atlas_learningarchivereceipt GROUP BY kind,resource_id ORDER BY kind").fetchall(),"audit":c.execute("SELECT target_kind,target_id,COUNT(*) FROM atlas_adminauditevent WHERE action=\'learning.archived\' GROUP BY target_kind,target_id ORDER BY target_kind").fetchall()}))','c.close()',
+].join('\n')],{env,encoding:'utf8'}));}
+function runWorker(){
+  const result=execFileSync(py,['manage.py','cms_worker','--once'],{cwd:path.join(root,'backend'),env,encoding:'utf8',timeout:90000});
+  assert(result.trim().endsWith(' succeeded'),'Owned native worker did not finish successfully');
+}
+function expireRevokedOutput(identifier){
+  execFileSync(py,['-c',[
+    'import os,sys,tempfile','from pathlib import Path',
+    'database=Path(os.environ["SQLITE_PATH"]).resolve()',
+    'assert database.parent.parent==Path(tempfile.gettempdir()).resolve() and database.parent.name.startswith("atlas-p13-browser-") and database.name=="cms-journey.sqlite3"',
+    'os.environ.setdefault("DJANGO_SETTINGS_MODULE","config.settings")','import django;django.setup()',
+    'from atlas.cms_job_models import AdminArtifact','from django.utils import timezone','from datetime import timedelta',
+    'rows=AdminArtifact.objects.filter(pk=sys.argv[1],owner__username="qa_owner",kind="learning_export_json",resource_type="learning_export",state="revoked")',
+    'assert rows.count()==1','assert rows.update(expires_at=timezone.now()-timedelta(seconds=1))==1',
+  ].join('\n'),identifier],{cwd:path.join(root,'backend'),env,encoding:'utf8'});
+}
+function transferEvidence(){return JSON.parse(execFileSync(py,['-c',[
+  'import os,sqlite3,json','from pathlib import Path',
+  'c=sqlite3.connect(Path(os.environ["SQLITE_PATH"]).as_uri()+"?mode=ro",uri=True)',
+  'tables=["atlas_quiz","atlas_flashcard","atlas_dailychallenge","atlas_cognitivedistortionpracticeitem"]',
+  'print(json.dumps({"content_counts":[c.execute("SELECT COUNT(*) FROM "+t).fetchone()[0] for t in tables],"jobs":c.execute("SELECT kind,COUNT(*) FROM atlas_adminjob GROUP BY kind ORDER BY kind").fetchall(),"audit":c.execute("SELECT action,COUNT(*) FROM atlas_adminauditevent WHERE action IN (\'learning.imported\',\'learning.exported\') GROUP BY action ORDER BY action").fetchall(),"artifacts":c.execute("SELECT kind,resource_type,state,COUNT(*) FROM atlas_adminartifact GROUP BY kind,resource_type,state ORDER BY kind,resource_type").fetchall()}))','c.close()',
 ].join('\n')],{env,encoding:'utf8'}));}
 function archiveControl(page){return page.getByRole('heading',{name:'بایگانی کنترل‌شدهٔ محتوا',exact:true}).locator('..');}
 async function prepareArchive(page,token){
@@ -209,7 +230,10 @@ async function learnerRequest(page,token,route,body){
   let tokenIndex=2;
   for(const spec of specs){
     await owner.goto(origin+'/admin-console/content/'+spec.page);
+    if(spec.kind==='daily')await owner.locator('li').filter({hasText:spec.label}).getByRole('button',{name:'باز کردن',exact:true}).waitFor();
     if(spec.kind==='daily'||spec.kind==='distortions')await owner.getByLabel('نوع تمرین').selectOption(spec.kind);
+    if(spec.kind==='daily')check(await owner.locator('li').filter({hasText:spec.label}).count()===1,
+      'Reselecting the loaded current practice kind does not leave the catalog stuck loading');
     await owner.locator('li').filter({hasText:spec.label}).getByRole('button',{name:'باز کردن',exact:true}).click();
     await archiveControl(owner).waitFor();
     const suffix='/archive/'+spec.kind+'/'+spec.id;
@@ -275,6 +299,157 @@ async function learnerRequest(page,token,route,body){
   check(preservedDashboard.status===200&&preservedDashboard.data.quizzes_completed===historicalDashboard.data.quizzes_completed&&
     preservedDaily.status===200&&preservedDaily.data.attempt.selected_choice_id===fixture.p13.daily_choice&&history().digest===before.digest,
     'Authorized historical quiz totals and pinned Daily result survive; all eight tables are unchanged');
+  await owner.setViewportSize({width:1280,height:850});
+  await owner.goto(origin+'/admin-console/content/learning-transfer');
+  await owner.getByRole('heading',{name:'انتقال خصوصی محتوای آموزشی',exact:true}).waitFor();
+  await reader.goto(origin+'/admin-console/content/learning-transfer');
+  check(await reader.getByLabel('فایل بستهٔ آموزشی').count()===0&&
+    await reader.getByRole('button',{name:'ثبت کار خروجی خصوصی',exact:true}).count()===0&&
+    (await request(reader,'/learning/transfer/import/',{artifact_id:crypto.randomUUID(),request_key:crypto.randomUUID()})).status===403&&
+    (await request(reader,'/learning/transfer/selection/?kind=quiz')).status===403,
+    'View-only MFA role has no transfer forms and cannot forge import or export selection');
+  await owner.getByText('قالب نسخه‌مند و نمونهٔ هر چهار نوع',{exact:true}).click();
+  const bundle=JSON.parse(await owner.getByLabel('نمونهٔ قالب بستهٔ خصوصی').inputValue());
+  const practiceFields=bundle.items.find(row=>row.kind==='distortions').fields;
+  practiceFields.target_concept_slug=practiceFields.choices[0].concept_slug='p13-synthetic-distortion';
+  practiceFields.choices[1].concept_slug='p13-synthetic-other-distortion';
+  const preTransfer=transferEvidence();
+  await owner.getByLabel('فایل بستهٔ آموزشی').setInputFiles({name:'P13-synthetic-authoring.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(bundle))});
+  const uploaded=writeResponse(owner,'/artifacts');
+  await owner.getByRole('button',{name:'بارگذاری بسته در قرنطینه',exact:true}).click();
+  const uploadedResponse=await uploaded;assert.equal(uploadedResponse.status(),201);
+  const inputId=(await uploadedResponse.json()).artifact.id;
+  const inputCard=owner.getByRole('region',{name:'جزئیات فایل خصوصی',exact:true});
+  const validated=writeResponse(owner,'/validate');
+  await inputCard.getByRole('button',{name:'اعتبارسنجی جداگانهٔ فایل',exact:true}).click();
+  check((await validated).status()===200,'Actual uploaded four-kind JSON is validated privately before enqueue');
+  let committedImport,importKey;
+  const importPattern='**/api/admin/learning/transfer/import/';
+  await owner.route(importPattern,async routed=>{
+    const response=await routed.fetch();assert.equal(response.status(),202);
+    committedImport=(await response.json()).job;importKey=routed.request().postDataJSON().request_key;
+    runWorker();await routed.abort('failed');
+  });
+  await inputCard.getByRole('button',{name:'بررسی ایجاد کار ورود',exact:true}).click();
+  await inputCard.getByRole('button',{name:'تأیید ایجاد کار',exact:true}).click();
+  await inputCard.getByRole('button',{name:'تطبیق همان کار ورود',exact:true}).waitFor();
+  await owner.unroute(importPattern);
+  const importRetry=writeResponse(owner,'/learning/transfer/import');
+  await inputCard.getByRole('button',{name:'تطبیق همان کار ورود',exact:true}).click();
+  await inputCard.getByRole('button',{name:'تأیید ایجاد کار',exact:true}).click();
+  const reconciledImport=await importRetry,importJob=(await reconciledImport.json()).job;
+  check(reconciledImport.status()===202&&importJob.id===committedImport.id&&importJob.status==='succeeded'&&
+    reconciledImport.request().postDataJSON().request_key===importKey&&importJob.result.created.length===4,
+    'Lost import response after real worker commit reconciles the same key and one four-item result through UI');
+  const afterImport=transferEvidence();
+  check(afterImport.content_counts.every((n,index)=>n===preTransfer.content_counts[index]+1)&&
+    afterImport.jobs.find(row=>row[0]==='learning_import')[1]===1&&
+    afterImport.audit.find(row=>row[0]==='learning.imported')[1]===1&&history().digest===before.digest,
+    'Native import creates four new parents once with one job/audit and unchanged eight-table history');
+  const created=importJob.result.created;
+  for(const item of created){
+    const catalog=await request(owner,'/learning/transfer/selection/?kind='+item.kind);
+    check(catalog.status===200&&catalog.data.results.some(row=>row.resource_id===item.resource_id),
+      item.kind+' imported draft is private, unseeded, unarchived and without learner history');
+  }
+  check((await learnerRequest(owner,freshToken,'/quizzes/transfer-example-quiz/')).status===404&&
+    !(await learnerRequest(owner,freshToken,'/flashcards/')).data.results.some(row=>row.slug==='transfer-example-card')&&
+    !(await learnerRequest(owner,freshToken,'/cognitive-distortions/practice/')).data.items.some(row=>row.slug==='transfer-example-practice'),
+    'Imported private authoring content does not grant public availability');
+  await inputCard.getByRole('link',{name:'پیگیری کار ایجادشده ←',exact:true}).click();
+  await owner.getByText('تعداد آیتم‌های آموزشی پردازش‌شده: ۴',{exact:true}).waitFor();
+  check(await owner.getByRole('heading',{name:'پایان‌یافته',exact:true}).count()===1,'Import job detail displays final native worker result and fresh IDs');
+  await owner.goto(origin+'/admin-console/content/learning-transfer');
+  const exportSection=owner.getByRole('heading',{name:'خروجی خصوصی از نسخه‌های انتخاب‌شده',exact:true}).locator('..');
+  for(const item of created){
+    await exportSection.getByLabel('نوع محتوا برای خروجی').selectOption(item.kind);
+    const selection=await request(owner,'/learning/transfer/selection/?kind='+item.kind);
+    const row=selection.data.results.find(entry=>entry.resource_id===item.resource_id);
+    await exportSection.locator('li').filter({has:owner.getByText(row.label,{exact:true})}).getByRole('checkbox').check();
+  }
+  let committedExport,exportKey;
+  const exportPattern='**/api/admin/learning/transfer/export/';
+  await owner.route(exportPattern,async routed=>{
+    const response=await routed.fetch();assert.equal(response.status(),202);
+    committedExport=(await response.json()).job;exportKey=routed.request().postDataJSON().request_key;
+    runWorker();await routed.abort('failed');
+  });
+  await exportSection.getByRole('button',{name:'ثبت کار خروجی خصوصی',exact:true}).focus();await owner.keyboard.press('Enter');
+  await exportSection.getByRole('button',{name:'تطبیق همان درخواست خروجی',exact:true}).waitFor();
+  await owner.unroute(exportPattern);
+  const exportRetry=writeResponse(owner,'/learning/transfer/export');
+  await exportSection.getByRole('button',{name:'تطبیق همان درخواست خروجی',exact:true}).click();
+  const reconciledExport=await exportRetry,exportJob=(await reconciledExport.json()).job;
+  check(reconciledExport.status()===202&&exportJob.id===committedExport.id&&exportJob.status==='succeeded'&&
+    reconciledExport.request().postDataJSON().request_key===exportKey&&exportJob.result.items===4,
+    'Keyboard export with lost response after commit reconciles the same manifest/job/key through UI');
+  await exportSection.getByRole('link',{name:'پیگیری کار خروجی خصوصی',exact:true}).click();
+  const output=owner.getByRole('heading',{name:'بستهٔ خروجی آموزشی',exact:true}).locator('..');
+  const downloaded=owner.waitForEvent('download');
+  await output.getByRole('link',{name:'دریافت خصوصی با مجوز جاری',exact:true}).click();
+  const download=await downloaded;assert.equal(await download.failure(),null);
+  const exported=JSON.parse(fs.readFileSync(await download.path(),'utf8'));
+  for(const item of exported.items)assert.deepEqual(item.fields,bundle.items.find(row=>row.kind===item.kind).fields);
+  check(exported.schema_version===bundle.schema_version&&exported.items.length===4&&
+    exported.items.every(item=>Object.keys(item).sort().join(',')==='fields,key,kind'),
+    'Real private download contains exactly the four closed content graphs and no user/progress metadata');
+  check((await request(reader,'/artifacts/'+exportJob.output_artifact_id+'/')).status===403,
+    'View-only role cannot read generated output metadata');
+  const revokedOutput=writeResponse(owner,'/revoke');
+  await output.getByRole('button',{name:'بررسی لغو دسترسی فایل',exact:true}).click();
+  await output.getByRole('button',{name:'تأیید لغو دسترسی',exact:true}).click();
+  check((await revokedOutput).status()===200,'Actual output-file revocation immediately closes its download control');
+  expireRevokedOutput(exportJob.output_artifact_id);
+  await output.getByRole('button',{name:'بازخوانی فراداده',exact:true}).click();
+  await output.getByText('learning-export.json',{exact:true}).waitFor();
+  const expiredOutput=await request(owner,'/artifacts/'+exportJob.output_artifact_id+'/');
+  assert.equal(expiredOutput.data.artifact.state,'revoked');
+  if(expiredOutput.data.artifact.cleanup_supported!==false){
+    check(await output.getByRole('button',{name:'پاکسازی فایل منقضی بدون وابستگی',exact:true}).isEnabled(),
+      'Revoked output becomes cleanup-eligible through UI after actual expiry without changing revoked state');
+    const cleanupQueued=writeResponse(owner,'/cleanup');
+    await output.getByRole('button',{name:'پاکسازی فایل منقضی بدون وابستگی',exact:true}).click();
+    await output.getByRole('button',{name:'تأیید ایجاد کار پاکسازی',exact:true}).click();
+    assert.equal((await cleanupQueued).status(),202);runWorker();
+    await output.getByRole('button',{name:'بازخوانی فراداده',exact:true}).click();
+    await output.getByText(/فراداده و تاریخچه حفظ شده‌اند/).first().waitFor();
+    const cleanedOutput=await request(owner,'/artifacts/'+exportJob.output_artifact_id+'/');
+    check(cleanedOutput.data.artifact.state==='expired'&&!!cleanedOutput.data.artifact.purged_at&&
+      (await request(owner,'/artifacts/'+exportJob.output_artifact_id+'/download/?purpose=learning_authoring')).status===409&&
+      history().digest===before.digest,'Native cleanup finishes with expired metadata, unavailable bytes and unchanged history');
+  }else{
+    check(await output.getByRole('button',{name:'پاکسازی فایل منقضی بدون وابستگی',exact:true}).isDisabled(),
+      'Unsupported native cleanup stays disabled with truthful platform status');
+    report.limits.push('Native generated-file cleanup not executed: platform adapter unavailable');
+  }
+  const exporterContext=await browser.newContext({viewport:{width:320,height:790}}),exporter=await exporterContext.newPage();
+  await login(exporter,fixture.users.learning_exporter);await exporter.goto(origin+'/admin-console/content/learning-transfer');
+  await exporter.getByRole('heading',{name:'انتقال خصوصی محتوای آموزشی',exact:true}).waitFor();
+  check(await exporter.getByRole('navigation',{name:'بخش‌های مدیریت'}).getByRole('link',{name:'کارهای پردازش',exact:true}).count()===1,
+    'Export-only actor can reach the scoped job list through actual CMS navigation');
+  check(await exporter.getByLabel('فایل بستهٔ آموزشی').count()===0&&
+    (await request(exporter,'/learning/transfer/import/',{artifact_id:inputId,request_key:crypto.randomUUID()})).status===403,
+    'Export-only MFA actor has no import/upload/editor form and cannot forge import');
+  await exporter.getByRole('checkbox').first().check();
+  const exporterQueued=writeResponse(exporter,'/learning/transfer/export');
+  await exporter.getByRole('button',{name:'ثبت کار خروجی خصوصی',exact:true}).focus();await exporter.keyboard.press('Enter');
+  const exporterResponse=await exporterQueued;assert.equal(exporterResponse.status(),202);runWorker();
+  await exporter.getByRole('link',{name:'پیگیری کار خروجی خصوصی',exact:true}).click();
+  const exporterOutput=exporter.getByRole('heading',{name:'بستهٔ خروجی آموزشی',exact:true}).locator('..');
+  const exporterDownload=exporter.waitForEvent('download');
+  await exporterOutput.getByRole('link',{name:'دریافت خصوصی با مجوز جاری',exact:true}).click();
+  check(await(await exporterDownload).failure()===null,'Export-only actor completes native worker export and real download without edit/upload');
+  check(await exporter.evaluate(()=>document.documentElement.scrollWidth<=innerWidth&&getComputedStyle(document.querySelector('[dir="rtl"]')).direction==='rtl'),
+    'Actual transfer result fits the 320px RTL layout with keyboard controls');
+  await exporter.screenshot({path:path.join(out,'transfer-export-only-mobile.png'),fullPage:true});report.screenshots.push('transfer-export-only-mobile.png');
+  await owner.setViewportSize({width:320,height:790});
+  await owner.screenshot({path:path.join(out,'transfer-output-mobile.png'),fullPage:true});report.screenshots.push('transfer-output-mobile.png');
+  const finalTransfer=transferEvidence();
+  check(finalTransfer.jobs.find(row=>row[0]==='learning_import')[1]===1&&finalTransfer.jobs.find(row=>row[0]==='learning_export')[1]===2&&
+    finalTransfer.audit.find(row=>row[0]==='learning.imported')[1]===1&&finalTransfer.audit.find(row=>row[0]==='learning.exported')[1]===2&&
+    finalTransfer.content_counts.every((n,index)=>n===afterImport.content_counts[index])&&history().digest===before.digest,
+    'All transfer operations retain exact job/audit counts and unchanged canonical content/history after exports');
+  await exporterContext.close();
   check(report.errors.length===0,'No uncaught browser runtime errors');report.status='PASS';
   await readerContext.close();await ownerContext.close();
 }catch(e){

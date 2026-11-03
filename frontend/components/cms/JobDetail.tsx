@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { CmsError, cmsDate } from "@/lib/cms";
-import { AdminJob, Snapshot, jobActive, jobKindLabels, jobStatusLabels, mutationBlocked, p06ErrorMessages, versionHeaders } from "@/lib/cmsJobs";
+import { AdminJob, Snapshot, jobActive, jobKindLabels, jobStatusLabels, learningKindLabels, learningEditorPaths, mutationBlocked, p06ErrorMessages, versionHeaders } from "@/lib/cmsJobs";
 import { faNumber } from "@/lib/fa";
 import { CmsState } from "./CmsShell";
 import { JobProgress, PrivateMutationError, usePrivateCms } from "./CmsJobsShared";
@@ -15,10 +15,11 @@ export default function JobDetail({ id }: { id: string }) {
   const [error, setError] = useState<unknown>(); const [writeError, setWriteError] = useState<unknown>();
   const [reload, setReload] = useState(0); const [busy, setBusy] = useState(false);
   const [cardBusy, setCardBusy] = useState(false);
+  const [outputBusy, setOutputBusy] = useState(false);
   const [confirmation, setConfirmation] = useState<"retry" | "cancel">();
   const [pollStopped, setPollStopped] = useState(false); const lock = useRef(false);
   const blocked = mutationBlocked(writeError); const job = snapshot?.data.job;
-  useEffect(() => { setDirty(busy || cardBusy); return () => setDirty(false); }, [busy, cardBusy, setDirty]);
+  useEffect(() => { setDirty(busy || cardBusy || outputBusy); return () => setDirty(false); }, [busy, cardBusy, outputBusy, setDirty]);
   useEffect(() => {
     if (!allowed || blocked) return;
     let active = true, pending = false, failures = 0, stopped = false;
@@ -67,6 +68,11 @@ export default function JobDetail({ id }: { id: string }) {
         {job.error_code === "CLEANUP_PLATFORM_UNAVAILABLE" && <p className="cms-notice">{p06ErrorMessages.CLEANUP_PLATFORM_UNAVAILABLE}</p>}
         {job.result.dataset_id != null && <a className="cms-link" href={`/admin-console/research/${job.result.dataset_id}`}>مشاهدهٔ رکوردهای مجموعهٔ واردشده</a>}
         {job.result.records != null && <p>تعداد رکورد گزارش‌شده: {faNumber(job.result.records)}</p>}
+        {job.result.items != null && <p>تعداد آیتم‌های آموزشی پردازش‌شده: {faNumber(job.result.items)}</p>}
+        {job.result.created&&<ul>{job.result.created.map(row=><li key={row.kind+"-"+row.resource_id}>
+          {learningKindLabels[row.kind]} · شناسهٔ محتوای تازه: <bdi>{faNumber(row.resource_id)}</bdi>{" "}
+          <a className="cms-link" href={"/admin-console/content/"+learningEditorPaths[row.kind]}>فهرست خصوصی</a>
+        </li>)}</ul>}
         {job.result.duplicate === true && <p className="cms-notice">این فایل قبلاً وارد شده است؛ سرور مجموعهٔ موجود را برگردانده است.</p>}
         {job.kind === "artifact_cleanup" && job.result.cleaned === true && <p className="cms-notice">سرور حذف بایت‌های فایل را تأیید کرده است؛ فراداده و تاریخچه حفظ شده‌اند.</p>}
         {job.kind === "artifact_cleanup" && job.result.cleaned === false && <p className="cms-notice">سرور حذف بایت‌های فایل را تأیید نکرده است؛ وضعیت و خطای کار را بررسی کنید.</p>}
@@ -77,6 +83,10 @@ export default function JobDetail({ id }: { id: string }) {
         {confirmation && <section className="cms-conflict stack" aria-labelledby="job-confirm"><h3 id="job-confirm">{confirmation === "retry" ? "تأیید تلاش تازه برای همین کار" : "تأیید درخواست لغو"}</h3><p>{confirmation === "retry" ? "فقط خطای قابل بازیابی و کمتر از سه تلاش قابل ادامه است؛ دادهٔ خام دوباره ساخته یا جایگزین نمی‌شود." : "اثر ثبت‌شدهٔ قبلی برگردانده نمی‌شود؛ پردازش در نقطهٔ امن متوقف می‌شود."}</p><div className="cms-actions"><button className="button primary" disabled={busy || blocked} onClick={action}>تأیید {confirmation === "retry" ? "تلاش دوباره" : "درخواست لغو"}</button><button className="button secondary" onClick={() => setConfirmation(undefined)}>انصراف</button></div></section>}
       </section>
       <ArtifactCard key={job.artifact_id} id={job.artifact_id} allowImport={false} onBusy={setCardBusy} />
+      {job.output_artifact_id&&!jobActive(job)&&<section className="stack"><h2>بستهٔ خروجی آموزشی</h2>
+        <ArtifactCard key={job.output_artifact_id} id={job.output_artifact_id} allowImport={false} onBusy={setOutputBusy}/>
+      </section>}
+      {job.output_artifact_id&&jobActive(job)&&<p role="status">بسته در حال آماده‌سازی است؛ دریافت تا ثبت موفق نتیجه بسته می‌ماند.</p>}
     </>}
   </div>;
 }

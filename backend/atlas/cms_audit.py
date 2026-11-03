@@ -120,6 +120,8 @@ def failure_response(request, exc):
     return JsonResponse({"code": code, "request_id": str(request_id)}, status=status)
 
 ACTIONS |= frozenset({"learning.archived"})
+ACTIONS |= frozenset({"learning.imported", "learning.exported", "learning.transfer_prepared"})
+REASONS |= frozenset({"LEARNING_TRANSFER"})
 REASONS |= frozenset({"CONTENT_ARCHIVE"})
 TARGET_KINDS |= frozenset({"daily", "distortions"})
 SAFE_FIELDS |= frozenset({"archived_at"})

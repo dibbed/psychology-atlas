@@ -1,6 +1,9 @@
 import { cms, CmsError, CmsMe } from "./cms";
 
-export type ArtifactKind = "research_json" | "dsm_json" | "assessment_json" | "evidence_json";
+export type ArtifactKind = "research_json" | "dsm_json" | "assessment_json" | "evidence_json" | "learning_json" | "learning_export_json";
+export type LearningKind = "quiz" | "flashcard" | "daily" | "distortions";
+export const learningKindLabels: Record<LearningKind, string> = {quiz:"آزمون",flashcard:"فلش‌کارت",daily:"چالش روزانه",distortions:"تمرین خطاهای شناختی"};
+export const learningEditorPaths: Record<LearningKind, string> = {quiz:"learning-quizzes",flashcard:"learning-flashcards",daily:"learning-practice",distortions:"learning-practice"};
 export type AdminArtifact = {
   id: string; kind: ArtifactKind; domain: string; resource_type: string; resource_id: number | null;
   resource_version: string; filename: string; sha256: string; size: number;
@@ -8,10 +11,11 @@ export type AdminArtifact = {
   expires_at: string; purged_at: string | null; cleanup_supported?: boolean; validation_code: string; created_at: string;
 };
 export type AdminJob = {
-  id: string; kind: "research_intake" | "artifact_cleanup"; status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "reconciling";
+  id: string; kind: "research_intake" | "artifact_cleanup" | "learning_import" | "learning_export"; status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "reconciling";
   version: number; attempt: number; progress_done: number; progress_total: number | null;
-  error_code: string; artifact_id: string; retry_available: boolean; cancel_requested: boolean;
-  result: { dataset_id?: number; records?: number; duplicate?: boolean; artifact_id?: string; cleaned?: boolean };
+  error_code: string; artifact_id: string; output_artifact_id: string | null; retry_available: boolean; cancel_requested: boolean;
+  result: { dataset_id?: number; records?: number; duplicate?: boolean; artifact_id?: string; cleaned?: boolean;
+    items?:number;created?:{kind:LearningKind;resource_id:number}[] };
   created_at: string; updated_at: string;
 };
 export type ResearchDataset = {
@@ -35,6 +39,7 @@ export type Snapshot<T> = { data: T; etag: string | null };
 export const artifactKindLabels: Record<ArtifactKind, string> = {
   research_json: "دادهٔ پژوهشی JSON", dsm_json: "دادهٔ DSM به صورت JSON",
   assessment_json: "فرادادهٔ ارزیابی JSON", evidence_json: "مدرک JSON؛ بدون گواهی علمی یا حقوقی",
+  learning_json: "بستهٔ خصوصی محتوای آموزشی", learning_export_json: "خروجی خصوصی محتوای آموزشی",
 };
 export const artifactStateLabels: Record<AdminArtifact["state"], string> = {
   quarantine: "قرنطینه؛ هنوز اعتبارسنجی نشده", ready: "قالب معتبر؛ آمادهٔ استفادهٔ مجاز",
@@ -46,6 +51,7 @@ export const jobStatusLabels: Record<AdminJob["status"], string> = {
 };
 export const jobKindLabels: Record<AdminJob["kind"], string> = {
   research_intake: "ورود پژوهش", artifact_cleanup: "پاکسازی فایل منقضی بدون وابستگی",
+  learning_import:"ورود محتوای آموزشی به Draft تازه", learning_export:"خروجی خصوصی محتوای آموزشی",
 };
 export const researchActionLabels: Record<ResearchAction, string> = {
   map: "ثبت نگاشت مشتق", reject: "رد این رکورد", defer: "تعویق بررسی", stage: "آماده‌سازی برای بررسی آینده",
@@ -54,6 +60,10 @@ export const researchReasons: Record<ResearchAction, string> = {
   map: "RESEARCH_MAP", reject: "RESEARCH_REJECT", defer: "RESEARCH_DEFER", stage: "RESEARCH_STAGE",
 };
 export const p06ErrorMessages = {
+  INVALID_LEARNING_BUNDLE:"قالب بستهٔ آموزشی بسته و نسخه‌مند است؛ فیلدها و شناسه‌های محلی فایل را بررسی کنید.",
+  LEARNING_EXPORT_PROTECTED:"خروجی فقط برای محتوای خصوصی، غیرفعال، غیربذری و بدون سابقه مجاز است.",
+  INVALID_REFERENCE:"slug مرجع باید به مفهوم یا اختلال فعال و معتبر اشاره کند.",
+  INVALID_ARTIFACT_OPERATION:"فایل تولیدشدهٔ سرور از فرم بارگذاری اعتبارسنجی نمی‌شود؛ وضعیت کار را بررسی کنید.",
   ARTIFACT_INVALID: "فایل یا قالب داده معتبر نیست؛ نتیجهٔ اعتبارسنجی را بررسی کنید.",
   ARTIFACT_NOT_READY: "فایل هنوز آماده نیست؛ ابتدا اعتبارسنجی جداگانه لازم است.",
   ARTIFACT_EXPIRED: "مدت دسترسی فایل پایان یافته است.", ARTIFACT_REVOKED: "دسترسی این فایل لغو شده است.",
@@ -78,7 +88,7 @@ export const p06ErrorMessages = {
   ARCHIVE_INTEGRITY: "ورودی حفظ‌شده با انتظار پردازش سازگار نیست؛ ادامه متوقف شده است.",
   CHECKPOINT_INTEGRITY: "نقطهٔ ادامهٔ کار قابل تأیید نیست؛ نتیجه را با مدیر سامانه بررسی کنید.",
   POLICY_CHANGED: "مجوز یا سیاست جاری تغییر کرده است؛ ادامه نیازمند بررسی تازهٔ سرور است.",
-  INVALID_ARTIFACT_KIND: "فقط یکی از چهار نوع JSON مجاز را انتخاب کنید.",
+  INVALID_ARTIFACT_KIND: "یکی از نوع‌های JSON مجاز را انتخاب کنید.",
   RESOURCE_VERSION_CHANGED: "نسخهٔ هدف تغییر کرده؛ هدف و نسخهٔ جاری را دوباره بررسی کنید.",
   JOB_NOT_RETRYABLE: "این کار قابل تلاش دوباره نیست؛ علت خطا یا سقف سه تلاش را بررسی کنید.",
   JOB_NOT_CANCELLABLE: "کار در وضعیت قابل لغو نیست؛ نسخهٔ تازه را دریافت کنید.",

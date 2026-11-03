@@ -31,7 +31,7 @@ class AdminArtifact(models.Model):
         default_permissions = ()
         constraints = [
             models.CheckConstraint(condition=models.Q(state__in=("quarantine", "ready", "rejected", "revoked", "expired")), name="ck_cms_artifact_state"),
-            models.CheckConstraint(condition=models.Q(kind__in=("research_json", "dsm_json", "assessment_json", "evidence_json")), name="ck_cms_artifact_kind"),
+            models.CheckConstraint(condition=models.Q(kind__in=("research_json", "dsm_json", "assessment_json", "evidence_json", "learning_json", "learning_export_json")), name="ck_cms_artifact_kind"),
         ]
 
 
@@ -44,6 +44,7 @@ class AdminJob(models.Model):
     session = models.ForeignKey("AdminSession", null=True, on_delete=models.SET_NULL, related_name="jobs")
     policy_version = models.PositiveBigIntegerField()
     artifact = models.ForeignKey(AdminArtifact, on_delete=models.PROTECT, related_name="jobs")
+    output_artifact = models.ForeignKey(AdminArtifact, null=True, blank=True, on_delete=models.PROTECT, related_name="output_jobs")
     request_key = models.UUIDField()
     payload_digest = models.CharField(max_length=64)
     status = models.CharField(max_length=24, default="queued")
@@ -67,7 +68,7 @@ class AdminJob(models.Model):
         constraints = [
             models.UniqueConstraint(fields=("actor_ref", "request_key"), name="uq_cms_job_request"),
             models.CheckConstraint(condition=models.Q(status__in=("queued", "running", "succeeded", "failed", "cancelled", "reconciling")), name="ck_cms_job_status"),
-            models.CheckConstraint(condition=models.Q(kind__in=("research_intake", "artifact_cleanup")), name="ck_cms_job_kind"),
+            models.CheckConstraint(condition=models.Q(kind__in=("research_intake", "artifact_cleanup", "learning_import", "learning_export")), name="ck_cms_job_kind"),
         ]
         indexes = [models.Index(fields=("status", "available_at"), name="cms_job_claim_idx")]
 

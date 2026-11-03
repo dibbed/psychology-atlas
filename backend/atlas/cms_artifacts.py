@@ -36,8 +36,8 @@ MAX_DEPTH = 64
 MAX_STRING = 100000
 MAX_NODES = 1000000
 MAX_EVIDENCE_BYTES = 65536
-KINDS = {"research_json": "research", "dsm_json": "dsm", "assessment_json": "assessment"}
-PURPOSES = {"research_review", "source_review", "rights_review", "intake_validation"}
+KINDS = {"research_json": "research", "dsm_json": "dsm", "assessment_json": "assessment", "learning_json": "learning"}
+PURPOSES = {"research_review", "source_review", "rights_review", "intake_validation", "learning_authoring"}
 
 
 def _uuid(value):
@@ -108,7 +108,16 @@ def artifact_bytes(artifact):
 def artifact_scope(actor, artifact, download=False):
     held = effective_permissions(actor)
     reviewer = False
-    if artifact.kind == "evidence_json":
+    learning = artifact.kind in {"learning_json", "learning_export_json"}
+    if learning:
+        if artifact.domain != "learning":
+            raise CMSFailure("NOT_FOUND", 404)
+        require(actor, "cms_learning_view")
+        if download or artifact.kind == "learning_export_json" or artifact.resource_type == "learning_export_manifest":
+            require(actor, "cms_learning_export")
+        else:
+            require(actor, "cms_learning_edit")
+    elif artifact.kind == "evidence_json":
         from .cms_governance import entry, resource_binding
         if artifact.domain != entry(artifact.resource_type)[1]:
             raise CMSFailure("NOT_FOUND", 404)
@@ -129,8 +138,22 @@ def artifact_scope(actor, artifact, download=False):
     require(actor, "cms_" + artifact.domain + "_view")
     if download:
         require(actor, "cms_artifact_download")
-    elif artifact.kind in KINDS:
+    elif artifact.kind in KINDS and not learning:
         require(actor, "cms_research_intake" if artifact.domain == "research" else "cms_" + artifact.domain + "_edit")
+
+
+def learning_artifact_filter(held, *, prefix=""):
+    scope, allowed = Q(pk__in=[]), False
+    if "cms_learning_view" in held:
+        base = {prefix + "domain": "learning"}
+        if "cms_learning_edit" in held:
+            scope |= Q(**base, **{prefix + "kind": "learning_json", prefix + "resource_type": ""})
+            allowed = True
+        if "cms_learning_export" in held:
+            scope |= Q(**base, **{prefix + "kind": "learning_export_json"}) | Q(**base, **{
+                prefix + "kind": "learning_json", prefix + "resource_type": "learning_export_manifest"})
+            allowed = True
+    return scope, allowed
 
 
 def get_artifact(actor, artifact_id, download=False, lock=False):
@@ -407,6 +430,10 @@ def cleanup_eligible(artifact):
             or AdminJob.objects.filter(kind="research_intake", artifact__sha256=artifact.sha256,
                 status__in=("queued", "running", "reconciling", "succeeded")).exists()):
         raise CMSFailure("ARTIFACT_RETENTION_HOLD", 409)
+    if AdminJob.objects.filter(kind__in=("learning_import", "learning_export"),
+            status__in=("queued", "running", "reconciling")).filter(
+                Q(artifact_id=artifact.pk) | Q(output_artifact_id=artifact.pk)).exists():
+        raise CMSFailure("ARTIFACT_RETENTION_HOLD", 409)
     from .cms_governance_models import GovernanceRevision
     # SQLite has no JSON containment; inspect both fields in every immutable revision.
     for payload in GovernanceRevision.objects.values_list("payload", flat=True).iterator():
@@ -537,7 +564,7 @@ def reconcile_cleanup(job):
     return None
 
 
-def bounded_json(raw):
+def bounded_json(raw, *, protect_assessment=True):
     if not isinstance(raw, bytes) or not 0 < len(raw) <= MAX_BYTES:
         raise CMSFailure("JSON_LIMIT", 400)
     def pairs(items):
@@ -564,7 +591,7 @@ def bounded_json(raw):
             if any(len(key) > 500 or any(0xD800 <= ord(c) <= 0xDFFF for c in key) for key in value):
                 raise CMSFailure("JSON_LIMIT", 400)
             # Shallow checks reuse the guard without materializing thousands of deep error paths.
-            if protected_paths({unicodedata.normalize("NFKC", key): None for key in value}):
+            if protect_assessment and protected_paths({unicodedata.normalize("NFKC", key): None for key in value}):
                 raise CMSFailure("PROTECTED_CONTENT", 400)
             stack.extend((child, depth + 1) for child in value.values())
         elif isinstance(value, list):
@@ -627,6 +654,10 @@ def _assessment(text, document):
 
 
 def prepare_document(kind, raw):
+    if kind == "learning_json":
+        from .cms_learning_io import parse_bundle
+        document, entries = parse_bundle(raw)
+        return raw.decode("utf-8"), document, {}, [], {"cms_domain": "learning", "list_record_total": len(entries)}
     text, document = bounded_json(raw)
     importer = ResearchImporter()
     if kind == "research_json":
@@ -691,6 +722,8 @@ def validate_artifact(actor_id, session_id, artifact_id, expected, request_id):
         actor = _write_authority(actor_id, session_id)
         artifact = get_artifact(actor, artifact_id, lock=True)
         _edit_scope(actor, artifact)
+        if artifact.kind == "learning_export_json" or artifact.resource_type == "learning_export_manifest":
+            raise CMSFailure("INVALID_ARTIFACT_OPERATION", 409)
         if type(expected) is not int or artifact.version != expected:
             raise CMSFailure("STALE_REVISION", 412)
         if artifact.state != "quarantine" or artifact.expires_at <= timezone.now():

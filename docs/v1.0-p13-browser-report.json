@@ -30,6 +30,7 @@
     "quiz archives through the actual keyboard-submitted MFA form",
     "quiz archive preserves all eight history/progress/SRS table digests",
     "quiz archive receipt is read-only and fits the RTL mobile layout",
+    "Reselecting the loaded current practice kind does not leave the catalog stuck loading",
     "daily archives through the actual keyboard-submitted MFA form",
     "daily archive preserves all eight history/progress/SRS table digests",
     "daily archive receipt is read-only and fits the RTL mobile layout",
@@ -43,6 +44,27 @@
     "Fresh learner writes are denied after Archive: /daily-challenge/",
     "Fresh learner writes are denied after Archive: /cognitive-distortions/practice/p13-archive-practice/submit/",
     "Authorized historical quiz totals and pinned Daily result survive; all eight tables are unchanged",
+    "View-only MFA role has no transfer forms and cannot forge import or export selection",
+    "Actual uploaded four-kind JSON is validated privately before enqueue",
+    "Lost import response after real worker commit reconciles the same key and one four-item result through UI",
+    "Native import creates four new parents once with one job/audit and unchanged eight-table history",
+    "quiz imported draft is private, unseeded, unarchived and without learner history",
+    "flashcard imported draft is private, unseeded, unarchived and without learner history",
+    "daily imported draft is private, unseeded, unarchived and without learner history",
+    "distortions imported draft is private, unseeded, unarchived and without learner history",
+    "Imported private authoring content does not grant public availability",
+    "Import job detail displays final native worker result and fresh IDs",
+    "Keyboard export with lost response after commit reconciles the same manifest/job/key through UI",
+    "Real private download contains exactly the four closed content graphs and no user/progress metadata",
+    "View-only role cannot read generated output metadata",
+    "Actual output-file revocation immediately closes its download control",
+    "Revoked output becomes cleanup-eligible through UI after actual expiry without changing revoked state",
+    "Native cleanup finishes with expired metadata, unavailable bytes and unchanged history",
+    "Export-only actor can reach the scoped job list through actual CMS navigation",
+    "Export-only MFA actor has no import/upload/editor form and cannot forge import",
+    "Export-only actor completes native worker export and real download without edit/upload",
+    "Actual transfer result fits the 320px RTL layout with keyboard controls",
+    "All transfer operations retain exact job/audit counts and unchanged canonical content/history after exports",
     "No uncaught browser runtime errors"
   ],
   "screenshots": [
@@ -52,12 +74,14 @@
     "archive-flashcard-mobile.png",
     "archive-quiz-mobile.png",
     "archive-daily-mobile.png",
-    "archive-distortions-mobile.png"
+    "archive-distortions-mobile.png",
+    "transfer-export-only-mobile.png",
+    "transfer-output-mobile.png"
   ],
   "errors": [],
   "limits": [
     "Synthetic isolated SQLite only",
-    "No scientific/rights approval or publication; import/export is a separate gate"
+    "No scientific/rights approval or publication; no production rollout"
   ],
-  "completed_at": "2026-11-02T16:18:25.647Z"
+  "completed_at": "2026-11-03T18:43:31.000Z"
 }

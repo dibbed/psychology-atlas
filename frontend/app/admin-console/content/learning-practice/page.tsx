@@ -59,7 +59,7 @@ export default function PracticeCMS(){
     finally{setBusy(false);}
   };
   const switchKind=(value:Kind)=>{
-    if(busy)return;
+    if(busy||value===kind)return;
     if(dirty&&!window.confirm("ویرایش‌های ثبت‌نشده کنار گذاشته شوند؟"))return;
     setKind(value);setPage(1);setSelected(undefined);setError("");setLoading(true);setDirty(false);
   };

@@ -25,12 +25,16 @@ jobs:
     env:
       DEBUG: "1"
       DB_ENGINE: sqlite
-      SQLITE_PATH: ./data/ci.sqlite3
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUNBUFFERED: "1"
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Isolate SQLite runtime and test databases
+        run: |
+          echo "SQLITE_PATH=$RUNNER_TEMP/atlas-backend-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.sqlite3" >> "$GITHUB_ENV"
+          echo "SQLITE_TEST_PATH=$RUNNER_TEMP/atlas-backend-tests-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.sqlite3" >> "$GITHUB_ENV"
 
       - name: Set up Python 3.12
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -65,7 +69,7 @@ jobs:
           python ../scripts/validate_brain_dossier.py --self-test
           python ../scripts/validate_brain_dossier.py \
             --dossier ../docs/research/brain/v0.9.2b/psychology_atlas_brain_curated_dossier_v0.9.2b.json \
-            --database data/ci.sqlite3 \
+            --database "$SQLITE_PATH" \
             --output "$RUNNER_TEMP/brain-dossier-validation"
 
       - name: Compile Python modules
@@ -122,6 +126,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Isolate fallback SQLite paths
+        run: |
+          echo "SQLITE_PATH=$RUNNER_TEMP/atlas-pg-fallback-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.sqlite3" >> "$GITHUB_ENV"
+          echo "SQLITE_TEST_PATH=$RUNNER_TEMP/atlas-pg-tests-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.sqlite3" >> "$GITHUB_ENV"
       - name: Set up Python 3.12
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -163,7 +171,7 @@ jobs:
 
 
       - name: Learning editor metadata and history preservation
-        run: python manage.py test atlas.tests_v100_p13_learning atlas.tests_v100_p13_flashcards atlas.tests_v100_p13_practice atlas.tests_v100_p13_archive --noinput --verbosity 2 --timing
+        run: python manage.py test atlas.tests_v100_p13_learning atlas.tests_v100_p13_flashcards atlas.tests_v100_p13_practice atlas.tests_v100_p13_archive atlas.tests_v100_p13_learning_io --noinput --verbosity 2 --timing
 
   frontend-build:
     name: Frontend typecheck and build
@@ -220,6 +228,7 @@ jobs:
       - name: Configure disposable runner paths
         run: |
           echo "SQLITE_PATH=$RUNNER_TEMP/browser-release.sqlite3" >> "$GITHUB_ENV"
+          echo "SQLITE_TEST_PATH=$RUNNER_TEMP/browser-release-tests.sqlite3" >> "$GITHUB_ENV"
           echo "EMPTY_SQLITE_PATH=$RUNNER_TEMP/browser-empty.sqlite3" >> "$GITHUB_ENV"
           echo "BROWSER_QA_OUTPUT=$RUNNER_TEMP/browser-qa" >> "$GITHUB_ENV"
           echo "NODE_PATH=$RUNNER_TEMP/browser-tools/node_modules" >> "$GITHUB_ENV"

@@ -33,7 +33,13 @@ def require_intake(actor):
 
 def action_scope(actor, artifact, kind):
     from .cms_artifacts import _edit_scope
-    if kind == "research_intake":
+    if kind in {"learning_import", "learning_export"}:
+        from .cms_learning_io import require_transfer
+        require_transfer(actor, kind)
+        expected_type = "learning_export_manifest" if kind == "learning_export" else ""
+        if artifact.kind != "learning_json" or artifact.domain != "learning" or artifact.resource_type != expected_type:
+            raise CMSFailure("INVALID_JOB_INPUT", 409)
+    elif kind == "research_intake":
         require_intake(actor)
     elif kind == "artifact_cleanup":
         require(actor, "cms_enter")
@@ -58,12 +64,25 @@ def job_scope(actor, job):
 
 
 def visible_jobs(actor, rows):
-    from .cms_artifacts import KINDS
+    from .cms_artifacts import KINDS, learning_artifact_filter
     require(actor, "cms_enter")
     held = effective_permissions(actor)
     scope = Q(pk__in=[])
     allowed = False
+    if {"cms_learning_view", "cms_learning_export"} <= held:
+        scope |= Q(kind="learning_export", artifact__kind="learning_json", artifact__domain="learning",
+                   artifact__resource_type="learning_export_manifest")
+        allowed = True
+    if {"cms_learning_view", "cms_learning_create", "cms_learning_edit", "cms_artifact_upload"} <= held:
+        scope |= Q(kind="learning_import", artifact__kind="learning_json", artifact__domain="learning", artifact__resource_type="")
+        allowed = True
+    if "cms_artifact_upload" in held:
+        learning, granted = learning_artifact_filter(held, prefix="artifact__")
+        scope |= Q(kind="artifact_cleanup") & learning
+        allowed |= granted
     for kind, domain in KINDS.items():
+        if domain == "learning":
+            continue
         write = "cms_research_intake" if domain == "research" else f"cms_{domain}_edit"
         if {f"cms_{domain}_view", write} <= held:
             base = Q(artifact__kind=kind, artifact__domain=domain)
@@ -97,11 +116,12 @@ def get_job(actor, job_id, lock=False):
 
 
 def job_data(job):
-    allowed = {"dataset_id", "records", "duplicate", "artifact_id", "cleaned"}
+    allowed = {"dataset_id", "records", "duplicate", "artifact_id", "cleaned", "items", "created"}
     return {"id": str(job.pk), "kind": job.kind, "status": job.status, "version": job.version,
         "attempt": job.attempt, "progress_done": job.progress_done, "progress_total": job.progress_total,
         "cancel_requested": job.cancel_requested, "error_code": job.error_code,
-        "artifact_id": str(job.artifact_id), "result": {k: v for k, v in job.result.items() if k in allowed},
+        "artifact_id": str(job.artifact_id), "output_artifact_id": str(job.output_artifact_id) if job.output_artifact_id else None,
+        "result": {k: v for k, v in job.result.items() if k in allowed},
         "created_at": job.created_at.isoformat(), "updated_at": job.updated_at.isoformat(),
         "retry_available": job.status == "failed" and job.attempt < MAX_ATTEMPTS and job.error_code in MANUAL_RETRY}
 
@@ -123,7 +143,7 @@ def enqueue_job(actor_id, session_id, artifact_id, request_key, request_id, *, k
             if type(expected) is not int or artifact.version != expected:
                 raise CMSFailure("STALE_REVISION", 412)
             cleanup_eligible(artifact)
-        elif artifact.kind not in {"research_json", "dsm_json", "assessment_json"} or artifact.state != "ready" or artifact.expires_at <= timezone.now():
+        elif artifact.kind not in ({"learning_json"} if kind in {"learning_import", "learning_export"} else {"research_json", "dsm_json", "assessment_json"}) or artifact.state != "ready" or artifact.expires_at <= timezone.now():
             raise CMSFailure("ARTIFACT_NOT_READY", 409)
         fingerprint = artifact_digest(artifact, kind)
         actor_ref = attribution(actor.pk)
@@ -152,7 +172,7 @@ def _authority(job, policy):
     if job.kind == "artifact_cleanup":
         from .cms_artifacts import cleanup_eligible
         cleanup_eligible(artifact)
-    elif artifact.kind not in {"research_json", "dsm_json", "assessment_json"} or artifact.state != "ready" or artifact.expires_at <= timezone.now():
+    elif artifact.kind not in ({"learning_json"} if job.kind in {"learning_import", "learning_export"} else {"research_json", "dsm_json", "assessment_json"}) or artifact.state != "ready" or artifact.expires_at <= timezone.now():
         raise CMSFailure("ARTIFACT_NOT_READY", 409)
     if job.payload_digest != artifact_digest(artifact, job.kind):
         raise CMSFailure("ARTIFACT_CHANGED", 409)
@@ -204,7 +224,11 @@ def claim_job():
         if job.status == "running" and (job.checkpoint.get("complete") is True or job.kind == "artifact_cleanup" and job.checkpoint.get("cleanup_prepared") is True):
             from .cms_artifacts import reconcile_intake, reconcile_cleanup
             try:
-                result = (reconcile_cleanup if job.kind == "artifact_cleanup" else reconcile_intake)(job)
+                if job.kind in {"learning_import", "learning_export"}:
+                    from .cms_learning_io import reconcile_learning
+                    result = reconcile_learning(job)
+                else:
+                    result = (reconcile_cleanup if job.kind == "artifact_cleanup" else reconcile_intake)(job)
             except CMSFailure:
                 job.status, job.error_code = "failed", "CHECKPOINT_INTEGRITY"
                 job.lease_token, job.lease_expires_at = None, None
@@ -288,7 +312,10 @@ def run_once():
         return job
     try:
         checkpoint_job(job.pk, job.lease_token, lambda row: None)
-        if job.kind == "artifact_cleanup":
+        if job.kind in {"learning_import", "learning_export"}:
+            from .cms_learning_io import process_learning
+            result = process_learning(job.pk, job.lease_token)
+        elif job.kind == "artifact_cleanup":
             from .cms_artifacts import process_cleanup
             result = process_cleanup(job.pk, job.lease_token)
         else:

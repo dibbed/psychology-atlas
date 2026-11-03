@@ -17,6 +17,8 @@ export default function ContentHome() {
     {can('cms_learning_view') && <a className="card cms-domain" href="/admin-console/content/learning-practice"><h2>چالش روزانه و تمرین خطاهای شناختی</h2><p>Draft خصوصی، پاسخ‌های معتبر و پیش‌نمایش بدون ثبت فعالیت</p></a>}
     {can('cms_learning_view') && <a className="card cms-domain" href="/admin-console/content/learning-flashcards"><h2>کارت‌های یادگیری و SRS</h2><p>ساخت کارت جدید و ویرایش محافظت‌شده، بدون بازنویسی سابقهٔ مرور</p></a>}
     {can('cms_learning_view') && <a className="card cms-domain" href="/admin-console/content/learning-quizzes"><h2>مدیریت آزمون‌های آموزشی</h2><p>ساخت Draft غیرفعال، ویرایش ایمن کلید پاسخ و پیش‌نمایش بدون ثبت تلاش واقعی</p></a>}
+    {can('cms_learning_view')&&(can('cms_learning_export')||(can('cms_learning_create')&&can('cms_learning_edit')&&can('cms_artifact_upload')))&&
+      <a className="card cms-domain" href="/admin-console/content/learning-transfer"><h2>ورود و خروجی خصوصی محتوای آموزشی</h2><p>بستهٔ محدود، Draft تازه و کار قابل‌پیگیری؛ بدون بازنویسی سابقه یا انتشار</p></a>}
     {can('cms_cases_preview') && <a className="card cms-domain" href="/admin-console/content/cases"><h2>بازرسی CaseRevision</h2><p>نمای خصوصی مراحل، انتخاب‌ها و انتقال‌های کیس؛ بدون تغییر تلاش‌های قبلی یا انتشار</p></a>}
   </div>;
 }
