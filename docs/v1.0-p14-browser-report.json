@@ -1,0 +1,33 @@
+{
+  "stage": "P14",
+  "status": "PASS",
+  "checks": [
+    "Content curator cannot read account or role metadata",
+    "Actual role editor receives direct permissions separately from inherited effective grants",
+    "Dirty notification preserves the unsaved direct grant and its version snapshot",
+    "Keyboard and fresh MFA save a real direct grant through RolePolicy",
+    "Real group creation is policy-versioned, MFA-bound and audited",
+    "Confirmed pagination discards the old group draft instead of rebinding it to a concurrent fresh policy tag",
+    "Discarded group editing preserves the real concurrent role update",
+    "Group assignment creates inherited access without copying it into direct grants",
+    "Own-session confirmation follows the self contract without a cross-user revoke capability",
+    "Least-privilege staff revoke only their own session and the owner remains signed in",
+    "Revoking a selected session immediately fences the actual second browser",
+    "Last Owner removal rolls back and the real owner session remains valid",
+    "Sensitive account deactivation uses existing security-generation revocation",
+    "Account controls fit a 320px RTL viewport",
+    "Maintained MFA flow generates ten replacement recovery codes once and never redisplays them",
+    "New one-time recovery proof revokes own MFA and logs out the actual session",
+    "No uncaught browser errors"
+  ],
+  "screenshots": [
+    "account-controls-mobile.png"
+  ],
+  "errors": [],
+  "limits": [
+    "Synthetic accounts only",
+    "Privacy export/erase and approved retention remain separate gates",
+    "No offline owner identity approval or production recovery"
+  ],
+  "completed_at": "2026-11-03T19:00:41.927Z"
+}

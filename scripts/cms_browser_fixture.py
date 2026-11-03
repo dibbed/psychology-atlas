@@ -15,7 +15,7 @@ artifact_command = sys.argv[1:] if len(sys.argv) > 1 else []
 if artifact_command and (phase != "p06" or len(artifact_command) != 3
         or artifact_command[:2] not in (["--p06-artifact", "age"], ["--p06-artifact", "state"])):
     raise RuntimeError("Only explicit P06 artifact age/state commands are supported")
-guarded_prefix = {"p05": "atlas-p05-browser-", "p06": "atlas-p06-browser-", "p07": "atlas-p07-browser-", "p08": "atlas-p08-browser-", "p09": "atlas-p09-browser-", "p10": "atlas-p10-browser-", "p11": "atlas-p11-browser-", "p12": "atlas-p12-browser-", "p13": "atlas-p13-browser-"}.get(phase)
+guarded_prefix = {"p05": "atlas-p05-browser-", "p06": "atlas-p06-browser-", "p07": "atlas-p07-browser-", "p08": "atlas-p08-browser-", "p09": "atlas-p09-browser-", "p10": "atlas-p10-browser-", "p11": "atlas-p11-browser-", "p12": "atlas-p12-browser-", "p13": "atlas-p13-browser-", "p14": "atlas-p14-browser-"}.get(phase)
 if guarded_prefix and (
         not database.is_relative_to(Path(tempfile.gettempdir()).resolve())
         or database.name != "cms-journey.sqlite3"
@@ -642,6 +642,13 @@ if phase == "p13":
         "public_card": public_card.pk, "daily": daily.pk, "practice": practice.pk,
         "concept": concept.pk, "disorder": disorder.pk, "quiz_question": question.pk,
         "quiz_choice": choice.pk, "daily_choice": daily_choice.pk, "practice_choice": practice_choice.pk}}
+
+if phase == "p14":
+    from django.contrib.auth.models import Group
+    permission = Permission.objects.get(content_type__app_label="atlas", content_type__model="rolepolicy", codename="cms_learning_view")
+    for index in range(25):
+        group = Group.objects.create(name=f"P14 pagination fixture {index:02}")
+        group.permissions.add(permission)
 
 # Credentials go only to the harness's private pipe, never into reports or logs.
 print(json.dumps({"users": users, "category": str(state.pk), **review_fixture}))

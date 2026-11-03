@@ -93,7 +93,7 @@ export default function CmsShell({ children }: { children: React.ReactNode }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const logoutBusy = useRef(false);
   const hasSession = useRef(false);
-  const can = (cap: string) => !!me?.ready_capabilities.includes(cap);
+  const can = useCallback((cap: string) => !!me?.ready_capabilities.includes(cap), [me]);
   const markDirty = useCallback((value: boolean) => { dirtyRef.current = value; setDirty(value); }, []);
   const load = useCallback(async () => {
     setLoading(true); setError(undefined);
@@ -142,10 +142,13 @@ export default function CmsShell({ children }: { children: React.ReactNode }) {
     { href: "/admin-console/research/intake", label: "ورود و فایل‌های خصوصی", icon: BookOpenText, ready: can("cms_enter") && (can("cms_artifact_upload") || can("cms_artifact_download")) },
     { href: "/admin-console/jobs", label: "کارهای پردازش", icon: ListChecks, ready: can("cms_enter") && (can("cms_artifact_upload") || (can("cms_research_view") && can("cms_research_intake")) || (can("cms_learning_view") && can("cms_learning_export"))) },
     { href: "/admin-console/audit", label: "تاریخچهٔ عملیات", icon: History, ready: can("cms_audit_view") },
+    { href: "/admin-console/accounts", label: "حساب‌ها", icon: ShieldCheck, ready: can("cms_user_view") },
+    { href: "/admin-console/roles", label: "نقش‌ها و گروه‌ها", icon: ShieldCheck, ready: can("cms_roles_view") },
+    { href: "/admin-console/security", label: "امنیت حساب من", icon: ShieldCheck, ready: can("cms_enter") },
   ].filter(item => item.ready);
   const future = [
     ["cms_brain_view", "اطلس مغز"], ["cms_assessment_view", "ارزیابی‌ها"], ["cms_cases_view", "کیس‌ها"],
-    ["cms_publication_view", "انتشار"], ["cms_roles_view", "نقش‌ها و دسترسی"],
+    ["cms_publication_view", "انتشار"],
   ].filter(([cap]) => catalog?.capabilities.some(item => item.codename === cap));
   return <Context.Provider value={{ me, can, setDirty: markDirty, leave }}>
     <div className="cms-root" onClickCapture={event => {

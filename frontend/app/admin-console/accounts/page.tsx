@@ -1,48 +1,45 @@
 "use client";
 import {useEffect,useState,type FormEvent} from "react";
-import {cms,CmsError,type CmsPage} from "@/lib/cms";
-import {CmsState,useCms} from "@/components/cms/CmsShell";
+import {CmsError,type CmsPage} from "@/lib/cms";
+import {CmsState} from "@/components/cms/CmsShell";
+import {usePrivateCms} from "@/components/cms/CmsJobsShared";
+import AccountAccess from "@/components/cms/AccountAccess";
+import RoleGroups from "@/components/cms/RoleGroups";
 
 type Account={id:number;username:string;is_active:boolean;is_staff:boolean;
   effective_permissions?:string[]};
-type SessionSummary={id:string;created_at:string;last_seen:string;expires_at:string;revoked_at:string|null};
 const message=(e:unknown)=>e instanceof CmsError?e.message:"دادهٔ حساب دریافت نشد.";
 export default function AccountsDirectory(){
-  const {can}=useCms();const allowed=can("cms_user_view");
+  const {can,request,current,leave}=usePrivateCms();const allowed=can("cms_user_view");
   const [term,setTerm]=useState("");const [query,setQuery]=useState("");
   const [page,setPage]=useState(1);const [rows,setRows]=useState<CmsPage<Account>>();
   const [detail,setDetail]=useState<Account>();
-  const [sessions,setSessions]=useState<CmsPage<SessionSummary>>();
-  const [sessionsError,setSessionsError]=useState("");
   const [loading,setLoading]=useState(true);const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
   useEffect(()=>{
     if(!allowed)return;
     let valid=true;
     const params=new URLSearchParams({q:query,page:String(page),page_size:"30"});
-    void cms<CmsPage<Account>>("/users/?"+params.toString())
-      .then(r=>{if(valid){setRows(r.data);setLoading(false);setError("");}})
-      .catch(e=>{if(valid){setError(message(e));setLoading(false);}});
+    void request<CmsPage<Account>>("/users/?"+params.toString())
+      .then(r=>{if(valid&&current()){setRows(r.data);setLoading(false);setError("");}})
+      .catch(e=>{if(valid&&current()){setError(message(e));setLoading(false);}});
     return ()=>{valid=false;};
-  },[allowed,page,query]);
+  },[allowed,page,query,request,current]);
   const search=(event:FormEvent<HTMLFormElement>)=>{
-    event.preventDefault();setDetail(undefined);setPage(1);setLoading(true);
-    setQuery(term.trim());
+    event.preventDefault();leave(()=>{setDetail(undefined);setPage(1);setLoading(true);setQuery(term.trim());});
   };
   const open=async(id:number)=>{
-    setBusy(true);setError("");setDetail(undefined);setSessions(undefined);setSessionsError("");
+    setBusy(true);setError("");setDetail(undefined);
     try{
-      const res=await cms<Account>("/users/"+id+"/");
-      setDetail(res.data);
-    }catch(e){setError(message(e));}
-    finally{setBusy(false);}
+      const res=await request<Account>("/users/"+id+"/");
+      if(current())setDetail(res.data);
+    }catch(e){if(current())setError(message(e));}
+    finally{if(current())setBusy(false);}
   };
-  const showSessions=async(userId:number)=>{
-    setSessions(undefined);setSessionsError("");setBusy(true);
-    try{const response=await cms<CmsPage<SessionSummary>>("/sessions/?user_id="+userId+"&page=1&page_size=30");
-      setSessions(response.data);}
-    catch(e){setSessionsError(message(e));}
-    finally{setBusy(false);}
+  const refreshDetail=async()=>{
+    if(!detail)return;
+    const response=await request<Account>("/users/"+detail.id+"/");
+    if(current()){setDetail(response.data);setRows(old=>old?{...old,results:old.results.map(row=>row.id===response.data.id?response.data:row)}:old);}
   };
   if(!allowed)return <CmsState empty="برای دسترسی به فهرست کاربران به مجوز cms_user_view نیاز است."/>;
   return <div className="stack" dir="rtl">
@@ -67,7 +64,7 @@ export default function AccountsDirectory(){
           <strong><bdi>{user.username}</bdi></strong>
           <span> شناسه {user.id} | {user.is_active?"فعال":"غیرفعال"} | {user.is_staff?"پرسنل":"کاربر معمولی"}</span>
           <button type="button" className="button secondary" disabled={busy}
-            onClick={()=>void open(user.id)}>جزئیات مجاز</button>
+            onClick={()=>leave(()=>void open(user.id))}>جزئیات مجاز</button>
         </li>)}</ul>}
       {rows&&rows.count>rows.page_size&&<div className="cms-filters">
         <button className="button secondary" type="button" disabled={page<=1||loading}
@@ -88,18 +85,9 @@ export default function AccountsDirectory(){
           <ul dir="ltr">{detail.effective_permissions.map(cap=>
             <li key={cap}><code>{cap}</code></li>)}</ul>}
       </>}
-      {can("cms_user_revoke_sessions")&&<div className="stack">
-        <h3>نمای محدود نشست‌های مدیریت</h3>
-        <button type="button" className="button secondary" disabled={busy}
-          onClick={()=>void showSessions(detail.id)}>نمایش نشست‌های مجاز</button>
-        {sessionsError&&<p role="alert">{sessionsError}</p>}
-        {sessions&&<ul>{sessions.results.map(item=><li key={item.id}>
-          ساخته‌شده: <time dateTime={item.created_at}>{item.created_at}</time> |
-          انقضا: <time dateTime={item.expires_at}>{item.expires_at}</time> |
-          {item.revoked_at?" باطل‌شده":" ثبت‌شده"}
-        </li>)}</ul>}
-      </div>}
-      <p className="muted">تغییر وضعیت، بازیابی حساب یا خواندن دادهٔ خصوصی از این بخش مجاز نیست. عملیات حساس باید از گردش‌کار دارای MFA، علت و audit انجام شوند.</p>
+      <AccountAccess key={detail.id} userId={detail.id} onChanged={refreshDetail}/>
+      <p className="muted">خواندن یا انتقال دادهٔ خصوصی به مجوز و هدف مستقل نیاز دارد. تصمیم retention و حذف باید جداگانه تأیید شود.</p>
     </section>}
+    {!detail&&<RoleGroups/>}
   </div>;
 }

@@ -1,13 +1,16 @@
 {% extends "two_factor/_base_focus.html" %}{% load i18n %}
-{% block title %}{% trans "Recovery codes" %}{% endblock %}
+{% block title %}کدهای بازیابی{% endblock %}
 {% block content %}
-<h1>{% trans "Recovery codes" %}</h1>
+<section dir="rtl" lang="fa">
+<h1>کدهای بازیابی حساب من</h1>
 {% if codes %}
-  <p>{% trans "Save these codes offline. Each code works once. They will not be displayed again." %}</p>
-  <ul>{% for code in codes %}<li><code>{{ code }}</code></li>{% endfor %}</ul>
+  <p>این کدها را آفلاین و امن نگه دارید. هر کد فقط یک بار استفاده می‌شود و دوباره نمایش داده نمی‌شود.</p>
+  <ul>{% for code in codes %}<li><code dir="ltr">{{ code }}</code></li>{% endfor %}</ul>
 {% else %}
-  <p>{% trans "Remaining codes" %}: {{ remaining }}</p>
+  <p>کدهای استفاده‌نشدهٔ باقی‌مانده: {{ remaining }}</p>
 {% endif %}
-<p>{% trans "Generating new codes replaces all previous codes and requires a fresh verification." %}</p>
-<form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">{% trans "Generate recovery codes" %}</button></form>
+<p>ساخت کدهای تازه، همهٔ کدهای قبلی را جایگزین می‌کند و به تأیید MFA تازه نیاز دارد.</p>
+<form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">ساخت مجموعهٔ تازهٔ کدهای بازیابی</button></form>
+<p><a href="/admin-console/security">بازگشت به امنیت حساب من</a></p>
+</section>
 {% endblock %}

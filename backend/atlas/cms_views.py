@@ -16,7 +16,7 @@ from rest_framework.response import Response
 from rest_framework.renderers import JSONRenderer
 from rest_framework.views import APIView
 
-from .cms_capabilities import CAPABILITIES, READY_CAPABILITIES
+from .cms_capabilities import CAPABILITIES, KNOWN_PERMISSIONS, READY_CAPABILITIES
 from .cms_models import AdminAuditEvent, AdminSession, RolePolicy
 from .cms_policy import CMSFailure, effective_permissions, grantable, mutate_role, policy_lock, require, visible_group
 from .cms_sessions import (binding, consume_step_up, current_session, establish_session, login_attempt,
@@ -289,16 +289,22 @@ class PermissionsView(AdminAPIView):
     capability = "cms_roles_edit"
 
     def get(self, request):
-        return versioned({"permissions": sorted(grantable(request.user))})
+        if request.query_params:
+            raise CMSFailure("INVALID_QUERY", 400)
+        with policy_lock() as policy:
+            require(request.user, self.capability)
+            return versioned({"permissions": sorted(grantable(request.user))}, policy.version)
 
 
 class GroupsView(AdminAPIView):
     capability = "cms_roles_view"
 
     def get(self, request):
-        groups = [g for g in Group.objects.prefetch_related("permissions__content_type").order_by("pk") if visible_group(request.user, g)]
-        meta, groups = page(request, groups)
-        return versioned({**meta, "results": [{"id": g.pk, "name": g.name, "permissions": sorted(p.codename for p in g.permissions.all())} for g in groups]})
+        with policy_lock() as policy:
+            require(request.user, self.capability)
+            groups = [g for g in Group.objects.prefetch_related("permissions__content_type").order_by("pk") if visible_group(request.user, g)]
+            meta, groups = page(request, groups)
+            return versioned({**meta, "results": [{"id": g.pk, "name": g.name, "permissions": sorted(p.codename for p in g.permissions.all())} for g in groups]}, policy.version)
 
     def post(self, request):
         data = payload(request, {"name", "permissions"})
@@ -310,10 +316,14 @@ class GroupView(AdminAPIView):
     capability = "cms_roles_view"
 
     def get(self, request, target_id):
-        group = Group.objects.filter(pk=target_id).first()
-        if group is None or not visible_group(request.user, group):
-            raise CMSFailure("NOT_FOUND", 404)
-        return versioned({"id": group.pk, "name": group.name, "permissions": sorted(group.permissions.values_list("codename", flat=True))})
+        if request.query_params:
+            raise CMSFailure("INVALID_QUERY", 400)
+        with policy_lock() as policy:
+            require(request.user, self.capability)
+            group = Group.objects.filter(pk=target_id).first()
+            if group is None or not visible_group(request.user, group):
+                raise CMSFailure("NOT_FOUND", 404)
+            return versioned({"id": group.pk, "name": group.name, "permissions": sorted(group.permissions.values_list("codename", flat=True))}, policy.version)
 
     def post(self, request, target_id):
         result = mutate_role(request.user.pk, "group", target_id, payload(request, {"permissions"}), expected_version(request), request.cms_session.pk)
@@ -332,12 +342,19 @@ class RoleUserView(AdminAPIView):
     capability = "cms_roles_view"
 
     def get(self, request, target_id):
-        user = User.objects.filter(pk=target_id).first()
-        if user is None:
-            raise CMSFailure("NOT_FOUND", 404)
-        return versioned({"id": user.pk, "username": user.username, "is_active": user.is_active, "is_staff": user.is_staff,
-            "is_superuser": user.is_superuser, "groups": list(user.groups.values_list("pk", flat=True)),
-            "permissions": sorted(effective_permissions(user) & grantable(request.user))})
+        if request.query_params:
+            raise CMSFailure("INVALID_QUERY", 400)
+        with policy_lock() as policy:
+            require(request.user, self.capability)
+            user = User.objects.filter(pk=target_id).first()
+            if user is None:
+                raise CMSFailure("NOT_FOUND", 404)
+            direct = user.user_permissions.filter(content_type__app_label="atlas", content_type__model="rolepolicy",
+                codename__in=KNOWN_PERMISSIONS).values_list("codename", flat=True)
+            return versioned({"id": user.pk, "username": user.username, "is_active": user.is_active, "is_staff": user.is_staff,
+                "is_superuser": user.is_superuser, "groups": list(user.groups.values_list("pk", flat=True)),
+                "permissions": sorted(effective_permissions(user) & grantable(request.user)),
+                "direct_permissions": sorted(direct)}, policy.version)
 
     def post(self, request, target_id):
         result = mutate_role(request.user.pk, "user", target_id,
@@ -350,12 +367,15 @@ class SessionsView(AdminAPIView):
 
     def get(self, request):
         user_id = request.query_params.get("user_id", str(request.user.pk))
-        if not user_id.isascii() or not user_id.isdigit() or len(user_id) > 20:
+        if (not user_id.isascii() or not user_id.isdigit() or len(user_id) > 19
+                or not 0 < int(user_id) < 2**63 or len(request.query_params.getlist("user_id")) > 1):
             raise CMSFailure("INVALID_INPUT", 400)
-        if int(user_id) != request.user.pk:
-            require(request.user, "cms_user_revoke_sessions")
-        meta, rows = page(request, AdminSession.objects.filter(user_id=user_id).order_by("-created_at"), ("user_id",))
-        return Response({**meta, "results": [{"id": str(r.pk), "created_at": r.created_at, "last_seen": r.last_seen, "expires_at": r.expires_at, "revoked_at": r.revoked_at} for r in rows]})
+        with policy_lock() as policy:
+            require(request.user, self.capability)
+            if int(user_id) != request.user.pk:
+                require(request.user, "cms_user_revoke_sessions")
+            meta, rows = page(request, AdminSession.objects.filter(user_id=user_id).order_by("-created_at"), ("user_id",))
+            return versioned({**meta, "results": [{"id": str(r.pk), "created_at": r.created_at, "last_seen": r.last_seen, "expires_at": r.expires_at, "revoked_at": r.revoked_at} for r in rows]}, policy.version)
 
 
 class RevokeSessionView(AdminAPIView):

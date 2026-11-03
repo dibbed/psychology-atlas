@@ -173,6 +173,9 @@ jobs:
       - name: Learning editor metadata and history preservation
         run: python manage.py test atlas.tests_v100_p13_learning atlas.tests_v100_p13_flashcards atlas.tests_v100_p13_practice atlas.tests_v100_p13_archive atlas.tests_v100_p13_learning_io --noinput --verbosity 2 --timing
 
+      - name: Account roles and consistent policy snapshots
+        run: python manage.py test atlas.tests_v100_p14_users --noinput --verbosity 2 --timing
+
   frontend-build:
     name: Frontend typecheck and build
     runs-on: ubuntu-latest
@@ -287,6 +290,7 @@ jobs:
           CMS_QA_PHASE=p08 CMS_QA_PYTHON=python CMS_QA_ORIGIN=http://127.0.0.1:3023 CMS_QA_API_ORIGIN=http://127.0.0.1:8023 CMS_QA_OUTPUT="$RUNNER_TEMP/browser-qa/cms-p08" node scripts/cms_p08_browser_qa.cjs
           CMS_QA_PHASE=p12 CMS_QA_PYTHON=python CMS_QA_ORIGIN=http://127.0.0.1:3023 CMS_QA_API_ORIGIN=http://127.0.0.1:8023 CMS_QA_OUTPUT="$RUNNER_TEMP/browser-qa/cms-p12" node scripts/cms_p12_browser_qa.cjs
           CMS_QA_PHASE=p13 CMS_QA_PYTHON=python CMS_QA_ORIGIN=http://127.0.0.1:3023 CMS_QA_API_ORIGIN=http://127.0.0.1:8023 CMS_QA_OUTPUT="$RUNNER_TEMP/browser-qa/cms-p13" node scripts/cms_p13_browser_qa.cjs
+          CMS_QA_PHASE=p14 CMS_QA_PYTHON=python CMS_QA_ORIGIN=http://127.0.0.1:3023 CMS_QA_API_ORIGIN=http://127.0.0.1:8023 CMS_QA_OUTPUT="$RUNNER_TEMP/browser-qa/cms-p14" node scripts/cms_p14_browser_qa.cjs
       - name: Preserve browser evidence and failure diagnostics
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
