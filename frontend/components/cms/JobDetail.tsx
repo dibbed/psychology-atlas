@@ -83,7 +83,7 @@ export default function JobDetail({ id }: { id: string }) {
         {confirmation && <section className="cms-conflict stack" aria-labelledby="job-confirm"><h3 id="job-confirm">{confirmation === "retry" ? "تأیید تلاش تازه برای همین کار" : "تأیید درخواست لغو"}</h3><p>{confirmation === "retry" ? "فقط خطای قابل بازیابی و کمتر از سه تلاش قابل ادامه است؛ دادهٔ خام دوباره ساخته یا جایگزین نمی‌شود." : "اثر ثبت‌شدهٔ قبلی برگردانده نمی‌شود؛ پردازش در نقطهٔ امن متوقف می‌شود."}</p><div className="cms-actions"><button className="button primary" disabled={busy || blocked} onClick={action}>تأیید {confirmation === "retry" ? "تلاش دوباره" : "درخواست لغو"}</button><button className="button secondary" onClick={() => setConfirmation(undefined)}>انصراف</button></div></section>}
       </section>
       <ArtifactCard key={job.artifact_id} id={job.artifact_id} allowImport={false} onBusy={setCardBusy} />
-      {job.output_artifact_id&&!jobActive(job)&&<section className="stack"><h2>بستهٔ خروجی آموزشی</h2>
+      {job.output_artifact_id&&!jobActive(job)&&<section className="stack"><h2>{job.kind==="privacy_export"?"خروجی اطلاعات شخصی":"بستهٔ خروجی آموزشی"}</h2>
         <ArtifactCard key={job.output_artifact_id} id={job.output_artifact_id} allowImport={false} onBusy={setOutputBusy}/>
       </section>}
       {job.output_artifact_id&&jobActive(job)&&<p role="status">بسته در حال آماده‌سازی است؛ دریافت تا ثبت موفق نتیجه بسته می‌ماند.</p>}

@@ -173,8 +173,8 @@ jobs:
       - name: Learning editor metadata and history preservation
         run: python manage.py test atlas.tests_v100_p13_learning atlas.tests_v100_p13_flashcards atlas.tests_v100_p13_practice atlas.tests_v100_p13_archive atlas.tests_v100_p13_learning_io --noinput --verbosity 2 --timing
 
-      - name: Account roles and consistent policy snapshots
-        run: python manage.py test atlas.tests_v100_p14_users --noinput --verbosity 2 --timing
+      - name: Account roles and purpose-bound privacy
+        run: python manage.py test atlas.tests_v100_p14_users atlas.tests_v100_p14_privacy atlas.tests_v100_p14_privacy_export --noinput --verbosity 2 --timing
 
   frontend-build:
     name: Frontend typecheck and build

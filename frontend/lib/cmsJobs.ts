@@ -1,6 +1,6 @@
 import { cms, CmsError, CmsMe } from "./cms";
 
-export type ArtifactKind = "research_json" | "dsm_json" | "assessment_json" | "evidence_json" | "learning_json" | "learning_export_json";
+export type ArtifactKind = "research_json" | "dsm_json" | "assessment_json" | "evidence_json" | "learning_json" | "learning_export_json" | "privacy_request_json" | "privacy_export_json";
 export type LearningKind = "quiz" | "flashcard" | "daily" | "distortions";
 export const learningKindLabels: Record<LearningKind, string> = {quiz:"آزمون",flashcard:"فلش‌کارت",daily:"چالش روزانه",distortions:"تمرین خطاهای شناختی"};
 export const learningEditorPaths: Record<LearningKind, string> = {quiz:"learning-quizzes",flashcard:"learning-flashcards",daily:"learning-practice",distortions:"learning-practice"};
@@ -11,7 +11,7 @@ export type AdminArtifact = {
   expires_at: string; purged_at: string | null; cleanup_supported?: boolean; validation_code: string; created_at: string;
 };
 export type AdminJob = {
-  id: string; kind: "research_intake" | "artifact_cleanup" | "learning_import" | "learning_export"; status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "reconciling";
+  id: string; kind: "research_intake" | "artifact_cleanup" | "learning_import" | "learning_export" | "privacy_export"; status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "reconciling";
   version: number; attempt: number; progress_done: number; progress_total: number | null;
   error_code: string; artifact_id: string; output_artifact_id: string | null; retry_available: boolean; cancel_requested: boolean;
   result: { dataset_id?: number; records?: number; duplicate?: boolean; artifact_id?: string; cleaned?: boolean;
@@ -40,6 +40,7 @@ export const artifactKindLabels: Record<ArtifactKind, string> = {
   research_json: "دادهٔ پژوهشی JSON", dsm_json: "دادهٔ DSM به صورت JSON",
   assessment_json: "فرادادهٔ ارزیابی JSON", evidence_json: "مدرک JSON؛ بدون گواهی علمی یا حقوقی",
   learning_json: "بستهٔ خصوصی محتوای آموزشی", learning_export_json: "خروجی خصوصی محتوای آموزشی",
+  privacy_request_json:"درخواست خصوصی صاحب داده", privacy_export_json:"خروجی خصوصی اطلاعات شخصی",
 };
 export const artifactStateLabels: Record<AdminArtifact["state"], string> = {
   quarantine: "قرنطینه؛ هنوز اعتبارسنجی نشده", ready: "قالب معتبر؛ آمادهٔ استفادهٔ مجاز",
@@ -52,6 +53,7 @@ export const jobStatusLabels: Record<AdminJob["status"], string> = {
 export const jobKindLabels: Record<AdminJob["kind"], string> = {
   research_intake: "ورود پژوهش", artifact_cleanup: "پاکسازی فایل منقضی بدون وابستگی",
   learning_import:"ورود محتوای آموزشی به Draft تازه", learning_export:"خروجی خصوصی محتوای آموزشی",
+  privacy_export:"خروجی خصوصی اطلاعات شخصی",
 };
 export const researchActionLabels: Record<ResearchAction, string> = {
   map: "ثبت نگاشت مشتق", reject: "رد این رکورد", defer: "تعویق بررسی", stage: "آماده‌سازی برای بررسی آینده",
@@ -60,6 +62,7 @@ export const researchReasons: Record<ResearchAction, string> = {
   map: "RESEARCH_MAP", reject: "RESEARCH_REJECT", defer: "RESEARCH_DEFER", stage: "RESEARCH_STAGE",
 };
 export const p06ErrorMessages = {
+  PRIVACY_DATA_INVALID:"یکی از مقادیر ذخیره‌شده قالب JSON معتبر ندارد؛ دادهٔ اصلی تغییر نکرده است و باید بررسی مجاز شود.",
   INVALID_LEARNING_BUNDLE:"قالب بستهٔ آموزشی بسته و نسخه‌مند است؛ فیلدها و شناسه‌های محلی فایل را بررسی کنید.",
   LEARNING_EXPORT_PROTECTED:"خروجی فقط برای محتوای خصوصی، غیرفعال، غیربذری و بدون سابقه مجاز است.",
   INVALID_REFERENCE:"slug مرجع باید به مفهوم یا اختلال فعال و معتبر اشاره کند.",

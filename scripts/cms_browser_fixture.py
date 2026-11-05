@@ -50,7 +50,7 @@ if guarded_prefix:
             or Path(configured["NAME"]).resolve() != database
             or not database.parent.name.startswith(guarded_prefix)):
         raise RuntimeError(f"{phase.upper()} fixture requires the harness's disposable SQLite database")
-    if phase in {"p06", "p13"} and settings.CMS_ARTIFACT_ROOT.resolve() != database.parent / "private":
+    if phase in {"p06", "p13", "p14"} and settings.CMS_ARTIFACT_ROOT.resolve() != database.parent / "private":
         raise RuntimeError("Configured private storage escaped the disposable harness directory")
 
 if artifact_command:
@@ -662,6 +662,36 @@ if phase == "p14":
     users["privacy_operator"] = {"username": operator.username, "password": password,
         "tokens": [StaticToken.objects.create(device=backup, token=StaticToken.random_token()).token for _ in range(8)]}
     review_fixture["p14"] = {"subject_id": subject.pk, "subject_username": subject.username, "operator_id": operator.pk}
+    exporter = User.objects.create_user("qa_p14_privacy_exporter", password=password, is_staff=True)
+    exporter.user_permissions.add(*Permission.objects.filter(content_type__app_label="atlas", content_type__model="rolepolicy",
+        codename__in=("cms_enter", "cms_user_view", "cms_privacy_export", "cms_artifact_download")))
+    TOTPDevice.objects.create(user=exporter, name="default", confirmed=True)
+    backup = StaticDevice.objects.create(user=exporter, name="backup", confirmed=True)
+    users["privacy_exporter"] = {"username": exporter.username, "password": password,
+        "tokens": [StaticToken.objects.create(device=backup, token=StaticToken.random_token()).token for _ in range(4)]}
+    from atlas.models import (Concept, Quiz, Flashcard, DailyChallenge, CognitiveDistortionPracticeItem)
+    from atlas.services import submit_quiz
+    from atlas.learning import review_flashcard
+    from rest_framework.test import APIClient
+    concept = Concept.objects.create(slug="p14-private-concept", name_en="Synthetic", subtype="cognitive_distortion")
+    other = Concept.objects.create(slug="p14-private-other", name_en="Synthetic other", subtype="cognitive_distortion")
+    quiz = Quiz.objects.create(slug="p14-private-quiz", title="Synthetic", disorder=private_disorder)
+    question = quiz.questions.create(prompt="Synthetic canonical question never exported")
+    choice = question.choices.create(text="Synthetic answer key never exported", is_correct=True)
+    question.choices.create(text="Synthetic distractor", is_correct=False)
+    submit_quiz(user=subject, quiz=quiz, answers=[{"question_id":question.pk,"choice_id":choice.pk}])
+    card = Flashcard.objects.create(slug="p14-private-card", front="Synthetic", back="Synthetic", concept=concept, disorder=private_disorder)
+    review_flashcard(user=subject, flashcard=card, rating="good")
+    daily = DailyChallenge.objects.create(prompt="Synthetic")
+    choice = daily.choices.create(text="Synthetic", is_correct=True)
+    daily.choices.create(text="Synthetic other", is_correct=False)
+    practice = CognitiveDistortionPracticeItem.objects.create(slug="p14-private-practice", prompt="Synthetic", target_concept=concept)
+    answer = practice.choices.create(concept=concept, text="Synthetic", is_correct=True)
+    practice.choices.create(concept=other, text="Synthetic other", is_correct=False)
+    learner = APIClient()
+    learner.force_authenticate(subject)
+    assert learner.post("/api/daily-challenge/", {"choice_id":choice.pk}, format="json", HTTP_HOST="127.0.0.1").status_code == 200
+    assert learner.post("/api/cognitive-distortions/practice/p14-private-practice/submit/", {"choice_id":answer.pk}, format="json", HTTP_HOST="127.0.0.1").status_code == 201
 
 # Credentials go only to the harness's private pipe, never into reports or logs.
 print(json.dumps({"users": users, "category": str(state.pk), **review_fixture}))

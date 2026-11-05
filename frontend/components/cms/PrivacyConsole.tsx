@@ -5,6 +5,7 @@ import {faNumber} from "@/lib/fa";
 import {StructuredValue} from "@/components/DSMRecordView";
 import {CmsState} from "./CmsShell";
 import {usePrivateCms} from "./CmsJobsShared";
+import PrivacyExportAction from "./PrivacyExportAction";
 
 type Schema={scopes:{key:string;label:string}[];page_size:number;max_page:number};
 type Result={subject_id:number;scope:string;purpose:string;page:number;page_size:number;count:number;
@@ -26,7 +27,9 @@ function label(key:string){return labels[key]||(key.endsWith("_id")?"شناسه�
 
 export default function PrivacyConsole({userId}:{userId:number}){
   const {can,request,current,setDirty}=usePrivateCms();
-  const allowed=can("cms_user_view")&&can("cms_privacy_sensitive_read");
+  const canRead=can("cms_user_view")&&can("cms_privacy_sensitive_read");
+  const allowed=canRead||can("cms_user_view")&&can("cms_privacy_export");
+  const [exportDirty,setExportDirty]=useState(false);
   const [subject,setSubject]=useState<{id:number;username:string}>(),[schema,setSchema]=useState<Schema>();
   const [scope,setScope]=useState("disorder_notes"),[page,setPage]=useState(1),[caseRef,setCaseRef]=useState("");
   const [method,setMethod]=useState("totp"),[token,setToken]=useState(""),[ack,setAck]=useState(false);
@@ -34,15 +37,15 @@ export default function PrivacyConsole({userId}:{userId:number}){
   const [busy,setBusy]=useState(false),[reload,setReload]=useState(0);const lock=useRef(false);
   const generation=useRef(0),pending=useRef<AbortController|null>(null);
   const clearPrivate=useCallback(()=>{generation.current++;pending.current?.abort();setData(undefined);setToken("");},[]);
-  useEffect(()=>{setDirty(busy||!!token);return()=>setDirty(false);},[busy,token,setDirty]);
+  useEffect(()=>{setDirty(busy||!!token||exportDirty);return()=>setDirty(false);},[busy,token,exportDirty,setDirty]);
   useEffect(()=>{
     if(!allowed)return;let active=true;const abort=new AbortController();setSubject(undefined);setSchema(undefined);setReadError(undefined);setData(undefined);
     const signal=AbortSignal.any([abort.signal,AbortSignal.timeout(15000)]);
-    void Promise.all([request<{id:number;username:string}>(`/users/${userId}/`,{signal}),request<Schema>("/users/privacy/schema/",{signal})])
-      .then(([user,metadata])=>{if(active&&current()){setSubject(user.data);setSchema(metadata.data);}})
+    void Promise.all([request<{id:number;username:string}>(`/users/${userId}/`,{signal}),canRead?request<Schema>("/users/privacy/schema/",{signal}):Promise.resolve(null)])
+      .then(([user,metadata])=>{if(active&&current()){setSubject(user.data);setSchema(metadata?.data);}})
       .catch(failure=>{if(active&&current())setReadError(failure);});
     return()=>{active=false;abort.abort();};
-  },[allowed,userId,request,current,reload]);
+  },[allowed,canRead,userId,request,current,reload]);
   useEffect(()=>{
     const visibility=()=>{if(document.hidden)clearPrivate();};
     document.addEventListener("visibilitychange",visibility);window.addEventListener("pagehide",clearPrivate);
@@ -53,7 +56,7 @@ export default function PrivacyConsole({userId}:{userId:number}){
     if(!data)return;const timer=window.setTimeout(clearPrivate,300000);return()=>clearTimeout(timer);
   },[data,clearPrivate]);
   async function read(event:FormEvent<HTMLFormElement>){
-    event.preventDefault();if(!allowed||!subject||!schema||busy||lock.current||!ack||!token.trim()||document.hidden)return;
+    event.preventDefault();if(!canRead||!subject||!schema||busy||lock.current||!ack||!token.trim()||document.hidden)return;
     const body={purpose:"SUPPORT_REQUEST",case_ref:caseRef.trim(),scope,page};
     const stamp=++generation.current,abort=new AbortController();pending.current=abort;
     const signal=AbortSignal.any([abort.signal,AbortSignal.timeout(15000)]);
@@ -67,12 +70,13 @@ export default function PrivacyConsole({userId}:{userId:number}){
     finally{if(pending.current===abort)pending.current=null;lock.current=false;if(current())setBusy(false);}
   }
   function clearInput(){clearPrivate();setError(undefined);}
-  if(!allowed)return <CmsState empty="خواندن اطلاعات شخصی به مجوز مستقل کاربر و حریم خصوصی نیاز دارد."/>;
+  if(!allowed)return <CmsState empty="دسترسی به اطلاعات شخصی به مجوز مستقل کاربر و حریم خصوصی نیاز دارد."/>;
   if(readError)return <CmsState error={readError} retry={()=>setReload(value=>value+1)}/>;
-  if(!subject||!schema)return <CmsState loading/>;
+  if(!subject||canRead&&!schema)return <CmsState loading/>;
   return <div className="stack" dir="rtl"><a className="cms-link" href="/admin-console/accounts">بازگشت به حساب‌ها</a>
     <h1>دسترسی هدفمند به اطلاعات شخصی</h1><p>کاربر: <bdi>{subject.username}</bdi> · شناسهٔ {faNumber(subject.id)}</p>
-    <p className="cms-notice">فقط برای درخواست پشتیبانی ثبت‌شده و همین کاربر بخوانید. هر خواندن با مجوز جاری، MFA تازه و ثبت دسترسی بررسی می‌شود؛ هیچ یادداشت، پاسخ یا پیشرفتی در این صفحه تغییر نمی‌کند.</p>
+    <PrivacyExportAction key={userId} userId={userId} onDirty={setExportDirty}/>
+    {canRead&&schema&&<><p className="cms-notice">فقط برای درخواست پشتیبانی ثبت‌شده و همین کاربر بخوانید. هر خواندن با مجوز جاری، MFA تازه و ثبت دسترسی بررسی می‌شود؛ هیچ یادداشت، پاسخ یا پیشرفتی در این صفحه تغییر نمی‌کند.</p>
     {error!=null&&<CmsState error={error}/>}
     <form className="card stack" onSubmit={read}><h2>درخواست مشاهدهٔ محدود</h2>
       <fieldset className="cms-fieldset stack" disabled={busy}>
@@ -99,6 +103,6 @@ export default function PrivacyConsole({userId}:{userId:number}){
         <button className="button secondary" type="button" disabled={busy||page*data.page_size>=data.count||page>=schema.max_page} onClick={()=>{setPage(value=>value+1);clearInput();}}>صفحهٔ بعد</button>
         <button className="button secondary" type="button" onClick={clearPrivate}>پاک‌کردن نتیجه از نما</button>
       </div>
-    </section>}
+    </section>}</>}
   </div>;
 }

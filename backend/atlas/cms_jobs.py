@@ -17,6 +17,9 @@ from .cms_sessions import current_session
 
 LEASE_SECONDS = 120
 MAX_ATTEMPTS = 3
+JOB_INPUT_KINDS = {"research_intake": {"research_json", "dsm_json", "assessment_json"},
+                   "learning_import": {"learning_json"}, "learning_export": {"learning_json"},
+                   "privacy_export": {"privacy_request_json"}}
 MANUAL_RETRY = {"TRANSIENT_DATABASE", "WORKER_INTERRUPTED", "UNAUTHENTICATED", "PERMISSION_DENIED", "POLICY_CHANGED", "INTERNAL_ERROR"}
 
 
@@ -39,6 +42,13 @@ def action_scope(actor, artifact, kind):
         expected_type = "learning_export_manifest" if kind == "learning_export" else ""
         if artifact.kind != "learning_json" or artifact.domain != "learning" or artifact.resource_type != expected_type:
             raise CMSFailure("INVALID_JOB_INPUT", 409)
+    elif kind == "privacy_export":
+        from .cms_privacy import require_privacy
+        from .cms_privacy_io import artifact_binding
+        require_privacy(actor, "export")
+        if artifact.kind != "privacy_request_json" or artifact.domain != "privacy" or artifact.resource_type != "personal_data":
+            raise CMSFailure("INVALID_JOB_INPUT", 409)
+        artifact_binding(artifact)
     elif kind == "research_intake":
         require_intake(actor)
     elif kind == "artifact_cleanup":
@@ -69,6 +79,13 @@ def visible_jobs(actor, rows):
     held = effective_permissions(actor)
     scope = Q(pk__in=[])
     allowed = False
+    if {"cms_user_view", "cms_privacy_export"} <= held:
+        private = Q(artifact__domain="privacy", artifact__kind__in=("privacy_request_json", "privacy_export_json"),
+                    artifact__resource_type="personal_data")
+        scope |= private & Q(kind="privacy_export", artifact__kind="privacy_request_json")
+        if "cms_artifact_upload" in held:
+            scope |= private & Q(kind="artifact_cleanup")
+        allowed = True
     if {"cms_learning_view", "cms_learning_export"} <= held:
         scope |= Q(kind="learning_export", artifact__kind="learning_json", artifact__domain="learning",
                    artifact__resource_type="learning_export_manifest")
@@ -143,7 +160,7 @@ def enqueue_job(actor_id, session_id, artifact_id, request_key, request_id, *, k
             if type(expected) is not int or artifact.version != expected:
                 raise CMSFailure("STALE_REVISION", 412)
             cleanup_eligible(artifact)
-        elif artifact.kind not in ({"learning_json"} if kind in {"learning_import", "learning_export"} else {"research_json", "dsm_json", "assessment_json"}) or artifact.state != "ready" or artifact.expires_at <= timezone.now():
+        elif artifact.kind not in JOB_INPUT_KINDS[kind] or artifact.state != "ready" or artifact.expires_at <= timezone.now():
             raise CMSFailure("ARTIFACT_NOT_READY", 409)
         fingerprint = artifact_digest(artifact, kind)
         actor_ref = attribution(actor.pk)
@@ -172,7 +189,7 @@ def _authority(job, policy):
     if job.kind == "artifact_cleanup":
         from .cms_artifacts import cleanup_eligible
         cleanup_eligible(artifact)
-    elif artifact.kind not in ({"learning_json"} if job.kind in {"learning_import", "learning_export"} else {"research_json", "dsm_json", "assessment_json"}) or artifact.state != "ready" or artifact.expires_at <= timezone.now():
+    elif artifact.kind not in JOB_INPUT_KINDS[job.kind] or artifact.state != "ready" or artifact.expires_at <= timezone.now():
         raise CMSFailure("ARTIFACT_NOT_READY", 409)
     if job.payload_digest != artifact_digest(artifact, job.kind):
         raise CMSFailure("ARTIFACT_CHANGED", 409)
@@ -227,6 +244,9 @@ def claim_job():
                 if job.kind in {"learning_import", "learning_export"}:
                     from .cms_learning_io import reconcile_learning
                     result = reconcile_learning(job)
+                elif job.kind == "privacy_export":
+                    from .cms_privacy_io import reconcile_export
+                    result = reconcile_export(job)
                 else:
                     result = (reconcile_cleanup if job.kind == "artifact_cleanup" else reconcile_intake)(job)
             except CMSFailure:
@@ -315,6 +335,9 @@ def run_once():
         if job.kind in {"learning_import", "learning_export"}:
             from .cms_learning_io import process_learning
             result = process_learning(job.pk, job.lease_token)
+        elif job.kind == "privacy_export":
+            from .cms_privacy_io import process_export
+            result = process_export(job.pk, job.lease_token)
         elif job.kind == "artifact_cleanup":
             from .cms_artifacts import process_cleanup
             result = process_cleanup(job.pk, job.lease_token)

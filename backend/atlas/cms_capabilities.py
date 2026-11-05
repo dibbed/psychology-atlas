@@ -306,3 +306,4 @@ READY_CAPABILITIES |= frozenset({"cms_review_decide_assessment_source", "cms_rev
 READY_CAPABILITIES |= frozenset({"cms_learning_archive"})
 READY_CAPABILITIES |= frozenset({"cms_learning_export"})
 READY_CAPABILITIES |= frozenset({"cms_privacy_sensitive_read"})
+READY_CAPABILITIES |= frozenset({"cms_privacy_export"})

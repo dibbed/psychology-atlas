@@ -23,20 +23,29 @@
     "A delayed real private-read response cannot repopulate results after hiding the page",
     "Real permission revocation prevents new private reads and stale private results are cleared",
     "Purpose reads preserve both private notes and append safe access audits without note content",
+    "Export-only account has real job navigation without private-read or upload",
+    "Export-only scope does not fetch or display the private-read form",
+    "Invalid export MFA creates no job and keeps the request recoverable",
+    "Actual MFA export survives a lost reply after worker commit and UI retries the same key without a second proof",
+    "Generated personal files expose no upload validation or content import controls",
+    "Native worker output downloads through UI and contains only the requested subject with no canonical answer graph",
+    "Personal export job and download controls fit 320px RTL",
+    "Export preserves all eight nonempty Attempt Answer Activity SRS Progress tables and creates one job and one final receipt",
     "Maintained MFA flow generates ten replacement recovery codes once and never redisplays them",
     "New one-time recovery proof revokes own MFA and logs out the actual session",
     "No uncaught browser errors"
   ],
   "screenshots": [
     "account-controls-mobile.png",
-    "synthetic-private-read-mobile.png"
+    "synthetic-private-read-mobile.png",
+    "C:\\Users\\Meliodas\\Downloads\\psychology_atlas_fullstack_mvp\\qa\\p14-browser\\personal-export-mobile.png"
   ],
   "errors": [],
   "limits": [
     "Synthetic accounts only",
-    "Privacy export/erase and approved retention remain separate gates",
+    "Erase and approved retention remain separate gates",
     "No offline owner identity approval or production recovery",
     "Headless visibility tests emulate document.hidden/visibilitychange; native tab occlusion is unverified"
   ],
-  "completed_at": "2026-11-03T19:40:08.315Z"
+  "completed_at": "2026-11-05T13:41:19.125Z"
 }

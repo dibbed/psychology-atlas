@@ -9,7 +9,7 @@ const origin=process.env.CMS_QA_ORIGIN||'http://127.0.0.1:3014',api=process.env.
 assert(new URL(origin).hostname==='127.0.0.1'&&new URL(api).hostname==='127.0.0.1');
 const env={...process.env,DB_ENGINE:'sqlite',SQLITE_PATH:path.join(tmp,'cms-journey.sqlite3'),SQLITE_TEST_PATH:path.join(tmp,'tests.sqlite3'),
   CMS_ARTIFACT_ROOT:path.join(tmp,'private'),CMS_QA_PHASE:'p14',NEXT_PUBLIC_API_URL:api+'/api',CSRF_TRUSTED_ORIGINS:origin,CORS_ALLOWED_ORIGINS:origin,DEBUG:'1'};
-const report={stage:'P14',status:'RUNNING',checks:[],screenshots:[],errors:[],limits:['Synthetic accounts only','Privacy export/erase and approved retention remain separate gates','No offline owner identity approval or production recovery']};
+const report={stage:'P14',status:'RUNNING',checks:[],screenshots:[],errors:[],limits:['Synthetic accounts only','Erase and approved retention remain separate gates','No offline owner identity approval or production recovery']};
 let browser;const processes=[];
 function check(ok,message){assert(ok,message);report.checks.push(message);}
 function start(exe,args,cwd,name){const fd=fs.openSync(path.join(tmp,name+'.log'),'a');const proc=spawn(exe,args,{cwd,env,windowsHide:true,stdio:['ignore',fd,fd]});fs.closeSync(fd);processes.push(proc);return proc;}
@@ -35,6 +35,13 @@ function privacyState(){return JSON.parse(execFileSync(py,['-c',[
   'leaks=c.execute("SELECT COUNT(*) FROM atlas_adminauditevent WHERE CAST(diff AS TEXT) LIKE \'%P14-SYNTHETIC%\' OR reason LIKE \'%P14-SYNTHETIC%\'").fetchone()[0]',
   'print(json.dumps({"notes":len(rows),"digest":hashlib.sha256(json.dumps(rows).encode()).hexdigest(),"read_audits":events,"audit_content_leaks":leaks}))','c.close()',
 ].join('\n')],{env,encoding:'utf8'}));}
+function exportHistory(){return JSON.parse(execFileSync(py,['-c',[
+  'import os,sqlite3,json,hashlib','from pathlib import Path',
+  'c=sqlite3.connect(Path(os.environ["SQLITE_PATH"]).as_uri()+"?mode=ro",uri=True)',
+  'rows={t:c.execute("SELECT * FROM "+t+" ORDER BY id").fetchall() for t in ["atlas_quizattempt","atlas_quizattemptanswer","atlas_studyactivity","atlas_userflashcardprogress","atlas_dailychallengeattempt","atlas_cognitivedistortionpracticeattempt","atlas_userprogress","atlas_userconceptprogress"]}',
+  'print(json.dumps({"counts":[len(v) for v in rows.values()],"digest":hashlib.sha256(json.dumps(rows,sort_keys=True).encode()).hexdigest(),"jobs":c.execute("SELECT COUNT(*) FROM atlas_adminjob WHERE kind=\'privacy_export\'").fetchone()[0],"receipts":c.execute("SELECT COUNT(*) FROM atlas_adminauditevent WHERE action=\'privacy.exported\'").fetchone()[0]}))','c.close()',
+].join('\n')],{env,encoding:'utf8'}));}
+function runWorker(){const result=execFileSync(py,['manage.py','cms_worker','--once'],{cwd:path.join(root,'backend'),env,encoding:'utf8',timeout:90000});assert(result.trim().endsWith(' succeeded'),'Native worker did not succeed');}
 async function login(page,user){page.setDefaultTimeout(20000);page.on('pageerror',error=>report.errors.push(String(error)));await page.goto(origin+'/admin-console');await page.getByLabel('نام کاربری',{exact:true}).fill(user.username);await page.getByLabel('گذرواژه',{exact:true}).fill(user.password);await page.getByRole('button',{name:'ادامه با گذرواژه',exact:true}).click();await page.getByLabel('روش تأیید').selectOption('recovery');await page.getByLabel('کد تأیید',{exact:true}).fill(user.tokens[0]);await page.getByRole('button',{name:'تأیید و ورود',exact:true}).click();await page.getByRole('button',{name:'خروج',exact:true}).waitFor();}
 async function openAccount(page,username){await page.goto(origin+'/admin-console/accounts');await page.getByLabel('نام کاربری یا شناسه',{exact:true}).fill(username);await page.getByRole('button',{name:'جست‌وجو',exact:true}).click();await page.locator('li').filter({has:page.getByText(username,{exact:true})}).getByRole('button',{name:'جزئیات مجاز',exact:true}).click();await page.getByRole('heading',{name:'کنترل دسترسی و نشست حساب',exact:true}).waitFor();await page.getByText('فهرست مجوزهای مستقیم',{exact:true}).click();}
 async function confirmAccount(page,token){await page.getByLabel('روش تأیید تغییر حساب').selectOption('recovery');await page.getByLabel('کد MFA تغییر حساب',{exact:true}).fill(token);await page.getByRole('button',{name:'اعمال تغییر تأییدشدهٔ حساب',exact:true}).focus();await page.keyboard.press('Enter');}
@@ -187,6 +194,56 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
   check(privateAfter.digest===privateBefore.digest&&privateAfter.read_audits===3&&privateAfter.audit_content_leaks===0,
     'Purpose reads preserve both private notes and append safe access audits without note content');
   await privacyContext.close();
+  const historyBefore=exportHistory();assert(historyBefore.counts.every(value=>value>0));
+  const exportContext=await browser.newContext({viewport:{width:1280,height:850}}),exporter=await exportContext.newPage();
+  await login(exporter,fixture.users.privacy_exporter);
+  check(await exporter.getByRole('link',{name:'کارهای پردازش',exact:true}).count()===1,'Export-only account has real job navigation without private-read or upload');
+  await exporter.goto(origin+'/admin-console/accounts');
+  await exporter.getByLabel('نام کاربری یا شناسه',{exact:true}).fill(fixture.p14.subject_username);
+  await exporter.getByRole('button',{name:'جست‌وجو',exact:true}).click();
+  await exporter.locator('li').filter({has:exporter.getByText(fixture.p14.subject_username,{exact:true})}).getByRole('button',{name:'جزئیات مجاز',exact:true}).click();
+  await exporter.getByRole('link',{name:'دسترسی هدفمند به اطلاعات شخصی این کاربر',exact:true}).click();
+  const exportForm=exporter.getByRole('region',{name:'خروجی خصوصی اطلاعات شخصی',exact:true});
+  await exportForm.waitFor();check(await exporter.getByRole('heading',{name:'درخواست مشاهدهٔ محدود',exact:true}).count()===0,'Export-only scope does not fetch or display the private-read form');
+  await exportForm.getByLabel('شناسهٔ UUID درخواست صاحب داده',{exact:true}).fill('38f68974-f055-4756-9f8e-bad9d387e346');
+  await exportForm.getByRole('checkbox').check();await exportForm.getByLabel('روش تأیید خروجی خصوصی').selectOption('recovery');
+  await exportForm.getByLabel('کد MFA خروجی خصوصی',{exact:true}).fill('invalid-synthetic-proof');
+  const invalidExportProof=postResponse(exporter,'/auth/step-up');
+  await exportForm.getByRole('button',{name:'ایجاد کار خروجی خصوصی با تأیید دومرحله‌ای',exact:true}).click();
+  check((await invalidExportProof).status()===403&&exportHistory().jobs===0,'Invalid export MFA creates no job and keeps the request recoverable');
+  // django-otp throttles the recovery device for one second after a failed code.
+  await new Promise(resolve=>setTimeout(resolve,1100));
+  await exportForm.getByLabel('شناسهٔ UUID درخواست صاحب داده',{exact:true}).waitFor({state:'visible'});
+  await exporter.waitForFunction(()=>!document.querySelector('input[value="38f68974-f055-4756-9f8e-bad9d387e346"]')?.disabled);
+  await exportForm.getByLabel('کد MFA خروجی خصوصی',{exact:true}).fill(fixture.users.privacy_exporter.tokens[1]);
+  let lostJob,firstPayload;
+  const exportRoute='**/api/admin/users/'+fixture.p14.subject_id+'/privacy/export/';
+  await exporter.route(exportRoute,async route=>{firstPayload=route.request().postDataJSON();const response=await route.fetch();assert.equal(response.status(),202);lostJob=(await response.json()).job;runWorker();await route.abort('failed');});
+  const validExportProof=postResponse(exporter,'/auth/step-up');
+  await exportForm.getByRole('button',{name:'ایجاد کار خروجی خصوصی با تأیید دومرحله‌ای',exact:true}).focus();await exporter.keyboard.press('Enter');
+  assert.equal((await validExportProof).status(),200,'Fresh export MFA must pass before the lost-reply test');
+  await exportForm.getByRole('button',{name:'تطبیق همان درخواست خروجی خصوصی',exact:true}).waitFor();await exporter.unroute(exportRoute);
+  const reconciledResponse=postResponse(exporter,'/users/'+fixture.p14.subject_id+'/privacy/export');
+  await exportForm.getByRole('button',{name:'تطبیق همان درخواست خروجی خصوصی',exact:true}).click();const reconciled=await reconciledResponse;
+  check(reconciled.status()===202&&(await reconciled.json()).job.id===lostJob.id&&reconciled.request().postDataJSON().request_key===firstPayload.request_key,
+    'Actual MFA export survives a lost reply after worker commit and UI retries the same key without a second proof');
+  await exporter.getByRole('link',{name:'پیگیری خروجی اطلاعات شخصی',exact:true}).click();
+  await exporter.getByRole('heading',{name:'خروجی اطلاعات شخصی',exact:true}).waitFor();
+  const output=exporter.locator('section.stack').filter({has:exporter.getByRole('heading',{name:'خروجی اطلاعات شخصی',exact:true})}).last();
+  check(await exporter.getByRole('button',{name:'اعتبارسنجی جداگانهٔ فایل',exact:true}).count()===0,'Generated personal files expose no upload validation or content import controls');
+  const downloadPromise=exporter.waitForEvent('download');await output.getByRole('link',{name:'دریافت خصوصی با مجوز جاری',exact:true}).click();
+  const downloaded=await downloadPromise;assert.equal(await downloaded.failure(),null);
+  const privateDocument=JSON.parse(fs.readFileSync(await downloaded.path(),'utf8'));
+  check(privateDocument.schema_version==='psychology-atlas-personal-export-v1'&&privateDocument.identity.id===fixture.p14.subject_id&&
+    privateDocument.data.disorder_notes[0].body==='P14-SYNTHETIC-PRIVATE-NOTE <b>literal text</b>'&&
+    !JSON.stringify(privateDocument).includes('P14-OTHER-SUBJECT-NOTE')&&!JSON.stringify(privateDocument).includes('Synthetic canonical question'),
+    'Native worker output downloads through UI and contains only the requested subject with no canonical answer graph');
+  await exporter.setViewportSize({width:320,height:820});
+  check(await exporter.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Personal export job and download controls fit 320px RTL');
+  const exportImage=path.join(out,'personal-export-mobile.png');await exporter.screenshot({path:exportImage,fullPage:true,mask:[exporter.locator('code'),exporter.locator('input[type="password"]')]});report.screenshots.push(exportImage);
+  const historyAfter=exportHistory();check(historyAfter.digest===historyBefore.digest&&historyAfter.jobs===1&&historyAfter.receipts===1,
+    'Export preserves all eight nonempty Attempt Answer Activity SRS Progress tables and creates one job and one final receipt');
+  await exportContext.close();
   await openAccount(owner,fixture.users.owner.username);
   await owner.getByRole('button',{name:'بررسی ساخت کدهای بازیابی خودم',exact:true}).click();await confirmAccount(owner,fixture.users.owner.tokens[7]);
   await owner.waitForURL(url=>url.pathname.replace(/\/$/,'')==='/account/two_factor/backup/tokens');

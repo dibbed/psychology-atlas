@@ -37,7 +37,8 @@ MAX_STRING = 100000
 MAX_NODES = 1000000
 MAX_EVIDENCE_BYTES = 65536
 KINDS = {"research_json": "research", "dsm_json": "dsm", "assessment_json": "assessment", "learning_json": "learning"}
-PURPOSES = {"research_review", "source_review", "rights_review", "intake_validation", "learning_authoring"}
+PURPOSES = {"research_review", "source_review", "rights_review", "intake_validation", "learning_authoring", "privacy_request"}
+PRIVATE_KINDS = {"privacy_request_json", "privacy_export_json"}
 
 
 def _uuid(value):
@@ -105,11 +106,47 @@ def artifact_bytes(artifact):
         raise CMSFailure("ARTIFACT_UNAVAILABLE", 409)
 
 
+def store_generated(artifact, raw):
+    if not connection.in_atomic_block:
+        raise CMSFailure("TRANSFER_LOCK_REQUIRED", 409)
+    _root(create=True)
+    path = _path(artifact)
+    staged = path.with_suffix(".pending")
+    if staged.exists() or staged.is_symlink():
+        info = staged.lstat()
+        if _link(info) or not stat.S_ISREG(info.st_mode):
+            raise CMSFailure("ARTIFACT_INTEGRITY", 409)
+        # A lease-fenced job owns this exact staged name; never unlink the final file.
+        staged.unlink()
+    if path.exists() or path.is_symlink():
+        artifact_bytes(artifact)
+        return
+    try:
+        fd = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), 0o600)
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(raw)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.link(staged, path, follow_symlinks=False)
+    finally:
+        staged.unlink(missing_ok=True)
+    artifact_bytes(artifact)
+
+
 def artifact_scope(actor, artifact, download=False):
     held = effective_permissions(actor)
     reviewer = False
     learning = artifact.kind in {"learning_json", "learning_export_json"}
-    if learning:
+    private = artifact.kind in PRIVATE_KINDS
+    if private:
+        from .cms_privacy import require_privacy
+        from .cms_privacy_io import artifact_binding
+        if artifact.domain != "privacy" or artifact.resource_type != "personal_data":
+            raise CMSFailure("NOT_FOUND", 404)
+        require_privacy(actor, "export")
+        if download:
+            artifact_binding(artifact)
+    elif learning:
         if artifact.domain != "learning":
             raise CMSFailure("NOT_FOUND", 404)
         require(actor, "cms_learning_view")
@@ -135,7 +172,8 @@ def artifact_scope(actor, artifact, download=False):
     if artifact.owner_id != actor.pk and "cms_owner" not in held and not reviewer:
         raise CMSFailure("NOT_FOUND", 404)
     require(actor, "cms_enter")
-    require(actor, "cms_" + artifact.domain + "_view")
+    if not private:
+        require(actor, "cms_" + artifact.domain + "_view")
     if download:
         require(actor, "cms_artifact_download")
     elif artifact.kind in KINDS and not learning:
@@ -430,7 +468,7 @@ def cleanup_eligible(artifact):
             or AdminJob.objects.filter(kind="research_intake", artifact__sha256=artifact.sha256,
                 status__in=("queued", "running", "reconciling", "succeeded")).exists()):
         raise CMSFailure("ARTIFACT_RETENTION_HOLD", 409)
-    if AdminJob.objects.filter(kind__in=("learning_import", "learning_export"),
+    if AdminJob.objects.filter(kind__in=("learning_import", "learning_export", "privacy_export"),
             status__in=("queued", "running", "reconciling")).filter(
                 Q(artifact_id=artifact.pk) | Q(output_artifact_id=artifact.pk)).exists():
         raise CMSFailure("ARTIFACT_RETENTION_HOLD", 409)
@@ -722,7 +760,7 @@ def validate_artifact(actor_id, session_id, artifact_id, expected, request_id):
         actor = _write_authority(actor_id, session_id)
         artifact = get_artifact(actor, artifact_id, lock=True)
         _edit_scope(actor, artifact)
-        if artifact.kind == "learning_export_json" or artifact.resource_type == "learning_export_manifest":
+        if artifact.kind in PRIVATE_KINDS | {"learning_export_json"} or artifact.resource_type == "learning_export_manifest":
             raise CMSFailure("INVALID_ARTIFACT_OPERATION", 409)
         if type(expected) is not int or artifact.version != expected:
             raise CMSFailure("STALE_REVISION", 412)

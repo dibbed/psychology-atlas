@@ -127,6 +127,8 @@ ACTIONS |= frozenset("privacy.read." + scope for scope in (
     "study_plans", "study_scopes", "study_blocks", "study_sessions", "activities", "recommendation_feedback",
     "disorder_bookmarks", "concept_bookmarks", "therapy_bookmarks", "study_settings"))
 REASONS |= frozenset({"PRIVACY_SUPPORT"})
+ACTIONS |= frozenset({"privacy.export_requested", "privacy.exported"})
+REASONS |= frozenset({"PRIVACY_REQUEST"})
 REASONS |= frozenset({"LEARNING_TRANSFER"})
 REASONS |= frozenset({"CONTENT_ARCHIVE"})
 TARGET_KINDS |= frozenset({"daily", "distortions"})

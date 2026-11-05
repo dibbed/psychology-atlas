@@ -249,7 +249,7 @@ class StepUpView(AdminAPIView):
                 valid_target = True
             except (ValueError, TypeError, AttributeError):
                 valid_target = False
-        if action not in {"user", "group", "delete_group", "create_group", "revoke_account", "revoke_session", "revoke_mfa", "regenerate_recovery", "review_policy", "case_publish", "case_withdraw", "learning_archive", "privacy_read"} or not valid_target or not isinstance(bound, dict):
+        if action not in {"user", "group", "delete_group", "create_group", "revoke_account", "revoke_session", "revoke_mfa", "regenerate_recovery", "review_policy", "case_publish", "case_withdraw", "learning_archive", "privacy_read", "privacy_export"} or not valid_target or not isinstance(bound, dict):
             raise CMSFailure("INVALID_INPUT", 400)
         required = "cms_roles_edit" if action in {"user", "group", "delete_group", "create_group"} else "cms_user_revoke_sessions"
         if action == "review_policy":
@@ -263,13 +263,14 @@ class StepUpView(AdminAPIView):
         if action == "learning_archive":
             required = "cms_learning_archive"
             require(request.user, "cms_learning_view")
-        if action == "privacy_read":
+        if action in {"privacy_read", "privacy_export"}:
             from .cms_privacy import read_request
-            read_request(bound)
+            from .cms_privacy_io import export_request
+            (read_request if action == "privacy_read" else export_request)(bound)
             if not 0 < target_id < 2**63:
                 raise CMSFailure("INVALID_INPUT", 400)
             require(request.user, "cms_user_view")
-            required = "cms_privacy_sensitive_read"
+            required = "cms_privacy_sensitive_read" if action == "privacy_read" else "cms_privacy_export"
         if action in {"revoke_mfa", "regenerate_recovery"}:
             if target_id != request.user.pk:
                 raise CMSFailure("NOT_FOUND", 404)
@@ -279,7 +280,7 @@ class StepUpView(AdminAPIView):
         device = verify_mfa(request.user, data.get("token"), data.get("method", "totp"))
         with policy_lock():
             row = current_session(request.cms_session.pk, request.user)
-            if action in {"learning_archive", "privacy_read"}:
+            if action in {"learning_archive", "privacy_read", "privacy_export"}:
                 require(request.user, "cms_learning_view" if action == "learning_archive" else "cms_user_view")
                 require(request.user, required)
             request.session.cycle_key()

@@ -44,6 +44,8 @@ class ArtifactListView(AdminAPIView):
                     allowed |= Q(kind=kind, domain=domain)
             learning, _ = service.learning_artifact_filter(held)
             allowed |= learning
+            if {"cms_user_view", "cms_privacy_export"} <= held:
+                allowed |= Q(kind__in=service.PRIVATE_KINDS, domain="privacy", resource_type="personal_data")
             from .cms_governance import REGISTRY
             for resource_type, (model, domain, *_) in REGISTRY.items():
                 if "cms_" + domain + "_view" in held:
@@ -69,7 +71,7 @@ class ArtifactListView(AdminAPIView):
             for field in ("kind", "state"):
                 value = request.query_params.get(field)
                 if value is not None:
-                    choices = {*service.KINDS, "evidence_json", "learning_export_json"} if field == "kind" else {"quarantine", "ready", "rejected", "revoked", "expired"}
+                    choices = {*service.KINDS, *service.PRIVATE_KINDS, "evidence_json", "learning_export_json"} if field == "kind" else {"quarantine", "ready", "rejected", "revoked", "expired"}
                     if value not in choices:
                         raise CMSFailure("INVALID_QUERY", 400)
                     if field == "state" and value == "expired":
@@ -146,6 +148,8 @@ class ArtifactDownloadView(AdminAPIView):
         with policy_lock():
             artifact = service.get_artifact(request.user, artifact_id, download=True)
             if (artifact.domain == "learning") != (purpose == "learning_authoring"):
+                raise CMSFailure("INVALID_PURPOSE", 400)
+            if (artifact.domain == "privacy") != (purpose == "privacy_request"):
                 raise CMSFailure("INVALID_PURPOSE", 400)
         raw = service.artifact_bytes(artifact)
         with policy_lock() as policy:

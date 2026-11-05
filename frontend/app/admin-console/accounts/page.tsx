@@ -86,7 +86,7 @@ export default function AccountsDirectory(){
             <li key={cap}><code>{cap}</code></li>)}</ul>}
       </>}
       <AccountAccess key={detail.id} userId={detail.id} onChanged={refreshDetail}/>
-      {can("cms_privacy_sensitive_read")&&<a className="cms-link" href={"/admin-console/accounts/"+detail.id+"/privacy"}>دسترسی هدفمند به اطلاعات شخصی این کاربر</a>}
+      {(can("cms_privacy_sensitive_read")||can("cms_privacy_export"))&&<a className="cms-link" href={"/admin-console/accounts/"+detail.id+"/privacy"}>دسترسی هدفمند به اطلاعات شخصی این کاربر</a>}
       <p className="muted">خواندن یا انتقال دادهٔ خصوصی به مجوز و هدف مستقل نیاز دارد. تصمیم retention و حذف باید جداگانه تأیید شود.</p>
     </section>}
     {!detail&&<RoleGroups/>}

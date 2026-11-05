@@ -1,9 +1,7 @@
 """Closed private authoring bundles; existing leased jobs own every durable effect."""
 import hashlib
 import json
-import os
 import re
-import stat
 import uuid
 from datetime import timedelta
 
@@ -13,7 +11,7 @@ from django.db.models import BinaryField, Prefetch, Sum, Value, prefetch_related
 from django.db.models.functions import Cast, Coalesce, Length
 from django.utils import timezone
 
-from .cms_artifacts import _link, _path, _root, artifact_bytes, bounded_json
+from .cms_artifacts import artifact_bytes, bounded_json, store_generated as _store
 from .cms_audit import attribution
 from .cms_case_editor import revision_etag
 from .cms_job_models import AdminArtifact, AdminJob
@@ -291,32 +289,6 @@ def _artifact(actor, identifier, raw, resource_type, version):
         storage_key=identifier.hex + ".json", size=len(raw), sha256=hashlib.sha256(raw).hexdigest(),
         expires_at=timezone.now() + timedelta(days=7))
 
-
-def _store(artifact, raw):
-    if not connection.in_atomic_block:
-        raise CMSFailure("TRANSFER_LOCK_REQUIRED", 409)
-    _root(create=True)
-    path = _path(artifact)
-    staged = path.with_suffix(".pending")
-    if staged.exists() or staged.is_symlink():
-        info = staged.lstat()
-        if _link(info) or not stat.S_ISREG(info.st_mode):
-            raise CMSFailure("ARTIFACT_INTEGRITY", 409)
-        # A lease-fenced job owns this exact staged name; never unlink the final file.
-        staged.unlink()
-    if path.exists() or path.is_symlink():
-        artifact_bytes(artifact)
-        return
-    try:
-        fd = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), 0o600)
-        with os.fdopen(fd, "wb") as stream:
-            stream.write(raw)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.link(staged, path, follow_symlinks=False)
-    finally:
-        staged.unlink(missing_ok=True)
-    artifact_bytes(artifact)
 
 
 def enqueue_export(actor_id, session_id, data, request_id):
