@@ -312,7 +312,7 @@ def _lock_user_block_and_plan(user, block_id):
         raise StudyPlanningError("study_block_not_found", "بلوک مطالعه پیدا نشد.", status_code=404)
     block = (
         _block_queryset()
-        .select_for_update()
+        .select_for_update(of=("self",))
         .filter(plan=plan, pk=locator["id"])
         .first()
     )

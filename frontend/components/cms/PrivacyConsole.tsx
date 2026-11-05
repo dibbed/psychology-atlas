@@ -6,6 +6,7 @@ import {StructuredValue} from "@/components/DSMRecordView";
 import {CmsState} from "./CmsShell";
 import {usePrivateCms} from "./CmsJobsShared";
 import PrivacyExportAction from "./PrivacyExportAction";
+import StudyOperationAction,{type StudyOperation} from "./StudyOperationAction";
 
 type Schema={scopes:{key:string;label:string}[];page_size:number;max_page:number};
 type Result={subject_id:number;scope:string;purpose:string;page:number;page_size:number;count:number;
@@ -30,6 +31,8 @@ export default function PrivacyConsole({userId}:{userId:number}){
   const canRead=can("cms_user_view")&&can("cms_privacy_sensitive_read");
   const allowed=canRead||can("cms_user_view")&&can("cms_privacy_export");
   const [exportDirty,setExportDirty]=useState(false);
+  const [studyDirty,setStudyDirty]=useState<Record<string,boolean>>({});
+  const setOperationDirty=useCallback((id:string,value:boolean)=>setStudyDirty(previous=>previous[id]===value?previous:{...previous,[id]:value}),[]);
   const [subject,setSubject]=useState<{id:number;username:string}>(),[schema,setSchema]=useState<Schema>();
   const [scope,setScope]=useState("disorder_notes"),[page,setPage]=useState(1),[caseRef,setCaseRef]=useState("");
   const [method,setMethod]=useState("totp"),[token,setToken]=useState(""),[ack,setAck]=useState(false);
@@ -37,7 +40,7 @@ export default function PrivacyConsole({userId}:{userId:number}){
   const [busy,setBusy]=useState(false),[reload,setReload]=useState(0);const lock=useRef(false);
   const generation=useRef(0),pending=useRef<AbortController|null>(null);
   const clearPrivate=useCallback(()=>{generation.current++;pending.current?.abort();setData(undefined);setToken("");},[]);
-  useEffect(()=>{setDirty(busy||!!token||exportDirty);return()=>setDirty(false);},[busy,token,exportDirty,setDirty]);
+  useEffect(()=>{setDirty(busy||!!token||exportDirty||Object.values(studyDirty).some(Boolean));return()=>setDirty(false);},[busy,token,exportDirty,studyDirty,setDirty]);
   useEffect(()=>{
     if(!allowed)return;let active=true;const abort=new AbortController();setSubject(undefined);setSchema(undefined);setReadError(undefined);setData(undefined);
     const signal=AbortSignal.any([abort.signal,AbortSignal.timeout(15000)]);
@@ -97,7 +100,9 @@ export default function PrivacyConsole({userId}:{userId:number}){
       <p>زمان خواندن: {cmsDate(data.as_of)}؛ تعداد کل این نوع: {faNumber(data.count)}؛ صفحهٔ {faNumber(data.page)}</p>
       <p className="muted">این نما با پنهان‌شدن صفحه یا پس از پنج دقیقه پاک می‌شود. متن اطلاعات شخصی در تاریخچهٔ عملیات کپی نمی‌شود.</p>
       {!data.results.length?<CmsState empty="برای این کاربر و نوع اطلاعات، ردیفی ثبت نشده است."/>:data.results.map((row,index)=><article className="card stack" key={String(row.id??index)}>
-        <StructuredValue value={Object.fromEntries(Object.entries(row).map(([key,value])=>[label(key),value]))}/>
+        <StructuredValue value={Object.fromEntries(Object.entries(row).filter(([key])=>key!=="operations").map(([key,value])=>[label(key),value]))}/>
+        {row.operations!=null&&<StudyOperationAction userId={userId} targetId={Number(row.id)} operation={row.operations as StudyOperation}
+          caseRef={caseRef} onDirty={setOperationDirty}/>}
       </article>)}
       <div className="cms-actions"><button className="button secondary" type="button" disabled={busy||page<=1} onClick={()=>{setPage(value=>value-1);clearInput();}}>صفحهٔ قبل</button>
         <button className="button secondary" type="button" disabled={busy||page*data.page_size>=data.count||page>=schema.max_page} onClick={()=>{setPage(value=>value+1);clearInput();}}>صفحهٔ بعد</button>

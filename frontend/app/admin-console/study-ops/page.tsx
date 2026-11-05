@@ -33,6 +33,7 @@ export default function StudyOps(){
     <a className="cms-link" href="/admin-console">بازگشت به خانهٔ مدیریت</a>
     <div className="cms-title"><p className="eyebrow">P15 | Study Operations</p>
       <h1>وضعیت عملیاتی موتور مطالعه</h1>
+      <a className="cms-link" href="/admin-console/accounts">بازرسی و اقدام هدفمند از حساب کاربر</a>
       <p className="muted">آمار این صفحه مستقیم از داده‌های ثبت‌شدهٔ سرور محاسبه می‌شود. این بخش هویت، یادداشت، نمره یا سابقهٔ فردی کاربران را نشان نمی‌دهد و هیچ پیشرفتی ایجاد نمی‌کند.</p>
     </div>
     <button className="button secondary" type="button" disabled={busy}

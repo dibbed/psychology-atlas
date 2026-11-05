@@ -9,7 +9,7 @@ const origin=process.env.CMS_QA_ORIGIN||'http://127.0.0.1:3014',api=process.env.
 assert(new URL(origin).hostname==='127.0.0.1'&&new URL(api).hostname==='127.0.0.1');
 const env={...process.env,DB_ENGINE:'sqlite',SQLITE_PATH:path.join(tmp,'cms-journey.sqlite3'),SQLITE_TEST_PATH:path.join(tmp,'tests.sqlite3'),
   CMS_ARTIFACT_ROOT:path.join(tmp,'private'),CMS_QA_PHASE:'p14',NEXT_PUBLIC_API_URL:api+'/api',CSRF_TRUSTED_ORIGINS:origin,CORS_ALLOWED_ORIGINS:origin,DEBUG:'1'};
-const report={stage:'P14',status:'RUNNING',checks:[],screenshots:[],errors:[],limits:['Synthetic accounts only','Erase and approved retention remain separate gates','No offline owner identity approval or production recovery']};
+const report={stage:'P14/P15',status:'RUNNING',checks:[],screenshots:[],errors:[],limits:['Synthetic accounts only','Erase and approved retention remain separate gates','No offline owner identity approval or production recovery']};
 let browser;const processes=[];
 function check(ok,message){assert(ok,message);report.checks.push(message);}
 function start(exe,args,cwd,name){const fd=fs.openSync(path.join(tmp,name+'.log'),'a');const proc=spawn(exe,args,{cwd,env,windowsHide:true,stdio:['ignore',fd,fd]});fs.closeSync(fd);processes.push(proc);return proc;}
@@ -244,6 +244,61 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
   const historyAfter=exportHistory();check(historyAfter.digest===historyBefore.digest&&historyAfter.jobs===1&&historyAfter.receipts===1,
     'Export preserves all eight nonempty Attempt Answer Activity SRS Progress tables and creates one job and one final receipt');
   await exportContext.close();
+  const studyBefore=exportHistory();
+  const studyContext=await browser.newContext({viewport:{width:320,height:820}}),study=await studyContext.newPage();
+  await login(study,fixture.users.study_operator);
+  await study.goto(origin+'/admin-console/accounts/'+fixture.p14.subject_id+'/privacy');
+  const readForm=study.locator('form').filter({has:study.getByRole('heading',{name:'درخواست مشاهدهٔ محدود',exact:true})});
+  await readForm.getByLabel('شناسهٔ UUID درخواست پشتیبانی',{exact:true}).fill('79a98623-6590-480c-a11f-a4be8a165e26');
+  await readForm.getByRole('checkbox').check();await readForm.getByLabel('روش تأیید مشاهده').selectOption('recovery');
+  let studyToken=1;
+  for(const [kind,id,action] of [['plan',fixture.p15.plan_id,'pause'],['plan',fixture.p15.plan_id,'resume'],
+      ['block',fixture.p15.block_id,'reschedule'],['block',fixture.p15.block_id,'unlock'],['block',fixture.p15.block_id,'skip'],
+      ['session',fixture.p15.session_id,'abandon']]){
+    await readForm.getByLabel('نوع اطلاعات شخصی').selectOption({plan:'study_plans',block:'study_blocks',session:'study_sessions'}[kind]);
+    await readForm.getByLabel('کد MFA مشاهدهٔ خصوصی',{exact:true}).fill(fixture.users.study_operator.tokens[studyToken++]);
+    const read=postResponse(study,'/users/'+fixture.p14.subject_id+'/privacy/read');
+    await readForm.getByRole('button',{name:'مشاهدهٔ هدفمند با تأیید دومرحله‌ای',exact:true}).click();
+    assert.equal((await read).status(),200);
+    const controls=study.getByRole('region',{name:'اقدام پشتیبانی مطالعه '+id,exact:true});await controls.waitFor();
+    await controls.getByLabel('عملیات پشتیبانی مطالعه').selectOption(action);
+    if(action==='reschedule')await controls.getByLabel('روز جدید بلوک').fill(new Date(Date.now()+86400000).toISOString().slice(0,10));
+    await controls.getByRole('checkbox').check();await controls.getByLabel('روش تأیید اقدام مطالعه').selectOption('recovery');
+    if(action==='pause'){
+      await controls.getByLabel('کد MFA اقدام مطالعه',{exact:true}).fill('invalid-synthetic-proof');
+      const invalid=postResponse(study,'/auth/step-up');
+      await controls.getByRole('button',{name:'اعمال اقدام مطالعه با تأیید دومرحله‌ای',exact:true}).click();
+      assert.equal((await invalid).status(),403);await new Promise(resolve=>setTimeout(resolve,1100));
+    }
+    await controls.getByLabel('کد MFA اقدام مطالعه',{exact:true}).fill(fixture.users.study_operator.tokens[studyToken++]);
+    const operateRoute='**/api/admin/users/'+fixture.p14.subject_id+'/study/operate/';let originalBody,originalReceipt;
+    if(action==='pause')await study.route(operateRoute,async route=>{
+      originalBody=route.request().postDataJSON();const response=await route.fetch();assert.equal(response.status(),200);
+      originalReceipt=(await response.json()).receipt_id;await route.abort('failed');
+    });
+    const valid=postResponse(study,'/auth/step-up');
+    await controls.getByRole('button',{name:'اعمال اقدام مطالعه با تأیید دومرحله‌ای',exact:true}).focus();await study.keyboard.press('Enter');
+    assert.equal((await valid).status(),200);
+    if(action==='pause'){
+      await controls.getByRole('button',{name:'تطبیق همان اقدام مطالعه',exact:true}).waitFor();await study.unroute(operateRoute);
+      const reconciled=postResponse(study,'/users/'+fixture.p14.subject_id+'/study/operate');
+      await controls.getByRole('button',{name:'تطبیق همان اقدام مطالعه',exact:true}).click();const response=await reconciled;
+      assert.equal(response.status(),200);assert.equal((await response.json()).receipt_id,originalReceipt);
+      assert.deepEqual(response.request().postDataJSON(),originalBody);
+      check(true,'Study action rejects invalid MFA and safely reconciles the committed lost reply with the original key');
+    }
+    await controls.getByRole('status').filter({hasText:'اقدام ثبت شد'}).waitFor();
+    check(true,'Real purpose read and fresh MFA execute canonical study action: '+action);
+    if(action==='abandon'){
+      check(await study.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Study support actions fit 320px RTL');
+      await study.screenshot({path:path.join(out,'study-support-mobile.png'),fullPage:true,mask:[study.locator('input[type="password"]')]});report.screenshots.push('study-support-mobile.png');
+    }
+    await study.getByRole('button',{name:'پاک‌کردن نتیجه از نما',exact:true}).click();
+  }
+  const counts=JSON.parse(execFileSync(py,['-c','import os,sqlite3,json;c=sqlite3.connect(os.environ["SQLITE_PATH"]);print(json.dumps([c.execute("SELECT COUNT(*) FROM atlas_studyoperationreceipt").fetchone()[0],c.execute("SELECT COUNT(*) FROM atlas_adminauditevent WHERE action=\'study.operated\'").fetchone()[0],c.execute("SELECT status,completed_at FROM atlas_studysession").fetchone()]));c.close()'],{env,encoding:'utf8'}));
+  check(exportHistory().digest===studyBefore.digest&&counts[0]===6&&counts[1]===6&&counts[2][0]==='abandoned'&&counts[2][1]===null,
+    'Six study support receipts preserve eight nonempty history tables and never complete the learner session');
+  await studyContext.close();
   await openAccount(owner,fixture.users.owner.username);
   await owner.getByRole('button',{name:'بررسی ساخت کدهای بازیابی خودم',exact:true}).click();await confirmAccount(owner,fixture.users.owner.tokens[7]);
   await owner.waitForURL(url=>url.pathname.replace(/\/$/,'')==='/account/two_factor/backup/tokens');

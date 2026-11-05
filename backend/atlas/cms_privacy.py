@@ -115,9 +115,12 @@ def read_private(actor, session_id, subject_id, data, request_id):
         selected = rows.filter(pk__in=identifiers)
         if text_units(selected, fields) > MAX_TEXT_UNITS:
             raise CMSFailure("PRIVACY_LIMIT", 400)
+        results = list(selected.values(*fields))
+        from .cms_study_actions import add_operations
+        add_operations(actor, data["scope"], selected, results)
         return {"subject_id": subject_id, "scope": data["scope"], "purpose": data["purpose"],
             "page": data["page"], "page_size": PAGE_SIZE, "count": rows.count(),
-            "results": list(selected.values(*fields)), "as_of": timezone.now().isoformat()}
+            "results": results, "as_of": timezone.now().isoformat()}
 
 
 class PrivacyReadView(AdminAPIView):

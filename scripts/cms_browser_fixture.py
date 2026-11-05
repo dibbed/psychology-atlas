@@ -692,6 +692,28 @@ if phase == "p14":
     learner.force_authenticate(subject)
     assert learner.post("/api/daily-challenge/", {"choice_id":choice.pk}, format="json", HTTP_HOST="127.0.0.1").status_code == 200
     assert learner.post("/api/cognitive-distortions/practice/p14-private-practice/submit/", {"choice_id":answer.pk}, format="json", HTTP_HOST="127.0.0.1").status_code == 201
+    from atlas.models import StudyPlanScope, StudyBlock
+    from django.utils import timezone
+    from atlas.study_planning import create_study_plan, transition_study_plan
+    from atlas.study_sessions import start_session
+    import uuid
+    study_operator = User.objects.create_user("qa_p15_study_operator", password=password, is_staff=True)
+    study_operator.user_permissions.add(*Permission.objects.filter(content_type__app_label="atlas", content_type__model="rolepolicy",
+        codename__in=("cms_enter", "cms_user_view", "cms_study_view", "cms_study_correct", "cms_privacy_sensitive_read")))
+    TOTPDevice.objects.create(user=study_operator, name="default", confirmed=True)
+    backup = StaticDevice.objects.create(user=study_operator, name="backup", confirmed=True)
+    users["study_operator"] = {"username": study_operator.username, "password": password,
+        "tokens": [StaticToken.objects.create(device=backup, token=StaticToken.random_token()).token for _ in range(20)]}
+    plan = create_study_plan(subject, {"name": "P15 synthetic support plan"})
+    scope = StudyPlanScope.objects.create(plan=plan, disorder=private_disorder)
+    transition_study_plan(subject, plan.pk, "activate")
+    block = StudyBlock.objects.create(plan=plan, scope=scope, block_kind=StudyBlock.Kind.DISORDER_REVIEW,
+        scheduled_date=timezone.localdate(), estimated_minutes=10, disorder=private_disorder,
+        snapshot_title="P15 synthetic block", locked_by_user=True)
+    session_block = StudyBlock.objects.create(plan=plan, scope=scope, block_kind=StudyBlock.Kind.DISORDER_REVIEW,
+        scheduled_date=timezone.localdate(), estimated_minutes=10, disorder=private_disorder, snapshot_title="P15 synthetic session block")
+    session, _ = start_session(subject, session_block.pk, uuid.uuid4())
+    review_fixture["p15"] = {"plan_id": plan.pk, "block_id": block.pk, "session_id": session.pk}
 
 # Credentials go only to the harness's private pipe, never into reports or logs.
 print(json.dumps({"users": users, "category": str(state.pk), **review_fixture}))
