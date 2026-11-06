@@ -55,6 +55,18 @@ SCOPE_LABELS = {
     "study_settings": "تنظیمات شخصی مطالعه",
 }
 
+# Study diagnostics are intentionally separate from historical row scopes.
+# Access requires both purpose-bound private reads and current study-view authority.
+STUDY_DIAGNOSTICS = {
+    "study_availability": (models.StudyPlanAvailability, "plan__user_id",
+                           ("id", "plan_id", "weekday", "available_minutes")),
+    "recommendations": None,  # Derived using the canonical learner service.
+}
+STUDY_DIAGNOSTIC_LABELS = {
+    "study_availability": "زمان‌های در دسترس برنامه‌های مطالعه",
+    "recommendations": "پیشنهادهای آموزشی جاری",
+}
+
 
 class PrivacyParser(BaseParser):
     media_type = "application/json"
@@ -68,8 +80,11 @@ class PrivacyParser(BaseParser):
 
 def read_request(data):
     if (type(data) is not dict or set(data) != {"purpose", "case_ref", "scope", "page"}
-            or data["purpose"] != "SUPPORT_REQUEST" or type(data["scope"]) is not str or data["scope"] not in SCOPES
+            or data["purpose"] != "SUPPORT_REQUEST" or type(data["scope"]) is not str
+            or (data["scope"] not in SCOPES and data["scope"] not in STUDY_DIAGNOSTICS)
             or type(data["page"]) is not int or not 1 <= data["page"] <= 10000 or type(data["case_ref"]) is not str):
+        raise CMSFailure("INVALID_INPUT", 400)
+    if data["scope"] == "recommendations" and data["page"] != 1:
         raise CMSFailure("INVALID_INPUT", 400)
     try:
         reference = uuid.UUID(data["case_ref"])
@@ -102,13 +117,23 @@ def read_private(actor, session_id, subject_id, data, request_id):
     with policy_lock() as policy:
         current_session(session_id, actor)
         require_privacy(actor, "sensitive_read")
+        if data["scope"] in STUDY_DIAGNOSTICS:
+            require(actor, "cms_study_view")
         if not get_user_model().objects.filter(pk=subject_id).exists():
             raise CMSFailure("NOT_FOUND", 404)
         consume_step_up(session_id, actor, "privacy_read", subject_id, data)
         AdminAuditEvent.objects.create(actor=actor, action="privacy.read." + data["scope"], outcome="success", target_kind="user",
             target_id=subject_id, target_key=salted_hmac("cms-privacy-case-v1", data["case_ref"], algorithm="sha256").hexdigest(),
             reason="PRIVACY_SUPPORT", request_id=request_id, policy_version=policy.version)
-        model, owner, fields = SCOPES[data["scope"]]
+        if data["scope"] == "recommendations":
+            from .recommendation_views import assemble_recommendations
+            now = timezone.now()
+            results = [assemble_recommendations(get_user_model().objects.get(pk=subject_id), now)]
+            return {"subject_id": subject_id, "scope": data["scope"], "purpose": data["purpose"],
+                    "page": 1, "page_size": PAGE_SIZE, "count": 1, "results": results,
+                    "as_of": now.isoformat()}
+        model, owner, fields = (STUDY_DIAGNOSTICS[data["scope"]]
+                                if data["scope"] in STUDY_DIAGNOSTICS else SCOPES[data["scope"]])
         rows = model.objects.filter(**{owner: subject_id}).order_by("pk")
         start = (data["page"] - 1) * PAGE_SIZE
         identifiers = list(rows.select_for_update(of=("self",)).values_list("pk", flat=True)[start:start + PAGE_SIZE])
@@ -142,5 +167,8 @@ class PrivacySchemaView(AdminAPIView):
             raise CMSFailure("INVALID_QUERY", 400)
         with policy_lock():
             require_privacy(request.user, "sensitive_read")
-            return Response({"scopes": [{"key": key, "label": SCOPE_LABELS[key]} for key in SCOPES],
-                "page_size": PAGE_SIZE, "max_page": 10000})
+            scopes = [{"key": key, "label": SCOPE_LABELS[key]} for key in SCOPES]
+            from .cms_policy import effective_permissions
+            if "cms_study_view" in effective_permissions(request.user):
+                scopes.extend({"key": key, "label": label} for key, label in STUDY_DIAGNOSTIC_LABELS.items())
+            return Response({"scopes": scopes, "page_size": PAGE_SIZE, "max_page": 10000})

@@ -1415,6 +1415,22 @@ button { cursor: pointer; }
 .dsm-key-name { color: var(--muted); font-size: 10px; line-height: 1.7; font-weight: 400; }
 .dsm-key-content { color: #ccd5df; line-height: 1.8; font-size: 12px; min-width: 0; }
 .dsm-key-content > span { white-space: pre-wrap; }
+/* Private CMS diagnostics contain long recommendation identifiers and nested
+   data; keep the renderer bounded without changing the public DSM layout. */
+.cms-private-result,
+.cms-private-result .dsm-key-value,
+.cms-private-result .dsm-key-value-row,
+.cms-private-result .dsm-key-content {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .cms-private-result .dsm-key-value-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+}
 .dsm-subsection { margin-top: 22px; }
 .dsm-subsection h3 { font-size: 14px; }
 .dsm-nearby-links { display: flex; flex-wrap: wrap; gap: 7px; }

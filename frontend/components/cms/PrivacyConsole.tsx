@@ -20,7 +20,10 @@ const labels:Record<string,string>={id:"شناسه",body:"متن خصوصی",sta
   estimated_minutes:"زمان برآوردشده",locked_by_user:"قفل کاربر",started_at:"زمان شروع",skipped_at:"زمان ردکردن",planned_minutes:"زمان برنامه‌ریزی‌شده",
   actual_seconds:"ثانیهٔ ثبت‌شده",abandoned_at:"زمان رهاکردن",state_version:"نسخهٔ وضعیت",event_type:"نوع رویداد",awarded_score:"امتیاز رویداد",
   recommendation_type:"نوع پیشنهاد",target_type:"نوع هدف",target_id:"شناسهٔ هدف",value:"بازخورد",suppressed_until:"پایان تعویق",
-  study_timezone:"منطقهٔ زمانی مطالعه",default_daily_minutes:"دقیقهٔ روزانه",default_session_minutes:"دقیقهٔ نشست",week_starts_on:"شروع هفته"};
+  study_timezone:"منطقهٔ زمانی مطالعه",default_daily_minutes:"دقیقهٔ روزانه",default_session_minutes:"دقیقهٔ نشست",week_starts_on:"شروع هفته",
+  weekday:"روز هفته (۰=دوشنبه)",available_minutes:"دقیقه‌های در دسترس",version:"نسخهٔ پیشنهادها",as_of:"زمان محاسبه",
+  returned_count:"پیشنهادهای نمایش‌داده‌شده",suppressed_count:"پیشنهادهای کنارگذاشته‌شده",truncated_sources:"منابع محدودشده",
+  items:"پیشنهادهای آموزشی",reason_codes:"دلایل پیشنهادی",feedback:"بازخورد یادگیرنده",order:"ترتیب پیشنهاد"};
 const targets:Record<string,string>={disorder:"اختلال",concept:"مفهوم",therapy:"رویکرد درمانی",quiz:"آزمون",attempt:"تلاش",question:"سؤال",selected_choice:"گزینهٔ انتخاب‌شده",
   case:"پرونده",revision:"نسخه",current_step:"گام جاری",step:"گام",challenge:"چالش",item:"تمرین",plan:"برنامه",scope:"حوزهٔ برنامه",primary_block:"بلوک اصلی",
   theory:"نظریه",psychologist:"شخص",timeline_event:"رویداد",clinical_case:"پروندهٔ آموزشی"};
@@ -96,7 +99,7 @@ export default function PrivacyConsole({userId}:{userId:number}){
         <button className="button primary" type="submit" disabled={!ack||!caseRef||!token.trim()}>مشاهدهٔ هدفمند با تأیید دومرحله‌ای</button>
       </fieldset>
     </form>
-    {data&&<section className="card stack" aria-label="نتیجهٔ خصوصی پشتیبانی"><h2>نتیجهٔ محدود همین درخواست</h2>
+    {data&&<section className="card stack cms-private-result" aria-label="نتیجهٔ خصوصی پشتیبانی"><h2>نتیجهٔ محدود همین درخواست</h2>
       <p>زمان خواندن: {cmsDate(data.as_of)}؛ تعداد کل این نوع: {faNumber(data.count)}؛ صفحهٔ {faNumber(data.page)}</p>
       <p className="muted">این نما با پنهان‌شدن صفحه یا پس از پنج دقیقه پاک می‌شود. متن اطلاعات شخصی در تاریخچهٔ عملیات کپی نمی‌شود.</p>
       {!data.results.length?<CmsState empty="برای این کاربر و نوع اطلاعات، ردیفی ثبت نشده است."/>:data.results.map((row,index)=><article className="card stack" key={String(row.id??index)}>
