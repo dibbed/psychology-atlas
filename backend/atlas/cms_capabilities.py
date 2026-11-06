@@ -286,7 +286,10 @@ READY_CAPABILITIES |= frozenset({
 READY_CAPABILITIES |= frozenset({"cms_search"})
 
 # P16 read-only unpublished candidate inventory; no Apply/approval/activation.
-READY_CAPABILITIES |= frozenset({"cms_publication_validate_cases", "cms_publication_validate_learning"})
+READY_CAPABILITIES |= frozenset({
+    "cms_publication_validate_cases", "cms_publication_validate_learning",
+    "cms_publication_validate_brain", "cms_publication_validate_assessment",
+})
 
 # P15 aggregate-only study telemetry; no private learner reads/corrections.
 READY_CAPABILITIES |= frozenset({"cms_study_view"})

@@ -18,7 +18,7 @@ from .models import (
 )
 
 
-_DOMAINS = {"cases", "learning"}
+_DOMAINS = {"cases", "learning", "brain", "assessment"}
 _REVIEW_BLOCKERS = (
     "SCIENTIFIC_REVIEW_NOT_LINKED", "SOURCE_RIGHTS_REVIEW_NOT_LINKED",
     "P16_MANIFEST_AND_RECEIPT_REQUIRED",
@@ -36,7 +36,7 @@ class PublicationPreflightView(AdminAPIView):
             raise CMSFailure("INVALID_QUERY", 400)
         with policy_lock():
             require(request.user, "cms_publication_validate_" + domain)
-            require(request.user, "cms_" + ("cases" if domain == "cases" else "learning") + "_view")
+            require(request.user, "cms_" + domain + "_view")
             if domain == "cases":
                 queryset = CaseRevision.objects.filter(status=CaseRevision.Status.DRAFT).order_by("-pk")
                 meta, revisions = page(request, queryset, extra=("domain",))
@@ -57,6 +57,49 @@ class PublicationPreflightView(AdminAPIView):
                         "version": rev.version, "eligible": not blockers,
                         "revision_digest": case_revision_fingerprint(rev),
                         "blockers": sorted(set(blockers))})
+            elif domain in {"brain", "assessment"}:
+                # Existing P02 editorial proposals are immutable snapshots,
+                # never canonical publication receipts. Keep all payload,
+                # private source metadata and creator identity out of this API.
+                from .cms_content import digest
+                from .cms_content_models import ContentRevision, ContentState
+                from .cms_domains import DOMAIN_SPECS
+
+                kinds = tuple(kind for kind, spec in DOMAIN_SPECS.items()
+                              if spec["domain"] == domain)
+                proposals = ContentState.objects.filter(
+                    kind__in=kinds,
+                    current_revision__status__in=(
+                        ContentRevision.Status.DRAFT, ContentRevision.Status.SUBMITTED,
+                        ContentRevision.Status.IN_REVIEW, ContentRevision.Status.CHANGES_REQUESTED,
+                        ContentRevision.Status.APPROVED,
+                    ),
+                ).select_related("current_revision").order_by("-current_revision__created_at", "pk")
+                meta, states = page(request, proposals, extra=("domain",))
+                rows = []
+                for state in states:
+                    revision = state.current_revision
+                    envelope = {
+                        "schema": "cms-editorial-proposal-preflight-v1",
+                        "kind": state.kind, "state_id": str(state.pk),
+                        "version": state.version, "canonical_pk": state.canonical_pk,
+                        "revision_id": revision.pk, "revision_sequence": revision.sequence,
+                        "revision_status": revision.status,
+                        "base_digest": revision.base_digest,
+                        "payload_digest": revision.payload_digest,
+                        "dependency_digest": revision.dependency_digest,
+                    }
+                    rows.append({
+                        "kind": state.kind, "resource_id": str(state.pk),
+                        "canonical_id": state.canonical_pk,
+                        "revision_id": revision.pk, "version": state.version,
+                        "revision_status": revision.status,
+                        "dependency_digest": revision.dependency_digest,
+                        "proposal_digest": digest(envelope),
+                        "eligible": False, "blockers": [
+                            *_REVIEW_BLOCKERS, "SOURCE_DEPENDENCIES_NOT_REVALIDATED",
+                        ],
+                    })
             else:
                 candidates = []
                 for model, name in (
@@ -101,6 +144,10 @@ class PublicationPreflightView(AdminAPIView):
             return Response({
                 **meta, "domain": domain, "results": rows,
                 "publication_available": domain == "cases",
-                "scope": "private_unpublished_candidates_only",
-                "notice": "REVIEWED_CASES_REQUIRE_EXPLICIT_MANIFEST_APPROVAL_AND_MFA_APPLY",
+                "scope": ("private_editorial_proposals_only"
+                          if domain in {"brain", "assessment"}
+                          else "private_unpublished_candidates_only"),
+                "notice": ("REVIEWED_CASES_REQUIRE_EXPLICIT_MANIFEST_APPROVAL_AND_MFA_APPLY"
+                           if domain == "cases"
+                           else "PROPOSAL_DIGEST_IS_NOT_AN_APPROVED_MANIFEST"),
             })

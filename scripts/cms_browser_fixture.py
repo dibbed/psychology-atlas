@@ -715,5 +715,28 @@ if phase == "p14":
     session, _ = start_session(subject, session_block.pk, uuid.uuid4())
     review_fixture["p15"] = {"plan_id": plan.pk, "block_id": block.pk, "session_id": session.pk}
 
+    # P16 Brain/Assessment preflight uses real immutable editorial proposals.
+    # These fixtures have no source/rights approval and must never be published.
+    from atlas.cms_content import digest as editorial_digest
+    from atlas.cms_content_models import ContentRevision, ContentState
+    review_fixture["p16"] = {}
+    for domain, kind in (("brain", "brain-anatomical-entity"),
+                         ("assessment", "assessment-instrument")):
+        payload = {"name_en": "P16 PRIVATE SYNTHETIC SECRET " + domain}
+        initial = editorial_digest({})
+        proposal_state = ContentState.objects.create(
+            kind=kind, canonical_digest=initial, publication=ContentState.Publication.NEVER,
+        )
+        rev = ContentRevision.objects.create(
+            state=proposal_state, sequence=1, base_version=0, base_digest=initial,
+            payload=payload, payload_digest=editorial_digest(payload),
+            dependency_digest=initial, status=ContentRevision.Status.DRAFT,
+            actor=User.objects.get(username="qa_owner"), schema_version=2,
+        )
+        proposal_state.current_revision = rev
+        proposal_state.version = 1
+        proposal_state.save(update_fields=("current_revision", "version"))
+        review_fixture["p16"][domain] = str(proposal_state.pk)
+
 # Credentials go only to the harness's private pipe, never into reports or logs.
 print(json.dumps({"users": users, "category": str(state.pk), **review_fixture}))

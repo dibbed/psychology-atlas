@@ -341,6 +341,24 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
   check(changed?.content_digest?.length===64&&changed.content_digest!==item.content_digest&&
     changed.eligible===false,
     'P16 exact preflight fingerprints change on draft edits and never expose an Apply authorization');
+  for(const domain of ['brain','assessment']){
+    const answer=await request(owner,'/publication/preflight/?domain='+domain+'&page=1&page_size=30');
+    assert.equal(answer.status,200);
+    const candidate=answer.data.results.find(row=>row.resource_id===fixture.p16[domain]);
+    check(!!candidate&&candidate.proposal_digest?.length===64&&!candidate.eligible&&
+      candidate.blockers.includes('SOURCE_DEPENDENCIES_NOT_REVALIDATED')&&
+      !answer.data.publication_available&&!JSON.stringify(answer.data).includes('P16 PRIVATE SYNTHETIC SECRET'),
+      'P16 '+domain+' immutable proposal inventory excludes private draft text and denies publication');
+    await owner.goto(origin+'/admin-console/publication-preflight');
+    await owner.getByLabel('حوزهٔ مجاز').selectOption(domain);
+    await owner.getByText(candidate.proposal_digest,{exact:true}).waitFor();
+    check(await owner.getByText('اثر انگشت نسخهٔ ثبت‌شدهٔ پیشنهاد',{exact:false}).count()===1&&
+      await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
+      'P16 '+domain+' proposal digest renders at 320px RTL without overflow or Apply');
+  }
+  await owner.screenshot({path:path.join(out,'p16-editorial-proposals-mobile.png'),fullPage:true,
+    mask:[owner.locator('input[type="password"]')]});
+  report.screenshots.push('p16-editorial-proposals-mobile.png');
   await openAccount(owner,fixture.users.owner.username);
   await owner.getByRole('button',{name:'بررسی ساخت کدهای بازیابی خودم',exact:true}).click();await confirmAccount(owner,fixture.users.owner.tokens[7]);
   await owner.waitForURL(url=>url.pathname.replace(/\/$/,'')==='/account/two_factor/backup/tokens');
