@@ -5,7 +5,8 @@ import {CmsState,useCms} from "@/components/cms/CmsShell";
 
 type Domain="cases"|"learning";
 type Entry={kind:string;resource_id:number;case_id?:number;version?:number;
-  revision_digest?:string;eligible:boolean;blockers:string[]};
+  revision_digest?:string;content_digest?:string;dependency_ids?:Record<string,number[]>;
+  content_issues?:string[];fingerprint_version?:string;eligible:boolean;blockers:string[]};
 type Inventory=CmsPage<Entry>&{domain:Domain;publication_available:boolean;scope:string};
 const reasons:Record<string,string>={
   SCIENTIFIC_REVIEW_NOT_LINKED:"تأیید علمی متصل به نسخهٔ فعلی ثبت نشده است.",
@@ -21,7 +22,19 @@ const reasons:Record<string,string>={
   SOURCE_UNAVAILABLE:"منبع معتبر یا در دسترس نیست.",
   SEED_MANAGED_REVISION:"نسخهٔ مدیریت‌شده توسط Seed، بدون تصمیم مهاجرت امن قابل انتشار نیست.",
   REQUIRED_CASE_METADATA_MISSING:"مشخصات ضروری کیس ناقص است.",
-  CONTENT_VALIDATION_REQUIRED:"محتوا و کلیدهای پاسخ باید مستقل اعتبارسنجی شوند.",
+  CONTENT_VALIDATION_REQUIRED:"ساختار محتوای پیش‌نویس، کلید پاسخ یا وابستگی‌ها ایراد دارند.",
+  QUIZ_ANSWER_KEY_INVALID:"کلید پاسخ صحیحِ پرسش معتبر نیست.",
+  ANSWER_KEY_INVALID:"کلید پاسخ فعلی معتبر نیست.",
+  CHOICES_INSUFFICIENT:"تعداد انتخاب‌های فعال کافی نیست.",
+  INACTIVE_DEPENDENCY:"حداقل یک مفهوم یا اختلال وابسته غیرفعال است.",
+  DEPENDENCY_MISSING:"حداقل یک وابستگی محتوایی یافت نشد.",
+  TARGET_REQUIRED:"محتوا به مفهوم یا اختلال معتبر متصل نشده است.",
+  QUESTION_INVALID:"یک پرسش، متن یا انتخاب‌های معتبر ندارد.",
+  NO_ACTIVE_QUESTIONS:"هیچ پرسش فعالی ثبت نشده است.",
+  TITLE_MISSING:"عنوان لازم ثبت نشده است.",
+  CONTENT_MISSING:"متن اصلی لازم ناقص است.",
+  TARGET_INVALID:"مفهوم هدف با نوع تمرین سازگار نیست.",
+  DIFFICULTY_INVALID:"درجه دشواری نامعتبر است.",
 };
 export default function PublicationPreflight(){
   const {can}=useCms();
@@ -65,9 +78,14 @@ export default function PublicationPreflight(){
       <ul className="stack">{data.results.map(row=><li className="card stack" key={row.kind+"-"+row.resource_id}>
         <strong>{row.kind} #{row.resource_id}</strong>
         {row.case_id&&<span>کیس #{row.case_id}، نسخهٔ {row.version}</span>}
-        {row.revision_digest&&<p>شناسهٔ محتوای نسخه، فقط برای تطبیق، نه تأیید انتشار:
-          <code dir="ltr" style={{display:"block",overflowWrap:"anywhere"}}>{row.revision_digest}</code>
+        {(row.revision_digest||row.content_digest)&&<p>اثر انگشت محتوای همین لحظه؛ صرفاً برای تطبیق و نه مجوز انتشار:
+          <code dir="ltr" style={{display:"block",overflowWrap:"anywhere"}}>{row.revision_digest||row.content_digest}</code>
         </p>}
+        {row.content_issues&&<div className="stack">
+          <p>{row.content_issues.length?"ایرادهای ساختاری تشخیص‌داده‌شده:":"ساختار اولیه این پیش‌نویس بررسی شد؛ بازبینی علمی و حقوقی همچنان الزامی است."}</p>
+          {row.content_issues.length>0&&<ul>{row.content_issues.map(issue=><li key={issue}>{reasons[issue]??issue}</li>)}</ul>}
+          {row.dependency_ids&&Object.keys(row.dependency_ids).length>0&&<p className="muted">وابستگی‌های بررسی‌شده: {Object.entries(row.dependency_ids).map(([kind,ids])=>kind+" ("+ids.join("، ")+")").join("، ")}</p>}
+        </div>}
         <span>{row.eligible?"تأییدهای نسخه آماده‌اند، انتشار هنوز انجام نشده":"پیش‌نیازهای انتشار ناقص است"}</span>
         <ul>{row.blockers.map(key=><li key={key}>{reasons[key]??key}</li>)}</ul>
       </li>)}</ul>}

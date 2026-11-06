@@ -298,7 +298,49 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
   const counts=JSON.parse(execFileSync(py,['-c','import os,sqlite3,json;c=sqlite3.connect(os.environ["SQLITE_PATH"]);print(json.dumps([c.execute("SELECT COUNT(*) FROM atlas_studyoperationreceipt").fetchone()[0],c.execute("SELECT COUNT(*) FROM atlas_adminauditevent WHERE action=\'study.operated\'").fetchone()[0],c.execute("SELECT status,completed_at FROM atlas_studysession").fetchone()]));c.close()'],{env,encoding:'utf8'}));
   check(exportHistory().digest===studyBefore.digest&&counts[0]===6&&counts[1]===6&&counts[2][0]==='abandoned'&&counts[2][1]===null,
     'Six study support receipts preserve eight nonempty history tables and never complete the learner session');
+  // P15 additional diagnostics use exactly the current learner recommendation service,
+  // requiring a new independently bound support read, not the prior study action proof.
+  for(const scope of ['recommendations','study_availability']){
+    await readForm.getByLabel('نوع اطلاعات شخصی').selectOption(scope);
+    await readForm.getByLabel('کد MFA مشاهدهٔ خصوصی',{exact:true}).fill(fixture.users.study_operator.tokens[studyToken++]);
+    const response=postResponse(study,'/users/'+fixture.p14.subject_id+'/privacy/read');
+    await readForm.getByRole('button',{name:'مشاهدهٔ هدفمند با تأیید دومرحله‌ای',exact:true}).click();
+    const body=await (await response).json();
+    check(body.scope===scope&&body.subject_id===fixture.p14.subject_id&&
+      (scope==='recommendations'?body.results.length===1&&body.results[0].version==='v2':
+        body.count>=body.results.length&&body.results.every(row=>row.plan_id===fixture.p15.plan_id&&
+          typeof row.available_minutes==='number'&&typeof row.weekday==='number')),
+      'P15 owner-scoped support diagnostics return the actual '+scope+' through fresh MFA');
+    await study.getByRole('region',{name:'نتیجهٔ خصوصی پشتیبانی',exact:true}).waitFor();
+    check(await study.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
+      'P15 '+scope+' diagnostics remain within the 320px Persian RTL viewport');
+    await study.getByRole('button',{name:'پاک‌کردن نتیجه از نما',exact:true}).click();
+  }
   await studyContext.close();
+  // P16 preflight fingerprint is read-only and deliberately not a publishing route.
+  const draft=await request(owner,'/learning/quizzes/',{slug:'p16-private-browser-quiz',title:'Synthetic private publication preflight',description:'',disorder_id:null});
+  assert.equal(draft.status,201);
+  const quizId=draft.data.quiz_id;
+  const inventory=await request(owner,'/publication/preflight/?domain=learning&page=1&page_size=30');
+  assert.equal(inventory.status,200);
+  const item=inventory.data.results.find(row=>row.kind==='quiz'&&row.resource_id===quizId);
+  check(!!item&&item.content_digest?.length===64&&item.content_issues.includes('TARGET_REQUIRED')&&
+    !item.eligible&&!inventory.data.publication_available,
+    'P16 private Learning draft fingerprint detects a missing dependency without granting publication');
+  await owner.goto(origin+'/admin-console/publication-preflight');
+  await owner.getByLabel('حوزهٔ مجاز').selectOption('learning');
+  await owner.getByText(item.content_digest,{exact:true}).waitFor();
+  check(await owner.getByText('اثر انگشت محتوای همین لحظه',{exact:false}).count()===1&&
+    await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
+    'P16 Learning preflight displays the version digest without overflow on 320px RTL');
+  const original=await request(owner,'/learning/quizzes/'+quizId+'/');
+  const edited=await request(owner,'/learning/quizzes/'+quizId+'/metadata/',{title:'Edited synthetic private preflight',description:'',disorder_id:null},original.etag);
+  assert.equal(edited.status,200);
+  const updated=await request(owner,'/publication/preflight/?domain=learning&page=1&page_size=30');
+  const changed=updated.data.results.find(row=>row.kind==='quiz'&&row.resource_id===quizId);
+  check(changed?.content_digest?.length===64&&changed.content_digest!==item.content_digest&&
+    changed.eligible===false,
+    'P16 exact preflight fingerprints change on draft edits and never expose an Apply authorization');
   await openAccount(owner,fixture.users.owner.username);
   await owner.getByRole('button',{name:'بررسی ساخت کدهای بازیابی خودم',exact:true}).click();await confirmAccount(owner,fixture.users.owner.tokens[7]);
   await owner.waitForURL(url=>url.pathname.replace(/\/$/,'')==='/account/two_factor/backup/tokens');

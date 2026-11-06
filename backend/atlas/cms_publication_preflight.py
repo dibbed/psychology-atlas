@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from .case_graph import validate_case_revision_graph
 from .cms_case_fingerprint import case_revision_fingerprint
 from .cms_case_publication import _review_status
+from .cms_learning_fingerprint import draft_fingerprint, KIND_MODELS
 
 from .cms_policy import CMSFailure, policy_lock, require
 from .cms_views import AdminAPIView, page
@@ -83,10 +84,19 @@ class PublicationPreflightView(AdminAPIView):
                 paginator = Paginator(candidates, size)
                 if current > paginator.num_pages:
                     raise CMSFailure("INVALID_QUERY", 400)
-                rows = [{
-                    "kind": kind, "resource_id": identifier,
-                    "eligible": False, "blockers": [*_REVIEW_BLOCKERS, "CONTENT_VALIDATION_REQUIRED"],
-                } for kind, identifier in paginator.page(current).object_list]
+                rows = []
+                for kind, identifier in paginator.page(current).object_list:
+                    # These digests are for private inspection only. They are
+                    # never frozen, approved, or usable as an Apply credential.
+                    item = KIND_MODELS[kind].objects.get(pk=identifier)
+                    snapshot = draft_fingerprint(kind, item)
+                    blockers = list(_REVIEW_BLOCKERS)
+                    if snapshot["content_issues"]:
+                        blockers.append("CONTENT_VALIDATION_REQUIRED")
+                    rows.append({
+                        "kind": kind, "resource_id": identifier,
+                        "eligible": False, "blockers": blockers, **snapshot,
+                    })
                 meta = {"count": len(candidates), "page": current, "page_size": size}
             return Response({
                 **meta, "domain": domain, "results": rows,
