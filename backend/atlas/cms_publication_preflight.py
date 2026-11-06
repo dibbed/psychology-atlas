@@ -24,6 +24,35 @@ _REVIEW_BLOCKERS = (
     "P16_MANIFEST_AND_RECEIPT_REQUIRED",
 )
 
+EDITORIAL_STATUSES = (
+    "draft", "submitted", "in_review", "changes_requested", "approved",
+)
+
+
+def editorial_proposal_fingerprint(state):
+    """Version-bound digest of an immutable editorial snapshot, NOT live evidence."""
+    from .cms_content import digest
+
+    revision = state.current_revision
+    envelope = {
+        "schema": "cms-editorial-proposal-preflight-v1",
+        "kind": state.kind, "state_id": str(state.pk),
+        "version": state.version, "canonical_pk": state.canonical_pk,
+        "revision_id": revision.pk, "revision_sequence": revision.sequence,
+        "revision_status": revision.status,
+        "base_digest": revision.base_digest,
+        "payload_digest": revision.payload_digest,
+        "dependency_digest": revision.dependency_digest,
+    }
+    return {
+        "kind": state.kind, "resource_id": str(state.pk),
+        "canonical_id": state.canonical_pk, "revision_id": revision.pk,
+        "version": state.version, "revision_status": revision.status,
+        "dependency_digest": revision.dependency_digest,
+        "proposal_digest": digest(envelope), "eligible": False,
+        "blockers": [*_REVIEW_BLOCKERS, "SOURCE_DEPENDENCIES_NOT_REVALIDATED"],
+    }
+
 
 class PublicationPreflightView(AdminAPIView):
     capability = "cms_enter"
@@ -61,45 +90,17 @@ class PublicationPreflightView(AdminAPIView):
                 # Existing P02 editorial proposals are immutable snapshots,
                 # never canonical publication receipts. Keep all payload,
                 # private source metadata and creator identity out of this API.
-                from .cms_content import digest
-                from .cms_content_models import ContentRevision, ContentState
+                from .cms_content import scoped_states
+                from .cms_content_models import ContentState
                 from .cms_domains import DOMAIN_SPECS
 
                 kinds = tuple(kind for kind, spec in DOMAIN_SPECS.items()
                               if spec["domain"] == domain)
-                proposals = ContentState.objects.filter(
-                    kind__in=kinds,
-                    current_revision__status__in=(
-                        ContentRevision.Status.DRAFT, ContentRevision.Status.SUBMITTED,
-                        ContentRevision.Status.IN_REVIEW, ContentRevision.Status.CHANGES_REQUESTED,
-                        ContentRevision.Status.APPROVED,
-                    ),
-                ).select_related("current_revision").order_by("-current_revision__created_at", "pk")
+                proposals = scoped_states(request.user, ContentState.objects.filter(
+                    kind__in=kinds, current_revision__status__in=EDITORIAL_STATUSES,
+                )).select_related("current_revision").order_by("-current_revision__created_at", "pk")
                 meta, states = page(request, proposals, extra=("domain",))
-                rows = []
-                for state in states:
-                    revision = state.current_revision
-                    envelope = {
-                        "schema": "cms-editorial-proposal-preflight-v1",
-                        "kind": state.kind, "state_id": str(state.pk),
-                        "version": state.version, "canonical_pk": state.canonical_pk,
-                        "revision_id": revision.pk, "revision_sequence": revision.sequence,
-                        "revision_status": revision.status,
-                        "base_digest": revision.base_digest,
-                        "payload_digest": revision.payload_digest,
-                        "dependency_digest": revision.dependency_digest,
-                    }
-                    rows.append({
-                        "kind": state.kind, "resource_id": str(state.pk),
-                        "canonical_id": state.canonical_pk,
-                        "revision_id": revision.pk, "version": state.version,
-                        "revision_status": revision.status,
-                        "dependency_digest": revision.dependency_digest,
-                        "proposal_digest": digest(envelope),
-                        "eligible": False, "blockers": [
-                            *_REVIEW_BLOCKERS, "SOURCE_DEPENDENCIES_NOT_REVALIDATED",
-                        ],
-                    })
+                rows = [editorial_proposal_fingerprint(state) for state in states]
             else:
                 candidates = []
                 for model, name in (

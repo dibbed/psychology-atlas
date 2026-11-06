@@ -26,6 +26,7 @@ from . import cms_learning_io_views as learning_io
 from . import cms_user_directory as user_directory
 from . import cms_study_ops as study_ops
 from . import cms_publication_preflight as publication_preflight
+from . import cms_publication_selection_views as publication_selection
 from . import cms_case_publication_views as case_publication
 from . import cms_admin_search as admin_search
 from . import cms_operations_health as operations_health
@@ -103,6 +104,8 @@ urlpatterns = [
     path("operations/health/", operations_health.OperationsHealthView.as_view()),
     path("search/", admin_search.AdminSearchView.as_view()),
     path("publication/preflight/", publication_preflight.PublicationPreflightView.as_view()),
+    path("publication/selections/", publication_selection.PublicationSelectionView.as_view()),
+    path("publication/selections/<uuid:selection_id>/", publication_selection.PublicationSelectionDetailView.as_view()),
     path("publication/cases/<int:case_id>/revisions/<int:revision_id>/reviews/", case_publication.CasePublicationReviewView.as_view()),
     path("publication/cases/<int:case_id>/revisions/<int:revision_id>/freeze/", case_publication.CasePublicationFreezeView.as_view()),
     path("publication/cases/plans/<uuid:plan_id>/", case_publication.CasePublicationPlanView.as_view()),

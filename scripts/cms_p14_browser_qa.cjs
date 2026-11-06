@@ -341,6 +341,19 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
   check(changed?.content_digest?.length===64&&changed.content_digest!==item.content_digest&&
     changed.eligible===false,
     'P16 exact preflight fingerprints change on draft edits and never expose an Apply authorization');
+  await owner.goto(origin+'/admin-console/publication-preflight');
+  await owner.getByLabel('حوزهٔ مجاز').selectOption('learning');
+  await owner.getByText(changed.content_digest,{exact:true}).waitFor();
+  await owner.getByLabel('انتخاب برای بستهٔ بازبینی: quiz #'+quizId).check();
+  const learningSelection=postResponse(owner,'/publication/selections');
+  await owner.getByRole('button',{name:'ثبت بستهٔ بازبینی بدون انتشار'}).click();
+  const learningSelectionResult=await (await learningSelection).json();
+  check(learningSelectionResult.item_count===1&&learningSelectionResult.selection_digest?.length===64&&
+    learningSelectionResult.status==='review_selection_only'&&!learningSelectionResult.publication_available,
+    'P16 Learning selection records only a durable review batch, with no publish authority');
+  check(await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)&&
+    await owner.getByText('بستهٔ بازبینی ثبت شد',{exact:false}).count()===1,
+    'P16 sealed Learning review selection receipt is visible at 320px RTL');
   for(const domain of ['brain','assessment']){
     const answer=await request(owner,'/publication/preflight/?domain='+domain+'&page=1&page_size=30');
     assert.equal(answer.status,200);
@@ -355,6 +368,13 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
     check(await owner.getByText('اثر انگشت نسخهٔ ثبت‌شدهٔ پیشنهاد',{exact:false}).count()===1&&
       await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
       'P16 '+domain+' proposal digest renders at 320px RTL without overflow or Apply');
+    await owner.getByLabel('انتخاب برای بستهٔ بازبینی: '+candidate.kind+' #'+candidate.resource_id).check();
+    const selectionResponse=postResponse(owner,'/publication/selections');
+    await owner.getByRole('button',{name:'ثبت بستهٔ بازبینی بدون انتشار'}).click();
+    const selectionData=await (await selectionResponse).json();
+    check(selectionData.domain===domain&&selectionData.item_count===1&&
+      selectionData.selection_digest?.length===64&&!selectionData.approved&&!selectionData.publication_available,
+      'P16 '+domain+' server-owned selection retains a private review batch without public effects');
   }
   await owner.screenshot({path:path.join(out,'p16-editorial-proposals-mobile.png'),fullPage:true,
     mask:[owner.locator('input[type="password"]')]});

@@ -289,6 +289,8 @@ READY_CAPABILITIES |= frozenset({"cms_search"})
 READY_CAPABILITIES |= frozenset({
     "cms_publication_validate_cases", "cms_publication_validate_learning",
     "cms_publication_validate_brain", "cms_publication_validate_assessment",
+    "cms_publication_select_learning", "cms_publication_select_brain",
+    "cms_publication_select_assessment",
 })
 
 # P15 aggregate-only study telemetry; no private learner reads/corrections.
