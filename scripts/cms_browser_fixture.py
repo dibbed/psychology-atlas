@@ -719,10 +719,21 @@ if phase == "p14":
     # These fixtures have no source/rights approval and must never be published.
     from atlas.cms_content import digest as editorial_digest
     from atlas.cms_content_models import ContentRevision, ContentState
+    from atlas.models import AssessmentInstrument, BrainAnatomicalEntity, SourceReference
+    dependency_source = SourceReference.objects.create(title="P16 synthetic dependency evidence",
+        citation="P16 synthetic citation for disposable tests", doi="10.1234/fake.p16.browser",
+        verification_status="source_checked")
+    dependency_brain = BrainAnatomicalEntity.objects.create(slug="p16-private-parent",
+        name_en="Synthetic private parent", kind="region", laterality="not_established", is_active=False)
+    dependency_instrument = AssessmentInstrument.objects.create(slug="p16-private-parent",
+        name_en="Synthetic private instrument", is_active=False)
+    review_fixture["p16_source_id"] = dependency_source.pk
     review_fixture["p16"] = {}
-    for domain, kind in (("brain", "brain-anatomical-entity"),
-                         ("assessment", "assessment-instrument")):
-        payload = {"name_en": "P16 PRIVATE SYNTHETIC SECRET " + domain}
+    for domain, kind, parent_field, parent in (
+            ("brain", "brain-anatomical-alias", "entity", dependency_brain),
+            ("assessment", "assessment-alias", "instrument", dependency_instrument)):
+        payload = {parent_field: parent.pk, "source": dependency_source.pk,
+            "text": "P16 PRIVATE SYNTHETIC SECRET " + domain, "language": "en", "alias_type": "alternative"}
         initial = editorial_digest({})
         proposal_state = ContentState.objects.create(
             kind=kind, canonical_digest=initial, publication=ContentState.Publication.NEVER,

@@ -29,9 +29,9 @@ class PublicationSelectionsTests(SecurityFixture, TestCase):
         self.brain = self.proposal("brain-anatomical-entity", "P16 confidential brain")
         self.assessment = self.proposal("assessment-instrument", "P16 confidential assessment")
 
-    def proposal(self, kind, name):
+    def proposal(self, kind, name, payload=None):
         state = ContentState.objects.create(kind=kind, canonical_digest=digest({}))
-        data = {"name_en": name}
+        data = payload if payload is not None else {"name_en": name}
         revision = ContentRevision.objects.create(
             state=state, sequence=1, base_version=0, base_digest=digest({}),
             payload=data, payload_digest=digest(data), dependency_digest=digest({}),
@@ -283,3 +283,146 @@ class PublicationSelectionsTests(SecurityFixture, TestCase):
             response = self.verify(selection_id)
         self.assertEqual(response.status_code, 403, response.content[:300])
         self.assertEqual(response.json()["code"], "UNAUTHENTICATED")
+
+    def source_proposal(self, domain):
+        from .models import AssessmentInstrument, BrainAnatomicalEntity, SourceReference
+
+        source = SourceReference.objects.create(title="Synthetic dependency evidence",
+            citation="Synthetic private citation", doi="10.1234/fake.p16.dependency",
+            verification_status="source_checked")
+        if domain == "brain":
+            parent = BrainAnatomicalEntity.objects.create(
+                slug="p16-live-parent", name_en="Synthetic brain parent", is_active=False,
+                kind="region", laterality="not_established")
+            kind, parent_field = "brain-anatomical-alias", "entity"
+        else:
+            parent = AssessmentInstrument.objects.create(
+                slug="p16-live-parent", name_en="Synthetic assessment parent", is_active=False)
+            kind, parent_field = "assessment-alias", "instrument"
+        proposal = self.proposal(kind, "", {parent_field: parent.pk, "source": source.pk,
+            "text": "Synthetic private alias", "language": "en", "alias_type": "alternative"})
+        entry = self.entry(domain, kind, str(proposal.pk))
+        return source, parent, proposal, entry
+
+    def test_editorial_selection_binds_live_sources_and_recovers_its_original_receipt(self):
+        for domain in ("brain", "assessment"):
+            with self.subTest(domain=domain):
+                source, _, _, entry = self.source_proposal(domain)
+                key = uuid.uuid4()
+                created = self.post_selection(domain, [entry], key=key)
+                self.assertEqual(created.status_code, 201, created.content[:300])
+                selection_id = created.json()["id"]
+                current = self.verify(selection_id)
+                self.assertEqual(current.json()["items"][0]["dependency_state"], "matching")
+                source.citation = "Synthetic confidential citation changed after selection"
+                source.save(update_fields=("citation",))
+                changed = self.verify(selection_id)
+                self.assertEqual(changed.status_code, 200, changed.content[:300])
+                row = changed.json()["items"][0]
+                self.assertEqual(row["snapshot_state"], "matching")
+                self.assertEqual(row["dependency_state"], "stale")
+                self.assertFalse(changed.json()["all_snapshots_current"])
+                self.assertNotIn("confidential citation", changed.content.decode())
+                recovered = self.post_selection(domain, [entry], key=key)
+                self.assertEqual(recovered.status_code, 200)
+                self.assertEqual(recovered.json()["id"], selection_id)
+                self.assertTrue(recovered.json()["recovered"])
+
+    def test_editorial_selection_detects_parent_and_source_lifecycle_changes(self):
+        from .cms_source_models import SourceState
+
+        source, parent, _, entry = self.source_proposal("brain")
+        selection_id = self.post_selection("brain", [entry]).json()["id"]
+        parent.name_en = "A changed private parent name"
+        parent.save(update_fields=("name_en",))
+        changed = self.verify(selection_id)
+        self.assertEqual(changed.json()["items"][0]["dependency_state"], "stale")
+        SourceState.objects.create(source_pk=source.pk, archived=True)
+        archived = self.verify(selection_id)
+        self.assertEqual(archived.status_code, 200, archived.content[:300])
+        self.assertIn("SOURCE_UNAVAILABLE", archived.json()["items"][0]["dependency_issues"])
+        self.assertFalse(archived.json()["all_snapshots_current"])
+
+    def test_editorial_selection_detects_rights_proposal_and_review_policy_changes(self):
+        from django.utils import timezone
+        from .cms_governance import resource_binding
+        from .cms_review_models import ReviewPolicy
+
+        source, _, _, entry = self.source_proposal("assessment")
+        selection_id = self.post_selection("assessment", [entry]).json()["id"]
+        binding = resource_binding("source_reference", source.pk)
+        evidence = [{"source_id": source.pk, "locator": "Synthetic permission evidence only"}]
+        rights = self.post(self.owner_client, "governance/rights/", {
+            "resource_type": "source_reference", "resource_id": source.pk,
+            "resource_version": binding["resource_version"], "evidence": evidence,
+            "reason": "CORRECTION_REQUIRED", "material": "metadata", "intended_use": "public_display",
+            "status": "allowed", "rightsholder": "Synthetic holder", "holder_identification": "Fictional test holder",
+            "holder_evidence": evidence, "public_access": "unknown",
+            "reviewed_on": timezone.localdate().isoformat(), "effective_on": timezone.localdate().isoformat(),
+            "expires_on": None, "review_on": None, "limitations": "Synthetic data only",
+            "territory": "", "conflict_note": "",
+        })
+        self.assertEqual(rights.status_code, 201, rights.content[:300])
+        changed = self.verify(selection_id)
+        self.assertEqual(changed.json()["items"][0]["dependency_state"], "stale")
+        self.assertFalse(changed.json()["approved"])
+        # A new snapshot binds the changed governance state, then policy drift invalidates it.
+        newer_id = self.post_selection("assessment", [entry]).json()["id"]
+        policy = ReviewPolicy.objects.get(pk=1)
+        policy.version += 1
+        policy.save(update_fields=("version",))
+        changed_policy = self.verify(newer_id)
+        self.assertEqual(changed_policy.json()["items"][0]["dependency_state"], "stale")
+        self.assertFalse(changed_policy.json()["all_snapshots_current"])
+
+    def test_legacy_selection_reports_missing_live_baseline_without_rewriting_history(self):
+        from .cms_publication_selection_models import PublicationCandidateSelection
+
+        entry = self.entry("brain", "brain-anatomical-entity", str(self.brain.pk))
+        current_id = self.post_selection("brain", [entry]).json()["id"]
+        current = PublicationCandidateSelection.objects.get(pk=current_id)
+        manifest = {**current.selection, "schema": "cms-review-selection-v1",
+            "items": [{key: value for key, value in row.items() if key != "live_dependencies"}
+                      for row in current.selection["items"]]}
+        legacy = PublicationCandidateSelection.objects.create(
+            domain="brain", request_key=uuid.uuid4(), request_digest=digest({}),
+            selection=manifest, selection_digest=digest(manifest),
+            policy_version=current.policy_version, actor=self.owner, actor_ref=current.actor_ref)
+        response = self.verify(legacy.pk)
+        self.assertEqual(response.status_code, 200, response.content[:300])
+        self.assertEqual(response.json()["items"][0]["dependency_state"], "baseline_missing")
+        self.assertFalse(response.json()["all_snapshots_current"])
+        self.assertIn("LIVE_DEPENDENCY_BASELINE_REQUIRED", response.json()["review_blockers"])
+        legacy.refresh_from_db()
+        self.assertEqual(legacy.selection_digest, digest(manifest))
+
+    def test_dependency_limit_failure_keeps_a_current_baseline_unverifiable(self):
+        from unittest.mock import patch
+        from rest_framework.exceptions import ValidationError
+
+        entry = self.entry("brain", "brain-anatomical-entity", str(self.brain.pk))
+        selection_id = self.post_selection("brain", [entry]).json()["id"]
+        with patch("atlas.cms_publication_selection.dependency_snapshot",
+                   side_effect=ValidationError({"dependencies": "Private internal validation detail"})):
+            response = self.verify(selection_id)
+        self.assertEqual(response.status_code, 200, response.content[:300])
+        row = response.json()["items"][0]
+        self.assertEqual(row["snapshot_state"], "unverifiable")
+        self.assertEqual(row["dependency_state"], "invalid")
+        self.assertEqual(row["dependency_issues"], ["DEPENDENCY_UNVERIFIABLE"])
+        self.assertNotIn("Private internal", response.content.decode())
+        self.assertNotIn("LIVE_DEPENDENCY_BASELINE_REQUIRED", response.json()["review_blockers"])
+
+    def test_mismatched_stored_payload_hash_fails_closed(self):
+        payload = {"name_en": "Synthetic private damaged payload"}
+        state = self.proposal("brain-network", "", payload)
+        revision = ContentRevision.objects.create(state=state, sequence=2, base_version=1,
+            base_digest=digest({}), payload=payload, payload_digest="0" * 64,
+            dependency_digest=digest({}), status="draft", actor=self.owner)
+        state.current_revision, state.version = revision, 2
+        state.save(update_fields=("current_revision", "version"))
+        entry = self.entry("brain", "brain-network", str(state.pk))
+        response = self.post_selection("brain", [entry])
+        self.assertEqual(response.status_code, 409, response.content[:300])
+        self.assertEqual(response.json()["code"], "SELECTION_INTEGRITY_FAILED")
+        self.assertNotIn("damaged payload", response.content.decode())

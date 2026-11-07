@@ -13,15 +13,23 @@ type SelectionReceipt={id:string;domain:Domain;selection_digest:string;status:st
   item_count:number;publication_available:false;approved:false;recovered:boolean};
 type SelectionPayload={domain:Domain;entries:{kind:string;resource_id:string|number;expected_digest:string}[];request_key:string};
 type VerificationItem={kind:string;resource_id:string|number;
-  snapshot_state:"matching"|"stale"|"unavailable"|"unverifiable";content_issues:string[]};
+  snapshot_state:"matching"|"stale"|"unavailable"|"unverifiable";content_issues:string[];
+  dependency_state:"matching"|"stale"|"baseline_missing"|"invalid"|"content_only";dependency_issues:string[]};
 type VerificationResult={id:string;domain:Domain;status:string;selection_digest:string;
   item_count:number;items:VerificationItem[];policy_matches:boolean;all_snapshots_current:boolean;
   review_blockers:string[];verified_at:string;publication_available:false;approved:false};
 const snapshotStates:Record<VerificationItem["snapshot_state"],string>={
-  matching:"اثر انگشت نسخه و وابستگی‌های درون‌سیستمی مطابق است",
+  matching:"اثر انگشت نسخهٔ ثبت‌شده مطابق است",
   stale:"محتوا یا وابستگی از زمان انتخاب تغییر کرده است",
   unavailable:"این پیش‌نویس دیگر در محدودهٔ انتخاب مجاز نیست",
   unverifiable:"بررسی ایمن این مورد کامل نشد",
+};
+const dependencyStates:Record<VerificationItem["dependency_state"],string>={
+  matching:"وضعیت زندهٔ وابستگی‌ها، منابع و سوابق حقوق با زمان انتخاب مطابق است.",
+  stale:"وابستگی، منبع، سابقهٔ حقوق یا سیاست بازبینی از زمان انتخاب تغییر کرده است.",
+  baseline_missing:"این بستهٔ قدیمی تصویر زندهٔ مبنا ندارد. انتخاب تازه لازم است.",
+  invalid:"وابستگی فعلی برای ادامهٔ انتشار به اصلاح و بازبینی نیاز دارد.",
+  content_only:"وابستگی‌های محتوایی Learning در اثر انگشت محتوا سنجیده شدند. بررسی منبع و حقوق مستقل لازم است.",
 };
 const reasons:Record<string,string>={
   SCIENTIFIC_REVIEW_NOT_LINKED:"تأیید علمی متصل به نسخهٔ فعلی ثبت نشده است.",
@@ -53,7 +61,12 @@ const reasons:Record<string,string>={
   SOURCE_DEPENDENCIES_NOT_REVALIDATED:"وابستگی‌های منبع و حقوقِ پیشنهاد هنوز با نسخهٔ جاری تطبیق داده نشده‌اند.",
   SOURCE_SCIENCE_RIGHTS_UNVERIFIED:"منابع، تأیید علمی و حقوق استفادهٔ عمومی هنوز مستقل بررسی نشده‌اند.",
   FROZEN_MANIFEST_AND_APPROVAL_REQUIRED:"مانیفست منجمد و تصویب مستقل برای انتشار وجود ندارد.",
-  LIVE_SOURCE_RIGHTS_REVALIDATION_REQUIRED:"انطباق زندهٔ منابع و حقوق پیشنهاد هنوز بررسی نشده است.",
+  LIVE_SOURCE_RIGHTS_REVALIDATION_REQUIRED:"تأیید مستقل منبع و حقوق استفادهٔ عمومی لازم است.",
+  LIVE_DEPENDENCY_BASELINE_REQUIRED:"برای سنجش تغییرات زندهٔ منابع و وابستگی‌ها، بستهٔ تازه‌ای انتخاب کنید.",
+  CANONICAL_BASE_CHANGED:"رکورد اصلی نسبت به مبنای پیشنهاد تغییر کرده است.",
+  SOURCE_UNRESOLVED:"هویت کتاب‌شناختی منبع هنوز معتبر و تأییدشده نیست.",
+  DEPENDENCY_UNAVAILABLE:"رکورد یا وابستگی فعلی در محدودهٔ مجاز در دسترس نیست.",
+  DEPENDENCY_UNVERIFIABLE:"بررسی وابستگی‌ها به محدودیت ایمن رسید. بازبینی و محدودکردن بسته لازم است.",
   SELECTION_RECHECK_REQUIRED:"بسته با وضعیت فعلی محتوا یا سیاست هماهنگ نیست.",
 };
 export default function PublicationPreflight(){
@@ -193,7 +206,10 @@ export default function PublicationPreflight(){
             <ul>{verification.items.map(item=><li key={item.kind+":"+item.resource_id}>
               <strong style={{overflowWrap:"anywhere"}}>{item.kind} #{item.resource_id}</strong>
               <p>{snapshotStates[item.snapshot_state]}</p>
+              <p>{dependencyStates[item.dependency_state]}</p>
               {item.content_issues.length>0&&<ul>{item.content_issues.map(code=>
+                <li key={code}>{reasons[code]??code}</li>)}</ul>}
+              {item.dependency_issues.length>0&&<ul>{item.dependency_issues.map(code=>
                 <li key={code}>{reasons[code]??code}</li>)}</ul>}
             </li>)}</ul>
             <p>موانع مستقل انتشار همچنان برقرارند:</p>

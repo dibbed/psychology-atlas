@@ -10,6 +10,7 @@ from django.test import TestCase, TransactionTestCase, override_settings, skipUn
 from django.utils import timezone
 
 from .cms_case_publication_models import CasePublicationPlan, CasePublicationReceipt, CasePublicationReview
+from .cms_review_models import ReviewPolicy
 from .models import (CaseAttempt, CaseAttemptAnswer, CaseRevision, CaseStep, CaseTransition,
                      CaseQuestion, CaseChoice, CaseScoringDimension,
                      ClinicalCase, SourceReference, StudyActivity)
@@ -20,6 +21,7 @@ from .tests_v100_p01 import BASE, SecurityFixture
 class CasePublicationFixture(SecurityFixture):
     def setUp(self):
         super().setUp()
+        ReviewPolicy.objects.get_or_create(pk=1)
         self.client_owner = self.sign_in(self.owner)
         self.case = ClinicalCase.objects.create(slug="p16-synthetic-new-case",
             title="Fictional educational scenario", patient_summary="Fictional only",
@@ -428,6 +430,7 @@ class CasePublicationConcurrencyTests(CasePublicationFixture, TransactionTestCas
     def test_concurrent_apply_with_same_key_commits_once(self):
         from .cms_case_publication import apply_plan
         from .cms_models import AdminAuditEvent
+        self.assertTrue(ReviewPolicy.objects.filter(pk=1).exists(), "Case fixture needs its seeded review policy")
         self.prepared_apply()
         plan = CasePublicationPlan.objects.get(revision=self.rev)
         session_id = self.client_owner.session["cms_session_id"]

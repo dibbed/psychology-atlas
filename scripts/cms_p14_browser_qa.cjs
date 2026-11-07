@@ -418,9 +418,24 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
     const verifyBody=await (await verifyResponse).json();
     check(verifyBody.all_snapshots_current&&verifyBody.policy_matches&&
       verifyBody.items[0].snapshot_state==='matching'&&
+      verifyBody.items[0].dependency_state==='matching'&&
       verifyBody.review_blockers.includes('LIVE_SOURCE_RIGHTS_REVALIDATION_REQUIRED')&&
       !verifyBody.publication_available&&!JSON.stringify(verifyBody).includes('SYNTHETIC SECRET'),
       'P16 '+domain+' recheck preserves explicit live source/rights blockers without exposing draft');
+    const sourcePreview=await request(owner,'/sources/preview/',{operation:'update',source_id:fixture.p16_source_id,
+      changes:{citation:'P16 synthetic private citation edited for '+domain}});
+    assert.equal(sourcePreview.status,201);assert.equal(sourcePreview.data.preview.can_apply,true);
+    const sourceApplied=await request(owner,'/sources/plans/'+sourcePreview.data.id+'/apply/',{},sourcePreview.etag);
+    assert.equal(sourceApplied.status,200);assert.equal(sourceApplied.data.status,'applied');
+    const sourceRecheck=owner.waitForResponse(response=>response.url().replace(/\/$/,'')
+      .endsWith('/publication/selections/'+selectionData.id+'/verify')&&response.request().method()==='GET'&&
+      !(response.status()>=300&&response.status()<400));
+    await owner.getByRole('button',{name:'بررسی وضعیت فعلی بسته'}).click();
+    const sourceChanged=await (await sourceRecheck).json();
+    check(!sourceChanged.all_snapshots_current&&sourceChanged.items[0].snapshot_state==='matching'&&
+      sourceChanged.items[0].dependency_state==='stale'&&!sourceChanged.publication_available&&
+      !JSON.stringify(sourceChanged).includes('private citation'),
+      'P16 '+domain+' canonical source edit invalidates live dependency binding while proposal digest stays unchanged');
   }
   await owner.screenshot({path:path.join(out,'p16-editorial-proposals-mobile.png'),fullPage:true,
     mask:[owner.locator('input[type="password"]')]});

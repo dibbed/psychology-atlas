@@ -1,23 +1,28 @@
-"""P16 durable review selections. Deliberately NO Freeze, Approve or Apply.
+"""P16 immutable review requests bound to private candidates and live dependencies.
 
-A selected group is an immutable *request to review* bound to private
-candidate digests. It does not contain content, claim scientific approval,
-resolve sources, or authorize public effects.
+Independent evidence, frozen publication manifests and public effects belong
+to the subsequent publication workflow.
 """
 import uuid
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.utils import timezone
+from rest_framework.exceptions import ValidationError
+from .brain_publication import source_is_resolved
 from .cms_audit import attribution
-from .cms_content import digest, scoped_states
+from .cms_content import canonical_snapshot, digest, scoped_states
 from .cms_content_models import ContentState
-from .cms_domains import DOMAIN_SPECS
+from .cms_domains import DOMAIN_SPECS, dependency_snapshot
+from .cms_governance import governance_dependency_snapshot
 from .cms_learning_fingerprint import KIND_MODELS, draft_fingerprint
 from .cms_models import AdminAuditEvent
 from .cms_policy import CMSFailure, policy_lock, require
 from .cms_publication_preflight import EDITORIAL_STATUSES, editorial_proposal_fingerprint
 from .cms_publication_selection_models import PublicationCandidateSelection
+from .cms_review import current_policy
 from .cms_sessions import current_session
+from .models import SourceReference, lock_brain_curation
 
 
 DOMAINS = ("learning", "brain", "assessment")
@@ -71,6 +76,42 @@ def _permissions(actor, domain):
         require(actor, cap)
 
 
+def _editorial_dependencies(state):
+    revision = state.current_revision
+    if digest(revision.payload) != revision.payload_digest:
+        raise CMSFailure("SELECTION_INTEGRITY_FAILED", 409)
+    canonical = None
+    if state.canonical_pk is not None:
+        canonical = DOMAIN_SPECS[state.kind]["model"].objects.select_for_update().filter(
+            pk=state.canonical_pk).first()
+        if canonical is None:
+            raise CMSFailure("NOT_FOUND", 404)
+    try:
+        closure = dependency_snapshot(state.kind, canonical, revision.payload, lock=True)
+    except ValidationError:
+        raise CMSFailure("DEPENDENCY_UNVERIFIABLE", 409)
+    source_ids = [item["id"] for item in closure["sources"]]
+    governance = governance_dependency_snapshot(source_ids, lock=True,
+        resource_type=state.kind.replace("-", "_") if canonical is not None else None,
+        resource_id=state.canonical_pk)
+    policy = current_policy()
+    base = digest(canonical_snapshot(state.kind, canonical)) if canonical is not None else digest({})
+    issues = []
+    if base != state.canonical_digest or base != revision.base_digest:
+        issues.append("CANONICAL_BASE_CHANGED")
+    if governance["missing_source_ids"] or any(row["archived"] or row["deleted"] for row in closure["source_lifecycle"]):
+        issues.append("SOURCE_UNAVAILABLE")
+    if not all(source_is_resolved(source) for source in SourceReference.objects.filter(pk__in=source_ids)):
+        issues.append("SOURCE_UNRESOLVED")
+    return {
+        "digest": digest({"schema": "cms-live-editorial-dependencies-v1", "canonical": base,
+            "closure": closure, "governance": governance,
+            "review_policy": {"version": policy.version, "mode": policy.mode}}),
+        "source_count": len(source_ids), "endpoint_count": len(closure["endpoints"]),
+        "issues": issues,
+    }
+
+
 def _resolve(actor, domain, item, *, enforce_digest=True):
     kind, identifier = item["kind"], item["resource_id"]
     if domain == "learning":
@@ -89,7 +130,8 @@ def _resolve(actor, domain, item, *, enforce_digest=True):
             "content_issues": preview["content_issues"],
         }
     else:
-        states = scoped_states(actor, ContentState.objects.select_for_update().select_related(
+        lock_brain_curation(connection.alias)
+        states = scoped_states(actor, ContentState.objects.select_for_update(of=("self",)).select_related(
             "current_revision").filter(
             pk=identifier, kind=kind, current_revision__status__in=EDITORIAL_STATUSES,
         ))
@@ -103,6 +145,7 @@ def _resolve(actor, domain, item, *, enforce_digest=True):
             "revision_id": preview["revision_id"],
             "version": state.version, "proposal_digest": actual,
             "stored_dependency_digest": preview["dependency_digest"],
+            "live_dependencies": _editorial_dependencies(state),
             "source_rights_revalidation": "required_before_any_publication",
         }
     if enforce_digest and actual != item["expected_digest"]:
@@ -139,7 +182,7 @@ def select_candidates(actor_id, session_id, data, request_id):
         current_session(session_id, actor)
         _permissions(actor, domain)
         manifest = {
-            "schema": "cms-review-selection-v1",
+            "schema": "cms-review-selection-v2",
             "domain": domain,
             "policy_version": policy.version,
             "items": snapshots,
@@ -167,7 +210,7 @@ def _owned_selection(actor, session_id, selection_id):
     _permissions(actor, result.domain)
     manifest = result.selection
     if (type(manifest) is not dict
-            or manifest.get("schema") != "cms-review-selection-v1"
+            or manifest.get("schema") not in {"cms-review-selection-v1", "cms-review-selection-v2"}
             or manifest.get("domain") != result.domain
             or manifest.get("policy_version") != result.policy_version
             or manifest.get("authority") != "no_scientific_rights_or_publication_approval"
@@ -204,33 +247,49 @@ def verify_selection(actor_id, session_id, selection_id):
             }
             state = "matching"
             issues = []
+            dependency_state = "content_only" if selected.domain == "learning" else "baseline_missing"
+            dependency_issues = []
             try:
                 current = _resolve(actor, selected.domain, candidate, enforce_digest=False)
                 if current[field] != expected:
                     state = "stale"
                 if selected.domain == "learning":
                     issues = current["content_issues"]
+                else:
+                    live = current["live_dependencies"]
+                    dependency_issues = live["issues"]
+                    previous = snapshot.get("live_dependencies")
+                    if previous is not None:
+                        dependency_state = "matching" if previous == live else "stale"
+                    if dependency_issues:
+                        dependency_state = "invalid"
             except CMSFailure as error:
                 code = str(error.detail.get("code", ""))
                 if code == "NOT_FOUND":
                     state = "unavailable"
-                elif code == "PREVIEW_LIMIT":
+                elif code in {"PREVIEW_LIMIT", "DEPENDENCY_UNVERIFIABLE"}:
                     state = "unverifiable"
                 else:
                     # Never conceal a new permission check, DB error, or unknown
                     # validation failure behind a seemingly successful report.
                     raise
+                dependency_state = "invalid"
+                dependency_issues = ["DEPENDENCY_UNAVAILABLE" if state == "unavailable" else "DEPENDENCY_UNVERIFIABLE"]
             checks.append({
                 "kind": candidate["kind"], "resource_id": candidate["resource_id"],
                 "snapshot_state": state, "content_issues": issues,
+                "dependency_state": dependency_state, "dependency_issues": dependency_issues,
             })
         current_session(session_id, actor)
         _permissions(actor, selected.domain)
         policy_matches = policy.version == selected.policy_version
-        all_current = policy_matches and all(item["snapshot_state"] == "matching" for item in checks)
+        all_current = policy_matches and all(item["snapshot_state"] == "matching"
+            and item["dependency_state"] in {"matching", "content_only"} for item in checks)
         blockers = ["SOURCE_SCIENCE_RIGHTS_UNVERIFIED", "FROZEN_MANIFEST_AND_APPROVAL_REQUIRED"]
         if selected.domain in {"brain", "assessment"}:
             blockers.append("LIVE_SOURCE_RIGHTS_REVALIDATION_REQUIRED")
+        if any(item["dependency_state"] == "baseline_missing" for item in checks):
+            blockers.append("LIVE_DEPENDENCY_BASELINE_REQUIRED")
         if not policy_matches:
             blockers.append("POLICY_CHANGED")
         if not all_current:
