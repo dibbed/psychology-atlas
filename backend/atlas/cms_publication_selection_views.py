@@ -2,7 +2,7 @@
 from rest_framework.response import Response
 
 from .cms_policy import CMSFailure
-from .cms_publication_selection import read_selection, response_data, select_candidates
+from .cms_publication_selection import read_selection, response_data, select_candidates, verify_selection
 from .cms_views import AdminAPIView
 
 
@@ -26,3 +26,12 @@ class PublicationSelectionDetailView(AdminAPIView):
             raise CMSFailure("INVALID_QUERY", 400)
         selected = read_selection(request.user.pk, request.cms_session.pk, selection_id)
         return Response(response_data(selected))
+
+
+class PublicationSelectionVerifyView(AdminAPIView):
+    capability = "cms_enter"
+
+    def get(self, request, selection_id):
+        if request.query_params:
+            raise CMSFailure("INVALID_QUERY", 400)
+        return Response(verify_selection(request.user.pk, request.cms_session.pk, selection_id))

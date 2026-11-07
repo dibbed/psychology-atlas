@@ -154,3 +154,132 @@ class PublicationSelectionsTests(SecurityFixture, TestCase):
             "domain":"learning","entries":[entry],"request_key":str(uuid.uuid4()),"apply":True})
         self.assertEqual(malformed.status_code, 400)
         self.assertEqual(PublicationCandidateSelection.objects.count(), 1)
+
+    def verify(self, selection_id, client=None, extra=""):
+        return (client or self.owner_client).get(
+            BASE + f"publication/selections/{selection_id}/verify/" + extra,
+        )
+
+    def test_verify_learning_snapshot_is_read_only_and_detects_edits(self):
+        from .cms_models import AdminAuditEvent
+        from .cms_publication_selection_models import PublicationCandidateSelection
+        entry = self.entry("learning", "quiz", self.quiz.pk)
+        selected = self.post_selection("learning", [entry])
+        self.assertEqual(selected.status_code, 201, selected.content[:300])
+        selection_id = selected.json()["id"]
+        first = self.verify(selection_id)
+        self.assertEqual(first.status_code, 200, first.content[:400])
+        result = first.json()
+        self.assertTrue(result["all_snapshots_current"])
+        self.assertTrue(result["policy_matches"])
+        self.assertEqual(result["items"][0]["snapshot_state"], "matching")
+        self.assertEqual(result["status"], "review_selection_only")
+        self.assertFalse(result["publication_available"])
+        self.assertFalse(result["approved"])
+        self.assertIn("SOURCE_SCIENCE_RIGHTS_UNVERIFIED", result["review_blockers"])
+        self.assertNotIn("Private hidden quiz body", first.content.decode())
+        self.assertNotIn("Private correct answer", first.content.decode())
+        self.assertEqual(AdminAuditEvent.objects.filter(action="publication.selection_created").count(), 1)
+        QuizChoice.objects.filter(question__quiz=self.quiz, is_correct=True).update(text="Changed private answer")
+        stale = self.verify(selection_id)
+        self.assertEqual(stale.status_code, 200, stale.content[:400])
+        self.assertFalse(stale.json()["all_snapshots_current"])
+        self.assertEqual(stale.json()["items"][0]["snapshot_state"], "stale")
+        self.assertNotIn("Changed private answer", stale.content.decode())
+        self.assertEqual(PublicationCandidateSelection.objects.count(), 1)
+        self.assertFalse(Quiz.objects.get(pk=self.quiz.pk).is_active)
+
+    def test_verify_dependency_and_archival_invalidation(self):
+        from django.utils import timezone
+        entry = self.entry("learning", "quiz", self.quiz.pk)
+        selection_id = self.post_selection("learning", [entry]).json()["id"]
+        self.quiz.disorder.is_active = False
+        self.quiz.disorder.save(update_fields=["is_active"])
+        stale = self.verify(selection_id)
+        self.assertEqual(stale.status_code, 200, stale.content[:250])
+        self.assertEqual(stale.json()["items"][0]["snapshot_state"], "stale")
+        self.quiz.archived_at = timezone.now()
+        self.quiz.save(update_fields=["archived_at"])
+        unavailable = self.verify(selection_id)
+        self.assertEqual(unavailable.status_code, 200)
+        self.assertEqual(unavailable.json()["items"][0]["snapshot_state"], "unavailable")
+        self.assertFalse(unavailable.json()["all_snapshots_current"])
+
+    def test_verify_editorial_revision_and_policy_change_never_approve(self):
+        from .cms_models import RolePolicy
+        entry = self.entry("brain", "brain-anatomical-entity", str(self.brain.pk))
+        selection_id = self.post_selection("brain", [entry]).json()["id"]
+        current = self.verify(selection_id)
+        self.assertEqual(current.status_code, 200, current.content[:300])
+        self.assertTrue(current.json()["all_snapshots_current"])
+        self.assertIn("LIVE_SOURCE_RIGHTS_REVALIDATION_REQUIRED", current.json()["review_blockers"])
+        policy = RolePolicy.objects.get(pk=1)
+        policy.version += 1
+        policy.save(update_fields=["version"])
+        policy_changed = self.verify(selection_id)
+        self.assertEqual(policy_changed.status_code, 200, policy_changed.content[:350])
+        self.assertFalse(policy_changed.json()["policy_matches"])
+        self.assertFalse(policy_changed.json()["all_snapshots_current"])
+        self.assertEqual(policy_changed.json()["items"][0]["snapshot_state"], "matching")
+        data = {"name_en": "New confidential proposed payload"}
+        revision = ContentRevision.objects.create(
+            state=self.brain, sequence=2, base_version=1,
+            base_digest=digest({}), payload=data, payload_digest=digest(data),
+            dependency_digest=digest({}), status="draft", actor=self.owner,
+        )
+        self.brain.current_revision = revision
+        self.brain.version = 2
+        self.brain.save(update_fields=["current_revision", "version"])
+        stale = self.verify(selection_id)
+        self.assertEqual(stale.status_code, 200, stale.content[:350])
+        self.assertEqual(stale.json()["items"][0]["snapshot_state"], "stale")
+        self.assertNotIn("confidential", stale.content.decode())
+        self.assertEqual(ContentState.objects.get(pk=self.brain.pk).publication, "never_published")
+
+    def test_verify_requires_actor_and_live_permissions_and_closed_query(self):
+        from django.contrib.auth.models import Permission
+        entry = self.entry("learning", "quiz", self.quiz.pk)
+        selection_id = self.post_selection("learning", [entry]).json()["id"]
+        independent = self.user("verify-other", staff=True,
+            caps=("cms_enter", "cms_learning_view", "cms_publication_validate_learning",
+                  "cms_publication_select_learning"))
+        other_client = self.sign_in(independent)
+        self.assertEqual(self.verify(selection_id, client=other_client).status_code, 404)
+        self.assertEqual(self.verify(selection_id, extra="?leak=1").status_code, 400)
+        own = self.post(other_client, "publication/selections/", {
+            "domain": "learning", "entries": [entry],
+            "request_key": str(uuid.uuid4()),
+        })
+        self.assertEqual(own.status_code, 201, own.content[:300])
+        self.assertEqual(self.verify(own.json()["id"], client=other_client).status_code, 200)
+        permission = Permission.objects.get(
+            content_type__app_label="atlas", content_type__model="rolepolicy",
+            codename="cms_publication_select_learning",
+        )
+        independent.user_permissions.remove(permission)
+        self.assertEqual(self.verify(own.json()["id"], client=other_client).status_code, 403)
+        self.assertEqual(self.verify(selection_id, client=other_client).status_code, 404)
+        # Verification never creates another selection or event.
+        from .cms_publication_selection_models import PublicationCandidateSelection
+        self.assertEqual(PublicationCandidateSelection.objects.count(), 2)
+
+    def test_verify_rechecks_session_after_waiting_for_candidate_snapshot(self):
+        from datetime import timedelta
+        from unittest.mock import patch
+        from django.utils import timezone
+        from .cms_models import AdminSession
+        from .cms_publication_selection import _resolve
+
+        entry = self.entry("learning", "quiz", self.quiz.pk)
+        selection_id = self.post_selection("learning", [entry]).json()["id"]
+        session_id = self.owner_client.session["cms_session_id"]
+
+        def expire_during_resolution(*args, **kwargs):
+            result = _resolve(*args, **kwargs)
+            AdminSession.objects.filter(pk=session_id).update(expires_at=timezone.now() - timedelta(seconds=1))
+            return result
+
+        with patch("atlas.cms_publication_selection._resolve", side_effect=expire_during_resolution):
+            response = self.verify(selection_id)
+        self.assertEqual(response.status_code, 403, response.content[:300])
+        self.assertEqual(response.json()["code"], "UNAUTHENTICATED")

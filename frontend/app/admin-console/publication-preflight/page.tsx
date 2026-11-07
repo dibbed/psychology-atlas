@@ -12,6 +12,17 @@ type Inventory=CmsPage<Entry>&{domain:Domain;publication_available:boolean;scope
 type SelectionReceipt={id:string;domain:Domain;selection_digest:string;status:string;
   item_count:number;publication_available:false;approved:false;recovered:boolean};
 type SelectionPayload={domain:Domain;entries:{kind:string;resource_id:string|number;expected_digest:string}[];request_key:string};
+type VerificationItem={kind:string;resource_id:string|number;
+  snapshot_state:"matching"|"stale"|"unavailable"|"unverifiable";content_issues:string[]};
+type VerificationResult={id:string;domain:Domain;status:string;selection_digest:string;
+  item_count:number;items:VerificationItem[];policy_matches:boolean;all_snapshots_current:boolean;
+  review_blockers:string[];verified_at:string;publication_available:false;approved:false};
+const snapshotStates:Record<VerificationItem["snapshot_state"],string>={
+  matching:"اثر انگشت نسخه و وابستگی‌های درون‌سیستمی مطابق است",
+  stale:"محتوا یا وابستگی از زمان انتخاب تغییر کرده است",
+  unavailable:"این پیش‌نویس دیگر در محدودهٔ انتخاب مجاز نیست",
+  unverifiable:"بررسی ایمن این مورد کامل نشد",
+};
 const reasons:Record<string,string>={
   SCIENTIFIC_REVIEW_NOT_LINKED:"تأیید علمی متصل به نسخهٔ فعلی ثبت نشده است.",
   SOURCE_RIGHTS_REVIEW_NOT_LINKED:"مجوز و منبع معتبرِ وابسته به نسخه تأیید نشده است.",
@@ -40,6 +51,10 @@ const reasons:Record<string,string>={
   TARGET_INVALID:"مفهوم هدف با نوع تمرین سازگار نیست.",
   DIFFICULTY_INVALID:"درجه دشواری نامعتبر است.",
   SOURCE_DEPENDENCIES_NOT_REVALIDATED:"وابستگی‌های منبع و حقوقِ پیشنهاد هنوز با نسخهٔ جاری تطبیق داده نشده‌اند.",
+  SOURCE_SCIENCE_RIGHTS_UNVERIFIED:"منابع، تأیید علمی و حقوق استفادهٔ عمومی هنوز مستقل بررسی نشده‌اند.",
+  FROZEN_MANIFEST_AND_APPROVAL_REQUIRED:"مانیفست منجمد و تصویب مستقل برای انتشار وجود ندارد.",
+  LIVE_SOURCE_RIGHTS_REVALIDATION_REQUIRED:"انطباق زندهٔ منابع و حقوق پیشنهاد هنوز بررسی نشده است.",
+  SELECTION_RECHECK_REQUIRED:"بسته با وضعیت فعلی محتوا یا سیاست هماهنگ نیست.",
 };
 export default function PublicationPreflight(){
   const {can}=useCms();
@@ -59,10 +74,16 @@ export default function PublicationPreflight(){
   const [selection,setSelection]=useState<SelectionReceipt>();
   const [selectionError,setSelectionError]=useState("");
   const [saving,setSaving]=useState(false);
+  const [verification,setVerification]=useState<VerificationResult>();
+  const [verifying,setVerifying]=useState(false);
+  const [verifyError,setVerifyError]=useState("");
   const retryRef=useRef<SelectionPayload|undefined>(undefined);
+  const generation=useRef(0);
   const canSelect=activeDomain!=="cases"&&can("cms_publication_select_"+activeDomain);
+  useEffect(()=>()=>{generation.current++;},[activeDomain,canSelect]);
   const entryKey=(item:Entry)=>item.kind+":"+item.resource_id;
   const toggle=(item:Entry,checked:boolean)=>{
+    generation.current++;
     setChosen(previous=>{
       const updated={...previous};
       if(checked&&Object.keys(updated).length<20)updated[entryKey(item)]=item;
@@ -70,6 +91,7 @@ export default function PublicationPreflight(){
       return updated;
     });
     retryRef.current=undefined;setSelection(undefined);setSelectionError("");
+    setVerification(undefined);setVerifyError("");
   };
   async function createSelection(){
     if(saving||selection||!canSelect)return;
@@ -84,15 +106,32 @@ export default function PublicationPreflight(){
         })),
       };
     }
+    const stamp=generation.current;
     setSaving(true);setSelectionError("");
     try{
       const result=await cms<SelectionReceipt>("/publication/selections/",{
         method:"POST",body:JSON.stringify(retryRef.current),
       });
-      setSelection(result.data);retryRef.current=undefined;
+      if(stamp!==generation.current)return;
+      setSelection(result.data);setVerification(undefined);setVerifyError("");retryRef.current=undefined;
     }catch(e){
+      if(stamp!==generation.current)return;
       setSelectionError(e instanceof CmsError?e.message:"بستهٔ بازبینی ثبت نشد؛ با همان شناسه می‌توانید دوباره تلاش کنید.");
-    }finally{setSaving(false);}
+    }finally{if(stamp===generation.current)setSaving(false);}
+  }
+  async function verifyCurrentSelection(){
+    if(!selection||verifying||!canSelect)return;
+    const stamp=generation.current;
+    setVerifying(true);setVerifyError("");setVerification(undefined);
+    try{
+      const result=await cms<VerificationResult>(
+        "/publication/selections/"+encodeURIComponent(selection.id)+"/verify/");
+      if(stamp!==generation.current)return;
+      setVerification(result.data);
+    }catch(e){
+      if(stamp!==generation.current)return;
+      setVerifyError(e instanceof CmsError?e.message:"اعتبارسنجی نسخه‌ها انجام نشد. نتیجهٔ قبلی معتبر تلقی نمی‌شود.");
+    }finally{if(stamp===generation.current)setVerifying(false);}
   }
   useEffect(()=>{
     if(!canCases&&!canLearning&&!canBrain&&!canAssessment)return;
@@ -105,7 +144,12 @@ export default function PublicationPreflight(){
     return ()=>{active=false;};
   },[canCases,canLearning,canBrain,canAssessment,activeDomain,page]);
   if(!canCases&&!canLearning&&!canBrain&&!canAssessment)return <CmsState empty="بررسی مقدماتی انتشار به مجوز اختصاصی همان دامنه نیاز دارد."/>;
-  const clearSelection=()=>{setChosen({});setSelection(undefined);setSelectionError("");retryRef.current=undefined;};
+  const clearSelection=()=>{
+    generation.current++;
+    setChosen({});setSelection(undefined);setSelectionError("");
+    setVerification(undefined);setVerifyError("");setSaving(false);setVerifying(false);
+    retryRef.current=undefined;
+  };
   const change=(value:Domain)=>{setDomain(value);setPage(1);setData(undefined);clearSelection();};
   return <div className="stack" dir="rtl">
     <a className="cms-link" href="/admin-console">بازگشت به خانهٔ مدیریت</a>
@@ -136,6 +180,25 @@ export default function PublicationPreflight(){
           <p>تعداد موارد: {selection.item_count.toLocaleString("fa-IR")}</p>
           <p>شناسهٔ بسته: <code dir="ltr" style={{overflowWrap:"anywhere"}}>{selection.id}</code></p>
           <p>اثر انگشت: <code dir="ltr" style={{overflowWrap:"anywhere"}}>{selection.selection_digest}</code></p>
+          <button className="button secondary" type="button" disabled={verifying}
+            onClick={()=>void verifyCurrentSelection()}>
+            {verifying?"در حال بررسی نسخه‌ها…":"بررسی وضعیت فعلی بسته"}
+          </button>
+          {verifyError&&<p role="alert">{verifyError}</p>}
+          {verification&&<div className="stack" role="region" aria-label="اعتبارسنجی مجدد بسته">
+            <p role="status">{verification.all_snapshots_current?
+              "اثر انگشت نسخه‌ها و سیاست مطابق‌اند؛ هنوز هیچ تأیید انتشار وجود ندارد.":
+              "بسته به بازبینی مجدد نیاز دارد؛ محتوا یا سیاست تغییر کرده است."}</p>
+            <p>وضعیت سیاست دسترسی: {verification.policy_matches?"بدون تغییر":"تغییر کرده"}</p>
+            <ul>{verification.items.map(item=><li key={item.kind+":"+item.resource_id}>
+              <strong style={{overflowWrap:"anywhere"}}>{item.kind} #{item.resource_id}</strong>
+              <p>{snapshotStates[item.snapshot_state]}</p>
+              {item.content_issues.length>0&&<ul>{item.content_issues.map(code=>
+                <li key={code}>{reasons[code]??code}</li>)}</ul>}
+            </li>)}</ul>
+            <p>موانع مستقل انتشار همچنان برقرارند:</p>
+            <ul>{verification.review_blockers.map(code=><li key={code}>{reasons[code]??code}</li>)}</ul>
+          </div>}
         </div>}
       </section>}
       {data.results.length===0?<p>در این حوزه پیش‌نویس واجد شرایط بازرسی وجود ندارد.</p>:

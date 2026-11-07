@@ -354,6 +354,36 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
   check(await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)&&
     await owner.getByText('بستهٔ بازبینی ثبت شد',{exact:false}).count()===1,
     'P16 sealed Learning review selection receipt is visible at 320px RTL');
+  const recheckPath=response=>response.url().replace(/\/$/,'').endsWith('/publication/selections/'+learningSelectionResult.id+'/verify')&&response.request().method()==='GET'&&!(response.status()>=300&&response.status()<400);
+  const initialRecheck=owner.waitForResponse(recheckPath);
+  await owner.getByRole('button',{name:'بررسی وضعیت فعلی بسته'}).click();
+  const initialResult=await (await initialRecheck).json();
+  check(initialResult.all_snapshots_current&&initialResult.policy_matches&&
+    initialResult.items[0].snapshot_state==='matching'&&!initialResult.publication_available&&
+    initialResult.review_blockers.includes('SOURCE_SCIENCE_RIGHTS_UNVERIFIED'),
+    'P16 Learning recheck matches immutable selection digest but never reports scientific clearance');
+  check(await owner.getByRole('region',{name:'اعتبارسنجی مجدد بسته'}).count()===1&&
+    await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
+    'P16 Persian Learning verification fits a 320px RTL viewport');
+  const beforeSecondEdit=await request(owner,'/learning/quizzes/'+quizId+'/');
+  const secondEdit=await request(owner,'/learning/quizzes/'+quizId+'/metadata/',
+    {title:'New private study title after selection',description:'',disorder_id:null},beforeSecondEdit.etag);
+  assert.equal(secondEdit.status,200);
+  const changedRecheck=owner.waitForResponse(recheckPath);
+  await owner.getByRole('button',{name:'بررسی وضعیت فعلی بسته'}).click();
+  const staleReport=await (await changedRecheck).json();
+  check(!staleReport.all_snapshots_current&&staleReport.items[0].snapshot_state==='stale'&&
+    !JSON.stringify(staleReport).includes('New private study title'),
+    'P16 changed Learning draft safely invalidates old selection without exposing private text');
+  let releaseOldVerification,verificationArrived;
+  const delayedVerification=new Promise(resolve=>{verificationArrived=resolve;});
+  const verificationGate=new Promise(resolve=>{releaseOldVerification=resolve;});
+  const oldVerificationRoute='**/api/admin/publication/selections/'+learningSelectionResult.id+'/verify/';
+  await owner.route(oldVerificationRoute,async route=>{
+    const response=await route.fetch();verificationArrived();await verificationGate;await route.fulfill({response});
+  });
+  const oldVerificationResponse=owner.waitForResponse(recheckPath);
+  await owner.getByRole('button',{name:'بررسی وضعیت فعلی بسته'}).click();await delayedVerification;
   for(const domain of ['brain','assessment']){
     const answer=await request(owner,'/publication/preflight/?domain='+domain+'&page=1&page_size=30');
     assert.equal(answer.status,200);
@@ -362,7 +392,7 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
       candidate.blockers.includes('SOURCE_DEPENDENCIES_NOT_REVALIDATED')&&
       !answer.data.publication_available&&!JSON.stringify(answer.data).includes('P16 PRIVATE SYNTHETIC SECRET'),
       'P16 '+domain+' immutable proposal inventory excludes private draft text and denies publication');
-    await owner.goto(origin+'/admin-console/publication-preflight');
+    if(domain==='assessment')await owner.goto(origin+'/admin-console/publication-preflight');
     await owner.getByLabel('حوزهٔ مجاز').selectOption(domain);
     await owner.getByText(candidate.proposal_digest,{exact:true}).waitFor();
     check(await owner.getByText('اثر انگشت نسخهٔ ثبت‌شدهٔ پیشنهاد',{exact:false}).count()===1&&
@@ -375,6 +405,22 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
     check(selectionData.domain===domain&&selectionData.item_count===1&&
       selectionData.selection_digest?.length===64&&!selectionData.approved&&!selectionData.publication_available,
       'P16 '+domain+' server-owned selection retains a private review batch without public effects');
+    if(domain==='brain'){
+      releaseOldVerification();await oldVerificationResponse;await owner.unroute(oldVerificationRoute);
+      await owner.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+      check(await owner.getByRole('region',{name:'اعتبارسنجی مجدد بسته'}).count()===0,
+        'P16 delayed verification from another domain never appears under the new selection');
+    }
+    const verifyResponse=owner.waitForResponse(response=>response.url().replace(/\/$/,'')
+      .endsWith('/publication/selections/'+selectionData.id+'/verify')&&response.request().method()==='GET'&&
+      !(response.status()>=300&&response.status()<400));
+    await owner.getByRole('button',{name:'بررسی وضعیت فعلی بسته'}).click();
+    const verifyBody=await (await verifyResponse).json();
+    check(verifyBody.all_snapshots_current&&verifyBody.policy_matches&&
+      verifyBody.items[0].snapshot_state==='matching'&&
+      verifyBody.review_blockers.includes('LIVE_SOURCE_RIGHTS_REVALIDATION_REQUIRED')&&
+      !verifyBody.publication_available&&!JSON.stringify(verifyBody).includes('SYNTHETIC SECRET'),
+      'P16 '+domain+' recheck preserves explicit live source/rights blockers without exposing draft');
   }
   await owner.screenshot({path:path.join(out,'p16-editorial-proposals-mobile.png'),fullPage:true,
     mask:[owner.locator('input[type="password"]')]});

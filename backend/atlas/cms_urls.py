@@ -106,6 +106,7 @@ urlpatterns = [
     path("publication/preflight/", publication_preflight.PublicationPreflightView.as_view()),
     path("publication/selections/", publication_selection.PublicationSelectionView.as_view()),
     path("publication/selections/<uuid:selection_id>/", publication_selection.PublicationSelectionDetailView.as_view()),
+    path("publication/selections/<uuid:selection_id>/verify/", publication_selection.PublicationSelectionVerifyView.as_view()),
     path("publication/cases/<int:case_id>/revisions/<int:revision_id>/reviews/", case_publication.CasePublicationReviewView.as_view()),
     path("publication/cases/<int:case_id>/revisions/<int:revision_id>/freeze/", case_publication.CasePublicationFreezeView.as_view()),
     path("publication/cases/plans/<uuid:plan_id>/", case_publication.CasePublicationPlanView.as_view()),
