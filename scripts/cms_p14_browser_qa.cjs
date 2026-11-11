@@ -524,6 +524,23 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
   check(await owner.getByRole('heading',{name:/نتایج:/}).count()===0,
     'P17 delayed research search response never repopulates results under another domain');
 
+  const health=await request(owner,'/operations/health/');
+  check(health.status===200&&
+    health.data.publication_receipts?.scope==='case_revision_structural_receipts_only'&&
+    Number.isInteger(health.data.publication_receipts.total_observed_mismatches)&&
+    health.data.publication_receipts.full_publication_integrity_proven===false&&
+    health.data.publication_receipts.repair_available===false&&
+    health.data.backup.state==='unavailable',
+    'P18 owner-only case receipt drift is reported as structural metadata, never publication or backup clearance');
+  check((await request(scoped,'/operations/health/')).status===403,
+    'P18 ordinary content curator cannot read owner receipt health');
+  await owner.goto(origin+'/admin-console/operations');
+  await owner.getByRole('heading',{name:'رسیدهای انتشار CaseRevision، فقط بررسی ساختاری'}).waitFor();
+  check(await owner.locator('[aria-label="بازبینی ساختاری رسیدهای انتشار"]').count()===1&&
+    await owner.getByText('مغایرت‌های مشاهده‌شده:',{exact:false}).count()===1&&
+    await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
+    'P18 receipt drift and explicit non-clearance are visible in Persian 320px RTL');
+
   await openAccount(owner,fixture.users.owner.username);
   await owner.getByRole('button',{name:'بررسی ساخت کدهای بازیابی خودم',exact:true}).click();await confirmAccount(owner,fixture.users.owner.tokens[7]);
   await owner.waitForURL(url=>url.pathname.replace(/\/$/,'')==='/account/two_factor/backup/tokens');

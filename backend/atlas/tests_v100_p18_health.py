@@ -1,4 +1,5 @@
 """P18 owner-only read-only health. Never claim a backup adapter exists."""
+import uuid
 from django.test import TestCase, override_settings
 
 from .cms_job_models import AdminJob, AdminArtifact
@@ -26,6 +27,49 @@ class OwnerHealthTests(SecurityFixture, TestCase):
         for sensitive in ("database_url","secret_key","password","dsn","storage_key","email"):
             self.assertNotIn(sensitive,data_repr)
         self.assertFalse(data["worker"]["alive_confirmed"])
+
+    def test_case_publication_receipt_drift_is_observed_without_repair(self):
+        from .cms_case_publication_models import CasePublicationPlan, CasePublicationReceipt
+        from .models import ClinicalCase, CaseRevision
+        case = ClinicalCase.objects.create(
+            slug="p18-synthetic-receipt", title="Synthetic unpublished case",
+            patient_summary="Fictional only", educational_objective="Testing only",
+            is_active=False, seed_managed=False,
+        )
+        revision = CaseRevision.objects.create(
+            case=case, version=1, status=CaseRevision.Status.DRAFT,
+            title="Synthetic", patient_summary="Fictional",
+            educational_objective="Testing only",
+        )
+        plan = CasePublicationPlan.objects.create(
+            revision=revision, manifest={"test": "synthetic"},
+            manifest_digest="a" * 64, status="applied", created_by=self.owner,
+        )
+        before = self.owner_client.get(BASE+"operations/health/")
+        self.assertEqual(before.status_code, 200, before.content[:350])
+        gate = before.json()["publication_receipts"]
+        self.assertEqual(gate["scope"], "case_revision_structural_receipts_only")
+        self.assertEqual(gate["case_plans_applied"], 1)
+        self.assertEqual(gate["case_plans_missing_applied_receipt"], 1)
+        self.assertEqual(gate["case_receipt_digest_mismatches"], 0)
+        self.assertEqual(gate["total_observed_mismatches"], 1)
+        self.assertFalse(gate["full_publication_integrity_proven"])
+        self.assertEqual(gate["repair_available"], False)
+        receipt = CasePublicationReceipt.objects.create(
+            plan=plan, event_type="applied", revision=revision,
+            manifest_digest="a" * 64, idempotency_key=uuid.uuid4(),
+            actor=self.owner, actor_ref="synthetic-test",
+        )
+        matched = self.owner_client.get(BASE+"operations/health/").json()["publication_receipts"]
+        self.assertEqual(matched["total_observed_mismatches"], 0)
+        self.assertEqual(matched["case_receipts_total"], 1)
+        plan.manifest_digest = "b" * 64
+        plan.save(update_fields=["manifest_digest"])
+        stale = self.owner_client.get(BASE+"operations/health/").json()["publication_receipts"]
+        self.assertEqual(stale["case_receipt_digest_mismatches"], 1)
+        self.assertEqual(stale["total_observed_mismatches"], 1)
+        self.assertEqual(CasePublicationReceipt.objects.get(pk=receipt.pk).manifest_digest, "a" * 64)
+        self.assertFalse(case.is_active)
 
     def test_non_owner_denied_and_no_runtime_mutations(self):
         staff=self.user("p18-not-owner",staff=True,caps=(
