@@ -106,6 +106,22 @@ class RegistryRouteAuthorizationTests(SecurityFixture, TestCase):
         now_denied = client.get(BASE + "governance/resources/?resource_type=therapy")
         self.assertEqual(now_denied.status_code, 404, now_denied.content[:350])
 
+    def test_owner_invalid_drafts_for_all_90_kinds_fail_before_database_mutation(self):
+        # Route/capability READY must not silently accept unrecognized payloads
+        # just because the caller is a CMS owner.
+        from .cms_content_models import ContentRevision
+        owner_client = self.sign_in(self.owner)
+        self.assertEqual(len(REGISTRY), 90)
+        for kind in sorted(REGISTRY):
+            with self.subTest(kind=kind):
+                response = self.post(owner_client, f"content/{kind}/", {
+                    "payload": {"__p20_unknown_column__": "NEVER INSERT"},
+                })
+                self.assertEqual(response.status_code, 400, response.content[:450])
+                self.assertEqual(response.json()["code"], "INVALID_FIELDS")
+        self.assertEqual(ContentState.objects.count(), 0)
+        self.assertEqual(ContentRevision.objects.count(), 0)
+
     def test_no_domain_create_grant_is_not_a_write_authorization(self):
         actor = self.user("p20-nonwriting", staff=True,
                           caps=("cms_enter", "cms_catalog", "cms_therapy_view"))
