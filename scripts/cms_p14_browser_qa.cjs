@@ -54,6 +54,11 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
   browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'chrome'}:{})});
   const ownerContext=await browser.newContext({viewport:{width:1280,height:850}}),owner=await ownerContext.newPage();await login(owner,fixture.users.owner);
   const scopedContext=await browser.newContext(),scoped=await scopedContext.newPage();await login(scoped,fixture.users.scoped);
+  // Test the scoped help before P14 role/session revocation can log this user out.
+  await scoped.goto(origin+'/admin-console/help');
+  await scoped.getByRole('heading',{name:'راهنمای کاربردی مدیریت Psychology Atlas'}).waitFor();
+  check(await scoped.getByRole('link',{name:'سلامت عملیات'}).count()===0,
+    'P19 restricted CMS guide omits owner-only operational link');
   const scopedMe=await request(scoped,'/me/'),target=scopedMe.data.user.id;
   check((await request(scoped,'/users/')).status===403&&(await request(scoped,'/roles/users/'+target+'/')).status===403,'Content curator cannot read account or role metadata');
   await openAccount(owner,fixture.users.scoped.username);
@@ -541,6 +546,15 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
     await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
     'P18 receipt drift and explicit non-clearance are visible in Persian 320px RTL');
 
+  await owner.goto(origin+'/admin-console/help');
+  await owner.getByRole('heading',{name:'راهنمای کاربردی مدیریت Psychology Atlas'}).waitFor();
+  check(await owner.getByRole('link',{name:'حقوق و استفاده'}).getAttribute('href')==='/admin-console/rights'&&
+    await owner.getByRole('link',{name:'فهرست و بازبینی محدود P16'}).count()===1&&
+    await owner.getByRole('link',{name:'جست‌وجوی داخلی'}).count()===1,
+    'P19 owner guide connects live rights, P16 review, P17 search and operations without nonexistent caps');
+  check(await owner.getByText('در P16، تأیید فرادادهٔ یک منبع',{exact:false}).count()===1&&
+    await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
+    'P19 Persian guide explains non-clearance and fits 320px RTL');
   await openAccount(owner,fixture.users.owner.username);
   await owner.getByRole('button',{name:'بررسی ساخت کدهای بازیابی خودم',exact:true}).click();await confirmAccount(owner,fixture.users.owner.tokens[7]);
   await owner.waitForURL(url=>url.pathname.replace(/\/$/,'')==='/account/two_factor/backup/tokens');
