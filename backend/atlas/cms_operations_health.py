@@ -7,6 +7,7 @@ from rest_framework.response import Response
 
 from .cms_case_publication_models import CasePublicationPlan, CasePublicationReceipt
 from .cms_job_models import AdminArtifact, AdminJob
+from .cms_source_models import SourceHistory, SourcePlan, SourcePlanReceipt
 from .cms_policy import CMSFailure, policy_lock, require
 from .cms_views import AdminAPIView
 
@@ -56,6 +57,26 @@ class OperationsHealthView(AdminAPIView):
                 "repair_available": False,
                 "notice": "STRUCTURAL_COUNTS_ONLY_NOT_LIVE_SOURCE_RIGHTS_OR_PUBLIC_ELIGIBILITY",
             }
+            # A SourcePlan without receipt is normally an unapplied preview,
+            # not evidence of a failed apply. Only contradictory persisted
+            # receipt/history presence is counted as structural drift.
+            source_receipts = SourcePlanReceipt.objects.all()
+            source_histories = SourceHistory.objects.all()
+            source_receipts_missing_history = source_receipts.filter(plan__history__isnull=True).count()
+            source_histories_missing_receipt = source_histories.filter(plan__receipt__isnull=True).count()
+            source_plan_receipts = {
+                "scope": "source_plan_receipt_history_presence_only",
+                "source_plans_total": SourcePlan.objects.count(),
+                "source_plans_without_receipt": SourcePlan.objects.filter(receipt__isnull=True).count(),
+                "source_receipts_total": source_receipts.count(),
+                "source_histories_total": source_histories.count(),
+                "source_receipts_without_history": source_receipts_missing_history,
+                "source_histories_without_receipt": source_histories_missing_receipt,
+                "total_observed_mismatches": source_receipts_missing_history + source_histories_missing_receipt,
+                "full_source_integrity_proven": False,
+                "repair_available": False,
+                "notice": "STRUCTURAL_PRESENCE_ONLY_NO_RESULT_DIGEST_OR_LIVE_SOURCE_RIGHTS_PROOF",
+            }
             return Response({
                 "scope": "owner_operational_metadata",
                 "as_of": now.isoformat(),
@@ -84,6 +105,7 @@ class OperationsHealthView(AdminAPIView):
                     "unpurged_count": artifacts.count(),
                 },
                 "publication_receipts": receipt_status,
+                "source_plan_receipts": source_plan_receipts,
                 "backup": {
                     "state": "unavailable",
                     "reason": "NO_APPROVED_BACKUP_ADAPTER_CONNECTED_TO_THIS_CMS_ENDPOINT",

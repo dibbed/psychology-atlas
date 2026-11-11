@@ -11,6 +11,14 @@ type Health={
   worker:{alive_confirmed:false;latest_job_heartbeat:string|null;notice:string};
   artifacts:{total:number;unpurged_bytes:number;unpurged_count:number};
   backup:{state:string;reason:string};
+  source_plan_receipts:{
+    scope:"source_plan_receipt_history_presence_only";
+    source_plans_total:number;source_plans_without_receipt:number;
+    source_receipts_total:number;source_histories_total:number;
+    source_receipts_without_history:number;source_histories_without_receipt:number;
+    total_observed_mismatches:number;full_source_integrity_proven:false;
+    repair_available:false;notice:string;
+  };
   publication_receipts:{
     scope:"case_revision_structural_receipts_only";
     case_plans_total:number;case_plans_applied:number;case_plans_withdrawn:number;
@@ -80,6 +88,20 @@ export default function OperationsHealth(){
           <li>ناسازگاری اثرانگشت رسید و برنامه: {data.publication_receipts.case_receipt_digest_mismatches.toLocaleString("fa-IR")}</li>
         </ul>
         <p className="muted">صفر بودن مغایرت به معنی تأیید علمی/حقوقی یا سلامت کامل انتشار و وضعیت عمومی نیست. بررسی خودکار بدون تغییر داده انجام می‌شود؛ Repair از این صفحه وجود ندارد.</p>
+      </section>
+      <section className="card stack" aria-label="بررسی ساختاری رسیدهای طرح منبع">
+        <h2>رسید و تاریخچهٔ Source Plan، فقط بررسی ساختاری</h2>
+        <p>طرح‌ها: {data.source_plan_receipts.source_plans_total.toLocaleString("fa-IR")}؛
+          رسیدها: {data.source_plan_receipts.source_receipts_total.toLocaleString("fa-IR")}؛
+          ردیف‌های تاریخچه: {data.source_plan_receipts.source_histories_total.toLocaleString("fa-IR")}</p>
+        <p>طرح‌های بدون رسید: {data.source_plan_receipts.source_plans_without_receipt.toLocaleString("fa-IR")}.
+          <span className="muted"> طرح پیش‌نمایش ممکن است هنوز اعمال نشده باشد؛ این عدد به‌تنهایی خطا نیست.</span></p>
+        <p role="status">مغایرت‌های ساختاری مشاهده‌شده: {data.source_plan_receipts.total_observed_mismatches.toLocaleString("fa-IR")}</p>
+        <ul>
+          <li>رسید بدون تاریخچه: {data.source_plan_receipts.source_receipts_without_history.toLocaleString("fa-IR")}</li>
+          <li>تاریخچه بدون رسید برنامه: {data.source_plan_receipts.source_histories_without_receipt.toLocaleString("fa-IR")}</li>
+        </ul>
+        <p className="muted">بررسی فقط وجود تاریخچه و رسید را مقایسه می‌کند؛ محتوای نتیجه، مجوز استفاده از منبع، بازبینی علمی، سلامت کامل Apply یا حقوق انتشار را تأیید نمی‌کند. هیچ Repair یا تغییر داده انجام نمی‌شود.</p>
       </section>
       <section className="card stack"><h2>Backup</h2>
         <p><strong>Adapter پشتیبان‌گیری از این پنل متصل نیست.</strong></p>

@@ -71,6 +71,55 @@ class OwnerHealthTests(SecurityFixture, TestCase):
         self.assertEqual(CasePublicationReceipt.objects.get(pk=receipt.pk).manifest_digest, "a" * 64)
         self.assertFalse(case.is_active)
 
+    def test_source_plan_receipt_history_presence_is_observed_without_repair(self):
+        from .cms_source_models import SourcePlan, SourcePlanReceipt, SourceHistory
+
+        preview = SourcePlan.objects.create(
+            operation="update", source_pk=918, fingerprint="a" * 64,
+            actor=self.owner, actor_ref="synthetic",
+        )
+        initial = self.owner_client.get(BASE + "operations/health/")
+        self.assertEqual(initial.status_code, 200, initial.content[:350])
+        before = initial.json()["source_plan_receipts"]
+        self.assertEqual(before["scope"], "source_plan_receipt_history_presence_only")
+        self.assertEqual(before["source_plans_total"], 1)
+        self.assertEqual(before["source_plans_without_receipt"], 1)
+        self.assertEqual(before["source_receipts_total"], 0)
+        self.assertEqual(before["total_observed_mismatches"], 0)
+        self.assertFalse(before["full_source_integrity_proven"])
+        self.assertFalse(before["repair_available"])
+
+        receipt = SourcePlanReceipt.objects.create(
+            plan=preview, actor=self.owner, actor_ref="synthetic",
+            result={"history_ids": []},
+        )
+        missing = self.owner_client.get(BASE + "operations/health/").json()["source_plan_receipts"]
+        self.assertEqual(missing["source_receipts_without_history"], 1)
+        self.assertEqual(missing["total_observed_mismatches"], 1)
+
+        history = SourceHistory.objects.create(
+            plan=preview, source_pk=918, version=1, operation="update",
+            actor=self.owner, actor_ref="synthetic",
+        )
+        matched = self.owner_client.get(BASE + "operations/health/").json()["source_plan_receipts"]
+        self.assertEqual(matched["source_receipts_without_history"], 0)
+        self.assertEqual(matched["source_histories_total"], 1)
+        self.assertEqual(matched["total_observed_mismatches"], 0)
+
+        unreceipted = SourcePlan.objects.create(
+            operation="archive", source_pk=919, fingerprint="b" * 64,
+            actor=self.owner, actor_ref="synthetic",
+        )
+        SourceHistory.objects.create(
+            plan=unreceipted, source_pk=919, version=1, operation="archive",
+            actor=self.owner, actor_ref="synthetic",
+        )
+        drift = self.owner_client.get(BASE + "operations/health/").json()["source_plan_receipts"]
+        self.assertEqual(drift["source_histories_without_receipt"], 1)
+        self.assertEqual(drift["total_observed_mismatches"], 1)
+        self.assertEqual(SourcePlanReceipt.objects.get(pk=receipt.pk).pk, receipt.pk)
+        self.assertEqual(SourceHistory.objects.get(pk=history.pk).pk, history.pk)
+
     def test_non_owner_denied_and_no_runtime_mutations(self):
         staff=self.user("p18-not-owner",staff=True,caps=(
             "cms_enter","cms_dashboard","cms_user_view"))
