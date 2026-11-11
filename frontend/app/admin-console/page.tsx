@@ -30,6 +30,7 @@ export default function AdminHome() {
     </div>
     <p className="cms-freshness">اندازه‌گیری سرور: <time dateTime={data.measured_at}>{cmsDate(data.measured_at)}</time> · زمان محلی مرورگر · شمارش anchorهای CMS، نه آمار انتشار عمومی</p>
     {can("cms_enter") && <section className="card stack"><h2>راهنمای فارسی مدیر</h2><p className="muted">مسیرهای واقعی محتوا، داوری، کاربران، یادگیری و عملیات؛ با توضیح مرزهای تکمیل‌نشده</p><a className="button secondary" href="/admin-console/help">خواندن راهنما</a></section>}
+    {can("cms_owner") && <section className="card stack"><h2>تحلیل شمارش‌های داخلی CMS</h2><p className="muted">مخرج جداگانه برای رکوردها، نسخه‌ها، وظایف بازبینی و حقوق ثبت‌شده؛ بدون فرض اعتبار انتشار</p><a className="button secondary" href="/admin-console/analytics">باز کردن گزارش داخلی</a></section>}
     {can("cms_owner") && <section className="card stack"><h2>سلامت سرویس، صف Job و وضعیت Backup</h2><p className="muted">مشاهدهٔ فرادادهٔ عملیاتی بدون اجرای ترمینال، SQL، backup یا restore</p><a className="button secondary" href="/admin-console/operations">بررسی سلامت عملیات</a></section>}
     {can("cms_search") && <section className="card stack"><h2>جست‌وجوی داخلی امن</h2><p className="muted">پیداکردن محتوای مجاز با شناسهٔ لاتین، بدون نمایه‌کردن دادهٔ خصوصی کاربران</p><a className="button secondary" href="/admin-console/search">باز کردن جست‌وجوی داخلی</a></section>}
     {(can("cms_publication_validate_cases") || can("cms_publication_validate_learning")) && <section className="card stack"><h2>بررسی مقدماتی انتشار</h2><p className="muted">صف خصوصی نامزدها و موانع حقوقی و علمی، بدون دسترسی به Apply یا انتشار عمومی</p><a className="button secondary" href="/admin-console/publication-preflight">مشاهدهٔ صف انتشار</a></section>}
@@ -39,6 +40,6 @@ export default function AdminHome() {
     {data.audit && <section className="card"><div className="cms-section-head"><h2>آخرین عملیات ثبت‌شده</h2><a className="cms-link" href="/admin-console/audit">همهٔ رویدادها</a></div>
       {data.audit.latest.length ? <ul className="cms-event-list">{data.audit.latest.map(event => <li key={event.id}><a href={`/admin-console/audit/${event.id}`}><bdi>{event.action}</bdi><span>{event.outcome === "success" ? "انجام‌شده" : event.outcome === "denied" ? "ردشده" : "ناموفق"}</span><time dateTime={event.created_at}>{cmsDate(event.created_at)}</time></a></li>)}</ul> : <CmsState empty="هنوز رویدادی در این محیط ثبت نشده است." />}
     </section>}
-    <section className="cms-unavailable"><h2>گردش‌های بعدی هنوز آماده نیستند</h2><p>انتشار، jobها و حقوق محتوا هنوز سرویس عملیاتی ندارند. آمار استفاده از جست‌وجو جمع‌آوری نمی‌شود.</p></section>
+    <section className="cms-unavailable"><h2>بخش‌های نیازمند پذیرش نهایی</h2><p>انتشار چنددامنه، تنظیمات نسخه‌دار با مصرف‌کنندگان کامل، بازیابی Backup/Restore و آمار عمومی هنوز تأیید نهایی ندارند. مدیریت Job و حقوق محتوا مسیرهای محدود خود را دارند، اما به‌تنهایی مجوز انتشار نیستند. آمار استفاده از جست‌وجوی عمومی از این گزارش محاسبه نمی‌شود.</p></section>
   </div>;
 }

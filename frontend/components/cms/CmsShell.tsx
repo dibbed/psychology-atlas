@@ -133,6 +133,7 @@ export default function CmsShell({ children }: { children: React.ReactNode }) {
   const governanceReady = ["core", "dsm", "therapy", "history", "cases", "learning", "brain", "assessment", "source"].some(domain => can(`cms_${domain}_view`));
   const items = [
     { href: "/admin-console", label: "خانهٔ مدیریت", icon: LayoutDashboard, ready: can("cms_dashboard") },
+    { href: "/admin-console/analytics", label: "گزارش داخلی CMS", icon: LayoutDashboard, ready: can("cms_owner") },
     { href: "/admin-console/content", label: "محتوای مرجع", icon: BookOpenText, ready: contentReady },
     { href: "/admin-console/reviews", label: "بررسی پیشنهادها", icon: ShieldCheck, ready: can("cms_core_view") || can('cms_dsm_view') || can('cms_therapy_view') || can('cms_history_view') || can('cms_brain_view') || can('cms_assessment_view') },
     { href: "/admin-console/sources", label: "منابع", icon: BookOpenText, ready: can("cms_source_view") },

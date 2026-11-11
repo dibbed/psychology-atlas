@@ -589,6 +589,36 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
     await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
     'P18 source receipt-history check renders within Persian 320px RTL with no misleading repair action');
 
+  // P19 owner-only pipeline counts are denominated and never assert approval.
+  const stats=await request(owner,'/analytics/overview/');
+  check(stats.status===200&&stats.data.scope==='owner_recorded_pipeline_counts_only'&&
+    Number.isInteger(stats.data.content.states_total)&&
+    stats.data.content.states_with_current_revision+stats.data.content.states_without_current_revision===
+      stats.data.content.states_total&&
+    Object.values(stats.data.content.by_domain).reduce((total,row)=>total+row.states,0)===
+      stats.data.content.states_total&&
+    stats.data.content.publication_markers_are_authorization===false&&
+    stats.data.publication_authorized===false&&stats.data.scientific_rights_attested===false&&
+    !JSON.stringify(stats.data).includes('P16 PRIVATE SYNTHETIC SECRET'),
+    'P19 owner analytics reconcile internal content denominators with no private draft or approval inference');
+  check(stats.data.reviews.tasks_total>=stats.data.reviews.tasks_by_status.approved&&
+    Number.isInteger(stats.data.governance.rights.decisions_total)&&
+    stats.data.governance.rights.status_not_verified_clearance===true,
+    'P19 review and rights status counts are explicitly recorded-only and non-authorizing');
+  await owner.goto(origin+'/admin-console/analytics');
+  await owner.getByRole('heading',{name:'گزارش شمارش مسیرهای داخلی CMS'}).waitFor();
+  await owner.getByText('مخرج شمارش محتوای مدیریتی',{exact:true}).waitFor();
+  check(await owner.getByRole('navigation',{name:'بخش‌های مدیریت'}).getByRole('link',{name:'گزارش داخلی CMS'}).count()===1&&
+    await owner.getByText('سوابق حقوق محتوا',{exact:true}).count()===1&&
+    await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
+    'P19 owner-only analytics screen renders reconciled counts in 320px Persian RTL');
+
+  await owner.goto(origin+'/admin-console');
+  await owner.getByRole('heading',{name:'بخش‌های نیازمند پذیرش نهایی'}).waitFor();
+  check(await owner.getByRole('link',{name:'باز کردن گزارش داخلی'}).count()===1&&
+    await owner.getByText('مدیریت Job و حقوق محتوا مسیرهای محدود خود را دارند',{exact:false}).count()===1,
+    'P19 dashboard links to real owner-only analytics and no longer claims that jobs or rights have no service');
+
   await owner.goto(origin+'/admin-console/help');
   await owner.getByRole('heading',{name:'راهنمای کاربردی مدیریت Psychology Atlas'}).waitFor();
   check(await owner.getByRole('link',{name:'حقوق و استفاده'}).getAttribute('href')==='/admin-console/rights'&&

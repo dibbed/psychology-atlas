@@ -30,6 +30,7 @@ from . import cms_publication_selection_views as publication_selection
 from . import cms_case_publication_views as case_publication
 from . import cms_admin_search as admin_search
 from . import cms_operations_health as operations_health
+from . import cms_pipeline_analytics as pipeline_analytics
 
 urlpatterns = [
     path("learning/transfer/", include(learning_io.urlpatterns)),
@@ -102,6 +103,7 @@ urlpatterns = [
     path("me/", v.MeView.as_view()),
     path("catalog/", v.CatalogView.as_view()),
     path("operations/health/", operations_health.OperationsHealthView.as_view()),
+    path("analytics/overview/", pipeline_analytics.PipelineAnalyticsView.as_view()),
     path("search/", admin_search.AdminSearchView.as_view()),
     path("publication/preflight/", publication_preflight.PublicationPreflightView.as_view()),
     path("publication/selections/", publication_selection.PublicationSelectionView.as_view()),
