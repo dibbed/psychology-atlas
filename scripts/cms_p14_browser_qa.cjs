@@ -562,12 +562,18 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
     health.data.publication_receipts.repair_available===false&&
     health.data.backup.state==='unavailable',
     'P18 owner-only case receipt drift is reported as structural metadata, never publication or backup clearance');
-  check(health.data.source_plan_receipts?.scope==='source_plan_receipt_history_presence_only'&&
+  check(health.data.source_plan_receipts?.scope==='source_plan_receipt_history_and_bounded_result_sample'&&
     Number.isInteger(health.data.source_plan_receipts.source_plans_without_receipt)&&
     Number.isInteger(health.data.source_plan_receipts.total_observed_mismatches)&&
+    Number.isInteger(health.data.source_plan_receipts.source_receipt_result_history_mismatches)&&
+    Number.isInteger(health.data.source_plan_receipts.source_receipt_result_successor_mismatches)&&
+    health.data.source_plan_receipts.sampled_receipts>=2&&
+    health.data.source_plan_receipts.sample_complete===true&&
+    health.data.source_plan_receipts.source_receipt_result_history_mismatches===0&&
+    health.data.source_plan_receipts.source_receipt_result_successor_mismatches===0&&
     health.data.source_plan_receipts.full_source_integrity_proven===false&&
     health.data.source_plan_receipts.repair_available===false,
-    'P18 source receipt-history monitoring is structural only, not source rights or apply clearance');
+    'P18 actual synthetic Source Apply receipts match persisted history/successor IDs without source rights or publication clearance');
   check((await request(scoped,'/operations/health/')).status===403,
     'P18 ordinary content curator cannot read owner receipt health');
   await owner.goto(origin+'/admin-console/operations');
@@ -578,6 +584,8 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
     'P18 receipt drift and explicit non-clearance are visible in Persian 320px RTL');
   check(await owner.locator('[aria-label="بررسی ساختاری رسیدهای طرح منبع"]').count()===1&&
     await owner.getByRole('heading',{name:'رسید و تاریخچهٔ Source Plan، فقط بررسی ساختاری'}).count()===1&&
+    await owner.getByText('رسیدهای بررسی‌شده برای تطبیق شناسه:',{exact:false}).count()===1&&
+    await owner.getByText('ناسازگاری شناسه‌های جانشین در نتیجهٔ رسید:',{exact:false}).count()===1&&
     await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
     'P18 source receipt-history check renders within Persian 320px RTL with no misleading repair action');
 

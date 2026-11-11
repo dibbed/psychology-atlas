@@ -12,10 +12,12 @@ type Health={
   artifacts:{total:number;unpurged_bytes:number;unpurged_count:number};
   backup:{state:string;reason:string};
   source_plan_receipts:{
-    scope:"source_plan_receipt_history_presence_only";
+    scope:"source_plan_receipt_history_and_bounded_result_sample";
     source_plans_total:number;source_plans_without_receipt:number;
     source_receipts_total:number;source_histories_total:number;
     source_receipts_without_history:number;source_histories_without_receipt:number;
+    sampled_receipts:number;sample_complete:boolean;
+    source_receipt_result_history_mismatches:number;source_receipt_result_successor_mismatches:number;
     total_observed_mismatches:number;full_source_integrity_proven:false;
     repair_available:false;notice:string;
   };
@@ -100,8 +102,12 @@ export default function OperationsHealth(){
         <ul>
           <li>رسید بدون تاریخچه: {data.source_plan_receipts.source_receipts_without_history.toLocaleString("fa-IR")}</li>
           <li>تاریخچه بدون رسید برنامه: {data.source_plan_receipts.source_histories_without_receipt.toLocaleString("fa-IR")}</li>
+          <li>ناسازگاری شناسه‌های تاریخچه در نتیجهٔ رسید: {data.source_plan_receipts.source_receipt_result_history_mismatches.toLocaleString("fa-IR")}</li>
+          <li>ناسازگاری شناسه‌های جانشین در نتیجهٔ رسید: {data.source_plan_receipts.source_receipt_result_successor_mismatches.toLocaleString("fa-IR")}</li>
         </ul>
-        <p className="muted">بررسی فقط وجود تاریخچه و رسید را مقایسه می‌کند؛ محتوای نتیجه، مجوز استفاده از منبع، بازبینی علمی، سلامت کامل Apply یا حقوق انتشار را تأیید نمی‌کند. هیچ Repair یا تغییر داده انجام نمی‌شود.</p>
+        <p>رسیدهای بررسی‌شده برای تطبیق شناسه: {data.source_plan_receipts.sampled_receipts.toLocaleString("fa-IR")}؛
+          {data.source_plan_receipts.sample_complete?" همهٔ رسیدهای فعلی در سقف نمونه قرار داشتند.":" سقف ۲۰۰ رسید اخیر؛ بخشی از رسیدها بررسی نشده‌اند."}</p>
+        <p className="muted">شمار مغایرت‌ها جمع نشانه‌هاست و ممکن است یک رکورد چند بار شمرده شود. هیچ شناسه یا محتوای خصوصی نشان داده نمی‌شود؛ تطبیق شناسه‌ها اثبات سلامت Apply، حق انتشار، بازبینی علمی یا کامل بودن Backup نیست. Repair و تغییر داده وجود ندارد.</p>
       </section>
       <section className="card stack"><h2>Backup</h2>
         <p><strong>Adapter پشتیبان‌گیری از این پنل متصل نیست.</strong></p>
