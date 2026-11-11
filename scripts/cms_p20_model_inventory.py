@@ -19,9 +19,13 @@ import django
 django.setup()
 
 from django.apps import apps
-from atlas.cms_capabilities import READY_CAPABILITIES
-from atlas.cms_content import REGISTRY as CONTENT_REGISTRY
+from django.urls import resolve
+from atlas.cms_capabilities import KNOWN_PERMISSIONS, READY_CAPABILITIES
+from atlas.cms_content import REGISTRY as CONTENT_REGISTRY, capability
+from atlas.cms_content_views import ContentCreateView
+from atlas.cms_domains import domain_for
 from atlas.cms_governance import REGISTRY as GOVERNANCE_REGISTRY
+from atlas.cms_governance_views import GovernanceResourcesView
 
 OUTPUT = ROOT / "docs" / "v1.0-p20-live-model-inventory.md"
 
@@ -44,6 +48,29 @@ def inspect():
         raise RuntimeError("Unregistered Django model in CMS registry: "
                            + ", ".join(sorted(str(x) for x in unknown)))
 
+    routes = []
+    for kind, (model, _, _) in sorted(CONTENT_REGISTRY.items()):
+        route = f"/api/admin/content/{kind}/"
+        match = resolve(route)
+        if match.func.view_class is not ContentCreateView or match.kwargs != {"kind": kind}:
+            raise RuntimeError(f"Content route mismatch for {kind}: {route}")
+        domain = domain_for(kind)
+        view_cap = capability(kind, "view")
+        create_cap = capability(kind, "create")
+        if view_cap not in KNOWN_PERMISSIONS or create_cap not in KNOWN_PERMISSIONS:
+            raise RuntimeError(f"Missing permission declaration for {kind}")
+        routes.append((kind, model.__name__, domain, view_cap in READY_CAPABILITIES,
+                       create_cap in READY_CAPABILITIES))
+    governance_route = "/api/admin/governance/resources/"
+    if resolve(governance_route).func.view_class is not GovernanceResourcesView:
+        raise RuntimeError(f"Governance resource selector route mismatch: {governance_route}")
+    governance_routes = []
+    for resource_type, (model, domain, *_fields) in sorted(GOVERNANCE_REGISTRY.items()):
+        view_cap = f"cms_{domain}_view"
+        if view_cap not in KNOWN_PERMISSIONS:
+            raise RuntimeError(f"Undeclared governance view permission: {resource_type}")
+        governance_routes.append((resource_type, model.__name__, domain,
+                                  view_cap in READY_CAPABILITIES))
     covered_content = set(content_types)
     covered_governance = set(governance_types)
     shared = covered_content & covered_governance
@@ -82,6 +109,44 @@ def inspect():
         lines.append(f"| {model.__name__} | {content} | {governance} | **Unverified** |")
     lines.extend([
         "",
+        "## Authenticated Content collection route matrix (synthetic checks only)",
+        "",
+        "The exact Django resolver maps every registered kind to the common",
+        "`ContentCreateView` collection. Current view/create capability names are",
+        "declared separately and readiness is checked against `READY_CAPABILITIES`.",
+        "The synthetic P20 regression `atlas.tests_v100_p20_routes` checks owner GET",
+        "and no-domain-permission GET/POST across all kinds, isolated therapist",
+        "view rights and live removal of that view grant without relogin.",
+        "**This does not test authorized POST/CRUD, immutable revision lifecycle,",
+        "reference-level visibility, privacy of non-empty records or public impact.**",
+        "",
+        "| Kind | Model | Domain | View cap READY | Create cap READY | Collection route |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ])
+    for kind, model_name, domain, view_ready, create_ready in routes:
+        lines.append(f"| {kind} | {model_name} | {domain} | "
+                     f"{'yes' if view_ready else 'no'} | {'yes' if create_ready else 'no'}"
+                     f" | `/api/admin/content/{kind}/` |")
+    lines.extend([
+        "",
+        "## Governance resource-selector matrix (synthetic checks only)",
+        "",
+        "The 94 allowlisted governance types use a shared server route and a",
+        "domain-scoped resource_type selector. The P20 synthetic regression",
+        "tests owner GET, 404 refusal without domain view permission,",
+        "one-domain visibility and live permission revocation for every type.",
+        "This does NOT test non-empty private resources, governance workflow",
+        "decisions, conflicts, rights/science approvals or publication readiness.",
+        "",
+        "| Resource type | Model | Domain | View cap READY | Selector |",
+        "| --- | --- | --- | --- | --- |",
+    ])
+    for resource_type, model_name, domain, view_ready in governance_routes:
+        lines.append(f"| {resource_type} | {model_name} | {domain} "
+                     f"| {'yes' if view_ready else 'no'} "
+                     f"| `/api/admin/governance/resources/?resource_type={resource_type}` |")
+    lines.extend([
+        "",
         "## Untested operational dimensions",
         "",
         "Every model still needs its *appropriate* action-level assessment: owner/scoped",
@@ -102,6 +167,11 @@ def inspect():
         "both": len(shared),
         "neither": len(neither),
         "ready_caps": len(READY_CAPABILITIES),
+        "resolved_content_routes": len(routes),
+        "view_cap_ready": sum(1 for item in routes if item[3]),
+        "create_cap_ready": sum(1 for item in routes if item[4]),
+        "resolved_governance_resource_types": len(governance_routes),
+        "governance_view_cap_ready": sum(1 for item in governance_routes if item[3]),
     }
 
 
