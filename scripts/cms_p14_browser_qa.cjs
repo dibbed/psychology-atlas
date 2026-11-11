@@ -367,6 +367,12 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
     initialResult.items[0].snapshot_state==='matching'&&!initialResult.publication_available&&
     initialResult.review_blockers.includes('SOURCE_SCIENCE_RIGHTS_UNVERIFIED'),
     'P16 Learning recheck matches immutable selection digest but never reports scientific clearance');
+  check(initialResult.recheck_summary?.item_count===1&&
+    initialResult.recheck_summary.snapshot_counts.matching===1&&
+    initialResult.recheck_summary.content_issue_items===1&&
+    !initialResult.recheck_summary.publication_readiness_proven&&
+    await owner.getByRole('region',{name:'خلاصهٔ شمارش مجدد بسته'}).count()===1,
+    'P16 Learning summary counts real selected items and never implies permission to publish');
   check(await owner.getByRole('region',{name:'اعتبارسنجی مجدد بسته'}).count()===1&&
     await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
     'P16 Persian Learning verification fits a 320px RTL viewport');
@@ -432,6 +438,13 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
       review.blockers.includes('APPROVAL_REQUIRED')&&!verifyBody.approved&&
       !JSON.stringify(verifyBody).includes('P16 PRIVATE SYNTHETIC SECRET'),
       'P16 '+domain+' reports genuine CMS editorial review blockers, not synthetic approval');
+    check(verifyBody.recheck_summary?.item_count===1&&
+      verifyBody.recheck_summary.snapshot_counts.matching===1&&
+      verifyBody.recheck_summary.editorial_review_counts.blocked===1&&
+      verifyBody.recheck_summary.source_rights_counts.not_established===1&&
+      !verifyBody.recheck_summary.publication_readiness_proven&&
+      await owner.getByRole('region',{name:'خلاصهٔ شمارش مجدد بسته'}).count()===1,
+      'P16 '+domain+' summary distinguishes current draft, blocked review and source rights');
     check(await owner.locator('[aria-label="وضعیت بازبینی علمی موجود"]').count()===1&&
       await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
       'P16 '+domain+' editorial review status fits 320px RTL with no publication controls');

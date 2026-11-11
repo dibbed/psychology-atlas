@@ -452,6 +452,93 @@ class PublicationSelectionsTests(SecurityFixture, TestCase):
         self.assertEqual(scoped_binding.call_count, 1)
         self.assertEqual(gate.call_count, 1)
 
+    def test_rights_budget_counts_distinct_sources_across_a_selection_without_public_clearance(self):
+        from unittest.mock import patch
+        from .cms_publication_selection import _source_rights_coverage
+
+        budget = {"remaining": 2}
+        with patch("atlas.cms_publication_selection.resource_binding",
+                   return_value={"resource_version": "synthetic"}) as binding:
+            with patch("atlas.cms_publication_selection.rights_eligibility",
+                       return_value={"registered": True, "permitted": True}) as gate:
+                first = _source_rights_coverage([11, 12], budget=budget)
+                repeated = _source_rights_coverage([12, 11, 12], budget=budget)
+                over_budget = _source_rights_coverage([11, 13], budget=budget)
+        self.assertEqual(first["status"], "recorded")
+        self.assertEqual(repeated["status"], "recorded")
+        self.assertEqual(repeated["source_count"], 2)
+        self.assertEqual(repeated["permitted_count"], 2)
+        self.assertEqual(over_budget["status"], "unverifiable")
+        self.assertEqual(over_budget["unverified_count"], 2)
+        self.assertFalse(first["publication_rights_cleared"])
+        self.assertFalse(repeated["publication_rights_cleared"])
+        self.assertFalse(over_budget["publication_rights_cleared"])
+        self.assertEqual(binding.call_count, 2)
+        self.assertEqual(gate.call_count, 2)
+        self.assertEqual(budget["remaining"], 0)
+
+    def test_shared_source_is_inspected_once_per_recheck_and_denominators_stay_item_based(self):
+        from unittest.mock import patch
+        from .cms_publication_selection_models import PublicationCandidateSelection
+
+        source, parent, first, first_entry = self.source_proposal("brain")
+        second = self.proposal("brain-anatomical-alias", "", {
+            "entity": parent.pk, "source": source.pk,
+            "text": "Second synthetic private alias", "language": "en",
+            "alias_type": "alternative",
+        })
+        second_entry = self.entry("brain", "brain-anatomical-alias", str(second.pk))
+        created = self.post_selection("brain", [first_entry, second_entry])
+        self.assertEqual(created.status_code, 201, created.content[:300])
+        with patch("atlas.cms_publication_selection.MAX_RIGHTS_SOURCES", 1):
+            rechecked = self.verify(created.json()["id"])
+        self.assertEqual(rechecked.status_code, 200, rechecked.content[:300])
+        body = rechecked.json()
+        self.assertEqual(body["item_count"], 2)
+        self.assertEqual(body["recheck_summary"]["item_count"], 2)
+        self.assertEqual(body["recheck_summary"]["source_rights_counts"]["not_established"], 2)
+        self.assertEqual(sum(body["recheck_summary"]["source_rights_counts"].values()), 2)
+        self.assertEqual([item["source_rights_evidence"]["status"]
+                         for item in body["items"]], ["not_established", "not_established"])
+        self.assertFalse(body["recheck_summary"]["publication_readiness_proven"])
+        self.assertFalse(body["approved"])
+        self.assertFalse(body["publication_available"])
+        self.assertEqual(PublicationCandidateSelection.objects.count(), 1)
+        self.assertNotIn("Second synthetic private alias", rechecked.content.decode())
+        self.assertNotIn(str(source.doi), rechecked.content.decode())
+
+    def test_review_selection_recheck_summary_keeps_freshness_separate_from_publication(self):
+        from .cms_publication_selection_models import PublicationCandidateSelection
+        entry = self.entry("brain", "brain-anatomical-entity", str(self.brain.pk))
+        selected = self.post_selection("brain", [entry])
+        self.assertEqual(selected.status_code, 201)
+        count = PublicationCandidateSelection.objects.count()
+        result = self.verify(selected.json()["id"])
+        self.assertEqual(result.status_code, 200, result.content[:300])
+        body = result.json()
+        summary = body["recheck_summary"]
+        self.assertEqual(summary["snapshot_counts"]["matching"], 1)
+        self.assertEqual(summary["snapshot_counts"]["stale"], 0)
+        self.assertEqual(summary["item_count"], 1)
+        self.assertEqual(summary["editorial_review_counts"]["blocked"], 1)
+        self.assertEqual(summary["source_rights_counts"]["no_sources"], 1)
+        self.assertEqual(summary["content_issue_items"], 0)
+        self.assertFalse(summary["publication_readiness_proven"])
+        self.assertFalse(body["approved"])
+        self.assertFalse(body["publication_available"])
+        self.assertEqual(PublicationCandidateSelection.objects.count(), count)
+        self.assertNotIn("P16 confidential brain", result.content.decode())
+
+        from .cms_models import RolePolicy
+        policy = RolePolicy.objects.get(pk=1)
+        policy.version += 1
+        policy.save(update_fields=["version"])
+        changed = self.verify(selected.json()["id"])
+        self.assertEqual(changed.status_code, 200)
+        self.assertFalse(changed.json()["all_snapshots_current"])
+        self.assertEqual(changed.json()["recheck_summary"]["snapshot_counts"]["matching"], 1)
+        self.assertFalse(changed.json()["recheck_summary"]["publication_readiness_proven"])
+
     def test_editorial_selection_binds_live_sources_and_recovers_its_original_receipt(self):
         for domain in ("brain", "assessment"):
             with self.subTest(domain=domain):

@@ -20,8 +20,17 @@ type VerificationItem={kind:string;resource_id:string|number;
     status:"recorded"|"insufficient"|"not_established"|"no_sources"|"unverifiable";
     source_count:number;permitted_count:number;unverified_count:number;
     publication_rights_cleared:false}};
+type RecheckSummary={item_count:number;
+  snapshot_counts:Record<VerificationItem["snapshot_state"],number>;
+  dependency_counts:Record<VerificationItem["dependency_state"],number>;
+  editorial_review_counts:Record<NonNullable<VerificationItem["editorial_review"]>["status"],number>;
+  source_rights_counts:Record<NonNullable<VerificationItem["source_rights_evidence"]>["status"],number>;
+  content_issue_items:number;dependency_issue_items:number;
+  denominator:"review_selection_items_not_unique_sources_or_publications";
+  publication_readiness_proven:false};
 type VerificationResult={id:string;domain:Domain;status:string;selection_digest:string;
   item_count:number;items:VerificationItem[];policy_matches:boolean;all_snapshots_current:boolean;
+  recheck_summary:RecheckSummary;
   review_blockers:string[];verified_at:string;publication_available:false;approved:false};
 const snapshotStates:Record<VerificationItem["snapshot_state"],string>={
   matching:"اثر انگشت نسخهٔ ثبت‌شده مطابق است",
@@ -227,6 +236,28 @@ export default function PublicationPreflight(){
               "اثر انگشت نسخه‌ها و سیاست مطابق‌اند؛ هنوز هیچ تأیید انتشار وجود ندارد.":
               "بسته به بازبینی مجدد نیاز دارد؛ محتوا یا سیاست تغییر کرده است."}</p>
             <p>وضعیت سیاست دسترسی: {verification.policy_matches?"بدون تغییر":"تغییر کرده"}</p>
+            <section className="card stack" aria-label="خلاصهٔ شمارش مجدد بسته">
+              <h3>خلاصهٔ شمارش مجدد بستهٔ بازبینی</h3>
+              <p>مخرج تمام شمارش‌های زیر، {verification.recheck_summary.item_count.toLocaleString("fa-IR")} موردِ انتخاب‌شده است؛ نه تعداد منابع یکتا و نه انتشارهای مجاز.</p>
+              <p>نسخهٔ مطابق: {verification.recheck_summary.snapshot_counts.matching.toLocaleString("fa-IR")}؛
+                تغییرکرده: {verification.recheck_summary.snapshot_counts.stale.toLocaleString("fa-IR")}؛
+                ناموجود: {verification.recheck_summary.snapshot_counts.unavailable.toLocaleString("fa-IR")}؛
+                بررسی‌ناپذیر: {verification.recheck_summary.snapshot_counts.unverifiable.toLocaleString("fa-IR")}</p>
+              <p>دارای ایراد محتوا: {verification.recheck_summary.content_issue_items.toLocaleString("fa-IR")}؛
+                دارای ایراد وابستگی: {verification.recheck_summary.dependency_issue_items.toLocaleString("fa-IR")}</p>
+              {verification.domain!=="learning"&&<>
+                <p>بازبینی موجود و معتبر پیشنهاد: {verification.recheck_summary.editorial_review_counts.editorial_tasks_current.toLocaleString("fa-IR")}؛
+                  مسدود: {verification.recheck_summary.editorial_review_counts.blocked.toLocaleString("fa-IR")}؛
+                  نامشخص: {verification.recheck_summary.editorial_review_counts.unverifiable.toLocaleString("fa-IR")}</p>
+                <p>حقوق فرادادهٔ منابع، صرفاً در سطح مورد انتخابی:
+                  ثبت‌شده: {verification.recheck_summary.source_rights_counts.recorded.toLocaleString("fa-IR")}؛
+                  ناکافی: {verification.recheck_summary.source_rights_counts.insufficient.toLocaleString("fa-IR")}؛
+                  بدون مجوز احرازشده: {verification.recheck_summary.source_rights_counts.not_established.toLocaleString("fa-IR")}؛
+                  بدون منبع: {verification.recheck_summary.source_rights_counts.no_sources.toLocaleString("fa-IR")}؛
+                  بررسی‌ناپذیر: {verification.recheck_summary.source_rights_counts.unverifiable.toLocaleString("fa-IR")}</p>
+              </>}
+              <p className="muted">هیچ‌یک از این شمارش‌ها و مطابقت نسخه‌ها تأیید انتشار، حقوق محتوا یا مجوز Apply نیستند.</p>
+            </section>
             <ul>{verification.items.map(item=><li key={item.kind+":"+item.resource_id}>
               <strong style={{overflowWrap:"anywhere"}}>{item.kind} #{item.resource_id}</strong>
               <p>{snapshotStates[item.snapshot_state]}</p>

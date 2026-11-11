@@ -91,14 +91,18 @@ def _source_rights_coverage(source_ids, *, budget=None):
     }
     if not source_ids:
         return {**base, "status": "no_sources"}
-    if total > MAX_RIGHTS_SOURCES or (budget is not None and total > budget["remaining"]):
+    # A selection can contain the same source through multiple proposals.
+    # Count the *distinct* source identities against the bounded inspection
+    # budget, and reuse only results validated under this same policy lock.
+    # Each item's denominator still counts its own distinct sources.
+    cache = budget.setdefault("verified", {}) if budget is not None else {}
+    pending = [source_id for source_id in source_ids if source_id not in cache]
+    if total > MAX_RIGHTS_SOURCES or (budget is not None and len(pending) > budget["remaining"]):
         # Never turn a truncated evidence sample into a positive clearance.
         return {**base, "status": "unverifiable"}
     if budget is not None:
-        budget["remaining"] -= total
-    permitted = 0
-    registered = 0
-    for source_id in source_ids:
+        budget["remaining"] -= len(pending)
+    for source_id in pending:
         try:
             binding = resource_binding("source_reference", source_id, lock=True)
             gate = rights_eligibility(
@@ -109,10 +113,10 @@ def _source_rights_coverage(source_ids, *, budget=None):
             if error.status_code == 404:
                 return {**base, "status": "unverifiable"}
             raise
-        if gate["registered"]:
-            registered += 1
-        if gate["registered"] and gate["permitted"]:
-            permitted += 1
+        cache[source_id] = (bool(gate["registered"]),
+                            bool(gate["registered"] and gate["permitted"]))
+    registered = sum(1 for source_id in source_ids if cache[source_id][0])
+    permitted = sum(1 for source_id in source_ids if cache[source_id][1])
     status = "recorded" if permitted == total else (
         "not_established" if registered == 0 else "insufficient")
     return {**base, "status": status, "permitted_count": permitted,
@@ -305,6 +309,38 @@ def read_selection(actor_id, session_id, selection_id):
         return _owned_selection(actor, session_id, selection_id)
 
 
+def _recheck_summary(checks):
+    """Report per-item denominators, never a publication-readiness verdict."""
+    snapshot_states = ("matching", "stale", "unavailable", "unverifiable")
+    dependency_states = ("matching", "stale", "invalid", "baseline_missing", "content_only")
+    review_states = ("editorial_tasks_current", "blocked", "unverifiable")
+    rights_states = ("recorded", "insufficient", "not_established", "no_sources", "unverifiable")
+    return {
+        "item_count": len(checks),
+        "snapshot_counts": {
+            state: sum(row["snapshot_state"] == state for row in checks)
+            for state in snapshot_states
+        },
+        "dependency_counts": {
+            state: sum(row["dependency_state"] == state for row in checks)
+            for state in dependency_states
+        },
+        "editorial_review_counts": {
+            state: sum((row.get("editorial_review") or {}).get("status") == state for row in checks)
+            for state in review_states
+        },
+        "source_rights_counts": {
+            state: sum((row.get("source_rights_evidence") or {}).get("status") == state
+                       for row in checks)
+            for state in rights_states
+        },
+        "content_issue_items": sum(bool(row["content_issues"]) for row in checks),
+        "dependency_issue_items": sum(bool(row["dependency_issues"]) for row in checks),
+        "denominator": "review_selection_items_not_unique_sources_or_publications",
+        "publication_readiness_proven": False,
+    }
+
+
 def verify_selection(actor_id, session_id, selection_id):
     """Recheck persisted, actor-owned snapshots; never authorize publication."""
     with policy_lock() as policy:
@@ -398,6 +434,7 @@ def verify_selection(actor_id, session_id, selection_id):
             "status": "review_selection_only",
             "selection_digest": selected.selection_digest,
             "item_count": len(checks), "items": checks,
+            "recheck_summary": _recheck_summary(checks),
             "policy_matches": policy_matches,
             "all_snapshots_current": all_current,
             "review_blockers": blockers,
