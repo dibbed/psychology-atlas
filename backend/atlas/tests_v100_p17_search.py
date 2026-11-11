@@ -128,6 +128,71 @@ class AdminSearchSafeScopeTests(SecurityFixture, TestCase):
         self.assertEqual(other.get(BASE + "search/?q=" + q + "&domain=audit").status_code, 403)
         self.assertEqual(other.get(BASE + "search/?q=" + q + "&domain=all").json()["count"], 0)
 
+    def test_exact_review_task_and_job_discovery_is_owner_only_and_redacted(self):
+        import uuid
+        from datetime import timedelta
+        from django.utils import timezone
+        from .cms_content_models import ContentState, ContentRevision
+        from .cms_review_models import ReviewTask
+        from .cms_job_models import AdminArtifact, AdminJob
+
+        state = ContentState.objects.create(kind="category", canonical_digest="0" * 64)
+        revision = ContentRevision.objects.create(
+            state=state, sequence=1, base_version=0, base_digest="0" * 64,
+            payload={"name_en": "SECRET-REVIEW-DRAFT"},
+            payload_digest="1" * 64, dependency_digest="2" * 64,
+            actor=self.owner,
+        )
+        task = ReviewTask.objects.create(
+            subject=revision, review_type="scientific", revision_hash="3" * 64,
+            dependency_digest="2" * 64, policy_version=0, policy_mode="solo_owner",
+        )
+        artifact = AdminArtifact.objects.create(
+            kind="research_json", domain="research", owner=self.owner, owner_ref="TEST",
+            storage_key="p17-private-artifact", filename="secret-file.json",
+            sha256="4" * 64, size=15, expires_at=timezone.now() + timedelta(days=1),
+        )
+        job = AdminJob.objects.create(
+            kind="research_intake", actor=self.owner, actor_ref="TEST",
+            policy_version=0, artifact=artifact, request_key=uuid.uuid4(),
+            payload_digest="5" * 64, available_at=timezone.now(),
+            result={"secret": "SECRET-JOB-RESULT"},
+        )
+        task_url = BASE + f"search/?q={task.pk}&domain=tasks"
+        job_url = BASE + f"search/?q={job.pk}&domain=jobs"
+        task_res = self.owner_client.get(task_url)
+        job_res = self.owner_client.get(job_url)
+        self.assertEqual(task_res.status_code, 200, task_res.content[:350])
+        self.assertEqual(job_res.status_code, 200, job_res.content[:350])
+        self.assertEqual(task_res.json()["results"], [{
+            "kind": "review_task", "resource_id": task.pk, "slug": str(task.pk),
+            "review_kind": "category", "review_state": str(state.pk),
+        }])
+        self.assertEqual(job_res.json()["results"], [{
+            "kind": "admin_job", "resource_id": str(job.pk), "slug": str(job.pk),
+        }])
+        for secret in ("SECRET-", "secret-file", "actor_ref", "payload", "assignee",
+                       "policy_mode", "storage_key", '"result":'):
+            self.assertNotIn(secret, task_res.content.decode() + job_res.content.decode())
+        self.assertEqual(self.owner_client.get(
+            BASE + "search/?q=not-a-uuid&domain=jobs").json()["count"], 0)
+        self.assertEqual(self.owner_client.get(
+            BASE + "search/?q=12345&domain=tasks").json()["count"], 0)
+        self.assertEqual(self.owner_client.get(
+            BASE + "search/?q=12345&domain=jobs").json()["count"], 0)
+        viewer = self.user("p17-no-owner-task-job", staff=True, caps=(
+            "cms_enter", "cms_search", "cms_cases_view", "cms_learning_view",
+        ))
+        other = self.sign_in(viewer)
+        self.assertEqual(other.get(task_url).status_code, 403)
+        self.assertEqual(other.get(job_url).status_code, 403)
+        all_results = other.get(BASE + f"search/?q={task.pk}&domain=all")
+        self.assertEqual(all_results.status_code, 200, all_results.content[:300])
+        self.assertNotIn("review_task", all_results.content.decode())
+        self.assertNotIn("admin_job", all_results.content.decode())
+        self.assertEqual(AdminJob.objects.filter(pk=job.pk).count(), 1)
+        self.assertEqual(ReviewTask.objects.filter(pk=task.pk).count(), 1)
+
     def test_no_mutation_allowed(self):
         self.assertEqual(self.post(self.owner_client,"search/",{"q":"p17"}).status_code,405)
         self.assertFalse(self.case.is_active)

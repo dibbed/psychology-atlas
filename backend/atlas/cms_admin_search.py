@@ -1,11 +1,14 @@
 """P17 first private search: bounded slug-only records, no free-text PII."""
 import re
+import uuid
 
 from rest_framework.response import Response
 
 from .cms_policy import CMSFailure, effective_permissions, policy_lock, require
 from .cms_views import AdminAPIView
 from .cms_models import AdminAuditEvent
+from .cms_job_models import AdminJob
+from .cms_review_models import ReviewTask
 from .models import ClinicalCase, Flashcard, Quiz, ResearchDataset, ResearchRecord, SourceReference
 
 
@@ -24,7 +27,10 @@ class AdminSearchView(AdminAPIView):
             raise CMSFailure("INVALID_QUERY", 400)
         q = request.query_params.get("q", "")
         domain = request.query_params.get("domain", "all")
-        if type(q) is not str or not _QUERY.fullmatch(q.lower()) or domain not in {"all", "cases", "learning", "sources", "research", "audit"}:
+        numeric_id = q.isascii() and q.isdigit() and 1 <= len(q) <= 19
+        if (type(q) is not str or domain not in
+                {"all", "cases", "learning", "sources", "research", "audit", "tasks", "jobs"}
+                or not (_QUERY.fullmatch(q.lower()) or (numeric_id and domain in {"all", "audit", "tasks"}))):
             raise CMSFailure("INVALID_QUERY", 400)
         try:
             page = int(request.query_params.get("page", "1"))
@@ -43,6 +49,9 @@ class AdminSearchView(AdminAPIView):
                 ("research", "cms_research_view"),
                 ("audit", "cms_audit_view"),
             ) if capability in permissions}
+            # Exact operational discovery is owner-only, not a general editorial read.
+            if "cms_owner" in permissions:
+                available.update({"tasks", "jobs"})
             selected = available if domain == "all" else {domain}
             if not selected or not selected <= available:
                 raise CMSFailure("PERMISSION_DENIED", 403)
@@ -93,7 +102,28 @@ class AdminSearchView(AdminAPIView):
                     if row is not None:
                         rows.append({"kind": "audit_event", "resource_id": row,
                                      "slug": str(row)})
-            rows.sort(key=lambda v: (v["kind"], -v["resource_id"]))
+            if "tasks" in selected and numeric_id:
+                task_pk = int(q)
+                if 0 < task_pk < 2**63:
+                    task = ReviewTask.objects.filter(pk=task_pk).values(
+                        "pk", "subject__state__kind", "subject__state_id").first()
+                    if task is not None:
+                        rows.append({"kind": "review_task", "resource_id": task["pk"],
+                                     "slug": str(task["pk"]),
+                                     "review_kind": task["subject__state__kind"],
+                                     "review_state": str(task["subject__state_id"])})
+            if "jobs" in selected:
+                try:
+                    job_uuid = uuid.UUID(q)
+                except (ValueError, AttributeError):
+                    job_uuid = None
+                if job_uuid is not None and str(job_uuid) == q.lower():
+                    job_id = AdminJob.objects.filter(pk=job_uuid).values_list("pk", flat=True).first()
+                    if job_id is not None:
+                        rows.append({"kind": "admin_job", "resource_id": str(job_id),
+                                     "slug": str(job_id)})
+            rows.sort(key=lambda v: (v["kind"],
+                                     -v["resource_id"] if isinstance(v["resource_id"], int) else 0))
             total = len(rows)
             start = (page - 1) * size
             return Response({
