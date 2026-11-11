@@ -205,6 +205,45 @@ class PublicationSelectionsTests(SecurityFixture, TestCase):
         self.assertEqual(unavailable.json()["items"][0]["snapshot_state"], "unavailable")
         self.assertFalse(unavailable.json()["all_snapshots_current"])
 
+    def test_verify_surfaces_real_editorial_review_blockers_without_publication(self):
+        from .cms_review_models import ReviewTask
+        entry = self.entry("brain", "brain-anatomical-entity", str(self.brain.pk))
+        selection_id = self.post_selection("brain", [entry]).json()["id"]
+        first = self.verify(selection_id)
+        self.assertEqual(first.status_code, 200, first.content[:400])
+        gate = first.json()["items"][0]["editorial_review"]
+        self.assertEqual(gate["status"], "blocked")
+        self.assertIn("REVIEW_REQUIRED", gate["blockers"])
+        self.assertIn("APPROVAL_REQUIRED", gate["blockers"])
+        self.assertFalse(first.json()["publication_available"])
+
+        # A manually marked approved task is not valid evidence without its
+        # append-only decision, current revision hash, and live permissions.
+        revision = self.brain.current_revision
+        ReviewTask.objects.create(
+            subject=revision, review_type="source", assignee=self.owner,
+            status="approved", revision_hash="0" * 64, dependency_digest="1" * 64,
+            evidence=[], authors=[], policy_version=0, policy_mode="solo_owner",
+        )
+        bogus = self.verify(selection_id)
+        self.assertEqual(bogus.status_code, 200, bogus.content[:400])
+        bogus_gate = bogus.json()["items"][0]["editorial_review"]
+        self.assertEqual(bogus_gate["status"], "blocked")
+        self.assertIn("DECISION_REQUIRED", bogus_gate["blockers"])
+        self.assertFalse(bogus.json()["publication_available"])
+        self.assertFalse(bogus.json()["approved"])
+        self.assertNotIn("P16 confidential brain", bogus.content.decode())
+
+    def test_assessment_review_readiness_missing_policy_fails_closed(self):
+        from .cms_review_models import ReviewPolicy
+        entry = self.entry("assessment", "assessment-instrument", str(self.assessment.pk))
+        selection_id = self.post_selection("assessment", [entry]).json()["id"]
+        ReviewPolicy.objects.filter(pk=1).delete()
+        result = self.verify(selection_id)
+        self.assertEqual(result.status_code, 503, result.content[:400])
+        self.assertEqual(result.json()["code"], "REVIEW_POLICY_UNAVAILABLE")
+        self.assertNotIn("P16 confidential assessment", result.content.decode())
+
     def test_verify_editorial_revision_and_policy_change_never_approve(self):
         from .cms_models import RolePolicy
         entry = self.entry("brain", "brain-anatomical-entity", str(self.brain.pk))

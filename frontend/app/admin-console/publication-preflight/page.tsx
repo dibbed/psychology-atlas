@@ -14,7 +14,8 @@ type SelectionReceipt={id:string;domain:Domain;selection_digest:string;status:st
 type SelectionPayload={domain:Domain;entries:{kind:string;resource_id:string|number;expected_digest:string}[];request_key:string};
 type VerificationItem={kind:string;resource_id:string|number;
   snapshot_state:"matching"|"stale"|"unavailable"|"unverifiable";content_issues:string[];
-  dependency_state:"matching"|"stale"|"baseline_missing"|"invalid"|"content_only";dependency_issues:string[]};
+  dependency_state:"matching"|"stale"|"baseline_missing"|"invalid"|"content_only";dependency_issues:string[];
+  editorial_review?:{status:"blocked"|"editorial_tasks_current"|"unverifiable";blockers:string[]}};
 type VerificationResult={id:string;domain:Domain;status:string;selection_digest:string;
   item_count:number;items:VerificationItem[];policy_matches:boolean;all_snapshots_current:boolean;
   review_blockers:string[];verified_at:string;publication_available:false;approved:false};
@@ -68,6 +69,18 @@ const reasons:Record<string,string>={
   DEPENDENCY_UNAVAILABLE:"رکورد یا وابستگی فعلی در محدودهٔ مجاز در دسترس نیست.",
   DEPENDENCY_UNVERIFIABLE:"بررسی وابستگی‌ها به محدودیت ایمن رسید. بازبینی و محدودکردن بسته لازم است.",
   SELECTION_RECHECK_REQUIRED:"بسته با وضعیت فعلی محتوا یا سیاست هماهنگ نیست.",
+  REVIEW_REQUIRED:"فرایند بازبینی علمی و منبع برای پیشنهاد ثبت نشده است.",
+  APPROVAL_REQUIRED:"تصمیم‌های معتبر و کامل بازبینی پیشنهاد ثبت نشده‌اند.",
+  DECISION_REQUIRED:"صرف علامت تأیید وظیفه کافی نیست؛ تصمیم نسخه‌مند و ثبت‌شده لازم است.",
+  REVIEW_NOT_CURRENT:"پیشنهاد فعلی در وضعیت معتبر بازبینی قرار ندارد.",
+  PAYLOAD_CHANGED:"محتوای پیشنهاد نسبت به مبنای بازبینی تغییر کرده است.",
+  DEPENDENCY_CHANGED:"وابستگی‌های بازبینی پیشنهاد تغییر کرده‌اند.",
+  REVIEWER_PERMISSION_CHANGED:"مجوز بازبین قبلی دیگر معتبر نیست.",
+  REVIEWER_UNAVAILABLE:"بازبین ثبت‌شده دیگر معتبر یا در دسترس نیست.",
+  CANONICAL_RECONCILIATION_REQUIRED:"مبنای محتوای اصلی نیازمند تطبیق مجدد است.",
+  EDITORIAL_REVIEW_UNVERIFIABLE:"بررسی اعتبار تصمیم‌های پیشین کامل نشد.",
+  EDITORIAL_CANDIDATE_UNAVAILABLE:"این پیشنهاد برای بازبینی معتبر در دسترس نیست.",
+  CANONICAL_UNAVAILABLE:"مبنای اصلی پیشنهاد در دسترس نیست.",
 };
 export default function PublicationPreflight(){
   const {can}=useCms();
@@ -211,6 +224,16 @@ export default function PublicationPreflight(){
                 <li key={code}>{reasons[code]??code}</li>)}</ul>}
               {item.dependency_issues.length>0&&<ul>{item.dependency_issues.map(code=>
                 <li key={code}>{reasons[code]??code}</li>)}</ul>}
+              {item.editorial_review&&<div className="stack" aria-label="وضعیت بازبینی علمی موجود">
+                <strong>بازبینی علمی و منبع ثبت‌شده در CMS، مستقل از مجوز انتشار:</strong>
+                <p>{item.editorial_review.status==="editorial_tasks_current"?
+                  "تصمیم‌های پیشین برای همین پیشنهاد معتبرند؛ تأیید حقوق و مجوز انتشار همچنان مستقل است.":
+                  item.editorial_review.status==="unverifiable"?
+                  "اعتبار بازبینی پیشین قابل احراز نیست.":
+                  "بازبینی پیشنهاد ناقص یا نامعتبر است."}</p>
+                {item.editorial_review.blockers.length>0&&<ul>{item.editorial_review.blockers.map(code=>
+                  <li key={code}>{reasons[code]??code}</li>)}</ul>}
+              </div>}
             </li>)}</ul>
             <p>موانع مستقل انتشار همچنان برقرارند:</p>
             <ul>{verification.review_blockers.map(code=><li key={code}>{reasons[code]??code}</li>)}</ul>

@@ -20,7 +20,8 @@ from .cms_models import AdminAuditEvent
 from .cms_policy import CMSFailure, policy_lock, require
 from .cms_publication_preflight import EDITORIAL_STATUSES, editorial_proposal_fingerprint
 from .cms_publication_selection_models import PublicationCandidateSelection
-from .cms_review import current_policy
+from .cms_review import approval_eligibility
+from .cms_review_models import ReviewPolicy
 from .cms_sessions import current_session
 from .models import SourceReference, lock_brain_curation
 
@@ -94,7 +95,9 @@ def _editorial_dependencies(state):
     governance = governance_dependency_snapshot(source_ids, lock=True,
         resource_type=state.kind.replace("-", "_") if canonical is not None else None,
         resource_id=state.canonical_pk)
-    policy = current_policy()
+    policy = ReviewPolicy.objects.select_for_update().filter(pk=1).first()
+    if policy is None:
+        raise CMSFailure("REVIEW_POLICY_UNAVAILABLE", 503)
     base = digest(canonical_snapshot(state.kind, canonical)) if canonical is not None else digest({})
     issues = []
     if base != state.canonical_digest or base != revision.base_digest:
@@ -112,7 +115,28 @@ def _editorial_dependencies(state):
     }
 
 
-def _resolve(actor, domain, item, *, enforce_digest=True):
+def _editorial_review_gate(state):
+    """Existing CMS source/science decisions; not P16 publication clearance."""
+    policy = ReviewPolicy.objects.select_for_update().filter(pk=1).first()
+    if policy is None:
+        raise CMSFailure("REVIEW_POLICY_UNAVAILABLE", 503)
+    canonical = None
+    if state.canonical_pk is not None:
+        canonical = DOMAIN_SPECS[state.kind]["model"].objects.select_for_update().filter(
+            pk=state.canonical_pk).first()
+        if canonical is None:
+            return {"status": "unverifiable", "blockers": ["CANONICAL_UNAVAILABLE"]}
+    try:
+        gate = approval_eligibility(state, canonical, lock=True)
+    except ValidationError:
+        return {"status": "unverifiable", "blockers": ["EDITORIAL_REVIEW_UNVERIFIABLE"]}
+    return {
+        "status": "editorial_tasks_current" if gate["eligible"] else "blocked",
+        "blockers": gate["blockers"],
+    }
+
+
+def _resolve(actor, domain, item, *, enforce_digest=True, include_editorial_review=False):
     kind, identifier = item["kind"], item["resource_id"]
     if domain == "learning":
         model = KIND_MODELS[kind]
@@ -148,6 +172,8 @@ def _resolve(actor, domain, item, *, enforce_digest=True):
             "live_dependencies": _editorial_dependencies(state),
             "source_rights_revalidation": "required_before_any_publication",
         }
+        if include_editorial_review:
+            snapshot["editorial_review"] = _editorial_review_gate(state)
     if enforce_digest and actual != item["expected_digest"]:
         raise CMSFailure("SELECTION_STALE", 412)
     return snapshot
@@ -249,8 +275,11 @@ def verify_selection(actor_id, session_id, selection_id):
             issues = []
             dependency_state = "content_only" if selected.domain == "learning" else "baseline_missing"
             dependency_issues = []
+            editorial_review = None
             try:
-                current = _resolve(actor, selected.domain, candidate, enforce_digest=False)
+                current = _resolve(actor, selected.domain, candidate, enforce_digest=False,
+                                   include_editorial_review=True)
+                editorial_review = current.get("editorial_review")
                 if current[field] != expected:
                     state = "stale"
                 if selected.domain == "learning":
@@ -275,11 +304,17 @@ def verify_selection(actor_id, session_id, selection_id):
                     raise
                 dependency_state = "invalid"
                 dependency_issues = ["DEPENDENCY_UNAVAILABLE" if state == "unavailable" else "DEPENDENCY_UNVERIFIABLE"]
-            checks.append({
+                if selected.domain != "learning":
+                    editorial_review = {"status": "unverifiable",
+                                        "blockers": ["EDITORIAL_CANDIDATE_UNAVAILABLE"]}
+            item_result = {
                 "kind": candidate["kind"], "resource_id": candidate["resource_id"],
                 "snapshot_state": state, "content_issues": issues,
                 "dependency_state": dependency_state, "dependency_issues": dependency_issues,
-            })
+            }
+            if selected.domain != "learning":
+                item_result["editorial_review"] = editorial_review
+            checks.append(item_result)
         current_session(session_id, actor)
         _permissions(actor, selected.domain)
         policy_matches = policy.version == selected.policy_version

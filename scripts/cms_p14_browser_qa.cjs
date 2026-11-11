@@ -422,6 +422,14 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
       verifyBody.review_blockers.includes('LIVE_SOURCE_RIGHTS_REVALIDATION_REQUIRED')&&
       !verifyBody.publication_available&&!JSON.stringify(verifyBody).includes('SYNTHETIC SECRET'),
       'P16 '+domain+' recheck preserves explicit live source/rights blockers without exposing draft');
+    const review=verifyBody.items[0].editorial_review;
+    check(review?.status==='blocked'&&review.blockers.includes('REVIEW_REQUIRED')&&
+      review.blockers.includes('APPROVAL_REQUIRED')&&!verifyBody.approved&&
+      !JSON.stringify(verifyBody).includes('P16 PRIVATE SYNTHETIC SECRET'),
+      'P16 '+domain+' reports genuine CMS editorial review blockers, not synthetic approval');
+    check(await owner.locator('[aria-label="وضعیت بازبینی علمی موجود"]').count()===1&&
+      await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
+      'P16 '+domain+' editorial review status fits 320px RTL with no publication controls');
     const sourcePreview=await request(owner,'/sources/preview/',{operation:'update',source_id:fixture.p16_source_id,
       changes:{citation:'P16 synthetic private citation edited for '+domain}});
     assert.equal(sourcePreview.status,201);assert.equal(sourcePreview.data.preview.can_apply,true);
