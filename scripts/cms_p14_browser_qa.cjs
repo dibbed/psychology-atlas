@@ -430,6 +430,15 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
     check(await owner.locator('[aria-label="وضعیت بازبینی علمی موجود"]').count()===1&&
       await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
       'P16 '+domain+' editorial review status fits 320px RTL with no publication controls');
+    const rightsEvidence=verifyBody.items[0].source_rights_evidence;
+    check(rightsEvidence?.scope==='source_metadata_public_display_only'&&
+      rightsEvidence.source_count>=1&&rightsEvidence.permitted_count===0&&
+      rightsEvidence.status==='not_established'&&!rightsEvidence.publication_rights_cleared&&
+      !verifyBody.publication_available,
+      'P16 '+domain+' unapproved source-metadata rights cannot become publication clearance');
+    check(await owner.locator('[aria-label="شواهد حقوق فراداده منابع"]').count()===1&&
+      await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
+      'P16 '+domain+' source-metadata rights report is visible in 320px RTL');
     const sourcePreview=await request(owner,'/sources/preview/',{operation:'update',source_id:fixture.p16_source_id,
       changes:{citation:'P16 synthetic private citation edited for '+domain}});
     assert.equal(sourcePreview.status,201);assert.equal(sourcePreview.data.preview.can_apply,true);

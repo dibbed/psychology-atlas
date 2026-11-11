@@ -343,6 +343,115 @@ class PublicationSelectionsTests(SecurityFixture, TestCase):
         entry = self.entry(domain, kind, str(proposal.pk))
         return source, parent, proposal, entry
 
+    def test_rights_evidence_is_explicit_and_never_equivalent_to_publication_clearance(self):
+        for domain in ("brain", "assessment"):
+            with self.subTest(domain=domain):
+                source, _, _, entry = self.source_proposal(domain)
+                selected = self.post_selection(domain, [entry])
+                self.assertEqual(selected.status_code, 201, selected.content[:300])
+                result = self.verify(selected.json()["id"])
+                self.assertEqual(result.status_code, 200, result.content[:300])
+                row = result.json()["items"][0]["source_rights_evidence"]
+                self.assertEqual(row["status"], "not_established")
+                self.assertEqual(row["scope"], "source_metadata_public_display_only")
+                self.assertEqual(row["source_count"], 1)
+                self.assertEqual(row["permitted_count"], 0)
+                self.assertEqual(row["unverified_count"], 1)
+                self.assertFalse(row["publication_rights_cleared"])
+                self.assertFalse(result.json()["approved"])
+                self.assertFalse(result.json()["publication_available"])
+                self.assertNotIn("Synthetic private citation", result.content.decode())
+                self.assertNotIn(str(source.doi), result.content.decode())
+
+    def test_approved_governance_scope_is_counted_but_never_licenses_the_proposal(self):
+        from django.utils import timezone
+        from .cms_governance import resource_binding
+        source, _, _, entry = self.source_proposal("brain")
+        selection_id = self.post_selection("brain", [entry]).json()["id"]
+        evidence = [{"source_id": source.pk, "locator": "Synthetic rights worksheet section"}]
+        binding = resource_binding("source_reference", source.pk)
+        response = self.post(self.owner_client, "governance/rights/", {
+            "resource_type": "source_reference", "resource_id": source.pk,
+            "resource_version": binding["resource_version"], "evidence": evidence,
+            "reason": "CORRECTION_REQUIRED", "material": "metadata",
+            "intended_use": "public_display", "status": "allowed",
+            "rightsholder": "Fictional holder", "holder_identification": "Synthetic only",
+            "holder_evidence": evidence, "public_access": "unknown",
+            "reviewed_on": timezone.localdate().isoformat(),
+            "effective_on": timezone.localdate().isoformat(),
+            "expires_on": None, "review_on": None,
+            "limitations": "Test fixture no real rights", "territory": "", "conflict_note": "",
+        })
+        self.assertEqual(response.status_code, 201, response.content[:500])
+        record = response.json()["record"]
+        created = self.verify(selection_id)
+        self.assertEqual(created.status_code, 200, created.content[:400])
+        self.assertEqual(created.json()["items"][0]["source_rights_evidence"]["status"], "not_established")
+        assigned = self.post(
+            self.owner_client, f"governance/rights/{record['id']}/assign/",
+            {"reviewer_id": self.owner.pk}, etag=f'"{record["version"]}"',
+        )
+        self.assertEqual(assigned.status_code, 200, assigned.content[:450])
+        record = assigned.json()["record"]
+        decided = self.post(
+            self.owner_client, f"governance/rights/{record['id']}/decide/",
+            {"outcome": "approve", "reason": "RIGHTS_SCOPE_VERIFIED", "self_review_ack": True},
+            etag=f'"{record["version"]}"',
+        )
+        self.assertEqual(decided.status_code, 200, decided.content[:450])
+        current = self.verify(selection_id)
+        self.assertEqual(current.status_code, 200, current.content[:500])
+        coverage = current.json()["items"][0]["source_rights_evidence"]
+        self.assertEqual(coverage["status"], "recorded")
+        self.assertEqual(coverage["permitted_count"], 1)
+        self.assertEqual(coverage["unverified_count"], 0)
+        self.assertFalse(coverage["publication_rights_cleared"])
+        self.assertFalse(current.json()["approved"])
+        self.assertFalse(current.json()["publication_available"])
+        self.assertFalse(current.json()["all_snapshots_current"])
+        self.assertNotIn("Fictional holder", current.content.decode())
+
+    def test_rights_evidence_never_treats_legacy_or_unapproved_as_permission(self):
+        from unittest.mock import patch
+        from .cms_publication_selection import _source_rights_coverage
+        with patch("atlas.cms_publication_selection.resource_binding",
+                   return_value={"resource_version": "fixed"}) as binding:
+            with patch("atlas.cms_publication_selection.rights_eligibility",
+                       return_value={"eligible": True, "permitted": False, "status": "legacy",
+                                     "registered": False, "blockers": []}) as gate:
+                result = _source_rights_coverage([10, 20])
+        self.assertEqual(result["status"], "not_established")
+        self.assertEqual(result["permitted_count"], 0)
+        self.assertEqual(result["unverified_count"], 2)
+        self.assertFalse(result["publication_rights_cleared"])
+        self.assertEqual(binding.call_count, 2)
+        self.assertEqual(gate.call_count, 2)
+
+    def test_rights_evidence_reports_only_bounded_scope_and_safely_declines_large_closure(self):
+        from unittest.mock import patch
+        from .cms_publication_selection import _source_rights_coverage
+        self.assertEqual(_source_rights_coverage([])["status"], "no_sources")
+        with patch("atlas.cms_publication_selection.resource_binding") as binding:
+            too_many = _source_rights_coverage(list(range(1, 33)))
+        self.assertEqual(too_many["status"], "unverifiable")
+        self.assertFalse(too_many["publication_rights_cleared"])
+        binding.assert_not_called()
+        budget = {"remaining": 1}
+        with patch("atlas.cms_publication_selection.resource_binding",
+                   return_value={"resource_version": "fixed"}) as scoped_binding:
+            with patch("atlas.cms_publication_selection.rights_eligibility",
+                       return_value={"registered": True, "permitted": True}) as gate:
+                first = _source_rights_coverage([10], budget=budget)
+                second = _source_rights_coverage([20], budget=budget)
+        self.assertEqual(first["status"], "recorded")
+        self.assertEqual(first["permitted_count"], 1)
+        self.assertFalse(first["publication_rights_cleared"])
+        self.assertEqual(second["status"], "unverifiable")
+        self.assertEqual(second["unverified_count"], 1)
+        self.assertEqual(budget["remaining"], 0)
+        self.assertEqual(scoped_binding.call_count, 1)
+        self.assertEqual(gate.call_count, 1)
+
     def test_editorial_selection_binds_live_sources_and_recovers_its_original_receipt(self):
         for domain in ("brain", "assessment"):
             with self.subTest(domain=domain):

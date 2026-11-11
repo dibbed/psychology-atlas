@@ -14,7 +14,7 @@ from .cms_audit import attribution
 from .cms_content import canonical_snapshot, digest, scoped_states
 from .cms_content_models import ContentState
 from .cms_domains import DOMAIN_SPECS, dependency_snapshot
-from .cms_governance import governance_dependency_snapshot
+from .cms_governance import governance_dependency_snapshot, resource_binding, rights_eligibility
 from .cms_learning_fingerprint import KIND_MODELS, draft_fingerprint
 from .cms_models import AdminAuditEvent
 from .cms_policy import CMSFailure, policy_lock, require
@@ -28,6 +28,7 @@ from .models import SourceReference, lock_brain_curation
 
 DOMAINS = ("learning", "brain", "assessment")
 MAX_ITEMS = 20
+MAX_RIGHTS_SOURCES = 16
 
 
 def _uuid(value):
@@ -77,7 +78,48 @@ def _permissions(actor, domain):
         require(actor, cap)
 
 
-def _editorial_dependencies(state):
+def _source_rights_coverage(source_ids, *, budget=None):
+    """Inspect source *metadata* rights, not rights in a proposed publication."""
+    source_ids = sorted(set(source_ids))
+    total = len(source_ids)
+    base = {
+        "scope": "source_metadata_public_display_only",
+        "source_count": total,
+        "permitted_count": 0,
+        "unverified_count": total,
+        "publication_rights_cleared": False,
+    }
+    if not source_ids:
+        return {**base, "status": "no_sources"}
+    if total > MAX_RIGHTS_SOURCES or (budget is not None and total > budget["remaining"]):
+        # Never turn a truncated evidence sample into a positive clearance.
+        return {**base, "status": "unverifiable"}
+    if budget is not None:
+        budget["remaining"] -= total
+    permitted = 0
+    registered = 0
+    for source_id in source_ids:
+        try:
+            binding = resource_binding("source_reference", source_id, lock=True)
+            gate = rights_eligibility(
+                "source_reference", source_id, binding["resource_version"],
+                "metadata", "public_display", lock=True,
+            )
+        except CMSFailure as error:
+            if error.status_code == 404:
+                return {**base, "status": "unverifiable"}
+            raise
+        if gate["registered"]:
+            registered += 1
+        if gate["registered"] and gate["permitted"]:
+            permitted += 1
+    status = "recorded" if permitted == total else (
+        "not_established" if registered == 0 else "insufficient")
+    return {**base, "status": status, "permitted_count": permitted,
+            "unverified_count": total - permitted}
+
+
+def _editorial_dependencies(state, *, include_rights=False, rights_budget=None):
     revision = state.current_revision
     if digest(revision.payload) != revision.payload_digest:
         raise CMSFailure("SELECTION_INTEGRITY_FAILED", 409)
@@ -106,13 +148,16 @@ def _editorial_dependencies(state):
         issues.append("SOURCE_UNAVAILABLE")
     if not all(source_is_resolved(source) for source in SourceReference.objects.filter(pk__in=source_ids)):
         issues.append("SOURCE_UNRESOLVED")
-    return {
+    snapshot = {
         "digest": digest({"schema": "cms-live-editorial-dependencies-v1", "canonical": base,
             "closure": closure, "governance": governance,
             "review_policy": {"version": policy.version, "mode": policy.mode}}),
         "source_count": len(source_ids), "endpoint_count": len(closure["endpoints"]),
         "issues": issues,
     }
+    if include_rights:
+        return snapshot, _source_rights_coverage(source_ids, budget=rights_budget)
+    return snapshot
 
 
 def _editorial_review_gate(state):
@@ -136,7 +181,7 @@ def _editorial_review_gate(state):
     }
 
 
-def _resolve(actor, domain, item, *, enforce_digest=True, include_editorial_review=False):
+def _resolve(actor, domain, item, *, enforce_digest=True, include_editorial_review=False, include_rights=False, rights_budget=None):
     kind, identifier = item["kind"], item["resource_id"]
     if domain == "learning":
         model = KIND_MODELS[kind]
@@ -164,14 +209,21 @@ def _resolve(actor, domain, item, *, enforce_digest=True, include_editorial_revi
             raise CMSFailure("NOT_FOUND", 404)
         preview = editorial_proposal_fingerprint(state)
         actual = preview["proposal_digest"]
+        if include_rights:
+            dependencies, rights = _editorial_dependencies(
+                state, include_rights=True, rights_budget=rights_budget)
+        else:
+            dependencies = _editorial_dependencies(state)
         snapshot = {
             "kind": kind, "resource_id": str(state.pk),
             "revision_id": preview["revision_id"],
             "version": state.version, "proposal_digest": actual,
             "stored_dependency_digest": preview["dependency_digest"],
-            "live_dependencies": _editorial_dependencies(state),
+            "live_dependencies": dependencies,
             "source_rights_revalidation": "required_before_any_publication",
         }
+        if include_rights:
+            snapshot["source_rights_evidence"] = rights
         if include_editorial_review:
             snapshot["editorial_review"] = _editorial_review_gate(state)
     if enforce_digest and actual != item["expected_digest"]:
@@ -260,6 +312,7 @@ def verify_selection(actor_id, session_id, selection_id):
         selected = _owned_selection(actor, session_id, selection_id)
         entries = selected.selection["items"]
         checks = []
+        rights_budget = {"remaining": MAX_RIGHTS_SOURCES}
         for snapshot in entries:
             if type(snapshot) is not dict or snapshot.get("kind") is None:
                 raise CMSFailure("SELECTION_INTEGRITY_FAILED", 409)
@@ -276,10 +329,13 @@ def verify_selection(actor_id, session_id, selection_id):
             dependency_state = "content_only" if selected.domain == "learning" else "baseline_missing"
             dependency_issues = []
             editorial_review = None
+            source_rights_evidence = None
             try:
                 current = _resolve(actor, selected.domain, candidate, enforce_digest=False,
-                                   include_editorial_review=True)
+                                   include_editorial_review=True, include_rights=True,
+                                   rights_budget=rights_budget)
                 editorial_review = current.get("editorial_review")
+                source_rights_evidence = current.get("source_rights_evidence")
                 if current[field] != expected:
                     state = "stale"
                 if selected.domain == "learning":
@@ -307,6 +363,11 @@ def verify_selection(actor_id, session_id, selection_id):
                 if selected.domain != "learning":
                     editorial_review = {"status": "unverifiable",
                                         "blockers": ["EDITORIAL_CANDIDATE_UNAVAILABLE"]}
+                    source_rights_evidence = {
+                        "scope": "source_metadata_public_display_only",
+                        "source_count": 0, "permitted_count": 0, "unverified_count": 0,
+                        "publication_rights_cleared": False, "status": "unverifiable",
+                    }
             item_result = {
                 "kind": candidate["kind"], "resource_id": candidate["resource_id"],
                 "snapshot_state": state, "content_issues": issues,
@@ -314,6 +375,7 @@ def verify_selection(actor_id, session_id, selection_id):
             }
             if selected.domain != "learning":
                 item_result["editorial_review"] = editorial_review
+                item_result["source_rights_evidence"] = source_rights_evidence
             checks.append(item_result)
         current_session(session_id, actor)
         _permissions(actor, selected.domain)

@@ -15,7 +15,11 @@ type SelectionPayload={domain:Domain;entries:{kind:string;resource_id:string|num
 type VerificationItem={kind:string;resource_id:string|number;
   snapshot_state:"matching"|"stale"|"unavailable"|"unverifiable";content_issues:string[];
   dependency_state:"matching"|"stale"|"baseline_missing"|"invalid"|"content_only";dependency_issues:string[];
-  editorial_review?:{status:"blocked"|"editorial_tasks_current"|"unverifiable";blockers:string[]}};
+  editorial_review?:{status:"blocked"|"editorial_tasks_current"|"unverifiable";blockers:string[]};
+  source_rights_evidence?:{scope:"source_metadata_public_display_only";
+    status:"recorded"|"insufficient"|"not_established"|"no_sources"|"unverifiable";
+    source_count:number;permitted_count:number;unverified_count:number;
+    publication_rights_cleared:false}};
 type VerificationResult={id:string;domain:Domain;status:string;selection_digest:string;
   item_count:number;items:VerificationItem[];policy_matches:boolean;all_snapshots_current:boolean;
   review_blockers:string[];verified_at:string;publication_available:false;approved:false};
@@ -31,6 +35,13 @@ const dependencyStates:Record<VerificationItem["dependency_state"],string>={
   baseline_missing:"این بستهٔ قدیمی تصویر زندهٔ مبنا ندارد. انتخاب تازه لازم است.",
   invalid:"وابستگی فعلی برای ادامهٔ انتشار به اصلاح و بازبینی نیاز دارد.",
   content_only:"وابستگی‌های محتوایی Learning در اثر انگشت محتوا سنجیده شدند. بررسی منبع و حقوق مستقل لازم است.",
+};
+const sourceRightsStatus:Record<NonNullable<VerificationItem["source_rights_evidence"]>["status"],string>={
+  recorded:"مجوز ثبت‌شده و معتبر برای فرادادهٔ منابع مشاهده شد؛ این مجوز شامل متن یا کل پیشنهاد نیست.",
+  insufficient:"حداقل یک سابقهٔ حقوقی منبع ناقص، منقضی، متعارض یا تأییدنشده است.",
+  not_established:"برای نمایش عمومی فرادادهٔ منابع، مجوز مستقل و تصویب‌شده ثبت نشده است.",
+  no_sources:"هیچ منبع قابل‌بررسی برای این پیشنهاد ثبت نشده است.",
+  unverifiable:"بررسی تمام منابع در محدودهٔ ایمن کامل نشد؛ هیچ مجوزی قابل استنتاج نیست.",
 };
 const reasons:Record<string,string>={
   SCIENTIFIC_REVIEW_NOT_LINKED:"تأیید علمی متصل به نسخهٔ فعلی ثبت نشده است.",
@@ -224,6 +235,14 @@ export default function PublicationPreflight(){
                 <li key={code}>{reasons[code]??code}</li>)}</ul>}
               {item.dependency_issues.length>0&&<ul>{item.dependency_issues.map(code=>
                 <li key={code}>{reasons[code]??code}</li>)}</ul>}
+              {item.source_rights_evidence&&<div className="stack" aria-label="شواهد حقوق فراداده منابع">
+                <strong>شواهد حقوق نمایش عمومی فرادادهٔ منابع</strong>
+                <p>{sourceRightsStatus[item.source_rights_evidence.status]}</p>
+                <p>منابع بررسی‌شده: {item.source_rights_evidence.source_count.toLocaleString("fa-IR")}؛
+                  محدودهٔ مجازِ ثبت‌شده: {item.source_rights_evidence.permitted_count.toLocaleString("fa-IR")}؛
+                  بدون مجوزِ احرازشده: {item.source_rights_evidence.unverified_count.toLocaleString("fa-IR")}</p>
+                <p className="muted">این بررسی فقط فرادادهٔ منابع را پوشش می‌دهد، نه حق انتشار پیشنهاد، متن، تصویر، آیتم یا پرسشنامه. تأیید حقوقی مستقل همچنان لازم است.</p>
+              </div>}
               {item.editorial_review&&<div className="stack" aria-label="وضعیت بازبینی علمی موجود">
                 <strong>بازبینی علمی و منبع ثبت‌شده در CMS، مستقل از مجوز انتشار:</strong>
                 <p>{item.editorial_review.status==="editorial_tasks_current"?
