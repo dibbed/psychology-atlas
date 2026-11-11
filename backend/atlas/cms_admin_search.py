@@ -9,12 +9,26 @@ from .cms_views import AdminAPIView
 from .cms_models import AdminAuditEvent
 from .cms_job_models import AdminJob
 from .cms_review_models import ReviewTask
-from .models import ClinicalCase, Flashcard, Quiz, ResearchDataset, ResearchRecord, SourceReference
+from .models import (ClinicalCase, Flashcard, Quiz, ResearchDataset, ResearchRecord, SourceReference,
+    ConceptAlias, TherapyAlias, TechniqueAlias, PsychologistAlias, TheoryAlias,
+    BrainAnatomicalAlias, BrainNetworkAlias)
+from .assessment_models import AssessmentAlias
 
 
 _QUERY = re.compile(r"^[a-z0-9-]{2,80}$")
 _RECORDS = (("cases", "clinical_case", ClinicalCase),
             ("learning", "quiz", Quiz), ("learning", "flashcard", Flashcard))
+# Exact ASCII alias discovery only. Never return alias text or parent names.
+_ALIASES = (
+    ("concept_alias", "concept-alias", "cms_core_view", ConceptAlias),
+    ("therapy_alias", "therapy-alias", "cms_therapy_view", TherapyAlias),
+    ("technique_alias", "technique-alias", "cms_therapy_view", TechniqueAlias),
+    ("psychologist_alias", "psychologist-alias", "cms_history_view", PsychologistAlias),
+    ("theory_alias", "theory-alias", "cms_history_view", TheoryAlias),
+    ("brain_anatomical_alias", "brain-anatomical-alias", "cms_brain_view", BrainAnatomicalAlias),
+    ("brain_network_alias", "brain-network-alias", "cms_brain_view", BrainNetworkAlias),
+    ("assessment_alias", "assessment-alias", "cms_assessment_view", AssessmentAlias),
+)
 
 
 class AdminSearchView(AdminAPIView):
@@ -29,7 +43,7 @@ class AdminSearchView(AdminAPIView):
         domain = request.query_params.get("domain", "all")
         numeric_id = q.isascii() and q.isdigit() and 1 <= len(q) <= 19
         if (type(q) is not str or domain not in
-                {"all", "cases", "learning", "sources", "research", "audit", "tasks", "jobs"}
+                {"all", "cases", "learning", "sources", "research", "audit", "tasks", "jobs", "aliases"}
                 or not (_QUERY.fullmatch(q.lower()) or (numeric_id and domain in {"all", "audit", "tasks"}))):
             raise CMSFailure("INVALID_QUERY", 400)
         try:
@@ -49,6 +63,8 @@ class AdminSearchView(AdminAPIView):
                 ("research", "cms_research_view"),
                 ("audit", "cms_audit_view"),
             ) if capability in permissions}
+            if any(cap in permissions for _, _, cap, _ in _ALIASES):
+                available.add("aliases")
             # Exact operational discovery is owner-only, not a general editorial read.
             if "cms_owner" in permissions:
                 available.update({"tasks", "jobs"})
@@ -102,6 +118,19 @@ class AdminSearchView(AdminAPIView):
                     if row is not None:
                         rows.append({"kind": "audit_event", "resource_id": row,
                                      "slug": str(row)})
+            if "aliases" in selected:
+                for alias_kind, collection_kind, cap, model in _ALIASES:
+                    if cap not in permissions:
+                        continue
+                    # Exact match only. The content editor independently enforces
+                    # its own permission and reference visibility boundary.
+                    alias_ids = list(model.objects.filter(text__iexact=q)
+                                     .order_by("-pk").values_list("pk", flat=True)[:101])
+                    if len(alias_ids) > 100:
+                        raise CMSFailure("PREVIEW_LIMIT", 400)
+                    rows.extend({"kind": alias_kind, "resource_id": pk,
+                                 "slug": str(pk), "collection_kind": collection_kind}
+                                for pk in alias_ids)
             if "tasks" in selected and numeric_id:
                 task_pk = int(q)
                 if 0 < task_pk < 2**63:

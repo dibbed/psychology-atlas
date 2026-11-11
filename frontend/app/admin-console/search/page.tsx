@@ -3,8 +3,8 @@ import {useEffect,useRef,useState,type FormEvent} from "react";
 import {cms,CmsError,type CmsPage} from "@/lib/cms";
 import {CmsState,useCms} from "@/components/cms/CmsShell";
 
-type Kind="clinical_case"|"quiz"|"flashcard"|"source_reference"|"research_dataset"|"research_record"|"audit_event"|"review_task"|"admin_job";
-type Item={kind:Kind;resource_id:number|string;slug:string;is_active?:boolean;label?:string;review_kind?:string;review_state?:string};
+type Kind="clinical_case"|"quiz"|"flashcard"|"source_reference"|"research_dataset"|"research_record"|"audit_event"|"review_task"|"admin_job"|"concept_alias"|"therapy_alias"|"technique_alias"|"psychologist_alias"|"theory_alias"|"brain_anatomical_alias"|"brain_network_alias"|"assessment_alias";
+type Item={kind:Kind;resource_id:number|string;slug:string;is_active?:boolean;label?:string;review_kind?:string;review_state?:string;collection_kind?:string};
 type Result=CmsPage<Item>&{scope:string;domain:string;query:string};
 const target:Record<Kind,string>={
   clinical_case:"/admin-console/content/cases",
@@ -16,6 +16,14 @@ const target:Record<Kind,string>={
   audit_event:"/admin-console/audit/",
   review_task:"/admin-console/reviews/",
   admin_job:"/admin-console/jobs/",
+  concept_alias:"/admin-console/content/concept-alias",
+  therapy_alias:"/admin-console/content/therapy-alias",
+  technique_alias:"/admin-console/content/technique-alias",
+  psychologist_alias:"/admin-console/content/psychologist-alias",
+  theory_alias:"/admin-console/content/theory-alias",
+  brain_anatomical_alias:"/admin-console/content/brain-anatomical-alias",
+  brain_network_alias:"/admin-console/content/brain-network-alias",
+  assessment_alias:"/admin-console/content/assessment-alias",
 };
 const label:Record<Kind,string>={
   clinical_case:"کیس آموزشی",quiz:"آزمون آموزشی",flashcard:"فلش‌کارت",
@@ -24,11 +32,16 @@ const label:Record<Kind,string>={
   research_record:"رکورد پژوهشی داخلی",
   audit_event:"رویداد Audit",
   review_task:"وظیفهٔ بازبینی",admin_job:"Job عملیاتی",
+  concept_alias:"نام جایگزین مفهوم",therapy_alias:"نام جایگزین درمان",
+  technique_alias:"نام جایگزین تکنیک",psychologist_alias:"نام جایگزین روان‌شناس",
+  theory_alias:"نام جایگزین نظریه",brain_anatomical_alias:"نام جایگزین ساختار مغز",
+  brain_network_alias:"نام جایگزین شبکهٔ مغز",assessment_alias:"نام جایگزین ابزار ارزیابی",
 };
 export default function PrivateSearch(){
   const {can}=useCms();const allowed=can("cms_search");
   const canCases=can("cms_cases_view"),canLearning=can("cms_learning_view"),canSources=can("cms_source_view");
   const canResearch=can("cms_research_view"),canAudit=can("cms_audit_view"),canOwner=can("cms_owner");
+  const canAliases=["cms_core_view","cms_therapy_view","cms_history_view","cms_brain_view","cms_assessment_view"].some(cap=>can(cap));
   const [term,setTerm]=useState("");const [domain,setDomain]=useState("all");
   const [page,setPage]=useState(1);const [data,setData]=useState<Result>();
   const [error,setError]=useState("");const [busy,setBusy]=useState(false);
@@ -58,7 +71,7 @@ export default function PrivateSearch(){
     <a className="cms-link" href="/admin-console">بازگشت به خانهٔ مدیریت</a>
     <div className="cms-title">
       <p className="eyebrow">P17 | Internal Search</p><h1>جست‌وجوی خصوصی محتوای مجاز</h1>
-      <p className="muted">جست‌وجوی خصوصی فقط شناسه‌ها و کلیدهای مجاز کیس، محتوای آموزشی و رکوردهای پژوهشی را بررسی می‌کند؛ منبع با عنوان محدود و Audit با شمارهٔ دقیق پیدا می‌شود. مالک می‌تواند وظیفهٔ بازبینی را با شماره و Job را با UUID دقیق پیدا کند. متن بیمار، پاسخ، متن خام، جزئیات حساب و سوابق یادگیری نمایش داده نمی‌شوند. نتیجه مجوز انتشار نیست.</p>
+      <p className="muted">جست‌وجوی داخلی شناسه‌ها و کلیدهای مجاز را بررسی می‌کند. Alias فقط با عبارت لاتین دقیق و مجوز همان حوزه، بدون نمایش متن یا نام والد پیدا می‌شود. منبع با عنوان محدود، Audit و Task با شمارهٔ دقیق، و Job با UUID پیدا می‌شوند. متن بیمار، پاسخ، متن خام، جزئیات حساب و تاریخچهٔ یادگیری نمایش داده نمی‌شوند. نتیجه مجوز انتشار نیست.</p>
     </div>
     <form className="card stack" onSubmit={submit}>
       <label>شناسه یا کلید لاتین (Task و Audit: شماره، Job: UUID)
@@ -73,6 +86,7 @@ export default function PrivateSearch(){
           {canSources&&<option value="sources">منابع مجاز</option>}
           {canResearch&&<option value="research">کلید مجموعه‌داده و رکورد پژوهشی</option>}
           {canAudit&&<option value="audit">شناسهٔ دقیق رویداد Audit</option>}
+          {canAliases&&<option value="aliases">نام جایگزین، تطبیق لاتین دقیق</option>}
           {canOwner&&<option value="tasks">شناسهٔ دقیق وظیفهٔ بازبینی</option>}
           {canOwner&&<option value="jobs">UUID دقیق Job</option>}
         </select>
@@ -87,9 +101,11 @@ export default function PrivateSearch(){
         <ul className="stack">{data.results.map(row=><li key={row.kind+"-"+row.resource_id}>
           <strong>{label[row.kind]}</strong> <code dir="ltr">{row.label??row.slug}</code>
           <span> | #{row.resource_id} {row.is_active!==undefined?` | ${row.is_active?"فعال":"غیرفعال"}`:" | وضعیت انتشار از این جست‌وجو تعیین نمی‌شود"} </span>
-          <a className="cms-link" href={row.kind==="review_task"&&row.review_kind&&row.review_state?
-            target.review_task+encodeURIComponent(row.review_kind)+"/"+encodeURIComponent(row.review_state):
-            target[row.kind]+(row.kind==="research_dataset"||row.kind==="research_record"||row.kind==="audit_event"||row.kind==="admin_job"?row.resource_id:"")}>باز کردن حوزه برای بازرسی</a>
+          <a className="cms-link" href={row.collection_kind?
+            "/admin-console/content/"+encodeURIComponent(row.collection_kind):
+            row.kind==="review_task"&&row.review_kind&&row.review_state?
+              target.review_task+encodeURIComponent(row.review_kind)+"/"+encodeURIComponent(row.review_state):
+              target[row.kind]+(row.kind==="research_dataset"||row.kind==="research_record"||row.kind==="audit_event"||row.kind==="admin_job"?row.resource_id:"")}>باز کردن حوزه برای بازرسی</a>
         </li>)}</ul>}
       {data.count>data.page_size&&<div className="cms-filters">
         <button className="button secondary" type="button" disabled={busy||page<=1}

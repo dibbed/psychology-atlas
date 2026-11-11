@@ -193,6 +193,49 @@ class AdminSearchSafeScopeTests(SecurityFixture, TestCase):
         self.assertEqual(AdminJob.objects.filter(pk=job.pk).count(), 1)
         self.assertEqual(ReviewTask.objects.filter(pk=task.pk).count(), 1)
 
+    def test_exact_alias_discovery_is_redacted_and_domain_scoped(self):
+        from .models import Concept, ConceptAlias, Theory, TheoryAlias
+        from .cms_admin_search import _ALIASES
+        from .cms_content import REGISTRY
+        self.assertEqual(len(_ALIASES), 8)
+        self.assertTrue({collection for _, collection, _, _ in _ALIASES} <= set(REGISTRY))
+        concept = Concept.objects.create(slug="p17-alias-parent-concept", name_en="Private concept name")
+        theory = Theory.objects.create(slug="p17-alias-parent-theory", name_en="Private theory name")
+        concept_alias = ConceptAlias.objects.create(concept=concept, text="P17-EXACTALIAS", language="en")
+        theory_alias = TheoryAlias.objects.create(theory=theory, text="P17-EXACTALIAS", language="en")
+        url = BASE + "search/?q=p17-exactalias&domain=aliases"
+        owner = self.owner_client.get(url)
+        self.assertEqual(owner.status_code, 200, owner.content[:400])
+        self.assertEqual(owner.json()["count"], 2)
+        self.assertEqual(owner.json()["results"], [
+            {"kind": "concept_alias", "resource_id": concept_alias.pk, "slug": str(concept_alias.pk),
+             "collection_kind": "concept-alias"},
+            {"kind": "theory_alias", "resource_id": theory_alias.pk, "slug": str(theory_alias.pk),
+             "collection_kind": "theory-alias"},
+        ])
+        for private in ("Private concept", "Private theory", "P17-EXACTALIAS", "parent_concept", "parent_theory"):
+            self.assertNotIn(private, owner.content.decode())
+        self.assertEqual(self.owner_client.get(
+            BASE + "search/?q=p17-exactalias-extra&domain=aliases").json()["count"], 0)
+        self.assertEqual(self.owner_client.get(
+            BASE + "search/?q=private&domain=aliases").json()["count"], 0)
+
+        core = self.user("p17-only-core-alias", staff=True, caps=(
+            "cms_enter", "cms_search", "cms_core_view"))
+        scoped = self.sign_in(core)
+        selected = scoped.get(url)
+        self.assertEqual(selected.status_code, 200, selected.content[:450])
+        self.assertEqual([row["kind"] for row in selected.json()["results"]], ["concept_alias"])
+        self.assertEqual([row["kind"] for row in scoped.get(
+            BASE + "search/?q=p17-exactalias&domain=all").json()["results"]], ["concept_alias"])
+        core.user_permissions.filter(codename="cms_core_view").first().user_set.remove(core)
+        self.assertEqual(scoped.get(url).status_code, 403)
+        self.assertEqual(scoped.get(BASE + "search/?q=p17-exactalias&domain=all").status_code, 403)
+        denied = self.user("p17-alias-no-caps", staff=True, caps=("cms_enter", "cms_search"))
+        no_domain = self.sign_in(denied)
+        self.assertEqual(no_domain.get(url).status_code, 403)
+        self.assertEqual(no_domain.get(BASE + "search/?q=p17-exactalias&domain=all").status_code, 403)
+
     def test_no_mutation_allowed(self):
         self.assertEqual(self.post(self.owner_client,"search/",{"q":"p17"}).status_code,405)
         self.assertFalse(self.case.is_active)

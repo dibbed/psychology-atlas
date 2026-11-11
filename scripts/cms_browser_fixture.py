@@ -772,8 +772,19 @@ if phase == "p14":
             actor=User.objects.get(username="qa_owner"), action="session.login",
             outcome="success", target_kind="", target_key="", reason="",
         )
+    # A deliberately unpublished alias fixture to exercise scoped discovery:
+    # no patient, scientific claim or public content is introduced.
+    from atlas.models import Concept, ConceptAlias
+    parent = Concept.objects.create(
+        slug="p17-browser-private-alias-parent", name_en="P17 PRIVATE PARENT",
+        simple_definition="Synthetic test fixture", is_active=False,
+    )
+    alias = ConceptAlias.objects.create(
+        concept=parent, text="P17-ATLASALIAS", language="en",
+    )
     review_fixture["p17"] = {"dataset_id": dataset.pk,
-                              "record_id": research_record.pk, "audit_id": audit.pk}
+                              "record_id": research_record.pk, "audit_id": audit.pk,
+                              "alias_id": alias.pk}
 
 # Credentials go only to the harness's private pipe, never into reports or logs.
 print(json.dumps({"users": users, "category": str(state.pk), **review_fixture}))

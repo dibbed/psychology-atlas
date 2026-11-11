@@ -465,7 +465,7 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
 
   // P17 private search must never inspect raw research payload or audit actors.
   await owner.goto(origin+'/admin-console/search');
-  const searchInput=owner.getByLabel('شناسه یا کلید لاتین (برای Audit شمارهٔ دقیق)');
+  const searchInput=owner.getByLabel(/^شناسه یا کلید لاتین/);
   await owner.getByLabel('حوزه').selectOption('research');
   await searchInput.fill('p17-browser');
   const directResearch=await request(owner,'/search/?q=p17-browser&domain=research');
@@ -529,6 +529,31 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
   check(await owner.getByRole('heading',{name:/نتایج:/}).count()===0,
     'P17 delayed research search response never repopulates results under another domain');
 
+  // P17 exact alias discovery: only a synthetic inactive parent with
+  // narrowly permitted concept-alias existence, never parent text.
+  await owner.getByLabel('حوزه').selectOption('aliases');
+  await searchInput.fill('p17-atlasalias');
+  const aliasRequest=owner.waitForResponse(response=>response.url().includes('/api/admin/search')&&
+    response.url().includes('domain=aliases')&&response.request().method()==='GET'&&response.status()===200);
+  await owner.getByRole('button',{name:'جست‌وجو',exact:true}).click();
+  const aliasResponse=await aliasRequest;
+  const aliasPayload=await aliasResponse.json();
+  check(aliasPayload.count===1&&aliasPayload.results[0].kind==='concept_alias'&&
+    aliasPayload.results[0].resource_id===fixture.p17.alias_id&&
+    aliasPayload.results[0].collection_kind==='concept-alias'&&
+    !JSON.stringify(aliasPayload).includes('P17 PRIVATE PARENT'),
+    'P17 exact alias discovery returns only authorized alias IDs, never unpublished parent text');
+  check(await owner.getByText('نام جایگزین مفهوم',{exact:true}).count()===1&&
+    await owner.getByRole('link',{name:'باز کردن حوزه برای بازرسی'}).getAttribute('href')==='/admin-console/content/concept-alias'&&
+    await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
+    'P17 exact alias rendering and navigation fit Persian mobile RTL');
+  const crossDomainAlias=await request(scoped,'/search/?q=p17-atlasalias&domain=aliases');
+  check(crossDomainAlias.status===403&&!JSON.stringify(crossDomainAlias.data).includes('concept_alias'),
+    'P17 brain-only curator without cms_search cannot access alias discovery');
+  const aliasMiss=await request(owner,'/search/?q=p17-atlasalias-other&domain=aliases');
+  check(aliasMiss.status===200&&aliasMiss.data.count===0,
+    'P17 alias match must be exact and cannot become fuzzy discovery');
+
   const health=await request(owner,'/operations/health/');
   check(health.status===200&&
     health.data.publication_receipts?.scope==='case_revision_structural_receipts_only'&&
@@ -537,6 +562,12 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
     health.data.publication_receipts.repair_available===false&&
     health.data.backup.state==='unavailable',
     'P18 owner-only case receipt drift is reported as structural metadata, never publication or backup clearance');
+  check(health.data.source_plan_receipts?.scope==='source_plan_receipt_history_presence_only'&&
+    Number.isInteger(health.data.source_plan_receipts.source_plans_without_receipt)&&
+    Number.isInteger(health.data.source_plan_receipts.total_observed_mismatches)&&
+    health.data.source_plan_receipts.full_source_integrity_proven===false&&
+    health.data.source_plan_receipts.repair_available===false,
+    'P18 source receipt-history monitoring is structural only, not source rights or apply clearance');
   check((await request(scoped,'/operations/health/')).status===403,
     'P18 ordinary content curator cannot read owner receipt health');
   await owner.goto(origin+'/admin-console/operations');
@@ -545,6 +576,10 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
     await owner.getByText('مغایرت‌های مشاهده‌شده:',{exact:false}).count()===1&&
     await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
     'P18 receipt drift and explicit non-clearance are visible in Persian 320px RTL');
+  check(await owner.locator('[aria-label="بررسی ساختاری رسیدهای طرح منبع"]').count()===1&&
+    await owner.getByRole('heading',{name:'رسید و تاریخچهٔ Source Plan، فقط بررسی ساختاری'}).count()===1&&
+    await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
+    'P18 source receipt-history check renders within Persian 320px RTL with no misleading repair action');
 
   await owner.goto(origin+'/admin-console/help');
   await owner.getByRole('heading',{name:'راهنمای کاربردی مدیریت Psychology Atlas'}).waitFor();
