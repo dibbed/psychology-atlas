@@ -619,6 +619,25 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
     await owner.getByText('مدیریت Job و حقوق محتوا مسیرهای محدود خود را دارند',{exact:false}).count()===1,
     'P19 dashboard links to real owner-only analytics and no longer claims that jobs or rights have no service');
 
+  const actualPolicy=await request(owner,'/reviews/policy/?page=1');
+  check(actualPolicy.status===200&&actualPolicy.data.scope==='core'&&
+    ['solo_owner','two_person'].includes(actualPolicy.data.mode)&&
+    Number.isInteger(actualPolicy.data.version)&&
+    Number.isInteger(actualPolicy.data.history?.count),
+    'P19 settings catalog reads a real versioned ReviewPolicy consumer and its persisted change count');
+  await owner.goto(origin+'/admin-console/settings');
+  await owner.getByRole('heading',{name:'تنظیمات دارای مصرف‌کنندهٔ واقعی'}).waitFor();
+  check(await owner.getByRole('navigation',{name:'بخش‌های مدیریت'}).getByRole('link',{name:'تنظیمات واقعی'}).count()===1&&
+    await owner.getByText('سیاست بازبینی پیشنهادهای محتوای مرجع',{exact:true}).count()===1&&
+    await owner.getByRole('link',{name:'دیدن تاریخچه و ویرایش کنترل‌شده با MFA'}).getAttribute('href')===
+      '/admin-console/reviews/policy'&&
+    await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
+    'P19 actual settings catalog uses the existing MFA-controlled review policy editor in 320px RTL');
+  await owner.goto(origin+'/admin-console');
+  await owner.getByRole('link',{name:'مشاهدهٔ تنظیمات معتبر'}).waitFor();
+  check(await owner.getByRole('link',{name:'مشاهدهٔ تنظیمات معتبر'}).count()===1,
+    'P19 owner dashboard links to the non-invented consumer settings catalog');
+
   await owner.goto(origin+'/admin-console/help');
   await owner.getByRole('heading',{name:'راهنمای کاربردی مدیریت Psychology Atlas'}).waitFor();
   check(await owner.getByRole('link',{name:'حقوق و استفاده'}).getAttribute('href')==='/admin-console/rights'&&
