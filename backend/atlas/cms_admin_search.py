@@ -5,7 +5,8 @@ from rest_framework.response import Response
 
 from .cms_policy import CMSFailure, effective_permissions, policy_lock, require
 from .cms_views import AdminAPIView
-from .models import ClinicalCase, Flashcard, Quiz, SourceReference
+from .cms_models import AdminAuditEvent
+from .models import ClinicalCase, Flashcard, Quiz, ResearchDataset, ResearchRecord, SourceReference
 
 
 _QUERY = re.compile(r"^[a-z0-9-]{2,80}$")
@@ -23,7 +24,7 @@ class AdminSearchView(AdminAPIView):
             raise CMSFailure("INVALID_QUERY", 400)
         q = request.query_params.get("q", "")
         domain = request.query_params.get("domain", "all")
-        if type(q) is not str or not _QUERY.fullmatch(q.lower()) or domain not in {"all", "cases", "learning", "sources"}:
+        if type(q) is not str or not _QUERY.fullmatch(q.lower()) or domain not in {"all", "cases", "learning", "sources", "research", "audit"}:
             raise CMSFailure("INVALID_QUERY", 400)
         try:
             page = int(request.query_params.get("page", "1"))
@@ -39,6 +40,8 @@ class AdminSearchView(AdminAPIView):
                 ("cases", "cms_cases_view"),
                 ("learning", "cms_learning_view"),
                 ("sources", "cms_source_view"),
+                ("research", "cms_research_view"),
+                ("audit", "cms_audit_view"),
             ) if capability in permissions}
             selected = available if domain == "all" else {domain}
             if not selected or not selected <= available:
@@ -66,6 +69,30 @@ class AdminSearchView(AdminAPIView):
                     "kind": "source_reference", "resource_id": pk,
                     "slug": str(pk), "label": title[:160],
                 } for pk, title in sources)
+            if "research" in selected:
+                # Staging keys and slugs only, never raw JSON, source filenames,
+                # external IDs, translated names, or private research payloads.
+                datasets = list(ResearchDataset.objects.filter(key__icontains=q)
+                                .order_by("-pk").values_list("pk", "key", "is_active")[:101])
+                records = list(ResearchRecord.objects.filter(slug__icontains=q)
+                               .order_by("-pk").values_list("pk", "slug")[:101])
+                if len(datasets) > 100 or len(records) > 100:
+                    raise CMSFailure("PREVIEW_LIMIT", 400)
+                rows.extend({"kind": "research_dataset", "resource_id": pk,
+                             "slug": slug, "is_active": active}
+                            for pk, slug, active in datasets)
+                rows.extend({"kind": "research_record", "resource_id": pk,
+                             "slug": slug} for pk, slug in records)
+            if "audit" in selected and q.isascii() and q.isdigit() and len(q) <= 19:
+                # Only an exact numeric audit ID is discoverable; no actor,
+                # reason, request, target, or event payload search/return.
+                audit_pk = int(q)
+                if 0 < audit_pk < 2**63:
+                    row = AdminAuditEvent.objects.filter(pk=audit_pk).values_list(
+                        "pk", flat=True).first()
+                    if row is not None:
+                        rows.append({"kind": "audit_event", "resource_id": row,
+                                     "slug": str(row)})
             rows.sort(key=lambda v: (v["kind"], -v["resource_id"]))
             total = len(rows)
             start = (page - 1) * size

@@ -457,6 +457,73 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
   await owner.screenshot({path:path.join(out,'p16-editorial-proposals-mobile.png'),fullPage:true,
     mask:[owner.locator('input[type="password"]')]});
   report.screenshots.push('p16-editorial-proposals-mobile.png');
+
+  // P17 private search must never inspect raw research payload or audit actors.
+  await owner.goto(origin+'/admin-console/search');
+  const searchInput=owner.getByLabel('شناسه یا کلید لاتین (برای Audit شمارهٔ دقیق)');
+  await owner.getByLabel('حوزه').selectOption('research');
+  await searchInput.fill('p17-browser');
+  const directResearch=await request(owner,'/search/?q=p17-browser&domain=research');
+  check(directResearch.status===200&&directResearch.data.count===2,
+    'P17 browser direct API serves authorized research results before UI search');
+  check(await searchInput.inputValue()==='p17-browser'&&
+    await owner.getByLabel('حوزه').inputValue()==='research'&&
+    await owner.getByRole('button',{name:'جست‌وجو',exact:true}).isEnabled(),
+    'P17 controlled search form has a valid term and selected domain');
+  const researchSearch=owner.waitForResponse(response=>response.url().includes('/api/admin/search')&&
+    response.url().includes('domain=research')&&response.request().method()==='GET'&&
+    !(response.status()>=300&&response.status()<400));
+  await owner.getByRole('button',{name:'جست‌وجو',exact:true}).click();
+  const researchResponse=await researchSearch;
+  assert.equal(researchResponse.status(),200,(await researchResponse.text()).slice(0,400));
+  const researchResult=await researchResponse.json();
+  check(researchResult.count===2&&researchResult.results.some(r=>r.kind==='research_dataset'&&
+    r.resource_id===fixture.p17.dataset_id)&&
+    researchResult.results.some(r=>r.kind==='research_record'&&r.resource_id===fixture.p17.record_id)&&
+    !JSON.stringify(researchResult).includes('P17 SECRET'),
+    'P17 private search discovers only authorized research staging keys without raw content');
+  check(await owner.getByText('مجموعه‌دادهٔ پژوهشی داخلی',{exact:true}).count()===1&&
+    await owner.getByText('رکورد پژوهشی داخلی',{exact:true}).count()===1,
+    'P17 Persian search renders typed research results only');
+  await owner.getByLabel('حوزه').selectOption('audit');
+  await searchInput.fill(String(fixture.p17.audit_id));
+  const auditSearch=owner.waitForResponse(response=>response.url().includes('/api/admin/search')&&
+    response.url().includes('domain=audit')&&response.request().method()==='GET'&&
+    !(response.status()>=300&&response.status()<400));
+  await owner.getByRole('button',{name:'جست‌وجو',exact:true}).click();
+  const auditResponse=await auditSearch;
+  assert.equal(auditResponse.status(),200,(await auditResponse.text()).slice(0,400));
+  const auditResult=await auditResponse.json();
+  check(auditResult.count===1&&auditResult.results[0].kind==='audit_event'&&
+    auditResult.results[0].resource_id===fixture.p17.audit_id&&
+    !JSON.stringify(auditResult).includes('actor_ref')&&!JSON.stringify(auditResult).includes('request_id'),
+    'P17 audit discovery is exact-ID only with no actor, event or request metadata');
+  check(await owner.getByText('رویداد Audit',{exact:true}).count()===1&&
+    await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
+    'P17 audit discovery fits the 320px Persian RTL viewport');
+
+  let releaseOldSearch,oldSearchArrived;
+  const oldSearchGate=new Promise(resolve=>{releaseOldSearch=resolve;});
+  const oldSearchArrival=new Promise(resolve=>{oldSearchArrived=resolve;});
+  const oldSearchRoute='**/api/admin/search/?*';
+  await owner.route(oldSearchRoute,async route=>{
+    if(!route.request().url().includes('q=p17-browser')||
+       !route.request().url().includes('domain=research'))return route.continue();
+    const response=await route.fetch();oldSearchArrived();await oldSearchGate;
+    await route.fulfill({response});
+  });
+  await owner.getByLabel('حوزه').selectOption('research');
+  await searchInput.fill('p17-browser');
+  const oldSearchResponse=owner.waitForResponse(response=>response.url().includes('/api/admin/search/')&&
+    response.url().includes('q=p17-browser')&&response.status()===200);
+  await owner.getByRole('button',{name:'جست‌وجو',exact:true}).click();
+  await oldSearchArrival;
+  await owner.getByLabel('حوزه').selectOption('audit');
+  releaseOldSearch();await oldSearchResponse;await owner.unroute(oldSearchRoute);
+  await owner.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  check(await owner.getByRole('heading',{name:/نتایج:/}).count()===0,
+    'P17 delayed research search response never repopulates results under another domain');
+
   await openAccount(owner,fixture.users.owner.username);
   await owner.getByRole('button',{name:'بررسی ساخت کدهای بازیابی خودم',exact:true}).click();await confirmAccount(owner,fixture.users.owner.tokens[7]);
   await owner.waitForURL(url=>url.pathname.replace(/\/$/,'')==='/account/two_factor/backup/tokens');

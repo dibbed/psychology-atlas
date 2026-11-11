@@ -749,5 +749,31 @@ if phase == "p14":
         proposal_state.save(update_fields=("current_revision", "version"))
         review_fixture["p16"][domain] = str(proposal_state.pk)
 
+    # P17 internal search: deliberately private staging keys, never public.
+    from atlas.models import ResearchDataset, ResearchRecord
+    from atlas.cms_models import AdminAuditEvent
+    dataset = ResearchDataset.objects.create(
+        key="p17-browser-dataset", source_filename="PRIVATE P17 original.json",
+        source_sha256="9" * 64, is_active=False,
+        raw_text="P17 SECRET STUDY RAW PATIENT",
+        raw_document={"private": "P17 SECRET STUDY RAW PATIENT"},
+    )
+    research_record = ResearchRecord.objects.create(
+        dataset=dataset, section="concepts", external_id="P17 SECRET external",
+        slug="p17-browser-record", canonical_key="concept:p17-browser-record",
+        name_en="P17 SECRET candidate", payload={"question": "P17 SECRET ANSWER"},
+    )
+    audit = AdminAuditEvent.objects.create(
+        actor=User.objects.get(username="qa_owner"), action="session.login",
+        outcome="success", target_kind="", target_key="", reason="",
+    )
+    while audit.pk < 10:
+        audit = AdminAuditEvent.objects.create(
+            actor=User.objects.get(username="qa_owner"), action="session.login",
+            outcome="success", target_kind="", target_key="", reason="",
+        )
+    review_fixture["p17"] = {"dataset_id": dataset.pk,
+                              "record_id": research_record.pk, "audit_id": audit.pk}
+
 # Credentials go only to the harness's private pipe, never into reports or logs.
 print(json.dumps({"users": users, "category": str(state.pk), **review_fixture}))

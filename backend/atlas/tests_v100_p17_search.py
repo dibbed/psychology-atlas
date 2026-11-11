@@ -61,6 +61,73 @@ class AdminSearchSafeScopeTests(SecurityFixture, TestCase):
             "cms_enter","cms_cases_view","cms_learning_view"))
         self.assertEqual(self.sign_in(no_search).get(BASE+"search/?q=p17-fictional").status_code,403)
 
+    def test_research_staging_identifiers_not_raw_content_and_strict_capability(self):
+        from .models import ResearchDataset, ResearchRecord
+        dataset = ResearchDataset.objects.create(
+            key="p17-internal-dataset", source_filename="private-original.json",
+            source_sha256="f" * 64, is_active=False,
+            raw_text="P17-SECRET-RAW-CORPUS",
+            raw_document={"patient": "P17-SECRET-PATIENT"},
+        )
+        record = ResearchRecord.objects.create(
+            dataset=dataset, section="concepts", external_id="Private external id",
+            slug="p17-internal-concept", canonical_key="concept:p17-internal-concept",
+            name_en="P17-SECRET-RESEARCH-NAME",
+            payload={"question": "P17-SECRET-ANSWER"},
+        )
+        result = self.owner_client.get(BASE + "search/?q=p17-internal&domain=research")
+        self.assertEqual(result.status_code, 200, result.content[:350])
+        data = result.json()
+        self.assertEqual(data["count"], 2)
+        self.assertEqual({item["kind"] for item in data["results"]},
+                         {"research_dataset", "research_record"})
+        self.assertEqual({item["resource_id"] for item in data["results"]},
+                         {dataset.pk, record.pk})
+        self.assertFalse(next(row for row in data["results"]
+                             if row["kind"] == "research_dataset")["is_active"])
+        for secret in ("P17-SECRET", "raw_text", "raw_document", "payload",
+                       "source_filename", "external_id", "name_en"):
+            self.assertNotIn(secret, result.content.decode())
+        self.assertEqual(self.owner_client.get(
+            BASE + "search/?q=p17-secret&domain=research").json()["count"], 0)
+        viewer = self.user("p17-research-scoped", staff=True, caps=(
+            "cms_enter", "cms_search", "cms_research_view"))
+        client = self.sign_in(viewer)
+        self.assertEqual(client.get(BASE + "search/?q=p17-internal&domain=research").json()["count"], 2)
+        no_research = self.user("p17-without-research", staff=True, caps=(
+            "cms_enter", "cms_search", "cms_learning_view"))
+        other = self.sign_in(no_research)
+        self.assertEqual(other.get(BASE + "search/?q=p17-internal&domain=research").status_code, 403)
+        self.assertEqual(other.get(BASE + "search/?q=p17-internal&domain=all").json()["count"], 0)
+
+    def test_audit_search_exact_numeric_id_without_actor_or_event_payload(self):
+        from .cms_models import AdminAuditEvent
+        for _ in range(12):
+            row = AdminAuditEvent.objects.create(
+                actor=self.owner, action="session.login", outcome="success",
+                target_kind="session", target_key="", reason="",
+            )
+        q = str(row.pk)
+        result = self.owner_client.get(BASE + "search/?q=" + q + "&domain=audit")
+        self.assertEqual(result.status_code, 200, result.content[:300])
+        self.assertEqual(result.json()["count"], 1)
+        self.assertEqual(result.json()["results"][0],
+            {"kind": "audit_event", "resource_id": row.pk, "slug": q})
+        for secret in ("actor_ref", "actor_id", "session.login",
+                       "request_id", "target_key", "diff"):
+            self.assertNotIn(secret, result.content.decode())
+        self.assertEqual(self.owner_client.get(
+            BASE + "search/?q=session&domain=audit").json()["count"], 0)
+        audit_viewer = self.user("p17-audit-only", staff=True,
+            caps=("cms_enter", "cms_search", "cms_audit_view"))
+        client = self.sign_in(audit_viewer)
+        self.assertEqual(client.get(BASE + "search/?q=" + q + "&domain=audit").json()["count"], 1)
+        no_audit = self.user("p17-no-audit", staff=True,
+            caps=("cms_enter", "cms_search", "cms_cases_view"))
+        other = self.sign_in(no_audit)
+        self.assertEqual(other.get(BASE + "search/?q=" + q + "&domain=audit").status_code, 403)
+        self.assertEqual(other.get(BASE + "search/?q=" + q + "&domain=all").json()["count"], 0)
+
     def test_no_mutation_allowed(self):
         self.assertEqual(self.post(self.owner_client,"search/",{"q":"p17"}).status_code,405)
         self.assertFalse(self.case.is_active)
