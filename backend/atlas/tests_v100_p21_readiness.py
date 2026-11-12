@@ -137,6 +137,55 @@ class OwnerReleaseReadinessTests(SecurityFixture, TestCase):
                           report["hard_blockers"])
             self.assertIsNone(report["preparation"]["recorded_dossiers"])
 
+    def test_missing_essential_foreign_key_blocks_http_and_cli(self):
+        """A damaged relation must fail closed despite complete migration records."""
+        import io
+        import json
+        from unittest.mock import patch
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+        from django.db import connection
+        from .cms_release_readiness import atlas_runtime_table_evidence
+        from .cms_publication_preparation_models import PublicationPreparationDossier
+
+        clean = atlas_runtime_table_evidence()
+        self.assertTrue(clean["runtime_foreign_keys_present"])
+        self.assertGreater(clean["required_runtime_foreign_key_count"], 0)
+        original = connection.introspection.get_constraints
+        target = PublicationPreparationDossier._meta.db_table
+
+        def hide_selection_fk(cursor, table_name):
+            constraints = original(cursor, table_name)
+            if table_name == target:
+                return {
+                    name: info for name, info in constraints.items()
+                    if not (info.get("foreign_key")
+                            and info.get("columns") == ["selection_id"])
+                }
+            return constraints
+
+        with patch.object(connection.introspection, "get_constraints",
+                          side_effect=hide_selection_fk):
+            broken = atlas_runtime_table_evidence()
+            self.assertTrue(broken["runtime_tables_present"])
+            self.assertTrue(broken["runtime_columns_present"])
+            self.assertTrue(broken["runtime_idempotency_uniques_present"])
+            self.assertFalse(broken["runtime_foreign_keys_present"])
+            self.assertEqual(broken["missing_runtime_foreign_key_count"], 1)
+            response = self.owner_client.get(BASE + "operations/release-readiness/")
+            self.assertEqual(response.status_code, 503, response.content[:350])
+            self.assertEqual(response.json()["code"], "ATLAS_RUNTIME_FOREIGN_KEYS_MISSING")
+            self.assertFalse(response.json()["public_apply_authorized"])
+            self.assertIn("atlas_runtime_foreign_keys_missing",
+                          response.json()["hard_blockers"])
+            stream = io.StringIO()
+            with self.assertRaises(CommandError):
+                call_command("cms_release_gate", stdout=stream, stderr=io.StringIO())
+            report = json.loads(stream.getvalue())
+            self.assertIn("atlas_runtime_foreign_keys_missing", report["hard_blockers"])
+            self.assertIsNone(report["preparation"]["recorded_dossiers"])
+            self.assertFalse(report["release_ready"])
+
     def test_release_readiness_is_consistent_redacted_and_never_claims_prod_approval(self):
         private = ContentState.objects.create(kind="brain-anatomical-entity",
                                               canonical_digest=digest({}))

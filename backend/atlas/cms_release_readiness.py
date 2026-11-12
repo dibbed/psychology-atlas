@@ -77,24 +77,44 @@ def atlas_runtime_table_evidence():
         PublicationPreparationDossier: (("request_key",),),
     }
     column_count = missing_columns = missing_uniques = 0
+    required_foreign_keys = missing_foreign_keys = 0
     with connection.cursor() as cursor:
         for model in models:
-            required = {field.column for field in model._meta.concrete_fields}
+            fields = model._meta.concrete_fields
+            required = {field.column for field in fields}
             column_count += len(required)
             must_be_unique = unique_keys.get(model, ())
+            # Check the physical FK definition, not just the presence of its
+            # local *_id column. Only db-enforced ORM relations are expected.
+            foreign_keys = {
+                (field.column, (field.target_field.model._meta.db_table,
+                                field.target_field.column))
+                for field in fields
+                if field.is_relation and (field.many_to_one or field.one_to_one)
+                and field.db_constraint
+            }
+            required_foreign_keys += len(foreign_keys)
             if model._meta.db_table not in existing:
                 missing_columns += len(required)
                 missing_uniques += len(must_be_unique)
+                missing_foreign_keys += len(foreign_keys)
                 continue
             actual = {column.name for column in connection.introspection.get_table_description(
                 cursor, model._meta.db_table)}
             missing_columns += len(required - actual)
-            if must_be_unique:
+            if must_be_unique or foreign_keys:
                 constraints = connection.introspection.get_constraints(cursor, model._meta.db_table)
-                available = {frozenset(info.get("columns") or ())
-                             for info in constraints.values() if info.get("unique")}
-                missing_uniques += sum(frozenset(key) not in available
+                available_uniques = {frozenset(info.get("columns") or ())
+                                     for info in constraints.values() if info.get("unique")}
+                missing_uniques += sum(frozenset(key) not in available_uniques
                                        for key in must_be_unique)
+                available_foreign_keys = {
+                    (columns[0], tuple(info["foreign_key"]))
+                    for info in constraints.values() if info.get("foreign_key")
+                    for columns in [info.get("columns") or ()]
+                    if len(columns) == 1
+                }
+                missing_foreign_keys += len(foreign_keys - available_foreign_keys)
     return {
         "required_runtime_table_count": len(expected),
         "missing_runtime_table_count": len(expected - existing),
@@ -106,6 +126,11 @@ def atlas_runtime_table_evidence():
             len(keys) for keys in unique_keys.values()),
         "missing_runtime_idempotency_unique_count": missing_uniques,
         "runtime_idempotency_uniques_present": missing_uniques == 0,
+        "required_runtime_foreign_key_count": required_foreign_keys,
+        "missing_runtime_foreign_key_count": missing_foreign_keys,
+        "runtime_foreign_keys_present": missing_foreign_keys == 0,
+        # Metadata only: neither orphan-free rows nor FK enforcement flags
+        # during live sessions are proven by introspection.
         # No data, type, other index/constraint or live-traffic proof is implied.
         "schema_integrity_proven": False,
     }
@@ -165,6 +190,16 @@ class ReleaseReadinessView(OperationsHealthView):
                                       "atlas_runtime_idempotency_constraints_missing"],
                     "manual_decision_required": True,
                     "notice": "RUNTIME_IDEMPOTENCY_GATE_BLOCKED_NO_MODEL_INSPECTION",
+                }, status=503)
+            if not tables["runtime_foreign_keys_present"]:
+                return Response({
+                    "code": "ATLAS_RUNTIME_FOREIGN_KEYS_MISSING",
+                    "release_ready": False, "public_apply_authorized": False,
+                    "database": migration,
+                    "hard_blockers": [*_PENDING_EXTERNAL_GATES,
+                                      "atlas_runtime_foreign_keys_missing"],
+                    "manual_decision_required": True,
+                    "notice": "RUNTIME_FOREIGN_KEY_GATE_BLOCKED_NO_MODEL_INSPECTION",
                 }, status=503)
         # Inherited owner checks and receipt/queue queries are now safe to
         # attempt after the migration-history gate. Schema integrity is still

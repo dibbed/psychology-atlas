@@ -56,6 +56,8 @@ class Command(BaseCommand):
                     report["hard_blockers"].append("atlas_runtime_columns_missing")
                 elif not tables["runtime_idempotency_uniques_present"]:
                     report["hard_blockers"].append("atlas_runtime_idempotency_constraints_missing")
+                elif not tables["runtime_foreign_keys_present"]:
+                    report["hard_blockers"].append("atlas_runtime_foreign_keys_missing")
                 else:
                     from atlas.cms_worker_pulse import observation
                     from atlas.cms_publication_preparation_models import PublicationPreparationDossier
