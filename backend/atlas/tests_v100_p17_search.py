@@ -42,6 +42,26 @@ class AdminSearchSafeScopeTests(SecurityFixture, TestCase):
         self.assertEqual(self.owner_client.get(BASE+"search/?q=p").status_code,400)
         self.assertEqual(self.owner_client.get(BASE+"search/?q=p17&sort=raw").status_code,400)
 
+    def test_exact_source_identity_discovery_without_private_citation(self):
+        query = BASE + f"search/?q={self.source.pk}&domain=sources"
+        owner = self.owner_client.get(query)
+        self.assertEqual(owner.status_code, 200, owner.content[:350])
+        self.assertEqual(owner.json()["results"], [{
+            "kind": "source_reference", "resource_id": self.source.pk,
+            "slug": str(self.source.pk),
+        }])
+        self.assertNotIn("Private source citation", owner.content.decode())
+        allowed = self.sign_in(self.user("p17-source-id-only", staff=True, caps=(
+            "cms_enter", "cms_search", "cms_source_view",
+        )))
+        self.assertEqual(allowed.get(query).json()["count"], 1)
+        disallowed = self.sign_in(self.user("p17-source-id-denied", staff=True, caps=(
+            "cms_enter", "cms_search", "cms_learning_view",
+        )))
+        self.assertEqual(disallowed.get(query).status_code, 403)
+        self.assertEqual(disallowed.get(
+            BASE + f"search/?q={self.source.pk}&domain=all").json()["count"], 0)
+
     def test_global_search_privileges_are_independent_of_domain_read(self):
         viewer=self.user("p17-learning-only",staff=True,caps=(
             "cms_enter","cms_search","cms_learning_view"))
@@ -60,6 +80,62 @@ class AdminSearchSafeScopeTests(SecurityFixture, TestCase):
         no_search=self.user("p17-view-no-search",staff=True,caps=(
             "cms_enter","cms_cases_view","cms_learning_view"))
         self.assertEqual(self.sign_in(no_search).get(BASE+"search/?q=p17-fictional").status_code,403)
+
+    def test_exact_cross_domain_content_proposal_uuid_discovery_is_permission_scoped(self):
+        from .cms_content import digest
+        from .cms_content_models import ContentRevision, ContentState
+
+        body = {"name_en": "P17_PRIVATE_BRAND_NEW_PROPOSAL"}
+        state = ContentState.objects.create(
+            kind="brain-anatomical-entity", canonical_digest=digest({}),
+        )
+        revision = ContentRevision.objects.create(
+            state=state, sequence=1, base_version=0, base_digest=digest({}),
+            payload=body, payload_digest=digest(body),
+            dependency_digest=digest({}), actor=self.owner, status="draft",
+        )
+        state.current_revision = revision
+        state.version = 1
+        state.save(update_fields=["current_revision", "version"])
+        url = BASE + f"search/?q={state.pk}&domain=proposals"
+        owner_result = self.owner_client.get(url)
+        self.assertEqual(owner_result.status_code, 200, owner_result.content[:400])
+        self.assertEqual(owner_result.json()["results"], [{
+            "kind": "content_proposal", "resource_id": str(state.pk),
+            "slug": str(state.pk), "collection_kind": "brain-anatomical-entity",
+        }])
+        self.assertEqual(owner_result.json()["count"], 1)
+        self.assertNotIn("P17_PRIVATE_BRAND_NEW_PROPOSAL", owner_result.content.decode())
+        self.assertNotIn('"payload"', owner_result.content.decode())
+        self.assertNotIn('"name_en"', owner_result.content.decode())
+        self.assertFalse(owner_result.json()["public_publication_inferred"])
+        self.assertEqual(self.owner_client.get(
+            BASE + f"search/?q={state.pk}&domain=all").json()["count"], 1)
+        self.assertEqual(self.owner_client.get(
+            BASE + "search/?q=not-a-uuid&domain=proposals").json()["count"], 0)
+        self.assertEqual(self.owner_client.get(
+            BASE + "search/?q=P17_PRIVATE_BRAND_NEW_PROPOSAL&domain=proposals").status_code, 400)
+
+        brain = self.sign_in(self.user("p17-brain-search", staff=True, caps=(
+            "cms_enter", "cms_search", "cms_brain_view",
+        )))
+        allowed = brain.get(url)
+        self.assertEqual(allowed.status_code, 200, allowed.content[:350])
+        self.assertEqual(allowed.json()["results"][0]["resource_id"], str(state.pk))
+        other = self.sign_in(self.user("p17-therapy-search", staff=True, caps=(
+            "cms_enter", "cms_search", "cms_therapy_view",
+        )))
+        self.assertEqual(other.get(url).json()["count"], 0)
+        self.assertEqual(other.get(BASE+f"search/?q={state.pk}&domain=all").json()["count"], 0)
+        none = self.sign_in(self.user("p17-no-proposal-scope", staff=True, caps=(
+            "cms_enter", "cms_search", "cms_learning_view",
+        )))
+        self.assertEqual(none.get(url).status_code, 403)
+        no_search = self.sign_in(self.user("p17-no-search-grant", staff=True, caps=(
+            "cms_enter", "cms_brain_view",
+        )))
+        self.assertEqual(no_search.get(url).status_code, 403)
+        self.assertEqual(ContentState.objects.get(pk=state.pk).publication, "never_published")
 
     def test_research_staging_identifiers_not_raw_content_and_strict_capability(self):
         from .models import ResearchDataset, ResearchRecord

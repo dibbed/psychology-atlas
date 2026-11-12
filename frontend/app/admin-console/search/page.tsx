@@ -3,10 +3,11 @@ import {useEffect,useRef,useState,type FormEvent} from "react";
 import {cms,CmsError,type CmsPage} from "@/lib/cms";
 import {CmsState,useCms} from "@/components/cms/CmsShell";
 
-type Kind="clinical_case"|"quiz"|"flashcard"|"source_reference"|"research_dataset"|"research_record"|"audit_event"|"review_task"|"admin_job"|"concept_alias"|"therapy_alias"|"technique_alias"|"psychologist_alias"|"theory_alias"|"brain_anatomical_alias"|"brain_network_alias"|"assessment_alias";
+type Kind="content_proposal"|"clinical_case"|"quiz"|"flashcard"|"source_reference"|"research_dataset"|"research_record"|"audit_event"|"review_task"|"admin_job"|"concept_alias"|"therapy_alias"|"technique_alias"|"psychologist_alias"|"theory_alias"|"brain_anatomical_alias"|"brain_network_alias"|"assessment_alias";
 type Item={kind:Kind;resource_id:number|string;slug:string;is_active?:boolean;label?:string;review_kind?:string;review_state?:string;collection_kind?:string};
 type Result=CmsPage<Item>&{scope:string;domain:string;query:string};
 const target:Record<Kind,string>={
+  content_proposal:"/admin-console/content/",
   clinical_case:"/admin-console/content/cases",
   quiz:"/admin-console/content/learning-quizzes",
   flashcard:"/admin-console/content/learning-flashcards",
@@ -26,7 +27,7 @@ const target:Record<Kind,string>={
   assessment_alias:"/admin-console/content/assessment-alias",
 };
 const label:Record<Kind,string>={
-  clinical_case:"کیس آموزشی",quiz:"آزمون آموزشی",flashcard:"فلش‌کارت",
+  content_proposal:"پیشنهاد ویرایش نسخه‌مند",clinical_case:"کیس آموزشی",quiz:"آزمون آموزشی",flashcard:"فلش‌کارت",
   source_reference:"منبع پژوهشی",
   research_dataset:"مجموعه‌دادهٔ پژوهشی داخلی",
   research_record:"رکورد پژوهشی داخلی",
@@ -42,6 +43,7 @@ export default function PrivateSearch(){
   const canCases=can("cms_cases_view"),canLearning=can("cms_learning_view"),canSources=can("cms_source_view");
   const canResearch=can("cms_research_view"),canAudit=can("cms_audit_view"),canOwner=can("cms_owner");
   const canAliases=["cms_core_view","cms_therapy_view","cms_history_view","cms_brain_view","cms_assessment_view"].some(cap=>can(cap));
+  const canProposals=["cms_core_view","cms_dsm_view","cms_therapy_view","cms_history_view","cms_brain_view","cms_assessment_view"].some(cap=>can(cap));
   const [term,setTerm]=useState("");const [domain,setDomain]=useState("all");
   const [page,setPage]=useState(1);const [data,setData]=useState<Result>();
   const [error,setError]=useState("");const [busy,setBusy]=useState(false);
@@ -71,16 +73,17 @@ export default function PrivateSearch(){
     <a className="cms-link" href="/admin-console">بازگشت به خانهٔ مدیریت</a>
     <div className="cms-title">
       <p className="eyebrow">P17 | Internal Search</p><h1>جست‌وجوی خصوصی محتوای مجاز</h1>
-      <p className="muted">جست‌وجوی داخلی شناسه‌ها و کلیدهای مجاز را بررسی می‌کند. Alias فقط با عبارت لاتین دقیق و مجوز همان حوزه، بدون نمایش متن یا نام والد پیدا می‌شود. منبع با عنوان محدود، Audit و Task با شمارهٔ دقیق، و Job با UUID پیدا می‌شوند. متن بیمار، پاسخ، متن خام، جزئیات حساب و تاریخچهٔ یادگیری نمایش داده نمی‌شوند. نتیجه مجوز انتشار نیست.</p>
+      <p className="muted">جست‌وجوی داخلی شناسه‌ها و کلیدهای مجاز را بررسی می‌کند. Alias فقط با عبارت لاتین دقیق و مجوز همان حوزه، بدون نمایش متن یا نام والد پیدا می‌شود. پیشنهادهای ویرایش هم فقط با UUID دقیق و مجوز همان حوزه قابل‌یافتن‌اند. منبع با عنوان محدود یا شناسهٔ عددی دقیق، Audit و Task با شمارهٔ دقیق، و Job با UUID پیدا می‌شوند. متن بیمار، پاسخ، متن خام، جزئیات حساب و تاریخچهٔ یادگیری نمایش داده نمی‌شوند. نتیجه مجوز انتشار نیست.</p>
     </div>
     <form className="card stack" onSubmit={submit}>
       <label>شناسه یا کلید لاتین (Task و Audit: شماره، Job: UUID)
-        <input type="search" dir="ltr" required pattern="[A-Za-z0-9-]{1,80}" minLength={domain==="tasks"||domain==="audit"?1:2} maxLength={80}
+        <input type="search" dir="ltr" required pattern="[A-Za-z0-9-]{1,80}" minLength={["tasks","audit","sources","all"].includes(domain)?1:2} maxLength={80}
           value={term} onChange={e=>{clearResults();setTerm(e.target.value);}}/>
       </label>
       <label>حوزه
         <select value={domain} onChange={e=>{clearResults();setDomain(e.target.value);}}>
           <option value="all">تمام حوزه‌های مجاز من</option>
+          {canProposals&&<option value="proposals">پیشنهادهای نسخه‌مند با UUID دقیق</option>}
           {canCases&&<option value="cases">کیس‌ها</option>}
           {canLearning&&<option value="learning">محتوای یادگیری</option>}
           {canSources&&<option value="sources">منابع مجاز</option>}
@@ -91,7 +94,7 @@ export default function PrivateSearch(){
           {canOwner&&<option value="jobs">UUID دقیق Job</option>}
         </select>
       </label>
-      <button className="button" type="submit" disabled={busy||term.trim().length<(domain==="tasks"||domain==="audit"?1:2)}>جست‌وجو</button>
+      <button className="button" type="submit" disabled={busy||term.trim().length<(["tasks","audit","sources","all"].includes(domain)?1:2)}>جست‌وجو</button>
     </form>
     {error&&<p role="alert">{error}</p>}
     {busy&&<p role="status">در حال جست‌وجو…</p>}
@@ -103,6 +106,8 @@ export default function PrivateSearch(){
           <span> | #{row.resource_id} {row.is_active!==undefined?` | ${row.is_active?"فعال":"غیرفعال"}`:" | وضعیت انتشار از این جست‌وجو تعیین نمی‌شود"} </span>
           <a className="cms-link" href={row.collection_kind?
             "/admin-console/content/"+encodeURIComponent(row.collection_kind):
+            row.kind==="source_reference"?
+              target.source_reference+"/"+encodeURIComponent(String(row.resource_id)):
             row.kind==="review_task"&&row.review_kind&&row.review_state?
               target.review_task+encodeURIComponent(row.review_kind)+"/"+encodeURIComponent(row.review_state):
               target[row.kind]+(row.kind==="research_dataset"||row.kind==="research_record"||row.kind==="audit_event"||row.kind==="admin_job"?row.resource_id:"")}>باز کردن حوزه برای بازرسی</a>

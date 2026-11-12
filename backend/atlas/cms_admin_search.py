@@ -8,6 +8,8 @@ from .cms_policy import CMSFailure, effective_permissions, policy_lock, require
 from .cms_views import AdminAPIView
 from .cms_models import AdminAuditEvent
 from .cms_job_models import AdminJob
+from .cms_content import REGISTRY, capability, scoped_states
+from .cms_content_models import ContentState
 from .cms_review_models import ReviewTask
 from .models import (ClinicalCase, Flashcard, Quiz, ResearchDataset, ResearchRecord, SourceReference,
     ConceptAlias, TherapyAlias, TechniqueAlias, PsychologistAlias, TheoryAlias,
@@ -43,8 +45,8 @@ class AdminSearchView(AdminAPIView):
         domain = request.query_params.get("domain", "all")
         numeric_id = q.isascii() and q.isdigit() and 1 <= len(q) <= 19
         if (type(q) is not str or domain not in
-                {"all", "cases", "learning", "sources", "research", "audit", "tasks", "jobs", "aliases"}
-                or not (_QUERY.fullmatch(q.lower()) or (numeric_id and domain in {"all", "audit", "tasks"}))):
+                {"all", "cases", "learning", "sources", "research", "audit", "tasks", "jobs", "aliases", "proposals"}
+                or not (_QUERY.fullmatch(q.lower()) or (numeric_id and domain in {"all", "audit", "tasks", "sources"}))):
             raise CMSFailure("INVALID_QUERY", 400)
         try:
             page = int(request.query_params.get("page", "1"))
@@ -65,6 +67,8 @@ class AdminSearchView(AdminAPIView):
             ) if capability in permissions}
             if any(cap in permissions for _, _, cap, _ in _ALIASES):
                 available.add("aliases")
+            if any(capability(kind, "view") in permissions for kind in REGISTRY):
+                available.add("proposals")
             # Exact operational discovery is owner-only, not a general editorial read.
             if "cms_owner" in permissions:
                 available.update({"tasks", "jobs"})
@@ -73,7 +77,7 @@ class AdminSearchView(AdminAPIView):
                 raise CMSFailure("PERMISSION_DENIED", 403)
             rows = []
             for name, kind, model in _RECORDS:
-                if name not in selected:
+                if name not in selected or numeric_id:
                     continue
                 candidates = list(model.objects.filter(slug__icontains=q).order_by("-pk")
                                   .values_list("pk", "slug", "is_active")[:101])
@@ -86,15 +90,24 @@ class AdminSearchView(AdminAPIView):
                 # Source titles are only visible under the independent source
                 # capability. Citation text, rights evidence and metadata are
                 # deliberately excluded from this bounded discovery surface.
-                sources = list(SourceReference.objects.filter(title__icontains=q)
-                               .order_by("-pk").values_list("pk", "title")[:101])
-                if len(sources) > 100:
-                    raise CMSFailure("PREVIEW_LIMIT", 400)
-                rows.extend({
-                    "kind": "source_reference", "resource_id": pk,
-                    "slug": str(pk), "label": title[:160],
-                } for pk, title in sources)
-            if "research" in selected:
+                if numeric_id:
+                    source_pk = int(q)
+                    source_pk = source_pk if source_pk < 2**63 else 0
+                    source_id = SourceReference.objects.filter(pk=source_pk).values_list(
+                        "pk", flat=True).first() if source_pk else None
+                    if source_id is not None:
+                        rows.append({"kind": "source_reference",
+                                     "resource_id": source_id, "slug": str(source_id)})
+                else:
+                    sources = list(SourceReference.objects.filter(title__icontains=q)
+                                   .order_by("-pk").values_list("pk", "title")[:101])
+                    if len(sources) > 100:
+                        raise CMSFailure("PREVIEW_LIMIT", 400)
+                    rows.extend({
+                        "kind": "source_reference", "resource_id": pk,
+                        "slug": str(pk), "label": title[:160],
+                    } for pk, title in sources)
+            if "research" in selected and not numeric_id:
                 # Staging keys and slugs only, never raw JSON, source filenames,
                 # external IDs, translated names, or private research payloads.
                 datasets = list(ResearchDataset.objects.filter(key__icontains=q)
@@ -118,7 +131,7 @@ class AdminSearchView(AdminAPIView):
                     if row is not None:
                         rows.append({"kind": "audit_event", "resource_id": row,
                                      "slug": str(row)})
-            if "aliases" in selected:
+            if "aliases" in selected and not numeric_id:
                 for alias_kind, collection_kind, cap, model in _ALIASES:
                     if cap not in permissions:
                         continue
@@ -131,6 +144,26 @@ class AdminSearchView(AdminAPIView):
                     rows.extend({"kind": alias_kind, "resource_id": pk,
                                  "slug": str(pk), "collection_kind": collection_kind}
                                 for pk in alias_ids)
+            if "proposals" in selected:
+                # An exact UUID indexed lookup, never substring/fulltext over
+                # private ContentRevision payloads or a broad proposal list.
+                try:
+                    proposed_id = uuid.UUID(q)
+                except (ValueError, AttributeError):
+                    proposed_id = None
+                if proposed_id is not None and str(proposed_id) == q.lower():
+                    candidate = ContentState.objects.filter(pk=proposed_id).values(
+                        "pk", "kind").first()
+                    if (candidate is not None
+                            and candidate["kind"] in REGISTRY
+                            and capability(candidate["kind"], "view") in permissions
+                            and scoped_states(request.user, ContentState.objects.filter(
+                                pk=proposed_id)).exists()):
+                        rows.append({
+                            "kind": "content_proposal", "resource_id": str(candidate["pk"]),
+                            "slug": str(candidate["pk"]),
+                            "collection_kind": candidate["kind"],
+                        })
             if "tasks" in selected and numeric_id:
                 task_pk = int(q)
                 if 0 < task_pk < 2**63:
