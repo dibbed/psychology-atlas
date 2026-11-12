@@ -376,6 +376,8 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
   check(await owner.getByRole('region',{name:'اعتبارسنجی مجدد بسته'}).count()===1&&
     await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
     'P16 Persian Learning verification fits a 320px RTL viewport');
+  check(await owner.getByRole('button',{name:'ثبت پروندهٔ آماده‌سازی بدون انتشار'}).isDisabled(),
+    'P16 a Learning draft with structural content issues cannot seal a preparation dossier');
   const beforeSecondEdit=await request(owner,'/learning/quizzes/'+quizId+'/');
   const secondEdit=await request(owner,'/learning/quizzes/'+quizId+'/metadata/',
     {title:'New private study title after selection',description:'',disorder_id:null},beforeSecondEdit.etag);
@@ -457,6 +459,79 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
     check(await owner.locator('[aria-label="شواهد حقوق فراداده منابع"]').count()===1&&
       await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
       'P16 '+domain+' source-metadata rights report is visible in 320px RTL');
+    const prepResp=postResponse(owner,'/publication/selections/'+selectionData.id+'/prepare');
+    await owner.getByRole('button',{name:'ثبت پروندهٔ آماده‌سازی بدون انتشار'}).click();
+    const prepData=await (await prepResp).json();
+    check(prepData.selection_digest===selectionData.selection_digest&&
+      prepData.dossier_digest?.length===64&&prepData.status==='preparation_only'&&
+      prepData.item_count===1&&!prepData.approved&&!prepData.publication_available&&
+      !JSON.stringify(prepData).includes('PRIVATE SYNTHETIC SECRET')&&
+      await owner.getByRole('region',{name:'رسید پروندهٔ آماده‌سازی ثابت'}).count()===1&&
+      await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
+      'P16 '+domain+' seals an immutable non-authorizing review handoff and shows RTL receipt');
+    const prepCheck=owner.waitForResponse(response=>response.url().replace(/\/$/,'')
+      .endsWith('/publication/preparations/'+prepData.id+'/verify')&&
+      response.request().method()==='GET'&&response.status()>=200&&response.status()<300);
+    await owner.getByRole('button',{name:'تطبیق پروندهٔ ثابت با وضعیت زنده'}).click();
+    const prepCurrent=await (await prepCheck).json();
+    check(prepCurrent.snapshot_current&&prepCurrent.approved===false&&
+      prepCurrent.publication_available===false&&
+      !JSON.stringify(prepCurrent).includes('PRIVATE SYNTHETIC SECRET'),
+      'P16 '+domain+' initial preparation recheck matches but never claims publication approval');
+    const historicalInbox=await request(owner,'/publication/preparations/?domain='+domain+'&page=1&page_size=10');
+    check(historicalInbox.status===200&&historicalInbox.data.count>=1&&
+      historicalInbox.data.results.some(row=>row.id===prepData.id&&row.dossier_digest===prepData.dossier_digest)&&
+      historicalInbox.data.publication_available===false&&!historicalInbox.data.approved&&
+      !JSON.stringify(historicalInbox.data).includes('PRIVATE SYNTHETIC SECRET'),
+      'P16 '+domain+' exposes a bounded actor-owned historical dossier inbox, never approval');
+    const bulk=await request(owner,'/publication/preparations/recheck/?domain='+domain+'&limit=3');
+    check(bulk.status===200&&bulk.data.checked_count>=1&&
+      bulk.data.current_count===bulk.data.checked_count&&bulk.data.stale_count===0&&
+      bulk.data.results.some(row=>row.id===prepData.id&&row.snapshot_current)&&
+      !bulk.data.publication_available&&!bulk.data.approved&&
+      !JSON.stringify(bulk.data).includes('PRIVATE SYNTHETIC SECRET'),
+      'P16 '+domain+' bounded live batch check matches sealed versions without publishing');
+    if(domain==='brain'){
+      await owner.getByRole('button',{name:'بررسی دسته‌ای سه پروندهٔ اخیر'}).click();
+      const bulkRegion=owner.getByRole('region',{name:'نتیجهٔ بررسی دسته‌ای پرونده‌ها'});
+      await bulkRegion.waitFor();
+      check(await bulkRegion.getByText('نسخه‌های مطابق:',{exact:false}).count()===1&&
+        await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
+        'P16 private bulk validation summary fits 320px RTL');
+      const selectionBox=owner.getByRole('checkbox',{
+        name:'انتخاب برای تطبیق دسته‌ای پرونده '+prepData.id.slice(0,8),
+      });
+      await selectionBox.check();
+      const directExplicit=await request(owner,'/publication/preparations/recheck/?domain=brain&ids='+prepData.id);
+      check(directExplicit.status===200&&directExplicit.data.selection_mode==='explicit_ids'&&
+        directExplicit.data.checked_count===1&&directExplicit.data.results[0].id===prepData.id,
+        'P16 explicit selected ID API validates one historical private dossier');
+      await owner.getByRole('button',{name:/بررسی دقیق .* پروندهٔ انتخابی/}).click();
+      await bulkRegion.waitFor();
+      const explicitlyChecked=directExplicit.data;
+      check(explicitlyChecked.selection_mode==='explicit_ids'&&
+        explicitlyChecked.checked_count===1&&explicitlyChecked.results[0].id===prepData.id&&
+        explicitlyChecked.results[0].snapshot_current&&!explicitlyChecked.publication_available&&
+        await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
+        'P16 chosen historical dossier recheck uses exact IDs and stays private in 320px RTL');
+      await owner.reload();
+      await owner.getByLabel('حوزهٔ مجاز').selectOption('brain');
+      const inboxRegion=owner.getByRole('region',{name:'پرونده‌های آماده‌سازی اخیر'});
+      await inboxRegion.getByRole('button',{name:new RegExp('بازکردن پرونده '+prepData.id.slice(0,8))}).click();
+      await owner.getByRole('region',{name:'رسید پروندهٔ آماده‌سازی ثابت'}).waitFor();
+      check(await owner.getByText(prepData.dossier_digest,{exact:true}).count()===1&&
+        await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
+        'P16 owner can re-open a historical Brain dossier directly from its paged inbox');
+      await owner.reload();
+      await owner.getByLabel('حوزهٔ مجاز').selectOption('brain');
+      await owner.getByLabel('شناسه پروندهٔ آماده‌سازی قبلی').fill(prepData.id);
+      await owner.getByRole('button',{name:'بازکردن پروندهٔ ثبت‌شده'}).click();
+      await owner.getByRole('region',{name:'رسید پروندهٔ آماده‌سازی ثابت'}).waitFor();
+      check(await owner.getByText(prepData.dossier_digest,{exact:true}).count()===1&&
+        await owner.getByRole('region',{name:'اعتبارسنجی مجدد بسته'}).count()===1&&
+        await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
+        'P16 sealed Brain preparation can be re-opened by UUID after reload on Persian 320px RTL');
+    }
     const sourcePreview=await request(owner,'/sources/preview/',{operation:'update',source_id:fixture.p16_source_id,
       changes:{citation:'P16 synthetic private citation edited for '+domain}});
     assert.equal(sourcePreview.status,201);assert.equal(sourcePreview.data.preview.can_apply,true);
@@ -471,6 +546,16 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
       sourceChanged.items[0].dependency_state==='stale'&&!sourceChanged.publication_available&&
       !JSON.stringify(sourceChanged).includes('private citation'),
       'P16 '+domain+' canonical source edit invalidates live dependency binding while proposal digest stays unchanged');
+    const prepStale=await request(owner,'/publication/preparations/'+prepData.id+'/verify/');
+    const bulkStale=await request(owner,'/publication/preparations/recheck/?domain='+domain+'&limit=3');
+    check(bulkStale.status===200&&bulkStale.data.stale_count>=1&&
+      bulkStale.data.results.some(row=>row.id===prepData.id&&!row.snapshot_current)&&
+      !bulkStale.data.publication_available,
+      'P16 '+domain+' batch check detects source drift on historical sealed dossiers');
+    check(prepStale.status===200&&prepStale.data.snapshot_current===false&&
+      prepStale.data.approved===false&&prepStale.data.publication_available===false&&
+      !JSON.stringify(prepStale.data).includes('private citation'),
+      'P16 '+domain+' source edit invalidates sealed preparation without public effects');
   }
   await owner.screenshot({path:path.join(out,'p16-editorial-proposals-mobile.png'),fullPage:true,
     mask:[owner.locator('input[type="password"]')]});
@@ -479,6 +564,37 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
   // P17 private search must never inspect raw research payload or audit actors.
   await owner.goto(origin+'/admin-console/search');
   const searchInput=owner.getByLabel(/^شناسه یا کلید لاتین/);
+  await owner.getByLabel('حوزه').selectOption('proposals');
+  await searchInput.fill(fixture.p16.brain);
+  const proposalSearch=owner.waitForResponse(response=>response.url().includes('/api/admin/search')&&
+    response.url().includes('domain=proposals')&&response.request().method()==='GET'&&
+    response.status()===200);
+  await owner.getByRole('button',{name:'جست‌وجو',exact:true}).click();
+  const proposalResult=await (await proposalSearch).json();
+  await owner.getByText('پیشنهاد ویرایش نسخه‌مند',{exact:true}).waitFor();
+  check(proposalResult.count===1&&proposalResult.results[0].kind==='content_proposal'&&
+    proposalResult.results[0].resource_id===fixture.p16.brain&&
+    proposalResult.results[0].collection_kind==='brain-anatomical-alias'&&
+    !JSON.stringify(proposalResult).includes('P16 PRIVATE SYNTHETIC SECRET')&&
+    await owner.getByText('پیشنهاد ویرایش نسخه‌مند',{exact:true}).count()===1&&
+    await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
+    'P17 exact cross-domain content UUID discovery exposes safe metadata in Persian mobile RTL');
+  await owner.getByLabel('حوزه').selectOption('sources');
+  await searchInput.fill(String(fixture.p16_source_id));
+  const sourceById=owner.waitForResponse(response=>response.url().includes('/api/admin/search')&&
+    response.url().includes('domain=sources')&&response.status()===200);
+  await owner.getByRole('button',{name:'جست‌وجو',exact:true}).click();
+  const preciseSource=await (await sourceById).json();
+  await owner.getByText('منبع پژوهشی',{exact:true}).waitFor();
+  const preciseSourceHref=await owner.getByRole('link',{
+    name:'باز کردن حوزه برای بازرسی',exact:true,
+  }).getAttribute('href');
+  check(preciseSource.count===1&&preciseSource.results[0].kind==='source_reference'&&
+    String(preciseSource.results[0].resource_id)===String(fixture.p16_source_id)&&
+    !('label' in preciseSource.results[0])&&
+    preciseSourceHref==='/admin-console/sources/'+fixture.p16_source_id,
+    'P17 exact source ID reveals no citation and opens the existing authorized detail route: '+
+      JSON.stringify({source:preciseSource.results,sourceHref:preciseSourceHref}));
   await owner.getByLabel('حوزه').selectOption('research');
   await searchInput.fill('p17-browser');
   const directResearch=await request(owner,'/search/?q=p17-browser&domain=research');
@@ -587,6 +703,12 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
     health.data.source_plan_receipts.full_source_integrity_proven===false&&
     health.data.source_plan_receipts.repair_available===false,
     'P18 actual synthetic Source Apply receipts match persisted history/successor IDs without source rights or publication clearance');
+  check(health.data.queue_triage?.scope==='bounded_operational_signals_not_process_liveness'&&
+    health.data.queue_triage.threshold_seconds===600&&
+    Number.isInteger(health.data.queue_triage.overdue_ready_count)&&
+    health.data.queue_triage.worker_outage_proven===false&&
+    health.data.queue_triage.automatic_repair_available===false,
+    'P18 queue triage reports bounded symptoms, never self-heals or asserts outage');
   check(health.data.jobs?.queued_ready_count+health.data.jobs?.queued_scheduled_count===
       health.data.jobs?.by_status.queued&&
     Number.isInteger(health.data.jobs.running_expired_lease_count)&&
@@ -596,14 +718,51 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
     health.data.jobs.worker_liveness_proven===false&&
     health.data.worker.alive_confirmed===false,
     'P18 ready versus future-scheduled jobs reconcile while worker liveness remains unproven');
+  check(Number.isInteger(health.data.worker.successful_polls_recorded)&&
+    health.data.worker.successful_polls_recorded>=0&&
+    health.data.worker.fresh_window_seconds===180&&
+    typeof health.data.worker.poll_recently_observed==='boolean'&&
+    health.data.worker.alive_confirmed===false&&
+    health.data.worker.notice.includes('NOT_A_LIVENESS_PROOF'),
+    'P18 actual persisted worker-poll telemetry is observational, never process-liveness clearance');
+  const readiness=await request(owner,'/operations/release-readiness/');
+  check(readiness.status===200&&readiness.data.release_ready===false&&
+    readiness.data.public_apply_authorized===false&&
+    readiness.data.database.pending_atlas_migrations===0&&
+    readiness.data.database.schema_integrity_proven===false&&
+    readiness.data.preparation.recorded_dossiers>=2&&
+    readiness.data.preparation.publication_approved_dossiers===0&&
+    readiness.data.hard_blockers.includes('real_scientific_rights_attestation')&&
+    readiness.data.hard_blockers.includes('representative_backup_restore')&&
+    readiness.data.backup.state==='unavailable'&&
+    !JSON.stringify(readiness.data).includes('PRIVATE SYNTHETIC SECRET'),
+    'P21 owner-only release gate reads source-backed evidence, remains blocked and redacted');
+  check((await request(scoped,'/operations/release-readiness/')).status===403,
+    'P21 scoped curator cannot read owner-only release readiness');
   check((await request(scoped,'/operations/health/')).status===403,
     'P18 ordinary content curator cannot read owner receipt health');
   await owner.goto(origin+'/admin-console/operations');
   await owner.getByRole('heading',{name:'رسیدهای انتشار CaseRevision، فقط بررسی ساختاری'}).waitFor();
-  check(await owner.locator('[aria-label="بازبینی ساختاری رسیدهای انتشار"]').count()===1&&
-    await owner.getByText('مغایرت‌های مشاهده‌شده:',{exact:false}).count()===1&&
+  const p18ReceiptDiag={
+    receipt:await owner.locator('[aria-label="بازبینی ساختاری رسیدهای انتشار"]').count(),
+    text:await owner.getByText('مغایرت‌های مشاهده‌شده:',{exact:false}).count(),
+    width:await owner.evaluate(()=>({scroll:document.documentElement.scrollWidth,viewport:innerWidth})),
+  };
+  check(p18ReceiptDiag.receipt===1&&p18ReceiptDiag.text===1&&
+    p18ReceiptDiag.width.scroll<=p18ReceiptDiag.width.viewport+1,
+    'P18 receipt drift and explicit non-clearance are visible in Persian 320px RTL '+JSON.stringify(p18ReceiptDiag));
+  check(await owner.getByRole('region',{name:'گیت‌های آمادگی انتشار P21'}).count()===1&&
+    await owner.getByText('انتشار هنوز مجاز نیست.',{exact:false}).count()>=1&&
     await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
-    'P18 receipt drift and explicit non-clearance are visible in Persian 320px RTL');
+    'P21 release blockers render clearly as non-authorizing in Persian 320px RTL');
+  check(await owner.getByRole('region',{name:'نشانه‌های نیازمند بررسی صف P18'}).count()===1&&
+    await owner.getByText('تشخیص اولیهٔ صف، بدون تغییر Job',{exact:true}).count()===1&&
+    await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
+    'P18 deterministic queue triage renders as nonmutating observation in mobile RTL');
+  check(await owner.getByRole('region',{name:'شواهد Poll موفق Worker'}).count()===1&&
+    await owner.getByText('آخرین Poll موفق ثبت‌شده:',{exact:false}).count()===1&&
+    await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
+    'P18 worker successful-poll evidence renders without false alive status in mobile RTL');
   check(await owner.getByRole('region',{name:'وضعیت صف آماده و زمان‌بندی‌شده'}).count()===1&&
     await owner.getByText('در صف آمادهٔ اجرا:',{exact:false}).count()===1&&
     await owner.getByText('زمان‌بندی‌شده برای آینده:',{exact:false}).count()===1&&
