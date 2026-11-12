@@ -28,6 +28,167 @@ class OwnerHealthTests(SecurityFixture, TestCase):
             self.assertNotIn(sensitive,data_repr)
         self.assertFalse(data["worker"]["alive_confirmed"])
 
+    def test_worker_poll_observation_is_not_process_liveness_attestation(self):
+        from datetime import timedelta
+        from unittest.mock import patch
+        from django.core.management import call_command
+        from django.utils import timezone
+        from .cms_worker_pulse import CmsWorkerPulse
+
+        before = self.owner_client.get(BASE + "operations/health/")
+        self.assertEqual(before.status_code, 200)
+        self.assertEqual(before.json()["worker"]["successful_polls_recorded"], 0)
+        self.assertFalse(before.json()["worker"]["poll_recently_observed"])
+        self.assertFalse(before.json()["worker"]["alive_confirmed"])
+
+        # A real management-command invocation, with no job available, must
+        # still record a committed successful queue poll.
+        call_command("cms_worker", once=True)
+        observed = self.owner_client.get(BASE + "operations/health/")
+        self.assertEqual(observed.status_code, 200, observed.content[:500])
+        worker = observed.json()["worker"]
+        self.assertEqual(worker["successful_polls_recorded"], 1)
+        self.assertTrue(worker["poll_recently_observed"])
+        self.assertIsNotNone(worker["last_successful_poll_at"])
+        self.assertGreaterEqual(worker["fresh_window_seconds"], 120)
+        self.assertFalse(worker["alive_confirmed"])
+        self.assertIn("NOT_A_LIVENESS_PROOF", worker["notice"])
+        self.assertEqual(CmsWorkerPulse.objects.count(), 1)
+
+        call_command("cms_worker", once=True)
+        again = self.owner_client.get(BASE + "operations/health/").json()["worker"]
+        self.assertEqual(again["successful_polls_recorded"], 2)
+        self.assertEqual(CmsWorkerPulse.objects.count(), 1)
+
+        past = timezone.now() - timedelta(hours=1)
+        CmsWorkerPulse.objects.filter(pk=1).update(last_successful_poll_at=past)
+        old = self.owner_client.get(BASE + "operations/health/").json()["worker"]
+        self.assertFalse(old["poll_recently_observed"])
+        self.assertFalse(old["alive_confirmed"])
+        self.assertEqual(old["successful_polls_recorded"], 2)
+
+        # Failed polling must never fabricate evidence.
+        with patch("atlas.management.commands.cms_worker.run_once",
+                   side_effect=Exception("test-only synthetic failure")):
+            with self.assertRaises(Exception):
+                call_command("cms_worker", once=True)
+        self.assertEqual(CmsWorkerPulse.objects.get(pk=1).successful_polls, 2)
+        self.assertNotIn("test-only synthetic failure", str(old))
+
+    def test_bounded_queue_triage_distinguishes_overdue_work_from_scheduled_retries(self):
+        from datetime import timedelta
+        from django.utils import timezone
+
+        empty = self.owner_client.get(BASE+"operations/health/")
+        self.assertEqual(empty.status_code, 200)
+        self.assertEqual(empty.json()["queue_triage"]["overdue_ready_count"], 0)
+        self.assertFalse(empty.json()["queue_triage"]["requires_operator_review"])
+        self.assertFalse(empty.json()["queue_triage"]["worker_outage_proven"])
+
+        now = timezone.now()
+        artifact = AdminArtifact.objects.create(
+            kind="research_json", domain="research", owner=self.owner,
+            owner_ref="synthetic", state="ready", storage_key="p18-triage-fixture",
+            filename="fixture.json", sha256="e"*64, size=10,
+            expires_at=now+timedelta(days=1),
+        )
+        base = {"kind": "research_intake", "actor": self.owner, "actor_ref": "synthetic",
+                "policy_version": 1, "artifact": artifact, "payload_digest": "d"*64,
+                "attempt": 0}
+        for status, when, missing_lease in (
+            ("queued", now-timedelta(minutes=12), False),
+            ("queued", now-timedelta(minutes=2), False),
+            ("queued", now+timedelta(hours=1), False),
+            ("running", now-timedelta(minutes=5), True),
+        ):
+            AdminJob.objects.create(
+                **base, status=status, request_key=uuid.uuid4(), available_at=when,
+                lease_token=None if missing_lease else uuid.uuid4(),
+                lease_expires_at=None if missing_lease else now+timedelta(minutes=1),
+            )
+        response = self.owner_client.get(BASE+"operations/health/")
+        self.assertEqual(response.status_code, 200, response.content[:450])
+        triage = response.json()["queue_triage"]
+        self.assertEqual(triage["threshold_seconds"], 600)
+        self.assertEqual(triage["ready_count"], 2)
+        self.assertEqual(triage["scheduled_future_count"], 1)
+        self.assertEqual(triage["overdue_ready_count"], 1)
+        self.assertEqual(triage["running_missing_lease_count"], 1)
+        self.assertEqual(triage["running_expired_lease_count"], 0)
+        self.assertTrue(triage["requires_operator_review"])
+        self.assertEqual(triage["signals"], ["ready_queue_overdue", "running_lease_missing"])
+        self.assertFalse(triage["worker_outage_proven"])
+        self.assertFalse(triage["automatic_repair_available"])
+        self.assertFalse(response.json()["worker"]["alive_confirmed"])
+        for sensitive in ("p18-triage-fixture", "payload_digest", "lease_token", "filename"):
+            self.assertNotIn(sensitive, response.content.decode())
+        self.assertEqual(AdminJob.objects.count(), 4)
+        self.assertEqual(AdminJob.objects.filter(status="queued").count(), 3)
+
+    def test_running_job_with_future_expiry_but_missing_token_is_flagged(self):
+        """A token-less lease is malformed even when its expiry is in the future."""
+        from datetime import timedelta
+        from django.utils import timezone
+
+        now = timezone.now()
+        artifact = AdminArtifact.objects.create(
+            kind="research_json", domain="research", owner=self.owner,
+            owner_ref="synthetic", state="ready", storage_key="p18-token-gap-fixture",
+            filename="synthetic.json", sha256="b" * 64, size=10,
+            expires_at=now + timedelta(days=1),
+        )
+        job = AdminJob.objects.create(
+            kind="research_intake", actor=self.owner, actor_ref="synthetic",
+            policy_version=1, artifact=artifact, payload_digest="c" * 64,
+            request_key=uuid.uuid4(), status="running", attempt=1,
+            available_at=now - timedelta(seconds=30),
+            lease_token=None, lease_expires_at=now + timedelta(minutes=1),
+        )
+        result = self.owner_client.get(BASE + "operations/health/")
+        self.assertEqual(result.status_code, 200, result.content[:350])
+        jobs = result.json()["jobs"]
+        self.assertEqual(jobs["running_missing_lease_count"], 1)
+        self.assertEqual(jobs["running_expired_lease_count"], 0)
+        triage = result.json()["queue_triage"]
+        self.assertEqual(triage["running_missing_lease_count"], 1)
+        self.assertIn("running_lease_missing", triage["signals"])
+        self.assertTrue(triage["requires_operator_review"])
+        self.assertFalse(triage["automatic_repair_available"])
+        self.assertEqual(AdminJob.objects.get(pk=job.pk).status, "running")
+        self.assertIsNone(AdminJob.objects.get(pk=job.pk).lease_token)
+
+    def test_expired_running_without_lease_token_is_never_auto_reclaimed(self):
+        """A corrupted token-less running row requires human reconciliation."""
+        from datetime import timedelta
+        from django.utils import timezone
+        from .cms_jobs import claim_job
+
+        now = timezone.now()
+        artifact = AdminArtifact.objects.create(
+            kind="research_json", domain="research", owner=self.owner,
+            owner_ref="synthetic", state="ready", storage_key="p18-expired-token-gap",
+            filename="synthetic.json", sha256="d" * 64, size=10,
+            expires_at=now + timedelta(days=1),
+        )
+        job = AdminJob.objects.create(
+            kind="research_intake", actor=self.owner, actor_ref="synthetic",
+            policy_version=1, artifact=artifact, payload_digest="d" * 64,
+            request_key=uuid.uuid4(), status="running", attempt=1,
+            available_at=now - timedelta(minutes=5), lease_token=None,
+            lease_expires_at=now - timedelta(minutes=1),
+        )
+        original_version = job.version
+        self.assertIsNone(claim_job())
+        job.refresh_from_db()
+        self.assertEqual(job.status, "running")
+        self.assertEqual(job.version, original_version)
+        self.assertEqual(job.attempt, 1)
+        self.assertIsNone(job.lease_token)
+        triage = self.owner_client.get(BASE + "operations/health/").json()["queue_triage"]
+        self.assertEqual(triage["running_missing_lease_count"], 1)
+        self.assertEqual(triage["running_expired_lease_count"], 0)
+        self.assertTrue(triage["requires_operator_review"])
+
     def test_scheduled_jobs_are_not_mislabeled_as_ready_worker_backlog(self):
         from datetime import timedelta
         from django.utils import timezone

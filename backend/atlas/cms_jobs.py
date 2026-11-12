@@ -227,7 +227,13 @@ def checkpoint_job(job_id, lease_token, effect):
 def claim_job():
     with policy_lock():
         now = timezone.now()
-        eligible = Q(status="queued", available_at__lte=now) | Q(status="running", lease_expires_at__lte=now)
+        # Never auto-reclaim a running job whose lease token is missing.
+        # Such a damaged/unknown-outcome row needs operator reconciliation;
+        # the ordinary expired, token-bound lease recovery remains available.
+        eligible = (
+            Q(status="queued", available_at__lte=now)
+            | Q(status="running", lease_token__isnull=False, lease_expires_at__lte=now)
+        )
         job = AdminJob.objects.select_for_update().filter(eligible).order_by("available_at", "created_at", "id").first()
         if job is None:
             return None

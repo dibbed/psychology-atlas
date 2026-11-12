@@ -3,6 +3,7 @@ import time
 from django.core.management.base import BaseCommand, CommandError
 
 from atlas.cms_jobs import run_once
+from atlas.cms_worker_pulse import record_successful_poll
 from atlas.cms_policy import CMSFailure
 
 
@@ -26,6 +27,7 @@ class Command(BaseCommand):
                     time.sleep(options["poll_seconds"])
                     continue
                 raise CommandError(code)
+            record_successful_poll()
             if job:
                 self.stdout.write(f"{job.pk} {job.status}")
             if options["once"]:

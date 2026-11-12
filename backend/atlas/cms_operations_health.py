@@ -1,9 +1,10 @@
 """P18 owner-only conservative health reader. No shell, secrets or backup writes."""
 from collections import defaultdict
+from datetime import timedelta
 
 from django.db import connection
 from django.db.migrations.recorder import MigrationRecorder
-from django.db.models import Count, F, Max, Min, Sum
+from django.db.models import Count, F, Max, Min, Q, Sum
 from django.utils import timezone
 from rest_framework.response import Response
 
@@ -12,6 +13,7 @@ from .cms_job_models import AdminArtifact, AdminJob
 from .cms_source_models import SourceHistory, SourcePlan, SourcePlanReceipt, SourceSuccessor
 from .cms_policy import CMSFailure, policy_lock, require
 from .cms_views import AdminAPIView
+from .cms_worker_pulse import observation as worker_observation
 
 
 _STATES = ("queued", "running", "succeeded", "failed", "cancelled", "reconciling")
@@ -76,12 +78,28 @@ class OperationsHealthView(AdminAPIView):
             scheduled_jobs = AdminJob.objects.filter(status="queued", available_at__gt=now)
             oldest_ready = ready_jobs.aggregate(oldest=Min("available_at"))["oldest"]
             next_scheduled = scheduled_jobs.aggregate(next=Min("available_at"))["next"]
+            # Both parts of a valid lease are essential. A token-less
+            # running job with a future expiry is not safe to resume and must
+            # show up in operator triage immediately, without auto-repair.
+            missing_running = AdminJob.objects.filter(status="running").filter(
+                Q(lease_token__isnull=True) | Q(lease_expires_at__isnull=True)
+            ).count()
             expired_running = AdminJob.objects.filter(
-                status="running", lease_expires_at__lt=now,
+                status="running", lease_token__isnull=False,
+                lease_expires_at__lt=now,
             ).count()
-            missing_running = AdminJob.objects.filter(
-                status="running", lease_expires_at__isnull=True,
+            # The 10-minute threshold is a triage cue, not an SLA claim.
+            threshold = 600
+            overdue_ready = ready_jobs.filter(
+                available_at__lte=now - timedelta(seconds=threshold),
             ).count()
+            queue_signals = []
+            if overdue_ready:
+                queue_signals.append("ready_queue_overdue")
+            if expired_running:
+                queue_signals.append("running_lease_expired")
+            if missing_running:
+                queue_signals.append("running_lease_missing")
             artifacts = AdminArtifact.objects.filter(purged_at__isnull=True)
             bytes_total = artifacts.aggregate(total=Sum("size"))["total"] or 0
             # Structural consistency checks only: neither source rights nor
@@ -156,10 +174,23 @@ class OperationsHealthView(AdminAPIView):
                     "worker_liveness_proven": False,
                     "notice": "QUEUE_SNAPSHOT_ONLY_SCHEDULED_RETRY_IS_NOT_READY_BACKLOG",
                 },
+                "queue_triage": {
+                    "scope": "bounded_operational_signals_not_process_liveness",
+                    "threshold_seconds": threshold,
+                    "ready_count": ready_jobs.count(),
+                    "scheduled_future_count": scheduled_jobs.count(),
+                    "overdue_ready_count": overdue_ready,
+                    "running_expired_lease_count": expired_running,
+                    "running_missing_lease_count": missing_running,
+                    "signals": queue_signals,
+                    "requires_operator_review": bool(queue_signals),
+                    "worker_outage_proven": False,
+                    "automatic_repair_available": False,
+                    "notice": "QUEUE_ANOMALIES_OBSERVED_NO_SLA_OR_OUTAGE_PROOF",
+                },
                 "worker": {
-                    "alive_confirmed": False,
+                    **worker_observation(now),
                     "latest_job_heartbeat": heartbeat.isoformat() if heartbeat else None,
-                    "notice": "RECENT_JOB_HEARTBEAT_IS_NOT_A_WORKER_LIVENESS_PROOF",
                 },
                 "artifacts": {
                     "total": AdminArtifact.objects.count(),
