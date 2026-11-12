@@ -31,6 +31,7 @@ from . import cms_publication_preparation_views as publication_preparation
 from . import cms_case_publication_views as case_publication
 from . import cms_admin_search as admin_search
 from . import cms_operations_health as operations_health
+from . import cms_release_readiness as release_readiness
 from . import cms_pipeline_analytics as pipeline_analytics
 
 urlpatterns = [
@@ -104,6 +105,7 @@ urlpatterns = [
     path("me/", v.MeView.as_view()),
     path("catalog/", v.CatalogView.as_view()),
     path("operations/health/", operations_health.OperationsHealthView.as_view()),
+    path("operations/release-readiness/", release_readiness.ReleaseReadinessView.as_view()),
     path("analytics/overview/", pipeline_analytics.PipelineAnalyticsView.as_view()),
     path("analytics/overview/export.csv/", pipeline_analytics.PipelineAnalyticsCSVExportView.as_view()),
     path("search/", admin_search.AdminSearchView.as_view()),
