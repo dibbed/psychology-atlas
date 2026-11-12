@@ -186,6 +186,35 @@ class OwnerReleaseReadinessTests(SecurityFixture, TestCase):
             self.assertIsNone(report["preparation"]["recorded_dossiers"])
             self.assertFalse(report["release_ready"])
 
+    def test_wrong_foreign_key_target_is_missing_essential_relation(self):
+        """A similarly named FK pointing at the wrong table cannot pass."""
+        from unittest.mock import patch
+        from django.db import connection
+        from .cms_release_readiness import atlas_runtime_table_evidence
+        from .cms_publication_preparation_models import PublicationPreparationDossier
+
+        target = PublicationPreparationDossier._meta.db_table
+        original = connection.introspection.get_constraints
+
+        def retarget_selection_fk(cursor, table_name):
+            constraints = original(cursor, table_name)
+            if table_name != target:
+                return constraints
+            return {
+                name: {**info, "foreign_key": ("auth_user", "id")}
+                if info.get("foreign_key") and info.get("columns") == ["selection_id"]
+                else info for name, info in constraints.items()
+            }
+
+        with patch.object(connection.introspection, "get_constraints",
+                          side_effect=retarget_selection_fk):
+            result = atlas_runtime_table_evidence()
+            self.assertFalse(result["runtime_foreign_keys_present"])
+            self.assertEqual(result["missing_runtime_foreign_key_count"], 1)
+            self.assertEqual(
+                self.owner_client.get(
+                    BASE + "operations/release-readiness/").status_code, 503)
+
     def test_release_readiness_is_consistent_redacted_and_never_claims_prod_approval(self):
         private = ContentState.objects.create(kind="brain-anatomical-entity",
                                               canonical_digest=digest({}))
