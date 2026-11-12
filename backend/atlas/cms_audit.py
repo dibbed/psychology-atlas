@@ -72,9 +72,10 @@ ACTIONS |= frozenset({"case.draft_created", "case.draft_cloned", "case.draft_upd
     "case.publication_applied", "case.publication_withdrawn"})
 TARGET_KINDS |= frozenset({"clinical-case"})
 
-# P16 immutable selection only; never an approval or canonical publication.
-ACTIONS |= frozenset({"publication.selection_created"})
-TARGET_KINDS |= frozenset({"publication-selection"})
+# P16 private review selection and sealed preparation evidence only.
+# Neither operation is a rights/science approval or canonical publication.
+ACTIONS |= frozenset({"publication.selection_created", "publication.preparation_created"})
+TARGET_KINDS |= frozenset({"publication-selection", "publication-preparation"})
 
 # P13 private quiz drafts; never audit question prompts or answer text.
 ACTIONS |= frozenset({"quiz.draft_created", "quiz.draft_updated"})
