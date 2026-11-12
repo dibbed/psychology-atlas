@@ -3,6 +3,37 @@ import {useEffect,useState} from "react";
 import {cms,CmsError} from "@/lib/cms";
 import {CmsState,useCms} from "@/components/cms/CmsShell";
 
+type Readiness={
+  scope:"owner_only_operational_release_gate_observations";
+  as_of:string;release_ready:false;public_apply_authorized:false;
+  database:{vendor:string;connection:string;atlas_applied_migrations:number;
+    atlas_expected_leaf_count:number;pending_atlas_migrations:number;
+    migration_history_matches_files:boolean;schema_integrity_proven:false};
+  worker:{alive_confirmed:false;successful_polls_recorded:number;
+    poll_recently_observed:boolean};
+  preparation:{recorded_dossiers:number;publication_approved_dossiers:number;
+    attestations_proven:false};
+  receipt_observations:{case_receipt_mismatches:number;
+    source_receipt_mismatches:number;source_receipt_sample_complete:boolean};
+  backup:{state:string;reason:string};hard_blockers:string[];
+  manual_decision_required:true;notice:string;
+};
+const blockerNames:Record<string,string>={
+  real_scientific_rights_attestation:"تأیید علمی و حقوقی مستقلِ متصل به نسخه",
+  multidomain_public_apply:"انتشار عمومی چنددامنه‌ای همراه با بازیابی و رسید",
+  retention_legal_hold_approval:"قانون تأییدشدهٔ نگهداری و Legal Hold",
+  live_worker_supervision:"نظارت واقعی Process Manager و سلامت Worker",
+  representative_backup_restore:"پشتیبان‌گیری و بازیابی نمایندهٔ محیط واقعی",
+  production_tls_secrets:"امنیت TLS، Secrets و تنظیمات سرور واقعی",
+  hosted_ci_and_full_db_acceptance:"پذیرش تست‌های Hosted CI و دیتابیس مقصد",
+  explicit_release_authorization:"تصمیم و مجوز صریح انسانی برای Release",
+  atlas_migration_history_not_current:"Migrationهای Atlas با فایل‌های کد هماهنگ نیستند",
+  atlas_runtime_tables_missing:"حداقل یک جدول حیاتی CMS با وجود تاریخچهٔ Migration ثبت‌شده در دیتابیس وجود ندارد",
+  atlas_runtime_columns_missing:"حداقل یک ستون ضروری در جدول‌های حیاتی CMS وجود ندارد؛ انتشار و بررسی مدل‌ها مسدود است",
+  atlas_runtime_idempotency_constraints_missing:"محدودیت یکتایی ضروری برای جلوگیری از درخواست تکراری و رسید تکراری از ساختار دیتابیس حذف شده است",
+  observed_receipt_inconsistencies:"مغایرت در رسیدهای ثبت‌شدهٔ انتشار یا منابع",
+  source_receipt_audit_sample_incomplete:"همهٔ رسیدهای منابع در سقف نمونه بررسی نشده‌اند",
+};
 type Health={
   scope:string;as_of:string;
   database:{connection:string;vendor:string;atlas_applied_migrations:number;
@@ -13,7 +44,14 @@ type Health={
     ready_queue_age_seconds:number|null;
     running_expired_lease_count:number;running_missing_lease_count:number;
     worker_liveness_proven:false;notice:string};
-  worker:{alive_confirmed:false;latest_job_heartbeat:string|null;notice:string};
+  worker:{alive_confirmed:false;latest_job_heartbeat:string|null;notice:string;
+    last_successful_poll_at:string|null;successful_polls_recorded:number;
+    fresh_window_seconds:number;poll_recently_observed:boolean};
+  queue_triage:{scope:string;threshold_seconds:number;ready_count:number;
+    scheduled_future_count:number;overdue_ready_count:number;
+    running_expired_lease_count:number;running_missing_lease_count:number;
+    signals:string[];requires_operator_review:boolean;
+    worker_outage_proven:false;automatic_repair_available:false;notice:string};
   artifacts:{total:number;unpurged_bytes:number;unpurged_count:number};
   backup:{state:string;reason:string};
   source_plan_receipts:{
@@ -38,15 +76,25 @@ type Health={
 export default function OperationsHealth(){
   const {can}=useCms();const allowed=can("cms_owner");
   const [data,setData]=useState<Health>();
+  const [readiness,setReadiness]=useState<Readiness>();
+  const [gateError,setGateError]=useState("");
   const [error,setError]=useState("");const [busy,setBusy]=useState(false);
   const [version,setVersion]=useState(0);
   useEffect(()=>{
     if(!allowed)return;
-    let active=true;setBusy(true);setError("");
-    void cms<Health>("/operations/health/")
-      .then(res=>{if(active)setData(res.data);})
-      .catch(e=>{if(active)setError(e instanceof CmsError?e.message:"وضعیت عملیاتی دریافت نشد.");})
-      .finally(()=>{if(active)setBusy(false);});
+    let active=true;setBusy(true);setError("");setGateError("");
+    void Promise.allSettled([
+      cms<Health>("/operations/health/"),
+      cms<Readiness>("/operations/release-readiness/"),
+    ]).then(([health,gates])=>{
+      if(!active)return;
+      if(health.status==="fulfilled")setData(health.value.data);
+      else{setData(undefined);setError(health.reason instanceof CmsError?
+        health.reason.message:"گزارش سلامت عملیاتی دریافت نشد.");}
+      if(gates.status==="fulfilled")setReadiness(gates.value.data);
+      else{setReadiness(undefined);setGateError(gates.reason instanceof CmsError?
+        gates.reason.message:"گزارش گیت‌های Release در دسترس نیست و انتشار نباید انجام شود.");}
+    }).finally(()=>{if(active)setBusy(false);});
     return ()=>{active=false;};
   },[allowed,version]);
   if(!allowed)return <CmsState empty="گزارش عملیات زیرساخت فقط برای مالک CMS در دسترس است."/>;
@@ -59,6 +107,7 @@ export default function OperationsHealth(){
     <button type="button" className="button secondary" disabled={busy}
       onClick={()=>setVersion(v=>v+1)}>{busy?"در حال دریافت…":"بررسی دوباره"}</button>
     {error&&<p role="alert">{error}</p>}
+    {gateError&&<p role="alert">{gateError}</p>}
     {busy&&!data&&<CmsState loading/>}
     {data&&<div className="stack">
       <p className="muted">زمان ثبت سرور: <time dateTime={data.as_of}>{data.as_of}</time></p>
@@ -66,9 +115,25 @@ export default function OperationsHealth(){
         <p>اتصال: <strong>{data.database.connection}</strong></p>
         <p>موتور: <code>{data.database.vendor}</code></p>
         <p>Migrationهای اعمال‌شدهٔ Atlas: {data.database.atlas_applied_migrations.toLocaleString("fa-IR")}</p>
-        <p>آخرین Migration اعمال‌شده: <code dir="ltr">{data.database.atlas_latest_applied??"ثبت نشده"}</code></p>
+        <p>آخرین Migration اعمال‌شده: <code dir="ltr" style={{display:"block",overflowWrap:"anywhere"}}>{data.database.atlas_latest_applied??"ثبت نشده"}</code></p>
         <p className="muted">این گزارش فقط سابقهٔ Apply است و به‌تنهایی drift schema یا آمادگی production را اثبات نمی‌کند.</p>
       </section>
+      {readiness&&<section className="card stack" aria-label="گیت‌های آمادگی انتشار P21">
+        <h2>گیت‌های انتشار v1.0، فقط گزارش</h2>
+        <p role="status"><strong>انتشار هنوز مجاز نیست.</strong> این گزارش فقط شواهد محلی ثبت‌شده را نشان می‌دهد و امکان Release یا Deploy ندارد.</p>
+        <p>پرونده‌های آماده‌سازی موجود: {readiness.preparation.recorded_dossiers.toLocaleString("fa-IR")}؛
+          تأیید انتشار واقعی از این پرونده‌ها: {readiness.preparation.publication_approved_dossiers.toLocaleString("fa-IR")}</p>
+        <p>Migrationهای Atlas در فایل‌ها ولی اعمال‌نشده:
+          {readiness.database.pending_atlas_migrations.toLocaleString("fa-IR")}؛
+          مطابقت تاریخچهٔ Migration با فایل‌ها: {readiness.database.migration_history_matches_files?"بله":"خیر"}</p>
+        <p className="muted">مطابقت تاریخچه، سلامت واقعی Schema، داده‌ها یا محیط Production را اثبات نمی‌کند.</p>
+        <p>مغایرت‌های ساختاری رسیدهای کیس: {readiness.receipt_observations.case_receipt_mismatches.toLocaleString("fa-IR")}؛
+          منابع: {readiness.receipt_observations.source_receipt_mismatches.toLocaleString("fa-IR")}</p>
+        <h3>موانع باقی‌ماندهٔ Release</h3>
+        <ul>{readiness.hard_blockers.map(code=>
+          <li key={code}>{blockerNames[code]??code}</li>)}</ul>
+        <p className="muted">صفر شدن یک شمارش یا تازه بودن Poll، جای تأیید انسانی، حقوقی، علمی، CI یا تست Backup/Restore واقعی را نمی‌گیرد.</p>
+      </section>}
       <section className="card stack" aria-label="وضعیت صف آماده و زمان‌بندی‌شده"><h2>صف Job</h2>
         <p>کل: {data.jobs.total.toLocaleString("fa-IR")}</p>
         <ul>{Object.entries(data.jobs.by_status).map(([status,count])=>
@@ -79,12 +144,29 @@ export default function OperationsHealth(){
           عمر انتظار پس از موعد اجرا: {data.jobs.ready_queue_age_seconds===null?"قابل محاسبه نیست":data.jobs.ready_queue_age_seconds.toLocaleString("fa-IR")+" ثانیه"}</p>
         <p>نزدیک‌ترین Job زمان‌بندی‌شده: {data.jobs.next_scheduled_at??"موردی وجود ندارد"}</p>
         <p>Job در حال اجرا با Lease منقضی: {data.jobs.running_expired_lease_count.toLocaleString("fa-IR")}؛
-          Job در حال اجرا بدون زمان انقضای Lease: {data.jobs.running_missing_lease_count.toLocaleString("fa-IR")}</p>
+          Job در حال اجرا با توکن یا تاریخ انقضای Lease ناقص: {data.jobs.running_missing_lease_count.toLocaleString("fa-IR")}</p>
         <p className="muted">این اعداد تصویر لحظه‌ای وضعیت‌های ثبت‌شده‌اند. زمان‌بندی آینده عقب‌ماندگی Worker نیست؛ Lease ناقص نیز به‌تنهایی اثبات توقف Worker نیست. زنده‌بودن واقعی Worker هنوز احراز نشده است.</p>
       </section>
-      <section className="card stack"><h2>Worker و Artifact</h2>
-        <p>آخرین heartbeat مشاهده‌شده: {data.worker.latest_job_heartbeat??"هیچ‌کدام"}</p>
-        <p><strong>زنده بودن Worker هنوز تأیید نشده است.</strong> heartbeat قدیمی به‌تنهایی تضمین کارکرد نیست.</p>
+      <section className="card stack" aria-label="نشانه‌های نیازمند بررسی صف P18">
+        <h2>تشخیص اولیهٔ صف، بدون تغییر Job</h2>
+        <p role="status">{data.queue_triage.requires_operator_review?
+          "در وضعیت ثبت‌شدهٔ صف، مواردی برای بررسی اپراتور دیده شده است.":
+          "در بررسی محدود فعلی نشانهٔ مشخصی دیده نشد؛ این نتیجه به معنی سالم بودن قطعی Worker نیست."}</p>
+        <p>Job آمادهٔ اجرا با تأخیر بیش از {data.queue_triage.threshold_seconds.toLocaleString("fa-IR")} ثانیه:
+          {data.queue_triage.overdue_ready_count.toLocaleString("fa-IR")}</p>
+        <p>Lease منقضی: {data.queue_triage.running_expired_lease_count.toLocaleString("fa-IR")}؛
+          Lease با توکن یا انقضای ناقص: {data.queue_triage.running_missing_lease_count.toLocaleString("fa-IR")}</p>
+        <p className="muted">Jobهای زمان‌بندی‌شده برای آینده در تأخیر صف حساب نمی‌شوند. این اعداد از وضعیت ثبت‌شده‌اند و اثبات خرابی Process، SLA یا حق Repair خودکار نیستند.</p>
+      </section>
+      <section className="card stack" aria-label="شواهد Poll موفق Worker"><h2>Worker و Artifact</h2>
+        <p>آخرین Poll موفق ثبت‌شده: {data.worker.last_successful_poll_at??"هنوز ثبت نشده است"}</p>
+        <p>Pollهای موفق ثبت‌شده: {data.worker.successful_polls_recorded.toLocaleString("fa-IR")}؛
+          پنجرهٔ تازگی: {data.worker.fresh_window_seconds.toLocaleString("fa-IR")} ثانیه</p>
+        <p role="status">{data.worker.poll_recently_observed?
+          "Poll موفق در پنجرهٔ تازگی مشاهده شده است؛ زنده بودن فعلی Worker اثبات نمی‌شود.":
+          "Poll موفق تازه مشاهده نشده است؛ ممکن است Worker اجرا نشده، متوقف یا مشغول اجرای Job طولانی باشد."}</p>
+        <p>آخرین Heartbeat مرتبط با Job: {data.worker.latest_job_heartbeat??"هیچ‌کدام"}</p>
+        <p><strong>زنده بودن Worker هنوز تأیید نشده است.</strong> Poll ذخیره‌شده جای نظارت Process Manager و تست E2E صف را نمی‌گیرد.</p>
         <p>Artifactها: {data.artifacts.total.toLocaleString("fa-IR")}</p>
         <p>Artifact پاک‌نشده: {data.artifacts.unpurged_count.toLocaleString("fa-IR")} |
           مجموع بایت: {data.artifacts.unpurged_bytes.toLocaleString("fa-IR")}</p>
