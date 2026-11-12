@@ -32,6 +32,23 @@ type VerificationResult={id:string;domain:Domain;status:string;selection_digest:
   item_count:number;items:VerificationItem[];policy_matches:boolean;all_snapshots_current:boolean;
   recheck_summary:RecheckSummary;
   review_blockers:string[];verified_at:string;publication_available:false;approved:false};
+type PreparationReceipt={
+  id:string;selection_id:string;selection_digest:string;dossier_digest:string;
+  domain:Domain;item_count:number;status:"preparation_only";recovered:boolean;
+  approved:false;publication_available:false;notice:string;
+};
+type PreparationCheck=PreparationReceipt&{
+  snapshot_current:boolean;checked_at:string;published:false;
+  recheck_summary:RecheckSummary;review_blockers:string[];
+};
+type PreparationPayload={selection_digest:string;request_key:string};
+type PreparationInbox={count:number;page:number;page_size:number;domain:Domain;
+  results:PreparationReceipt[];publication_available:false;approved:false};
+type PreparationBulkCheck={scope:string;domain:Domain;checked_count:number;
+  current_count:number;stale_count:number;approved:false;publication_available:false;
+  results:Array<{id:string;selection_id:string;dossier_digest:string;
+    snapshot_current:boolean;content_issue_items:number;
+    dependency_issue_items:number;review_blocker_count:number}>};
 const snapshotStates:Record<VerificationItem["snapshot_state"],string>={
   matching:"اثر انگشت نسخهٔ ثبت‌شده مطابق است",
   stale:"محتوا یا وابستگی از زمان انتخاب تغییر کرده است",
@@ -123,6 +140,23 @@ export default function PublicationPreflight(){
   const [verification,setVerification]=useState<VerificationResult>();
   const [verifying,setVerifying]=useState(false);
   const [verifyError,setVerifyError]=useState("");
+  const [preparation,setPreparation]=useState<PreparationReceipt>();
+  const [preparing,setPreparing]=useState(false);
+  const [preparationError,setPreparationError]=useState("");
+  const [preparationCheck,setPreparationCheck]=useState<PreparationCheck>();
+  const [checkingPreparation,setCheckingPreparation]=useState(false);
+  const [preparationCheckError,setPreparationCheckError]=useState("");
+  const [previousDossierId,setPreviousDossierId]=useState("");
+  const [loadingPrevious,setLoadingPrevious]=useState(false);
+  const [previousError,setPreviousError]=useState("");
+  const [inbox,setInbox]=useState<PreparationInbox>();
+  const [inboxError,setInboxError]=useState("");
+  const [inboxVersion,setInboxVersion]=useState(0);
+  const [selectedDossierIds,setSelectedDossierIds]=useState<string[]>([]);
+  const [bulkCheck,setBulkCheck]=useState<PreparationBulkCheck>();
+  const [bulkBusy,setBulkBusy]=useState(false);
+  const [bulkError,setBulkError]=useState("");
+  const preparationRetryRef=useRef<PreparationPayload|undefined>(undefined);
   const retryRef=useRef<SelectionPayload|undefined>(undefined);
   const generation=useRef(0);
   const canSelect=activeDomain!=="cases"&&can("cms_publication_select_"+activeDomain);
@@ -138,6 +172,9 @@ export default function PublicationPreflight(){
     });
     retryRef.current=undefined;setSelection(undefined);setSelectionError("");
     setVerification(undefined);setVerifyError("");
+    setPreparation(undefined);setPreparationError("");setPreparing(false);
+    setPreparationCheck(undefined);setPreparationCheckError("");setCheckingPreparation(false);
+    preparationRetryRef.current=undefined;
   };
   async function createSelection(){
     if(saving||selection||!canSelect)return;
@@ -160,6 +197,7 @@ export default function PublicationPreflight(){
       });
       if(stamp!==generation.current)return;
       setSelection(result.data);setVerification(undefined);setVerifyError("");retryRef.current=undefined;
+      setPreparation(undefined);setPreparationCheck(undefined);preparationRetryRef.current=undefined;
     }catch(e){
       if(stamp!==generation.current)return;
       setSelectionError(e instanceof CmsError?e.message:"بستهٔ بازبینی ثبت نشد؛ با همان شناسه می‌توانید دوباره تلاش کنید.");
@@ -168,7 +206,7 @@ export default function PublicationPreflight(){
   async function verifyCurrentSelection(){
     if(!selection||verifying||!canSelect)return;
     const stamp=generation.current;
-    setVerifying(true);setVerifyError("");setVerification(undefined);
+    setVerifying(true);setVerifyError("");setVerification(undefined);setPreparationCheck(undefined);
     try{
       const result=await cms<VerificationResult>(
         "/publication/selections/"+encodeURIComponent(selection.id)+"/verify/");
@@ -179,6 +217,106 @@ export default function PublicationPreflight(){
       setVerifyError(e instanceof CmsError?e.message:"اعتبارسنجی نسخه‌ها انجام نشد. نتیجهٔ قبلی معتبر تلقی نمی‌شود.");
     }finally{if(stamp===generation.current)setVerifying(false);}
   }
+  async function createPreparation(){
+    if(!selection||!verification||preparing||preparation||!canSelect)return;
+    if(!verification.all_snapshots_current||
+      verification.recheck_summary.content_issue_items>0||
+      verification.recheck_summary.dependency_issue_items>0)return;
+    if(!preparationRetryRef.current){
+      preparationRetryRef.current={
+        selection_digest:selection.selection_digest,request_key:crypto.randomUUID(),
+      };
+    }
+    const stamp=generation.current;
+    setPreparing(true);setPreparationError("");
+    try{
+      const result=await cms<PreparationReceipt>(
+        "/publication/selections/"+encodeURIComponent(selection.id)+"/prepare/",{
+        method:"POST",body:JSON.stringify(preparationRetryRef.current),
+      });
+      if(stamp!==generation.current)return;
+      setPreparation(result.data);setPreparationCheck(undefined);
+      setPreparationCheckError("");preparationRetryRef.current=undefined;
+      setInboxVersion(v=>v+1);setBulkCheck(undefined);
+    }catch(e){
+      if(stamp!==generation.current)return;
+      setPreparationError(e instanceof CmsError?e.message:
+        "پروندهٔ آماده‌سازی ثبت نشد. می‌توانید با همان شناسهٔ درخواست دوباره تلاش کنید.");
+    }finally{if(stamp===generation.current)setPreparing(false);}
+  }
+  async function verifyPreparation(){
+    if(!preparation||checkingPreparation||!canSelect)return;
+    const stamp=generation.current;
+    setCheckingPreparation(true);setPreparationCheckError("");setPreparationCheck(undefined);
+    try{
+      const result=await cms<PreparationCheck>(
+        "/publication/preparations/"+encodeURIComponent(preparation.id)+"/verify/");
+      if(stamp!==generation.current)return;
+      setPreparationCheck(result.data);
+    }catch(e){
+      if(stamp!==generation.current)return;
+      setPreparationCheckError(e instanceof CmsError?e.message:
+        "پروندهٔ ثابت با وضعیت زنده تطبیق داده نشد. اعتبار آن تأیید نشده است.");
+    }finally{if(stamp===generation.current)setCheckingPreparation(false);}
+  }
+  async function loadPreviousPreparation(identifier?:string){
+    const id=(identifier??previousDossierId).trim();
+    if(!canSelect||loadingPrevious||!id)return;
+    const stamp=generation.current;
+    let applied=false;
+    setLoadingPrevious(true);setPreviousError("");
+    try{
+      const saved=await cms<PreparationReceipt>(
+        "/publication/preparations/"+encodeURIComponent(id)+"/");
+      if(stamp!==generation.current)return;
+      if(saved.data.domain!==activeDomain)throw new Error("DOMAIN_MISMATCH");
+      const [selected,rechecked]=await Promise.all([
+        cms<SelectionReceipt>("/publication/selections/"+encodeURIComponent(saved.data.selection_id)+"/"),
+        cms<VerificationResult>("/publication/selections/"+encodeURIComponent(saved.data.selection_id)+"/verify/"),
+      ]);
+      if(stamp!==generation.current)return;
+      if(selected.data.id!==saved.data.selection_id||
+          selected.data.selection_digest!==saved.data.selection_digest||
+          selected.data.domain!==activeDomain||
+          rechecked.data.selection_digest!==saved.data.selection_digest||
+          rechecked.data.domain!==activeDomain)throw new Error("DOSSIER_BINDING_MISMATCH");
+      generation.current++;
+      applied=true;
+      setChosen({});setSelection(selected.data);setVerification(rechecked.data);
+      setPreparation(saved.data);setPreparationError("");setPreparationCheck(undefined);
+      setPreparationCheckError("");setSelectionError("");setVerifyError("");
+      preparationRetryRef.current=undefined;retryRef.current=undefined;
+    }catch(e){
+      if(stamp!==generation.current)return;
+      setPreviousError(e instanceof CmsError?e.message:
+        "پرونده در دامنهٔ انتخابی یا با مجوز فعلی قابل بازیابی نیست.");
+    }finally{if(applied||stamp===generation.current)setLoadingPrevious(false);}
+  }
+  async function checkRecentPreparations(ids?:string[]){
+    if(!canSelect||bulkBusy)return;
+    const stamp=generation.current;
+    setBulkBusy(true);setBulkError("");setBulkCheck(undefined);
+    try{
+      const result=await cms<PreparationBulkCheck>(
+        "/publication/preparations/recheck/?"+
+        new URLSearchParams(ids?.length?
+          {domain:activeDomain,ids:ids.join(",")}:
+          {domain:activeDomain,limit:"3"}).toString());
+      if(stamp===generation.current)setBulkCheck(result.data);
+    }catch(e){
+      if(stamp===generation.current)setBulkError(e instanceof CmsError?e.message:
+        "بررسی دسته‌ای پرونده‌ها تکمیل نشد. نتیجهٔ قبلی قابل‌اتکا نیست.");
+    }finally{if(stamp===generation.current)setBulkBusy(false);}
+  }
+  useEffect(()=>{
+    if(!canSelect){setInbox(undefined);return;}
+    let active=true;setInbox(undefined);setInboxError("");
+    const query=new URLSearchParams({domain:activeDomain,page:"1",page_size:"10"});
+    void cms<PreparationInbox>("/publication/preparations/?"+query.toString())
+      .then(r=>{if(active)setInbox(r.data);})
+      .catch(e=>{if(active)setInboxError(e instanceof CmsError?e.message:"فهرست پرونده‌های پیشین در دسترس نیست.");});
+    return ()=>{active=false;};
+  },[canSelect,activeDomain,inboxVersion]);
   useEffect(()=>{
     if(!canCases&&!canLearning&&!canBrain&&!canAssessment)return;
     let active=true;setLoading(true);setError("");
@@ -194,7 +332,12 @@ export default function PublicationPreflight(){
     generation.current++;
     setChosen({});setSelection(undefined);setSelectionError("");
     setVerification(undefined);setVerifyError("");setSaving(false);setVerifying(false);
-    retryRef.current=undefined;
+    setPreparation(undefined);setPreparationError("");setPreparing(false);
+    setPreparationCheck(undefined);setPreparationCheckError("");setCheckingPreparation(false);
+    setPreviousDossierId("");setPreviousError("");setLoadingPrevious(false);
+    setBulkCheck(undefined);setBulkError("");setBulkBusy(false);
+    setSelectedDossierIds([]);
+    preparationRetryRef.current=retryRef.current=undefined;
   };
   const change=(value:Domain)=>{setDomain(value);setPage(1);setData(undefined);clearSelection();};
   return <div className="stack" dir="rtl">
@@ -217,6 +360,66 @@ export default function PublicationPreflight(){
       {canSelect&&<section className="card stack" aria-label="ثبت بستهٔ بازبینی">
         <h2>انتخاب برای بازبینی علمی و حقوقی</h2>
         <p className="muted">حداکثر ۲۰ مورد از همین صفحه را انتخاب کنید. ثبت این بسته، تأیید علمی، تأیید حقوق، Freeze یا انتشار نیست. تغییر نسخه پس از انتخاب، بستهٔ قدیمی را خودکار معتبر نمی‌کند.</p>
+        <div className="card stack" aria-label="بازیابی پروندهٔ آماده‌سازی قبلی">
+          <h3>بازکردن پروندهٔ آماده‌سازی قبلی</h3>
+          <p className="muted">شناسهٔ پروندهٔ ثابت را وارد کنید تا رسید ذخیره‌شده و وضعیت زندهٔ همان بسته با مجوز فعلی خوانده شوند. هیچ پرونده یا تأیید تازه‌ای ساخته نمی‌شود.</p>
+          <section className="stack" aria-label="پرونده‌های آماده‌سازی اخیر">
+            <p>پرونده‌های ثبت‌شدهٔ خودتان در این حوزه: {inbox?inbox.count.toLocaleString("fa-IR"):"در حال خواندن…"}</p>
+            {inboxError&&<p role="alert">{inboxError}</p>}
+            {inbox&&inbox.count===0&&<p className="muted">هنوز پروندهٔ آماده‌سازی ثبت نشده است.</p>}
+            {inbox&&inbox.results.length>0&&<ul className="stack">{inbox.results.map(item=>
+              <li key={item.id}>
+                <button type="button" className="button secondary" disabled={loadingPrevious}
+                  onClick={()=>void loadPreviousPreparation(item.id)}>
+                  بازکردن پرونده {item.id.slice(0,8)}، {item.item_count.toLocaleString("fa-IR")} مورد
+                </button>
+                <label>
+                  <input type="checkbox"
+                    checked={selectedDossierIds.includes(item.id)}
+                    disabled={bulkBusy||(!selectedDossierIds.includes(item.id)&&selectedDossierIds.length>=5)}
+                    onChange={e=>{
+                      setSelectedDossierIds(prev=>e.target.checked?[...prev,item.id]:prev.filter(id=>id!==item.id));
+                      setBulkCheck(undefined);setBulkError("");
+                    }}/>
+                  انتخاب برای تطبیق دسته‌ای پرونده {item.id.slice(0,8)}
+                </label>
+              </li>)}</ul>}
+            {inbox&&inbox.count>inbox.page_size&&<p className="muted">ده پروندهٔ اخیر نمایش داده شده‌اند. برای موارد قدیمی‌تر از UUID استفاده کنید.</p>}
+            <button type="button" className="button secondary" disabled={bulkBusy||!inbox||inbox.count===0}
+              onClick={()=>void checkRecentPreparations()}>
+              {bulkBusy?"در حال تطبیق دسته‌ای…":"بررسی دسته‌ای سه پروندهٔ اخیر"}
+            </button>
+            <button type="button" className="button secondary"
+              disabled={bulkBusy||selectedDossierIds.length===0}
+              onClick={()=>void checkRecentPreparations(selectedDossierIds)}>
+              {bulkBusy?"در حال تطبیق…":
+                "بررسی دقیق "+selectedDossierIds.length.toLocaleString("fa-IR")+" پروندهٔ انتخابی"}
+            </button>
+            <p className="muted">می‌توانید حداکثر پنج پروندهٔ دلخواه را هم‌زمان بررسی کنید؛ حتی اگر جزو سه پروندهٔ آخر نباشند. این کار صرفاً خواندن شواهد زنده است.</p>
+            {bulkError&&<p role="alert">{bulkError}</p>}
+            {bulkCheck&&<section className="stack" aria-label="نتیجهٔ بررسی دسته‌ای پرونده‌ها">
+              <p role="status">نسخه‌های مطابق: {bulkCheck.current_count.toLocaleString("fa-IR")}؛
+                نسخه‌های قدیمی یا نامنطبق: {bulkCheck.stale_count.toLocaleString("fa-IR")}؛
+                بررسی‌شده: {bulkCheck.checked_count.toLocaleString("fa-IR")}</p>
+              <ul>{bulkCheck.results.map(item=><li key={item.id}>
+                <code dir="ltr">{item.id.slice(0,8)}</code>:
+                {item.snapshot_current?" نسخه و شواهد مطابق‌اند":" پرونده نیازمند بازبینی تازه است"}
+              </li>)}</ul>
+              <p className="muted">مطابقت فقط به نسخه‌ها و شواهد این پرونده مربوط است، نه تأیید علمی، حقوق نشر یا مجوز انتشار.</p>
+            </section>}
+            <p className="muted">این فهرست تاریخی است و تازگی مدارک یا مجوز انتشار را اثبات نمی‌کند.</p>
+          </section>
+          <label>شناسه پروندهٔ آماده‌سازی قبلی
+            <input type="text" value={previousDossierId} disabled={loadingPrevious}
+              placeholder="UUID" autoComplete="off" spellCheck={false} dir="ltr"
+              onChange={e=>setPreviousDossierId(e.target.value)}/>
+          </label>
+          <button type="button" className="button secondary" onClick={()=>void loadPreviousPreparation()}
+            disabled={loadingPrevious||!previousDossierId.trim()}>
+            {loadingPrevious?"در حال بازخوانی…":"بازکردن پروندهٔ ثبت‌شده"}
+          </button>
+          {previousError&&<p role="alert">{previousError}</p>}
+        </div>
         <p role="status">موارد انتخاب‌شده: {Object.keys(chosen).length.toLocaleString("fa-IR")}</p>
         <button className="button secondary" type="button" disabled={saving||!!selection||Object.keys(chosen).length===0}
           onClick={()=>void createSelection()}>{saving?"در حال ثبت…":"ثبت بستهٔ بازبینی بدون انتشار"}</button>
@@ -288,6 +491,36 @@ export default function PublicationPreflight(){
             <p>موانع مستقل انتشار همچنان برقرارند:</p>
             <ul>{verification.review_blockers.map(code=><li key={code}>{reasons[code]??code}</li>)}</ul>
           </div>}
+          {verification&&!preparation&&<section className="card stack" aria-label="بستن پروندهٔ آماده‌سازی ثابت">
+            <h3>پروندهٔ ثابت برای تحویل به بازبین‌های مستقل</h3>
+            <p className="muted">این پرونده فقط عکسِ ثابتِ نسخه‌ها، وابستگی‌ها و موانع فعلی را نگه می‌دارد. حتی پس از ثبت آن، تأیید علمی و حقوقی، Freeze انتشار و Apply وجود ندارند.</p>
+            <button type="button" className="button secondary" onClick={()=>void createPreparation()}
+              disabled={preparing||!verification.all_snapshots_current||
+                verification.recheck_summary.content_issue_items>0||
+                verification.recheck_summary.dependency_issue_items>0}>
+              {preparing?"در حال ثبت پرونده…":"ثبت پروندهٔ آماده‌سازی بدون انتشار"}
+            </button>
+            {(!verification.all_snapshots_current||
+              verification.recheck_summary.content_issue_items>0||
+              verification.recheck_summary.dependency_issue_items>0)&&
+              <p className="muted">پیش از ثبت پرونده، باید نسخه‌ها، وابستگی‌ها و ساختار محتوا معتبر باشند. بستهٔ تازه را بازبینی کنید.</p>}
+            {preparationError&&<p role="alert">{preparationError}</p>}
+          </section>}
+          {preparation&&<section className="card stack" aria-label="رسید پروندهٔ آماده‌سازی ثابت">
+            <h3>پروندهٔ آماده‌سازی ثابت ثبت شد</h3>
+            <p role="status">این پرونده در دیتابیس به شکل تغییرناپذیر نگهداری می‌شود؛ نه تأیید محتواست و نه اجازهٔ انتشار. {preparation.recovered?"همان پاسخ درخواست قبلی بازیابی شد.":""}</p>
+            <p>شناسه: <code dir="ltr" style={{overflowWrap:"anywhere"}}>{preparation.id}</code></p>
+            <p>اثر انگشت پرونده: <code dir="ltr" style={{overflowWrap:"anywhere"}}>{preparation.dossier_digest}</code></p>
+            <button type="button" className="button secondary" disabled={checkingPreparation}
+              onClick={()=>void verifyPreparation()}>
+              {checkingPreparation?"در حال تطبیق پرونده…":"تطبیق پروندهٔ ثابت با وضعیت زنده"}
+            </button>
+            {preparationCheckError&&<p role="alert">{preparationCheckError}</p>}
+            {preparationCheck&&<p role="status">{preparationCheck.snapshot_current?
+              "نسخه و شواهدِ بررسی‌شده با پروندهٔ ثابت مطابق‌اند. هنوز مجوز انتشار وجود ندارد.":
+              "نسخه، سیاست یا شواهد از زمان ثبت پرونده تغییر کرده‌اند. پرونده باید مجدداً آماده شود."}</p>}
+            <p className="muted">این رسید مجوز نشر عمومی، حقوق محتوا یا تأیید مستقل انسانی نیست و هیچ دکمهٔ Apply ندارد.</p>
+          </section>}
         </div>}
       </section>}
       {data.results.length===0?<p>در این حوزه پیش‌نویس واجد شرایط بازرسی وجود ندارد.</p>:
