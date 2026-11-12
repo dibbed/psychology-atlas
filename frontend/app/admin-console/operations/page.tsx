@@ -8,7 +8,9 @@ type Readiness={
   as_of:string;release_ready:false;public_apply_authorized:false;
   database:{vendor:string;connection:string;atlas_applied_migrations:number;
     atlas_expected_leaf_count:number;pending_atlas_migrations:number;
-    migration_history_matches_files:boolean;schema_integrity_proven:false};
+    migration_history_matches_files:boolean;schema_integrity_proven:false;
+    required_runtime_foreign_key_count:number;missing_runtime_foreign_key_count:number;
+    runtime_foreign_keys_present:boolean};
   worker:{alive_confirmed:false;successful_polls_recorded:number;
     poll_recently_observed:boolean};
   preparation:{recorded_dossiers:number;publication_approved_dossiers:number;
@@ -31,6 +33,7 @@ const blockerNames:Record<string,string>={
   atlas_runtime_tables_missing:"حداقل یک جدول حیاتی CMS با وجود تاریخچهٔ Migration ثبت‌شده در دیتابیس وجود ندارد",
   atlas_runtime_columns_missing:"حداقل یک ستون ضروری در جدول‌های حیاتی CMS وجود ندارد؛ انتشار و بررسی مدل‌ها مسدود است",
   atlas_runtime_idempotency_constraints_missing:"محدودیت یکتایی ضروری برای جلوگیری از درخواست تکراری و رسید تکراری از ساختار دیتابیس حذف شده است",
+  atlas_runtime_foreign_keys_missing:"حداقل یک رابطهٔ Foreign Key ضروری در ساختار دیتابیس وجود ندارد؛ انتشار تا بررسی و بازیابی ساختار مسدود است",
   observed_receipt_inconsistencies:"مغایرت در رسیدهای ثبت‌شدهٔ انتشار یا منابع",
   source_receipt_audit_sample_incomplete:"همهٔ رسیدهای منابع در سقف نمونه بررسی نشده‌اند",
 };
@@ -126,7 +129,9 @@ export default function OperationsHealth(){
         <p>Migrationهای Atlas در فایل‌ها ولی اعمال‌نشده:
           {readiness.database.pending_atlas_migrations.toLocaleString("fa-IR")}؛
           مطابقت تاریخچهٔ Migration با فایل‌ها: {readiness.database.migration_history_matches_files?"بله":"خیر"}</p>
-        <p className="muted">مطابقت تاریخچه، سلامت واقعی Schema، داده‌ها یا محیط Production را اثبات نمی‌کند.</p>
+        <p>روابط Foreign Key حیاتیِ مورد انتظار: {readiness.database.required_runtime_foreign_key_count.toLocaleString("fa-IR")}؛
+          رابطهٔ مفقود در ساختار: {readiness.database.missing_runtime_foreign_key_count.toLocaleString("fa-IR")}</p>
+        <p className="muted">وجود تعریف روابط خارجی در Schema، بررسی تمام ردیف‌های داده یا تأیید محیط Production نیست.</p>
         <p>مغایرت‌های ساختاری رسیدهای کیس: {readiness.receipt_observations.case_receipt_mismatches.toLocaleString("fa-IR")}؛
           منابع: {readiness.receipt_observations.source_receipt_mismatches.toLocaleString("fa-IR")}</p>
         <h3>موانع باقی‌ماندهٔ Release</h3>
