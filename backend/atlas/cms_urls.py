@@ -104,6 +104,7 @@ urlpatterns = [
     path("catalog/", v.CatalogView.as_view()),
     path("operations/health/", operations_health.OperationsHealthView.as_view()),
     path("analytics/overview/", pipeline_analytics.PipelineAnalyticsView.as_view()),
+    path("analytics/overview/export.csv/", pipeline_analytics.PipelineAnalyticsCSVExportView.as_view()),
     path("search/", admin_search.AdminSearchView.as_view()),
     path("publication/preflight/", publication_preflight.PublicationPreflightView.as_view()),
     path("publication/selections/", publication_selection.PublicationSelectionView.as_view()),

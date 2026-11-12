@@ -28,6 +28,65 @@ class OwnerHealthTests(SecurityFixture, TestCase):
             self.assertNotIn(sensitive,data_repr)
         self.assertFalse(data["worker"]["alive_confirmed"])
 
+    def test_scheduled_jobs_are_not_mislabeled_as_ready_worker_backlog(self):
+        from datetime import timedelta
+        from django.utils import timezone
+
+        now = timezone.now()
+        artifact = AdminArtifact.objects.create(
+            kind="research_json", domain="research", owner=self.owner,
+            owner_ref="synthetic", state="ready", storage_key="p18-fake-artifact",
+            filename="synthetic.json", sha256="f" * 64, size=10,
+            expires_at=now + timedelta(days=1),
+        )
+        base = {
+            "kind": "research_intake", "actor": self.owner, "actor_ref": "synthetic",
+            "policy_version": 1, "artifact": artifact,
+            "payload_digest": "a" * 64, "attempt": 0,
+        }
+        ready = AdminJob.objects.create(
+            **base, status="queued", request_key=uuid.uuid4(),
+            available_at=now - timedelta(minutes=8),
+        )
+        AdminJob.objects.filter(pk=ready.pk).update(
+            created_at=now - timedelta(minutes=9),
+        )
+        scheduled = AdminJob.objects.create(
+            **base, status="queued", request_key=uuid.uuid4(),
+            available_at=now + timedelta(hours=3),
+        )
+        running = AdminJob.objects.create(
+            **base, status="running", request_key=uuid.uuid4(),
+            available_at=now - timedelta(minutes=3),
+            lease_token=uuid.uuid4(),
+            lease_expires_at=now - timedelta(minutes=1),
+        )
+        missing = AdminJob.objects.create(
+            **base, status="running", request_key=uuid.uuid4(),
+            available_at=now - timedelta(minutes=4),
+            lease_token=None, lease_expires_at=None,
+        )
+        result = self.owner_client.get(BASE + "operations/health/")
+        self.assertEqual(result.status_code, 200, result.content[:500])
+        jobs = result.json()["jobs"]
+        self.assertEqual(jobs["total"], 4)
+        self.assertEqual(jobs["by_status"]["queued"], 2)
+        self.assertEqual(jobs["queued_ready_count"], 1)
+        self.assertEqual(jobs["queued_scheduled_count"], 1)
+        self.assertEqual(jobs["ready_queue_age_seconds"] >= 8 * 60, True)
+        self.assertEqual(jobs["oldest_ready_at"], ready.available_at.isoformat())
+        self.assertEqual(jobs["next_scheduled_at"], scheduled.available_at.isoformat())
+        self.assertEqual(jobs["running_expired_lease_count"], 1)
+        self.assertEqual(jobs["running_missing_lease_count"], 1)
+        self.assertEqual(jobs["stale_lease_count"], 1)
+        self.assertFalse(jobs["worker_liveness_proven"])
+        self.assertFalse(result.json()["worker"]["alive_confirmed"])
+        self.assertEqual(result.json()["backup"]["state"], "unavailable")
+        for sensitive in ("storage_key", "payload_digest", "lease_token", "request_key", "filename"):
+            self.assertNotIn(sensitive, result.content.decode())
+        self.assertEqual(AdminJob.objects.get(pk=running.pk).status, "running")
+        self.assertEqual(AdminJob.objects.get(pk=missing.pk).status, "running")
+
     def test_case_publication_receipt_drift_is_observed_without_repair(self):
         from .cms_case_publication_models import CasePublicationPlan, CasePublicationReceipt
         from .models import ClinicalCase, CaseRevision

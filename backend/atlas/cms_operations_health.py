@@ -72,6 +72,16 @@ class OperationsHealthView(AdminAPIView):
             jobs = dict(AdminJob.objects.values_list("status").annotate(total=Count("pk")))
             heartbeat = AdminJob.objects.aggregate(latest=Max("heartbeat_at"))["latest"]
             oldest = AdminJob.objects.filter(status="queued").aggregate(oldest=Min("created_at"))["oldest"]
+            ready_jobs = AdminJob.objects.filter(status="queued", available_at__lte=now)
+            scheduled_jobs = AdminJob.objects.filter(status="queued", available_at__gt=now)
+            oldest_ready = ready_jobs.aggregate(oldest=Min("available_at"))["oldest"]
+            next_scheduled = scheduled_jobs.aggregate(next=Min("available_at"))["next"]
+            expired_running = AdminJob.objects.filter(
+                status="running", lease_expires_at__lt=now,
+            ).count()
+            missing_running = AdminJob.objects.filter(
+                status="running", lease_expires_at__isnull=True,
+            ).count()
             artifacts = AdminArtifact.objects.filter(purged_at__isnull=True)
             bytes_total = artifacts.aggregate(total=Sum("size"))["total"] or 0
             # Structural consistency checks only: neither source rights nor
@@ -133,9 +143,18 @@ class OperationsHealthView(AdminAPIView):
                     "total": sum(jobs.values()),
                     "by_status": {status: jobs.get(status, 0) for status in _STATES},
                     "oldest_queued_at": oldest.isoformat() if oldest else None,
-                    "stale_lease_count": AdminJob.objects.filter(
-                        status="running", lease_expires_at__lt=now,
-                    ).count(),
+                    # Ready backlog and future scheduled retries are distinct.
+                    # Times reflect persisted job metadata, not worker liveness.
+                    "queued_ready_count": ready_jobs.count(),
+                    "queued_scheduled_count": scheduled_jobs.count(),
+                    "oldest_ready_at": oldest_ready.isoformat() if oldest_ready else None,
+                    "next_scheduled_at": next_scheduled.isoformat() if next_scheduled else None,
+                    "ready_queue_age_seconds": max(0, int((now - oldest_ready).total_seconds())) if oldest_ready else None,
+                    "running_expired_lease_count": expired_running,
+                    "running_missing_lease_count": missing_running,
+                    "stale_lease_count": expired_running,
+                    "worker_liveness_proven": False,
+                    "notice": "QUEUE_SNAPSHOT_ONLY_SCHEDULED_RETRY_IS_NOT_READY_BACKLOG",
                 },
                 "worker": {
                     "alive_confirmed": False,

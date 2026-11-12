@@ -587,6 +587,15 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
     health.data.source_plan_receipts.full_source_integrity_proven===false&&
     health.data.source_plan_receipts.repair_available===false,
     'P18 actual synthetic Source Apply receipts match persisted history/successor IDs without source rights or publication clearance');
+  check(health.data.jobs?.queued_ready_count+health.data.jobs?.queued_scheduled_count===
+      health.data.jobs?.by_status.queued&&
+    Number.isInteger(health.data.jobs.running_expired_lease_count)&&
+    Number.isInteger(health.data.jobs.running_missing_lease_count)&&
+    (health.data.jobs.oldest_ready_at!==null||
+      health.data.jobs.queued_ready_count===0)&&
+    health.data.jobs.worker_liveness_proven===false&&
+    health.data.worker.alive_confirmed===false,
+    'P18 ready versus future-scheduled jobs reconcile while worker liveness remains unproven');
   check((await request(scoped,'/operations/health/')).status===403,
     'P18 ordinary content curator cannot read owner receipt health');
   await owner.goto(origin+'/admin-console/operations');
@@ -595,6 +604,11 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
     await owner.getByText('مغایرت‌های مشاهده‌شده:',{exact:false}).count()===1&&
     await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
     'P18 receipt drift and explicit non-clearance are visible in Persian 320px RTL');
+  check(await owner.getByRole('region',{name:'وضعیت صف آماده و زمان‌بندی‌شده'}).count()===1&&
+    await owner.getByText('در صف آمادهٔ اجرا:',{exact:false}).count()===1&&
+    await owner.getByText('زمان‌بندی‌شده برای آینده:',{exact:false}).count()===1&&
+    await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
+    'P18 ready versus delayed jobs and missing leases render safely at 320px RTL');
   check(await owner.locator('[aria-label="بررسی ساختاری رسیدهای طرح منبع"]').count()===1&&
     await owner.getByRole('heading',{name:'رسید و تاریخچهٔ Source Plan، فقط بررسی ساختاری'}).count()===1&&
     await owner.getByText('رسیدهای بررسی‌شده برای تطبیق شناسه:',{exact:false}).count()===1&&
@@ -625,6 +639,26 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
     await owner.getByText('سوابق حقوق محتوا',{exact:true}).count()===1&&
     await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
     'P19 owner-only analytics screen renders reconciled counts in 320px Persian RTL');
+  const csv=await owner.evaluate(async()=>{
+    const response=await fetch('/api/admin/analytics/overview/export.csv/',{
+      credentials:'same-origin',cache:'no-store'});
+    return {status:response.status,contentType:response.headers.get('content-type'),
+      disposition:response.headers.get('content-disposition'),
+      cache:response.headers.get('cache-control'),body:await response.text()};
+  });
+  check(csv.status===200&&csv.contentType?.startsWith('text/csv')&&
+    csv.disposition?.includes('attachment;')&&csv.cache==='no-store'&&
+    csv.body.startsWith('section,metric,category,value,denominator')&&
+    csv.body.includes('content,states_total,,')&&
+    csv.body.includes('safety,publication_authorized,,false')&&
+    !csv.body.includes('P16 PRIVATE SYNTHETIC SECRET')&&
+    await owner.getByRole('link',{name:'دریافت فایل CSV شمارش‌ها، فقط برای مالک'}).count()===1&&
+    await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),
+    'P19 owner CSV download is aggregate-only, non-authorizing, private and fits Persian mobile RTL');
+  const deniedCsv=await scoped.evaluate(async()=>(
+    await fetch('/api/admin/analytics/overview/export.csv/',{credentials:'same-origin'})
+  ).status);
+  check(deniedCsv===403,'P19 non-owner cannot download the aggregate CSV');
 
   await owner.goto(origin+'/admin-console');
   await owner.getByRole('heading',{name:'بخش‌های نیازمند پذیرش نهایی'}).waitFor();
@@ -640,6 +674,9 @@ async function confirmAccount(page,token){await page.getByLabel('روش تأیی
     'P19 settings catalog reads a real versioned ReviewPolicy consumer and its persisted change count');
   await owner.goto(origin+'/admin-console/settings');
   await owner.getByRole('heading',{name:'تنظیمات دارای مصرف‌کنندهٔ واقعی'}).waitFor();
+  // The heading is static; the versioned policy card arrives from a separate
+  // authorized asynchronous GET. Do not assert its link before that fetch.
+  await owner.getByRole('link',{name:'دیدن تاریخچه و ویرایش کنترل‌شده با MFA'}).waitFor();
   check(await owner.getByRole('navigation',{name:'بخش‌های مدیریت'}).getByRole('link',{name:'تنظیمات واقعی'}).count()===1&&
     await owner.getByText('سیاست بازبینی پیشنهادهای محتوای مرجع',{exact:true}).count()===1&&
     await owner.getByRole('link',{name:'دیدن تاریخچه و ویرایش کنترل‌شده با MFA'}).getAttribute('href')===

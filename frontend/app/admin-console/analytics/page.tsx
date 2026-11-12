@@ -66,6 +66,11 @@ export default function AnalyticsOverview(){
     {busy&&!data&&<CmsState loading/>}
     {data&&<>
       <p className="muted">زمان سنجش سرور: <time dateTime={data.measured_at}>{data.measured_at}</time></p>
+      <div className="stack" aria-label="خروجی شمارش‌های امن">
+        <a className="cms-link" href="/api/admin/analytics/overview/export.csv/"
+          download="cms-pipeline-recorded-counts.csv">دریافت فایل CSV شمارش‌ها، فقط برای مالک</a>
+        <p className="muted">فایل با بررسی مجدد مجوز و شمارش تازه در سرور تولید می‌شود؛ ممکن است در زمان دریافت با اعداد صفحه تفاوت داشته باشد. فقط شمارش‌های تجمیعی، بدون دادهٔ خصوصی یا تأیید علمی و حقوقی.</p>
+      </div>
       <section className="card stack">
         <h2>مخرج شمارش محتوای مدیریتی</h2>
         <p>رکوردهای ContentState: <strong>{data.content.states_total.toLocaleString("fa-IR")}</strong>؛

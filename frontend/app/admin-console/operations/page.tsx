@@ -7,7 +7,12 @@ type Health={
   scope:string;as_of:string;
   database:{connection:string;vendor:string;atlas_applied_migrations:number;
     atlas_latest_applied:string|null;migration_state:string};
-  jobs:{total:number;by_status:Record<string,number>;oldest_queued_at:string|null;stale_lease_count:number};
+  jobs:{total:number;by_status:Record<string,number>;oldest_queued_at:string|null;stale_lease_count:number;
+    queued_ready_count:number;queued_scheduled_count:number;
+    oldest_ready_at:string|null;next_scheduled_at:string|null;
+    ready_queue_age_seconds:number|null;
+    running_expired_lease_count:number;running_missing_lease_count:number;
+    worker_liveness_proven:false;notice:string};
   worker:{alive_confirmed:false;latest_job_heartbeat:string|null;notice:string};
   artifacts:{total:number;unpurged_bytes:number;unpurged_count:number};
   backup:{state:string;reason:string};
@@ -64,11 +69,18 @@ export default function OperationsHealth(){
         <p>آخرین Migration اعمال‌شده: <code dir="ltr">{data.database.atlas_latest_applied??"ثبت نشده"}</code></p>
         <p className="muted">این گزارش فقط سابقهٔ Apply است و به‌تنهایی drift schema یا آمادگی production را اثبات نمی‌کند.</p>
       </section>
-      <section className="card stack"><h2>صف Job</h2>
-        <p>کل: {data.jobs.total.toLocaleString("fa-IR")} | Lease منقضی: {data.jobs.stale_lease_count.toLocaleString("fa-IR")}</p>
+      <section className="card stack" aria-label="وضعیت صف آماده و زمان‌بندی‌شده"><h2>صف Job</h2>
+        <p>کل: {data.jobs.total.toLocaleString("fa-IR")}</p>
         <ul>{Object.entries(data.jobs.by_status).map(([status,count])=>
           <li key={status}><code>{status}</code> : {count.toLocaleString("fa-IR")}</li>)}</ul>
-        <p>قدیمی‌ترین Job صف: {data.jobs.oldest_queued_at??"وجود ندارد"}</p>
+        <p>در صف آمادهٔ اجرا: <strong>{data.jobs.queued_ready_count.toLocaleString("fa-IR")}</strong>؛
+          زمان‌بندی‌شده برای آینده: <strong>{data.jobs.queued_scheduled_count.toLocaleString("fa-IR")}</strong></p>
+        <p>قدیمی‌ترین زمان آمادهٔ اجرا: {data.jobs.oldest_ready_at??"موردی وجود ندارد"}؛
+          عمر انتظار پس از موعد اجرا: {data.jobs.ready_queue_age_seconds===null?"قابل محاسبه نیست":data.jobs.ready_queue_age_seconds.toLocaleString("fa-IR")+" ثانیه"}</p>
+        <p>نزدیک‌ترین Job زمان‌بندی‌شده: {data.jobs.next_scheduled_at??"موردی وجود ندارد"}</p>
+        <p>Job در حال اجرا با Lease منقضی: {data.jobs.running_expired_lease_count.toLocaleString("fa-IR")}؛
+          Job در حال اجرا بدون زمان انقضای Lease: {data.jobs.running_missing_lease_count.toLocaleString("fa-IR")}</p>
+        <p className="muted">این اعداد تصویر لحظه‌ای وضعیت‌های ثبت‌شده‌اند. زمان‌بندی آینده عقب‌ماندگی Worker نیست؛ Lease ناقص نیز به‌تنهایی اثبات توقف Worker نیست. زنده‌بودن واقعی Worker هنوز احراز نشده است.</p>
       </section>
       <section className="card stack"><h2>Worker و Artifact</h2>
         <p>آخرین heartbeat مشاهده‌شده: {data.worker.latest_job_heartbeat??"هیچ‌کدام"}</p>
