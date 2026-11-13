@@ -80,6 +80,10 @@ def draft_fingerprint(kind, item):
     if kind not in KIND_MODELS or not isinstance(item, KIND_MODELS[kind]):
         raise CMSFailure("INVALID_KIND", 400)
     issues = []
+    if kind in {"quiz", "flashcard"} and any(
+        not scope_visible(kind, item.pk, material) for material in ("metadata", "item")
+    ):
+        issues.append("CONTENT_PUBLIC_UNAVAILABLE")
     parent = _fields(item, PARENT_FIELDS[kind])
     children = []
 

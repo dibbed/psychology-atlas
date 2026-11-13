@@ -238,3 +238,66 @@ class LearningDraftFingerprintTests(SecurityFixture, TestCase):
         self.assertTrue(recovered.json()["recovered"])
         self.assertEqual(recovered.json()["id"], prepared.json()["id"])
         self.assertFalse(StudyActivity.objects.exists())
+
+    def test_learning_item_rights_restriction_stales_preparation(self):
+        from django.utils import timezone
+        from .cms_governance import create_governance, mutate_governance, resource_binding
+        from .cms_models import AdminSession
+        from .cms_public_rights import public_items
+        from .models import SourceReference
+
+        card = Flashcard.objects.create(slug="p16-rights-card", front="Synthetic front",
+            back="Synthetic back", disorder=self.disorder, is_active=False, seed_managed=False)
+        entries = []
+        for kind, item, material in (("quiz", self.quiz, "item"), ("flashcard", card, "metadata")):
+            row, _ = self.item(kind, item.pk)
+            selected = self.post(self.client, "publication/selections/", {
+                "domain": "learning", "request_key": str(uuid.uuid4()),
+                "entries": [{"kind": kind, "resource_id": item.pk,
+                             "expected_digest": row["content_digest"]}],
+            })
+            self.assertEqual(selected.status_code, 201, selected.content[:300])
+            path = f'publication/selections/{selected.json()["id"]}/prepare/'
+            prepared = self.post(self.client, path, {"request_key": str(uuid.uuid4()),
+                "selection_digest": selected.json()["selection_digest"]})
+            self.assertEqual(prepared.status_code, 201, prepared.content[:300])
+            entries.append((kind, item, material, row, selected.json(), prepared.json(), path))
+
+        editor = self.user("p16-item-rights-editor", staff=True,
+                           caps=("cms_enter", "cms_learning_view", "cms_learning_edit"))
+        self.sign_in(editor)
+        editor_session = AdminSession.objects.get(user=editor).pk
+        owner_session = AdminSession.objects.get(user=self.owner).pk
+        source = SourceReference.objects.create(title="Synthetic rights source",
+            citation="Synthetic fixture", url="https://example.org/item-rights",
+            verification_status="source_checked")
+        evidence = [{"source_id": source.pk, "locator": "Synthetic test scope"}]
+        for kind, item, material, row, selected, prepared, path in entries:
+            with self.subTest(kind=kind, material=material):
+                record = create_governance(editor.pk, editor_session, "rights", {
+                    "resource_type": kind, "resource_id": item.pk,
+                    "resource_version": resource_binding(kind, item.pk)["resource_version"],
+                    "material": material, "intended_use": "public_display", "status": "restricted",
+                    "rightsholder": "Synthetic holder", "holder_identification": "Synthetic evidence",
+                    "holder_evidence": evidence, "evidence": evidence, "public_access": "public",
+                    "reviewed_on": timezone.localdate().isoformat(), "effective_on": timezone.localdate().isoformat(),
+                    "expires_on": None, "review_on": None, "limitations": "Synthetic scope",
+                    "territory": "", "conflict_note": "", "reason": "CORRECTION_REQUIRED",
+                }, str(uuid.uuid4()))
+                record = mutate_governance(self.owner.pk, owner_session, "rights", record.pk, record.version,
+                    "assign", {"reviewer_id": self.owner.pk}, str(uuid.uuid4()))
+                mutate_governance(self.owner.pk, owner_session, "rights", record.pk, record.version,
+                    "decide", {"outcome": "approve", "reason": "RIGHTS_SCOPE_VERIFIED",
+                               "self_review_ack": False}, str(uuid.uuid4()))
+                self.assertFalse(public_items(type(item).objects.filter(pk=item.pk)).exists())
+                current = self.client.get(BASE + f'publication/preparations/{prepared["id"]}/verify/')
+                self.assertEqual(current.status_code, 200, current.content[:300])
+                self.assertFalse(current.json()["snapshot_current"])
+                updated, _ = self.item(kind, item.pk)
+                self.assertEqual(updated["content_digest"], row["content_digest"])
+                self.assertIn("CONTENT_PUBLIC_UNAVAILABLE", updated["content_issues"])
+                self.assertEqual(self.post(self.client, path, {
+                    "request_key": str(uuid.uuid4()),
+                    "selection_digest": selected["selection_digest"],
+                }).status_code, 409)
+        self.assertFalse(StudyActivity.objects.exists())
