@@ -89,6 +89,7 @@ const reasons:Record<string,string>={
   CHOICES_INSUFFICIENT:"تعداد انتخاب‌های فعال کافی نیست.",
   INACTIVE_DEPENDENCY:"حداقل یک مفهوم یا اختلال وابسته غیرفعال است.",
   DEPENDENCY_MISSING:"حداقل یک وابستگی محتوایی یافت نشد.",
+  DEPENDENCY_PUBLIC_UNAVAILABLE:"نمایش عمومی یک وابستگی محتوایی محدود است.",
   TARGET_REQUIRED:"محتوا به مفهوم یا اختلال معتبر متصل نشده است.",
   QUESTION_INVALID:"یک پرسش، متن یا انتخاب‌های معتبر ندارد.",
   CHOICE_TEXT_MISSING:"متن یک گزینهٔ فعال خالی است.",
