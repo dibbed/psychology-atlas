@@ -69,7 +69,8 @@ SAFE_FIELDS |= frozenset(("instrument","version","language_form","study","form_k
 # P12 editorial actions: only safe IDs and field names, never case narrative content.
 ACTIONS |= frozenset({"case.draft_created", "case.draft_cloned", "case.draft_updated", "case.graph_updated",
     "case.review_decided", "case.publication_frozen", "case.publication_approved",
-    "case.publication_applied", "case.publication_withdrawn"})
+    "case.publication_applied", "case.publication_withdrawn",
+    "case.publication_reinstatement_frozen"})
 TARGET_KINDS |= frozenset({"clinical-case"})
 
 # P16 private review selection and sealed preparation evidence only.

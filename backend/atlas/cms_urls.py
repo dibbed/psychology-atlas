@@ -124,6 +124,7 @@ urlpatterns = [
     path("publication/cases/plans/<uuid:plan_id>/approve/", case_publication.CasePublicationApproveView.as_view()),
     path("publication/cases/plans/<uuid:plan_id>/apply/", case_publication.CasePublicationApplyView.as_view()),
     path("publication/cases/plans/<uuid:plan_id>/withdraw/", case_publication.CasePublicationWithdrawView.as_view()),
+    path("publication/cases/plans/<uuid:plan_id>/reinstate/", case_publication.CasePublicationReinstateView.as_view()),
     path("study/overview/", study_ops.StudyOperationsOverviewView.as_view()),
     path("users/", user_directory.CMSUserDirectoryView.as_view()),
     path("users/privacy/schema/", privacy.PrivacySchemaView.as_view()),

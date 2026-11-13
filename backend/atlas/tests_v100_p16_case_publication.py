@@ -241,6 +241,65 @@ class CasePublicationContractTests(CasePublicationFixture, TestCase):
         self.assertEqual(self.post(self.client_owner,endpoint+"withdraw/",{
             "manifest_digest":plan["manifest_digest"],"idempotency_key":withdrawal_key}).status_code,200)
 
+    def test_withdrawn_revision_reinstates_only_with_fresh_approval_and_mfa(self):
+        from .views import public_available_clinical_cases
+        endpoint, body = self.prepared_apply()
+        applied = self.post(self.client_owner, endpoint + "apply/", body)
+        self.assertEqual(applied.status_code, 200, applied.content[:450])
+        self.rev.refresh_from_db()
+        published_at = self.rev.published_at
+        self.step_up(self.client_owner, self.owner, "case_withdraw", self.rev.pk,
+                     {"manifest_digest": body["manifest_digest"]})
+        withdrawn = self.post(self.client_owner, endpoint + "withdraw/", {
+            "manifest_digest": body["manifest_digest"],
+            "idempotency_key": str(uuid.uuid4())})
+        self.assertEqual(withdrawn.status_code, 200, withdrawn.content[:450])
+
+        # The applied revision is no longer a draft, so it cannot be re-frozen.
+        self.assertEqual(self.freeze().status_code, 409)
+
+        reinstated = self.post(self.client_owner, endpoint + "reinstate/", {
+            "manifest_digest": body["manifest_digest"]})
+        self.assertEqual(reinstated.status_code, 201, reinstated.content[:450])
+        plan = reinstated.json()
+        self.assertEqual(plan["status"], "frozen")
+        self.assertEqual(plan["manifest"]["action"], "reinstate_case_revision")
+        self.assertIn(plan["reinstates_plan_id"], endpoint)
+        repeated = self.post(self.client_owner, endpoint + "reinstate/", {
+            "manifest_digest": body["manifest_digest"]})
+        self.assertEqual(repeated.status_code, 200, repeated.content[:450])
+        self.assertEqual(repeated.json()["plan_id"], plan["plan_id"])
+
+        new_endpoint = f"publication/cases/plans/{plan['plan_id']}/"
+        # The withdrawn plan's earlier approval is not reused.
+        self.assertEqual(self.post(self.client_owner, new_endpoint + "apply/", {
+            "manifest_digest": plan["manifest_digest"],
+            "idempotency_key": str(uuid.uuid4())}).status_code, 409)
+        self.assertEqual(self.post(self.client_owner, new_endpoint + "approve/", {
+            "manifest_digest": plan["manifest_digest"], "self_review_ack": True,
+        }).status_code, 200)
+        # A fresh MFA step-up bound to the reinstatement manifest is required.
+        self.assertEqual(self.post(self.client_owner, new_endpoint + "apply/", {
+            "manifest_digest": plan["manifest_digest"],
+            "idempotency_key": str(uuid.uuid4())}).status_code, 403)
+        self.step_up(self.client_owner, self.owner, "case_publish", self.rev.pk,
+                     {"manifest_digest": plan["manifest_digest"]})
+        reapplied = self.post(self.client_owner, new_endpoint + "apply/", {
+            "manifest_digest": plan["manifest_digest"],
+            "idempotency_key": str(uuid.uuid4())})
+        self.assertEqual(reapplied.status_code, 200, reapplied.content[:450])
+        self.case.refresh_from_db()
+        self.rev.refresh_from_db()
+        self.assertTrue(self.case.is_active)
+        self.assertEqual(self.case.current_revision_id, self.rev.pk)
+        self.assertEqual(self.rev.published_at, published_at)
+        self.assertTrue(public_available_clinical_cases().filter(pk=self.case.pk).exists())
+        self.assertEqual(CasePublicationReceipt.objects.filter(event_type="applied").count(), 2)
+        self.assertEqual(CasePublicationReceipt.objects.filter(event_type="withdrawn").count(), 1)
+        # After reinstatement the withdrawal is spent; a third state needs a new withdrawal.
+        self.assertEqual(self.post(self.client_owner, endpoint + "reinstate/", {
+            "manifest_digest": body["manifest_digest"]}).status_code, 409)
+
     def test_pinned_historical_attempt_completes_after_actual_reviewed_apply(self):
         from .services import advance_case_attempt
         old = CaseRevision.objects.create(

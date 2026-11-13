@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from .cms_case_editor import revision_etag
 from .cms_case_publication import (
     approve_plan, apply_plan, detail_plan, freeze_revision,
-    review_details, review_revision, withdraw_plan,
+    reinstate_plan, review_details, review_revision, withdraw_plan,
 )
 from .cms_policy import CMSFailure
 from .cms_views import AdminAPIView, expected_version, payload
@@ -75,6 +75,19 @@ class CasePublicationApplyView(AdminAPIView):
                          "manifest_digest": receipt.manifest_digest,
                          "case_id": receipt.revision.case_id,
                          "revision_id": receipt.revision_id, "newly_applied": created})
+
+
+class CasePublicationReinstateView(AdminAPIView):
+    capability = "cms_publication_reinstate_cases"
+
+    def post(self, request, plan_id):
+        data = payload(request, {"manifest_digest"})
+        plan, created = reinstate_plan(request.user.pk, request.cms_session.pk, plan_id,
+                                       data.get("manifest_digest"), self.request_id)
+        return Response({"plan_id": str(plan.pk), "status": plan.status,
+                         "manifest_digest": plan.manifest_digest, "manifest": plan.manifest,
+                         "reinstates_plan_id": plan.manifest.get("reinstates_plan_id"),
+                         "newly_frozen": created}, status=201 if created else 200)
 
 
 class CasePublicationWithdrawView(AdminAPIView):

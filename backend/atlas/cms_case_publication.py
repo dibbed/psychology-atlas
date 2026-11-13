@@ -239,6 +239,33 @@ def _manifest(case, revision, latest):
     }
 
 
+def _reinstatement_ready(case, revision):
+    """A withdrawn revision may return only as itself, never as a new draft."""
+    if (revision.seed_managed or case.seed_managed
+            or revision.status != CaseRevision.Status.PUBLISHED
+            or case.current_revision_id != revision.pk or case.is_active):
+        raise CMSFailure("REVISION_NOT_REINSTATEABLE", 409)
+
+
+def _reinstatement_manifest(case, revision, latest, withdrawn):
+    policy = current_policy()
+    receipt = withdrawn.receipts.filter(event_type="withdrawn").first()
+    if receipt is None:
+        raise CMSFailure("REINSTATEMENT_SOURCE_CHANGED", 409)
+    return {
+        "schema": "case-publication-v1", "case_id": case.pk, "revision_id": revision.pk,
+        "revision_version": revision.version,
+        "revision_digest": case_revision_fingerprint(revision),
+        "previous_revision_id": case.current_revision_id,
+        "policy_version": policy.version, "policy_mode": policy.mode,
+        "review_ids": {kind: latest[kind].pk for kind in KINDS},
+        "source_digests": {kind: latest[kind].source_digest for kind in KINDS},
+        "action": "reinstate_case_revision",
+        "reinstates_plan_id": str(withdrawn.pk),
+        "reinstates_withdrawal_receipt_id": receipt.pk,
+    }
+
+
 def freeze_revision(actor_id, session_id, case_id, revision_id, expected, request_id):
     with policy_lock():
         actor = _actor(actor_id, session_id, "cms_publication_freeze_cases")
@@ -263,7 +290,20 @@ def freeze_revision(actor_id, session_id, case_id, revision_id, expected, reques
 
 def _verify_plan(plan):
     case, revision = _lock_revision(plan.revision.case_id, plan.revision_id)
-    _candidate(case, revision)
+    reinstatement = plan.manifest.get("action") == "reinstate_case_revision"
+    withdrawn = None
+    if reinstatement:
+        _reinstatement_ready(case, revision)
+        try:
+            withdrawn_id = uuid.UUID(str(plan.manifest.get("reinstates_plan_id")))
+        except (TypeError, ValueError, AttributeError):
+            raise CMSFailure("REINSTATEMENT_SOURCE_CHANGED", 409)
+        withdrawn = CasePublicationPlan.objects.filter(
+            pk=withdrawn_id, revision=revision, status="withdrawn").first()
+        if withdrawn is None:
+            raise CMSFailure("REINSTATEMENT_SOURCE_CHANGED", 409)
+    else:
+        _candidate(case, revision)
     blockers, latest = _review_status(revision)
     if blockers:
         failure = CMSFailure("PUBLICATION_BLOCKED", 409)
@@ -273,7 +313,8 @@ def _verify_plan(plan):
     if plan.status == "approved" and (approver is None or
             not {"cms_enter", "cms_cases_view", "cms_publication_approve_cases"} <= effective_permissions(approver)):
         raise CMSFailure("APPROVER_PERMISSION_CHANGED", 409)
-    manifest = _manifest(case, revision, latest)
+    manifest = (_reinstatement_manifest(case, revision, latest, withdrawn)
+                if reinstatement else _manifest(case, revision, latest))
     if _digest(manifest) != plan.manifest_digest or manifest != plan.manifest:
         raise CMSFailure("MANIFEST_STALE", 412)
     return case, revision
@@ -341,8 +382,11 @@ def apply_plan(actor_id, session_id, plan_id, expected_digest, key, request_id):
         if plan.approved_by_id == actor.pk and current_policy().mode == "two_person":
             raise CMSFailure("TWO_PERSON_REQUIRED", 409)
         previous = case.current_revision_id
-        revision.status, revision.published_at = CaseRevision.Status.PUBLISHED, timezone.now()
-        revision.save(update_fields=["status", "published_at", "updated_at"])
+        if revision.status != CaseRevision.Status.PUBLISHED:
+            # A reinstatement restores the original publication timestamp; it
+            # must not rewrite the historical record of when the text went live.
+            revision.status, revision.published_at = CaseRevision.Status.PUBLISHED, timezone.now()
+            revision.save(update_fields=["status", "published_at", "updated_at"])
         for name in ("title", "patient_summary", "educational_objective", "difficulty", "primary_disorder_id"):
             setattr(case, name, getattr(revision, name))
         case.current_revision = revision
@@ -398,6 +442,44 @@ def withdraw_plan(actor_id, session_id, plan_id, expected_digest, key, request_i
         case.is_active = False
         case.save(update_fields=["is_active", "updated_at"])
         return _withdraw_applied(plan, actor, request_id, key), True
+
+
+def reinstate_plan(actor_id, session_id, plan_id, expected_digest, request_id):
+    """Freeze a fresh, separately approved plan for a withdrawn revision.
+
+    Reinstatement never reuses the earlier approval: it creates a new frozen
+    plan bound to the withdrawal receipt, which must pass approve + MFA apply.
+    """
+    with policy_lock():
+        actor = _actor(actor_id, session_id, "cms_publication_reinstate_cases")
+        prior = CasePublicationPlan.objects.select_for_update().select_related("revision").filter(pk=plan_id).first()
+        if prior is None:
+            raise CMSFailure("NOT_FOUND", 404)
+        if expected_digest != prior.manifest_digest:
+            raise CMSFailure("MANIFEST_STALE", 412)
+        if prior.status != "withdrawn":
+            raise CMSFailure("INVALID_TRANSITION", 409)
+        case, revision = _lock_revision(prior.revision.case_id, prior.revision_id)
+        _reinstatement_ready(case, revision)
+        blockers, latest = _review_status(revision)
+        if blockers:
+            failure = CMSFailure("PUBLICATION_BLOCKED", 409)
+            failure.detail["blockers"] = blockers
+            raise failure
+        manifest = _reinstatement_manifest(case, revision, latest, prior)
+        manifest_digest = _digest(manifest)
+        existing = CasePublicationPlan.objects.filter(
+            manifest_digest=manifest_digest,
+            status__in=("frozen", "approved", "applied")).first()
+        if existing is not None:
+            return existing, False
+        plan = CasePublicationPlan.objects.create(revision=revision,
+            previous_revision_id=case.current_revision_id, manifest=manifest,
+            manifest_digest=manifest_digest, created_by=actor)
+        AdminAuditEvent.objects.create(actor=actor, action="case.publication_reinstatement_frozen",
+            outcome="success", target_kind="clinical-case", target_id=case.pk,
+            new_revision=revision.version, request_id=request_id, reason="CONTENT_UPDATE")
+        return plan, True
 
 
 def detail_plan(actor_id, session_id, plan_id):
