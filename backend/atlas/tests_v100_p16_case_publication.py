@@ -253,6 +253,98 @@ class CasePublicationContractTests(CasePublicationFixture, TestCase):
         self.assertEqual(self.post(self.client_owner,endpoint+"withdraw/",{
             "manifest_digest":plan["manifest_digest"],"idempotency_key":withdrawal_key}).status_code,200)
 
+    def test_withdrawn_revision_can_be_reapproved_after_rights_revocation(self):
+        from .views import public_available_clinical_cases
+        endpoint, body = self.prepared_apply()
+        self.assertEqual(self.post(self.client_owner, endpoint + "apply/", body).status_code, 200)
+        self.case.refresh_from_db()
+        attempt, created = start_or_resume_case_attempt(user=self.normal, clinical_case=self.case)
+        self.assertTrue(created)
+        self.rev.refresh_from_db()
+        published_at = self.rev.published_at
+        self.assertFalse(self.client_owner.get(BASE + self.root() + "reviews/").json()["can_re_review"])
+        self.assertEqual(self.review("rights", rights=self.permission()).status_code, 409)
+        revoked = self.review("rights", outcome="revoked", evidence=[])
+        self.assertEqual(revoked.status_code, 201, revoked.content[:450])
+        self.case.refresh_from_db()
+        self.assertFalse(self.case.is_active)
+        self.assertFalse(public_available_clinical_cases().filter(pk=self.case.pk).exists())
+        self.assertTrue(self.client_owner.get(BASE + self.root() + "reviews/").json()["can_re_review"])
+        limited = self.user("cannot-renew-rights", staff=True, caps=("cms_enter", "cms_cases_view"))
+        self.assertEqual(self.review("rights", rights=self.permission(), client=self.sign_in(limited)).status_code, 403)
+        renewed = self.review("rights", rights=self.permission())
+        self.assertEqual(renewed.status_code, 201, renewed.content[:450])
+        self.case.refresh_from_db()
+        self.assertFalse(self.case.is_active)
+        frozen = self.post(self.client_owner, endpoint + "reinstate/", {
+            "manifest_digest": body["manifest_digest"]})
+        self.assertEqual(frozen.status_code, 201, frozen.content[:450])
+        stale_plan = frozen.json()
+        self.assertEqual(self.review("rights", rights=self.permission()).status_code, 201)
+        stale_endpoint = f"publication/cases/plans/{stale_plan['plan_id']}/"
+        self.assertEqual(self.post(self.client_owner, stale_endpoint + "approve/", {
+            "manifest_digest": stale_plan["manifest_digest"], "self_review_ack": True}).status_code, 412)
+        frozen = self.post(self.client_owner, endpoint + "reinstate/", {
+            "manifest_digest": body["manifest_digest"]})
+        self.assertEqual(frozen.status_code, 201, frozen.content[:450])
+        plan = frozen.json()
+        self.assertNotEqual(plan["manifest"]["review_ids"]["rights"],
+                            CasePublicationPlan.objects.get(pk=plan["manifest"]["reinstates_plan_id"]).manifest["review_ids"]["rights"])
+        new_endpoint = f"publication/cases/plans/{plan['plan_id']}/"
+        self.assertEqual(self.post(self.client_owner, new_endpoint + "approve/", {
+            "manifest_digest": plan["manifest_digest"], "self_review_ack": True}).status_code, 200)
+        self.step_up(self.client_owner, self.owner, "case_publish", self.rev.pk,
+                     {"manifest_digest": plan["manifest_digest"]})
+        applied = self.post(self.client_owner, new_endpoint + "apply/", {
+            "manifest_digest": plan["manifest_digest"], "idempotency_key": str(uuid.uuid4())})
+        self.assertEqual(applied.status_code, 200, applied.content[:450])
+        self.assertTrue(public_available_clinical_cases().filter(pk=self.case.pk).exists())
+        self.rev.refresh_from_db()
+        self.assertEqual(self.rev.published_at, published_at)
+        self.case.refresh_from_db()
+        resumed, created = start_or_resume_case_attempt(user=self.normal, clinical_case=self.case)
+        self.assertFalse(created)
+        self.assertEqual(resumed.pk, attempt.pk)
+
+    def test_re_review_after_source_change_does_not_deadlock_old_decisions(self):
+        endpoint, body = self.prepared_apply()
+        self.assertEqual(self.post(self.client_owner, endpoint + "apply/", body).status_code, 200)
+        self.source.citation = "Updated synthetic source citation"
+        self.source.save(update_fields=["citation"])
+        self.assertEqual(self.review("rights", outcome="revoked", evidence=[]).status_code, 201)
+        stale_source = self.review("scientific")
+        self.assertEqual(stale_source.status_code, 409)
+        self.assertEqual(stale_source.json()["code"], "SOURCE_REVIEW_STALE")
+        self.assertEqual(self.review("source").status_code, 201)
+        science = self.review("scientific")
+        self.assertEqual(science.status_code, 201, science.content[:450])
+        rights = self.review("rights", rights=self.permission())
+        self.assertEqual(rights.status_code, 201, rights.content[:450])
+        response = self.post(self.client_owner, endpoint + "reinstate/", {"manifest_digest": body["manifest_digest"]})
+        self.assertEqual(response.status_code, 201, response.content[:450])
+
+    def test_source_reviewer_authority_must_still_be_current_for_science(self):
+        from django.contrib.auth.models import Permission
+        reviewer = self.user("source-reviewer-revoked", staff=True, caps=(
+            "cms_enter", "cms_cases_view", "cms_review_decide_cases_source"))
+        self.assertEqual(self.review("source", client=self.sign_in(reviewer)).status_code, 201)
+        reviewer.user_permissions.remove(Permission.objects.get(
+            content_type__app_label="atlas", content_type__model="rolepolicy",
+            codename="cms_review_decide_cases_source"))
+        response = self.review("scientific")
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["code"], "SOURCE_REVIEW_STALE")
+
+    def test_re_review_rejects_a_corrupt_withdrawn_revision(self):
+        endpoint, body = self.prepared_apply()
+        self.assertEqual(self.post(self.client_owner, endpoint + "apply/", body).status_code, 200)
+        self.assertEqual(self.review("rights", outcome="revoked", evidence=[]).status_code, 201)
+        CaseTransition.objects.filter(revision=self.rev).update(is_active=False)
+        response = self.review("rights", rights=self.permission())
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["code"], "CASE_GRAPH_INVALID")
+        self.assertFalse(self.client_owner.get(BASE + self.root() + "reviews/").json()["can_re_review"])
+
     def test_withdrawn_revision_reinstates_only_with_fresh_approval_and_mfa(self):
         from .views import public_available_clinical_cases
         endpoint, body = self.prepared_apply()
@@ -497,6 +589,61 @@ class CasePublicationContractTests(CasePublicationFixture, TestCase):
 
 @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
 class CasePublicationConcurrencyTests(CasePublicationFixture, TransactionTestCase):
+    @skipUnlessDBFeature("has_select_for_update")
+    def test_concurrent_re_review_and_reinstatement_cannot_apply_stale_approval(self):
+        from .cms_case_editor import revision_etag
+        from .cms_case_publication import apply_plan, review_revision
+        from .cms_policy import CMSFailure
+
+        endpoint, body = self.prepared_apply()
+        self.assertEqual(self.post(self.client_owner, endpoint + "apply/", body).status_code, 200)
+        self.assertEqual(self.review("rights", outcome="revoked", evidence=[]).status_code, 201)
+        self.assertEqual(self.review("rights", rights=self.permission()).status_code, 201)
+        result = self.post(self.client_owner, endpoint + "reinstate/", {"manifest_digest": body["manifest_digest"]})
+        self.assertEqual(result.status_code, 201)
+        plan = result.json()
+        new_endpoint = f"publication/cases/plans/{plan['plan_id']}/"
+        self.assertEqual(self.post(self.client_owner, new_endpoint + "approve/", {
+            "manifest_digest": plan["manifest_digest"], "self_review_ack": True}).status_code, 200)
+        self.step_up(self.client_owner, self.owner, "case_publish", self.rev.pk,
+                     {"manifest_digest": plan["manifest_digest"]})
+        self.rev.refresh_from_db()
+        expected = revision_etag(self.rev)
+        data = {"kind": "rights", "outcome": "approved", "self_review_ack": True,
+                "evidence": [{"source_id": self.source.pk, "locator": "Synthetic refreshed rights"}],
+                "rights": self.permission()}
+        session_id = self.client_owner.session["cms_session_id"]
+        barrier = Barrier(2)
+
+        def worker(action):
+            close_old_connections()
+            connection.ensure_connection()
+            try:
+                barrier.wait(timeout=15)
+                if action == "review":
+                    review_revision(self.owner.pk, session_id, self.case.pk, self.rev.pk,
+                                    expected, data, uuid.uuid4())
+                else:
+                    apply_plan(self.owner.pk, session_id, plan["plan_id"], plan["manifest_digest"],
+                               str(uuid.uuid4()), uuid.uuid4())
+                return action, "success"
+            except CMSFailure as error:
+                return action, str(error.detail["code"])
+            finally:
+                connection.close()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = dict(pool.map(worker, ("review", "apply")))
+        self.case.refresh_from_db()
+        if results["apply"] == "success":
+            self.assertEqual(results["review"], "REVISION_NOT_REINSTATEABLE")
+            self.assertTrue(self.case.is_active)
+        else:
+            self.assertEqual(results, {"review": "success", "apply": "MANIFEST_STALE"})
+            self.assertFalse(self.case.is_active)
+        self.assertEqual(CasePublicationReceipt.objects.filter(event_type="applied").count(),
+                         2 if self.case.is_active else 1)
+
     @skipUnlessDBFeature("has_select_for_update")
     def test_concurrent_apply_with_same_key_commits_once(self):
         from .cms_case_publication import apply_plan

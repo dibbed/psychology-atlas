@@ -44,6 +44,10 @@ def _candidate(case, revision):
             or case.seed_managed or case.current_revision_id == revision.pk
             or CaseAttempt.objects.filter(revision=revision).exists()):
         raise CMSFailure("REVISION_NOT_PUBLISHABLE", 409)
+    _validate_publication_content(revision)
+
+
+def _validate_publication_content(revision):
     if (not revision.title.strip() or not revision.patient_summary.strip()
             or not revision.educational_objective.strip()):
         raise CMSFailure("REQUIRED_CASE_METADATA_MISSING", 409)
@@ -128,14 +132,14 @@ def _reviewer_check(actor, case, revision, policy, acknowledgement):
         reviewer_conflict(actor, Subject(), policy)
 
 
-def _review_status(revision, lock=True):
+def _review_status(revision, lock=True, *, kinds=KINDS):
     policy = current_policy()
     digest = case_revision_fingerprint(revision)
     latest = {}
-    for row in CasePublicationReview.objects.filter(revision=revision).order_by("-pk"):
+    for row in CasePublicationReview.objects.filter(revision=revision, kind__in=kinds).order_by("-pk"):
         latest.setdefault(row.kind, row)
     blockers = []
-    for kind in KINDS:
+    for kind in kinds:
         review = latest.get(kind)
         if review is None or review.outcome != "approved":
             blockers.append(kind.upper() + "_REVIEW_REQUIRED")
@@ -189,15 +193,18 @@ def review_revision(actor_id, session_id, case_id, revision_id, expected, data, 
         _reviewer_check(actor, case, revision, policy, data.get("self_review_ack"))
         rights = _rights(data.get("rights")) if kind == "rights" and outcome == "approved" else {}
         if outcome == "approved":
-            _candidate(case, revision)
+            if revision.status == CaseRevision.Status.PUBLISHED:
+                _reinstatement_ready(case, revision)
+            else:
+                _candidate(case, revision)
             evidence = _evidence(data.get("evidence"))
             if kind != "rights" and data.get("rights") not in (None, {}):
                 raise CMSFailure("INVALID_FIELDS", 400)
             if kind in ("scientific", "rights"):
-                existing_blockers, latest = _review_status(revision)
+                source_blockers, latest = _review_status(revision, kinds=("source",))
                 if "source" not in latest or latest["source"].outcome != "approved":
                     raise CMSFailure("SOURCE_REVIEW_REQUIRED", 409)
-                if any(b in existing_blockers for b in ("SOURCE_CONTENT_CHANGED", "SOURCE_DEPENDENCY_CHANGED", "SOURCE_UNAVAILABLE", "POLICY_CHANGED")):
+                if source_blockers:
                     raise CMSFailure("SOURCE_REVIEW_STALE", 409)
         else:
             if data.get("evidence") not in (None, []) or data.get("rights") not in (None, {}):
@@ -245,6 +252,7 @@ def _reinstatement_ready(case, revision):
             or revision.status != CaseRevision.Status.PUBLISHED
             or case.current_revision_id != revision.pk or case.is_active):
         raise CMSFailure("REVISION_NOT_REINSTATEABLE", 409)
+    _validate_publication_content(revision)
 
 
 def _reinstatement_manifest(case, revision, latest, withdrawn):
@@ -553,7 +561,13 @@ def review_details(actor_id, session_id, case_id, revision_id):
         _actor(actor_id, session_id, "cms_cases_validate")
         case, revision = _lock_revision(case_id, revision_id)
         blockers, latest = _review_status(revision)
+        try:
+            _reinstatement_ready(case, revision)
+            can_re_review = True
+        except CMSFailure:
+            can_re_review = False
         return {"case_id": case.pk, "revision_id": revision.pk,
+            "can_re_review": can_re_review,
             "revision_digest": case_revision_fingerprint(revision),
             "review_blockers": blockers,
             "plans": [{"id": str(plan.pk), "status": plan.status,
