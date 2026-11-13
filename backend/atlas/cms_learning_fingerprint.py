@@ -11,6 +11,7 @@ from django.core.serializers.json import DjangoJSONEncoder
 
 from . import models
 from .cms_policy import CMSFailure
+from .cms_public_rights import scope_visible
 
 
 KIND_MODELS = {
@@ -69,6 +70,8 @@ def _dependency_snapshot(dependency_ids):
             issues.append("DEPENDENCY_MISSING")
         if any(not row["is_active"] for row in rows):
             issues.append("INACTIVE_DEPENDENCY")
+        if any(not scope_visible(name, row["id"]) for row in rows):
+            issues.append("DEPENDENCY_PUBLIC_UNAVAILABLE")
     return result, issues
 
 

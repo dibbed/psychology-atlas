@@ -177,3 +177,64 @@ class LearningDraftFingerprintTests(SecurityFixture, TestCase):
                 self.assertNotIn("CHOICE_TEXT_MISSING", self.item(kind, item.pk)[0]["content_issues"])
         self.assertFalse(StudyActivity.objects.exists())
         self.assertFalse(PublicationPreparationDossier.objects.exists())
+
+    def test_dependency_rights_restriction_stales_learning_preparation(self):
+        from django.utils import timezone
+        from .cms_governance import create_governance, mutate_governance, resource_binding
+        from .cms_models import AdminSession
+        from .cms_public_rights import public_visible
+        from .models import SourceReference
+
+        row, _ = self.item("quiz", self.quiz.pk)
+        selected = self.post(self.client, "publication/selections/", {
+            "domain": "learning", "request_key": str(uuid.uuid4()),
+            "entries": [{"kind": "quiz", "resource_id": self.quiz.pk,
+                         "expected_digest": row["content_digest"]}],
+        }).json()
+        prep_key = str(uuid.uuid4())
+        prepare_path = f'publication/selections/{selected["id"]}/prepare/'
+        prepared = self.post(self.client, prepare_path, {
+            "request_key": prep_key, "selection_digest": selected["selection_digest"],
+        })
+        self.assertEqual(prepared.status_code, 201, prepared.content[:300])
+        editor = self.user("p16-rights-editor", staff=True,
+                           caps=("cms_enter", "cms_core_view", "cms_core_edit"))
+        self.sign_in(editor)
+        editor_session = AdminSession.objects.get(user=editor).pk
+        owner_session = AdminSession.objects.get(user=self.owner).pk
+        source = SourceReference.objects.create(title="Synthetic rights source",
+            citation="Synthetic fixture", url="https://example.org/rights",
+            verification_status="source_checked")
+        evidence = [{"source_id": source.pk, "locator": "Synthetic test scope"}]
+        record = create_governance(editor.pk, editor_session, "rights", {
+            "resource_type": "disorder", "resource_id": self.disorder.pk,
+            "resource_version": resource_binding("disorder", self.disorder.pk)["resource_version"],
+            "material": "metadata", "intended_use": "public_display", "status": "restricted",
+            "rightsholder": "Synthetic holder", "holder_identification": "Synthetic evidence",
+            "holder_evidence": evidence, "evidence": evidence, "public_access": "public",
+            "reviewed_on": timezone.localdate().isoformat(), "effective_on": timezone.localdate().isoformat(),
+            "expires_on": None, "review_on": None, "limitations": "Synthetic scope",
+            "territory": "", "conflict_note": "", "reason": "CORRECTION_REQUIRED",
+        }, str(uuid.uuid4()))
+        record = mutate_governance(self.owner.pk, owner_session, "rights", record.pk, record.version,
+            "assign", {"reviewer_id": self.owner.pk}, str(uuid.uuid4()))
+        mutate_governance(self.owner.pk, owner_session, "rights", record.pk, record.version,
+            "decide", {"outcome": "approve", "reason": "RIGHTS_SCOPE_VERIFIED", "self_review_ack": False},
+            str(uuid.uuid4()))
+        self.assertFalse(public_visible(self.disorder))
+        current = self.client.get(BASE + f'publication/preparations/{prepared.json()["id"]}/verify/')
+        self.assertEqual(current.status_code, 200, current.content[:300])
+        self.assertFalse(current.json()["snapshot_current"])
+        updated, _ = self.item("quiz", self.quiz.pk)
+        self.assertEqual(updated["content_digest"], row["content_digest"])
+        self.assertIn("DEPENDENCY_PUBLIC_UNAVAILABLE", updated["content_issues"])
+        self.assertEqual(self.post(self.client, prepare_path, {
+            "request_key": str(uuid.uuid4()), "selection_digest": selected["selection_digest"],
+        }).status_code, 409)
+        recovered = self.post(self.client, prepare_path, {
+            "request_key": prep_key, "selection_digest": selected["selection_digest"],
+        })
+        self.assertEqual(recovered.status_code, 200)
+        self.assertTrue(recovered.json()["recovered"])
+        self.assertEqual(recovered.json()["id"], prepared.json()["id"])
+        self.assertFalse(StudyActivity.objects.exists())
