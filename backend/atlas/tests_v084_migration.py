@@ -13,9 +13,13 @@ from tempfile import TemporaryDirectory
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.test import TransactionTestCase
+from django.db import connection
+from unittest import skipUnless
 from django.utils import timezone
 
 
+@skipUnless(connection.vendor == "sqlite",
+            "Historical migration rehearsal uses PRAGMA and a SQLite file subprocess.")
 class StudySessionMigrationTests(TransactionTestCase):
     migrate_from = ("atlas", "0031_v083_recommendation_feedback")
     migrate_to = ("atlas", "0032_v084_study_sessions")

@@ -6,6 +6,7 @@ from datetime import date, timedelta
 from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import skipUnless
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
@@ -6748,6 +6749,11 @@ class V081StudyPlanningFoundationTests(APITestCase):
         )
 
 
+# Historical SQLite upgrade/replay fixtures: they migrate backward and forward in
+# place and assert SQLite row/sequence behaviour. PostgreSQL cannot run this
+# rehearsal safely inside the shared test database, so it is explicitly skipped
+# there and the PostgreSQL gap stays recorded rather than silently failing.
+@skipUnless(connection.vendor == "sqlite", "Historical migration rehearsal is SQLite-specific.")
 class V081StudyPlanningMigrationTests(TransactionTestCase):
     reset_sequences = True
 

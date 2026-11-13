@@ -18,7 +18,9 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
+from django.db import connection
 from django.test import TestCase, TransactionTestCase
+from unittest import skipUnless
 from django.utils import timezone
 
 from .models import RecommendationFeedback
@@ -87,6 +89,8 @@ class V083RecommendationFeedbackAuditTests(TestCase):
         self.assertIsNone(RecommendationFeedback.objects.get(pk=event.pk).target_id)
 
 
+@skipUnless(connection.vendor == "sqlite",
+            "Historical migration rehearsal uses PRAGMA and a SQLite file subprocess.")
 class V083RecommendationFeedbackMigrationTests(TransactionTestCase):
     reset_sequences = True
     migrate_from = ("atlas", "0030_studyblock_ck_study_block_started_status_and_more")
