@@ -194,6 +194,54 @@ class OwnerReleaseReadinessTests(SecurityFixture, TestCase):
                 cursor.execute("DROP INDEX qa_full_gate_idx")
                 cursor.execute("DROP TABLE qa_partial_unique")
 
+    def test_nullable_idempotency_key_does_not_satisfy_uniqueness_gate(self):
+        import io
+        import json
+        from unittest.mock import patch
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+        from django.db import connection
+        from .cms_job_models import AdminJob
+        from .cms_publication_preparation_models import PublicationPreparationDossier
+        from .cms_publication_selection_models import PublicationCandidateSelection
+        from .cms_release_readiness import atlas_runtime_table_evidence
+
+        original = connection.introspection.get_table_description
+        with connection.cursor() as cursor:
+            cursor.execute("CREATE TABLE qa_nullable_unique "
+                           "(actor_ref varchar(64), request_key varchar(36), UNIQUE(actor_ref, request_key))")
+            cursor.execute("INSERT INTO qa_nullable_unique VALUES (NULL, 'same'), (NULL, 'same')")
+            cursor.execute("SELECT COUNT(*) FROM qa_nullable_unique WHERE actor_ref IS NULL")
+            self.assertEqual(cursor.fetchone()[0], 2)
+
+        try:
+            for model, name in ((AdminJob, "actor_ref"), (AdminJob, "request_key"),
+                                (PublicationCandidateSelection, "request_key"),
+                                (PublicationPreparationDossier, "request_key")):
+                with self.subTest(model=model.__name__, column=name):
+                    def nullable_key(cursor, table):
+                        columns = original(cursor, table)
+                        return [column._replace(null_ok=True)
+                                if table == model._meta.db_table and column.name == name else column
+                                for column in columns]
+
+                    with patch.object(connection.introspection, "get_table_description", side_effect=nullable_key):
+                        broken = atlas_runtime_table_evidence()
+                        self.assertTrue(broken["runtime_columns_present"])
+                        self.assertFalse(broken["runtime_idempotency_uniques_present"])
+                        self.assertEqual(broken["missing_runtime_idempotency_unique_count"], 1)
+                        response = self.owner_client.get(BASE + "operations/release-readiness/")
+                        self.assertEqual(response.status_code, 503)
+                        self.assertEqual(response.json()["code"], "ATLAS_RUNTIME_UNIQUES_MISSING")
+                        output = io.StringIO()
+                        with self.assertRaises(CommandError):
+                            call_command("cms_release_gate", stdout=output, stderr=io.StringIO())
+                        self.assertIn("atlas_runtime_idempotency_constraints_missing",
+                                      json.loads(output.getvalue())["hard_blockers"])
+        finally:
+            with connection.cursor() as cursor:
+                cursor.execute("DROP TABLE qa_nullable_unique")
+
     def test_missing_essential_foreign_key_blocks_http_and_cli(self):
         """A damaged relation must fail closed despite complete migration records."""
         import io

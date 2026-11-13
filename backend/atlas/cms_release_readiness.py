@@ -116,9 +116,9 @@ def atlas_runtime_table_evidence():
                 missing_uniques += len(must_be_unique)
                 missing_foreign_keys += len(foreign_keys)
                 continue
-            actual = {column.name for column in connection.introspection.get_table_description(
+            actual = {column.name: column for column in connection.introspection.get_table_description(
                 cursor, model._meta.db_table)}
-            missing_columns += len(required - actual)
+            missing_columns += len(required - actual.keys())
             if must_be_unique or foreign_keys:
                 constraints = connection.introspection.get_constraints(cursor, model._meta.db_table)
                 unique_indexes = (_unconditional_unique_indexes(cursor, model._meta.db_table)
@@ -128,8 +128,11 @@ def atlas_runtime_table_evidence():
                                      if info.get("unique") and (
                                          name in unique_indexes or
                                          (connection.vendor == "sqlite" and not info.get("index")))}
-                missing_uniques += sum(frozenset(key) not in available_uniques
-                                       for key in must_be_unique)
+                missing_uniques += sum(
+                    frozenset(key) not in available_uniques
+                    or any(column not in actual or actual[column].null_ok is not False for column in key)
+                    for key in must_be_unique
+                )
                 available_foreign_keys = {
                     (columns[0], tuple(info["foreign_key"]))
                     for info in constraints.values() if info.get("foreign_key")
