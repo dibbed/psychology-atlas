@@ -4,7 +4,7 @@ import {cms,CmsError} from "@/lib/cms";
 import {useCms} from "@/components/cms/CmsShell";
 
 type Stage="source"|"scientific"|"rights";
-type ReviewStatus={revision_digest:string;review_blockers:string[];
+type ReviewStatus={revision_digest:string;review_blockers:string[];can_re_review:boolean;
   reviews:Partial<Record<Stage,{id:number;outcome:string;revision_digest:string;created_at:string}>>;
   plans:{id:string;status:string;manifest_digest:string;created_at:string}[]};
 type Plan={id:string;status:string;manifest_digest:string;case_id:number;revision_id:number;
@@ -180,8 +180,9 @@ export function CasePublicationWorkflow({caseId,revisionId,etag,digest,status,on
         موانع: {state.review_blockers.join(" ، ")}
       </p>}
     </div>}
-    {isDraft&&stages.some(canReview)&&<form className="stack" onSubmit={review}>
+    {(isDraft||state?.can_re_review)&&stages.some(canReview)&&<form className="stack" onSubmit={review}>
       <h3>ثبت تصمیم بازبینی</h3>
+      {!isDraft&&<p className="muted">بازبینی تازه فقط برای همین نسخهٔ خارج‌شده از نمایش ثبت می‌شود؛ بازگردانی نمایش به طرح، تأیید و MFA جداگانه نیاز دارد.</p>}
       <label>نوع بررسی
         <select value={selectedStage} onChange={e=>{setStage(e.target.value as Stage);setAck(false);}}>
           {stages.filter(canReview).map(kind=><option key={kind} value={kind}>{kinds[kind]}</option>)}

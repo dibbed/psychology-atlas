@@ -337,7 +337,7 @@ function historySnapshot(){
   check(current.data.current_revision_id===draft.revision_id&&current.data.revision_status==='published',
     'Successful browser Apply switches current revision to the reviewed draft');
   const selectedHistory=owner.locator('section[aria-labelledby="case-versions-title"] li').filter({hasText:'نسخهٔ '+current.data.revision_version});
-  await selectedHistory.getByText('published',{exact:false}).waitFor();
+  await selectedHistory.filter({hasText:'published'}).waitFor();
   check((await selectedHistory.textContent()).includes('نسخهٔ جاری'),
     'Revision history refreshes the published status and current revision after Apply');
   check(JSON.stringify(old.data.steps)===JSON.stringify(unchanged.data.steps)&&old.data.revision_status==='published',
@@ -389,6 +389,32 @@ function historySnapshot(){
     analytics.data.recent_attempts[0].revision_number===1&&analytics.data.recent_attempts[0].event_count===3&&
     analytics.data.completed_paths[0].revision_number===1&&analytics.data.dimensions[0].revision_number===1,
     'Personal analytics retain the original scored revision, events, rubric and completed path after withdrawal');
+  // Revoke rights in the fixture, then renew them through the real review form.
+  const reviewRoute='/publication/cases/'+fixture.p12.case+'/revisions/'+draft.revision_id+'/reviews/';
+  const revisionEtag=(await query(owner,prefix+draft.revision_id+'/graph/')).etag;
+  const revoked=await post(reviewer,reviewRoute,{kind:'rights',outcome:'revoked',evidence:[],self_review_ack:true},revisionEtag);
+  check(revoked.status===201,'Rights revocation: '+JSON.stringify({status:revoked.status,code:revoked.data?.code}));
+  await reviewer.goto(origin+'/admin-console/content/cases');
+  await reviewer.getByRole('button',{name:'نسخهٔ منتشرشده',exact:true}).first().click();
+  const renewedPanel=reviewer.getByRole('heading',{name:'مرکز انتشار نسخهٔ کیس (P16)'}).locator('..');
+  await renewedPanel.getByLabel('نوع بررسی').selectOption('rights');
+  await renewedPanel.getByLabel('شناسهٔ SourceReference تأییدشده').fill(String(fixture.p12.source));
+  await renewedPanel.getByLabel('محل دقیق مدرک برای همین ادعا').fill('Renewed fictional rights evidence');
+  await renewedPanel.getByLabel('دارندهٔ حق',{exact:true}).fill('Synthetic original fixture owner');
+  await renewedPanel.getByLabel('مبنای شناسایی دارندهٔ حق').fill('Renewed fictional holder declaration');
+  await renewedPanel.getByLabel('شرح دقیق اجازهٔ نمایش عمومی متن دیجیتال').fill('Renewed isolated fictional permission');
+  await renewedPanel.getByLabel('قلمرو مجوز').fill('Synthetic QA territory');
+  await renewedPanel.getByLabel('تاریخ بازبینی بعدی').fill(future(120));
+  await renewedPanel.getByLabel('انقضای مجوز، در صورت وجود').fill(future(180));
+  await renewedPanel.getByRole('checkbox').first().check();
+  await renewedPanel.getByRole('button',{name:'ثبت تصمیم نسخه‌مند'}).click();
+  await renewedPanel.getByRole('status').getByText(/تصمیم بازبین ثبت شد/).waitFor();
+  const renewedRights=await query(owner,reviewRoute);
+  check(renewedRights.data.reviews.rights.outcome==='approved'&&
+    renewedRights.data.reviews.rights.id!==revoked.data.id&&
+    (await publicRequest(owner,'/cases/'+fixture.p12.slug+'/',null)).status===404,
+    'Withdrawn revision accepts a fresh version-bound rights review without public activation');
+  await panel.getByRole('button',{name:'تازه‌سازی وضعیت بررسی‌ها'}).click();
   // A withdrawn case requires a fresh plan, independent approval and fresh MFA.
   await panel.getByRole('checkbox').last().check();
   await panel.getByRole('button',{name:'ساخت طرح بازگردانی نمایش عمومی'}).click();
@@ -398,6 +424,7 @@ function historySnapshot(){
   const reinstatementPlan=await query(owner,reinstatementRoute);
   check(reinstatement!==p16Plan&&reinstatementPlan.status===200&&
     reinstatementPlan.data.status==='frozen'&&reinstatementPlan.data.receipts.length===0&&
+    reinstatementPlan.data.manifest.review_ids.rights===renewedRights.data.reviews.rights.id&&
     (await publicRequest(owner,'/cases/'+fixture.p12.slug+'/',null)).status===404,
     'Reinstatement creates a separate frozen plan without restoring public visibility');
   await approvalPanel.getByPlaceholder('UUID مانیفست').fill(reinstatement);

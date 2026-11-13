@@ -547,7 +547,7 @@ if phase == "p12":
     card = Flashcard.objects.create(slug="p12-synthetic-history-card", front="Synthetic front", back="Synthetic back")
     review_flashcard(user=attempt.user, flashcard=card, rating="good")
     for name, caps in (
-        ("case_reviewer", ["cms_review_decide_cases_source", "cms_review_decide_cases_rights", "cms_rights_decide"]),
+        ("case_reviewer", ["cms_review_decide_cases_source", "cms_review_decide_cases_rights", "cms_rights_decide", "cms_rights_revoke"]),
         ("case_approver", ["cms_review_decide_cases_scientific", "cms_publication_approve_cases", "cms_publication_verify_cases"]),
     ):
         user = User.objects.create_user("qa_p12_" + name, password=password, is_staff=True)
