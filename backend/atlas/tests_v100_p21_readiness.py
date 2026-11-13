@@ -137,6 +137,63 @@ class OwnerReleaseReadinessTests(SecurityFixture, TestCase):
                           report["hard_blockers"])
             self.assertIsNone(report["preparation"]["recorded_dossiers"])
 
+    def test_partial_unique_index_does_not_satisfy_idempotency_gate(self):
+        import io
+        import json
+        from unittest.mock import patch
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+        from django.db import connection
+        from .cms_publication_preparation_models import PublicationPreparationDossier
+        from .cms_release_readiness import atlas_runtime_table_evidence
+
+        target = PublicationPreparationDossier._meta.db_table
+        original = connection.introspection.get_constraints
+        with connection.cursor() as cursor:
+            cursor.execute("CREATE TABLE qa_partial_unique (request_key varchar(36) NOT NULL)")
+            cursor.execute("CREATE UNIQUE INDEX qa_partial_fixture_idx ON qa_partial_unique "
+                           "(request_key) WHERE request_key <> '00000000-0000-0000-0000-000000000000'")
+            cursor.execute("INSERT INTO qa_partial_unique VALUES "
+                           "('00000000-0000-0000-0000-000000000000'), "
+                           "('00000000-0000-0000-0000-000000000000')")
+            cursor.execute(f'CREATE UNIQUE INDEX qa_partial_gate_idx ON "{target}" '
+                           "(request_key) WHERE request_key <> '00000000-0000-0000-0000-000000000000'")
+            cursor.execute(f'CREATE UNIQUE INDEX qa_full_gate_idx ON "{target}" (request_key)')
+
+        def only_index(index_name):
+            def replace_unique(cursor, table_name):
+                constraints = original(cursor, table_name)
+                if table_name == target:
+                    constraints = {name: info for name, info in constraints.items()
+                                   if not (info.get("unique") and
+                                           set(info.get("columns") or ()) == {"request_key"})
+                                   or name == index_name}
+                return constraints
+            return replace_unique
+
+        try:
+            with patch.object(connection.introspection, "get_constraints",
+                              side_effect=only_index("qa_partial_gate_idx")):
+                evidence = atlas_runtime_table_evidence()
+                self.assertFalse(evidence["runtime_idempotency_uniques_present"])
+                self.assertEqual(evidence["missing_runtime_idempotency_unique_count"], 1)
+                response = self.owner_client.get(BASE + "operations/release-readiness/")
+                self.assertEqual(response.status_code, 503)
+                self.assertEqual(response.json()["code"], "ATLAS_RUNTIME_UNIQUES_MISSING")
+                output = io.StringIO()
+                with self.assertRaises(CommandError):
+                    call_command("cms_release_gate", stdout=output, stderr=io.StringIO())
+                self.assertIn("atlas_runtime_idempotency_constraints_missing",
+                              json.loads(output.getvalue())["hard_blockers"])
+            with patch.object(connection.introspection, "get_constraints",
+                              side_effect=only_index("qa_full_gate_idx")):
+                self.assertTrue(atlas_runtime_table_evidence()["runtime_idempotency_uniques_present"])
+        finally:
+            with connection.cursor() as cursor:
+                cursor.execute("DROP INDEX qa_partial_gate_idx")
+                cursor.execute("DROP INDEX qa_full_gate_idx")
+                cursor.execute("DROP TABLE qa_partial_unique")
+
     def test_missing_essential_foreign_key_blocks_http_and_cli(self):
         """A damaged relation must fail closed despite complete migration records."""
         import io

@@ -47,6 +47,23 @@ def atlas_migration_evidence():
     }
 
 
+def _unconditional_unique_indexes(cursor, table):
+    if connection.vendor == "sqlite":
+        cursor.execute(f"PRAGMA index_list({connection.ops.quote_name(table)})")
+        return {row[1] for row in cursor.fetchall()
+                if len(row) >= 5 and row[2] and not row[4]}
+    if connection.vendor == "postgresql":
+        cursor.execute("""
+            SELECT idx.relname FROM pg_catalog.pg_index AS i
+            JOIN pg_catalog.pg_class AS idx ON idx.oid = i.indexrelid
+            WHERE i.indrelid = pg_catalog.to_regclass(%s)
+              AND i.indisunique AND i.indisvalid AND i.indisready AND i.indimmediate
+              AND i.indpred IS NULL AND i.indexprs IS NULL
+        """, [table])
+        return {row[0] for row in cursor.fetchall()}
+    return set()
+
+
 def atlas_runtime_table_evidence():
     """Check essential runtime tables, not a complete DB schema or release proof.
 
@@ -104,8 +121,13 @@ def atlas_runtime_table_evidence():
             missing_columns += len(required - actual)
             if must_be_unique or foreign_keys:
                 constraints = connection.introspection.get_constraints(cursor, model._meta.db_table)
+                unique_indexes = (_unconditional_unique_indexes(cursor, model._meta.db_table)
+                                  if must_be_unique else set())
                 available_uniques = {frozenset(info.get("columns") or ())
-                                     for info in constraints.values() if info.get("unique")}
+                                     for name, info in constraints.items()
+                                     if info.get("unique") and (
+                                         name in unique_indexes or
+                                         (connection.vendor == "sqlite" and not info.get("index")))}
                 missing_uniques += sum(frozenset(key) not in available_uniques
                                        for key in must_be_unique)
                 available_foreign_keys = {
