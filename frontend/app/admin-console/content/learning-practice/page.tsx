@@ -185,6 +185,7 @@ export default function PracticeCMS(){
       <h2>ویرایش آیتم #{selected.item_id}</h2>
       <p>وضعیت اعتبار: {selected.valid?"معتبر":"نیازمند اصلاح"} |
         {selected.history_protected?" حفاظت‌شده به‌علت سابقهٔ پاسخ":""}</p>
+      {selected.issues.includes("CHOICE_TEXT_MISSING")&&<p>متن یک گزینهٔ فعال خالی است.</p>}
       {!editable&&<p className="muted">ویرایش آیتم بایگانی، فعال، Seed یا دارای attempt مسدود است؛ تاریخچهٔ دانشجو حفظ می‌شود.</p>}
       <LearningArchiveAction key={"archive-"+kind+"-"+selected.item_id} kind={kind} itemId={selected.item_id}
         etag={etag} archivedAt={selected.archived_at} blocked={busy||dirty} onBusyChange={setBusy}

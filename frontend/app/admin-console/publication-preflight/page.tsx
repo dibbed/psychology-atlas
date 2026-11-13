@@ -91,6 +91,7 @@ const reasons:Record<string,string>={
   DEPENDENCY_MISSING:"حداقل یک وابستگی محتوایی یافت نشد.",
   TARGET_REQUIRED:"محتوا به مفهوم یا اختلال معتبر متصل نشده است.",
   QUESTION_INVALID:"یک پرسش، متن یا انتخاب‌های معتبر ندارد.",
+  CHOICE_TEXT_MISSING:"متن یک گزینهٔ فعال خالی است.",
   NO_ACTIVE_QUESTIONS:"هیچ پرسش فعالی ثبت نشده است.",
   TITLE_MISSING:"عنوان لازم ثبت نشده است.",
   CONTENT_MISSING:"متن اصلی لازم ناقص است.",

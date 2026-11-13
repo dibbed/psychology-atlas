@@ -190,7 +190,7 @@ export default function LearningQuizEditor(){
           const id=selected.quiz_id;setSelected(old=>old?.quiz_id===id?{...old,is_active:false,archived_at:at}:old);
           await Promise.all([load(id),refresh()]);
         }}/>
-      {selected.issues.length>0&&<ul>{selected.issues.map((issue,i)=><li key={i}><code dir="ltr">{issue}</code></li>)}</ul>}
+      {selected.issues.length>0&&<ul>{selected.issues.map((issue,i)=><li key={i}>{issue==="CHOICE_TEXT_MISSING"?"متن یک گزینهٔ فعال خالی است.":<code dir="ltr">{issue}</code>}</li>)}</ul>}
       {editable&&<form className="stack" onSubmit={saveMetadata}>
         <fieldset className="stack" disabled={busy||dirty}>
           <legend>اطلاعات آزمون غیرفعال</legend>
