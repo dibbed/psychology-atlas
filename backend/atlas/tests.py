@@ -7739,6 +7739,7 @@ class V082StudyBlockSchedulerTests(APITestCase):
         self.assertEqual(block.status, "corrupt")
 
 
+@skipUnless(connection.vendor == "sqlite", "Historical migration rehearsal is SQLite-specific.")
 class V082StudyBlockMigrationTests(TransactionTestCase):
     reset_sequences = True
     migrate_from = ("atlas", "0028_v081_study_plan_foundation")
