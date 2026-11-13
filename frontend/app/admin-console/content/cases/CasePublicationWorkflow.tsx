@@ -44,6 +44,7 @@ export function CasePublicationWorkflow({caseId,revisionId,etag,digest,status,on
   const canApprove=can("cms_publication_approve_cases");
   const canApply=can("cms_publication_apply_cases");
   const canWithdraw=can("cms_publication_withdraw_cases");
+  const canReinstate=can("cms_publication_reinstate_cases");
   const canVerify=can("cms_publication_verify_cases");
 
   const load=useCallback(async()=>{
@@ -115,6 +116,17 @@ export function CasePublicationWorkflow({caseId,revisionId,etag,digest,status,on
       await openPlan(plan.id);
       setActionAck(false);
       setSuccess("تأیید مانیفست ثبت شد. هنوز هیچ انتشار عمومی انجام نشده است.");
+    });
+  };
+  const reinstate=async()=>{
+    await safely(async()=>{
+      if(!plan||!actionAck)throw new Error("مانیفست و تأیید آگاهانه لازم‌اند.");
+      const response=await cms<{plan_id:string}>
+        ("/publication/cases/plans/"+plan.id+"/reinstate/",{method:"POST",
+          body:JSON.stringify({manifest_digest:plan.manifest_digest})});
+      await openPlan(response.data.plan_id);
+      setActionAck(false);
+      setSuccess("طرح بازگردانی ساخته شد. نمایش عمومی هنوز غیرفعال است؛ تأیید تازه و MFA جداگانه لازم است.");
     });
   };
   const execute=async(operation:"apply"|"withdraw")=>{
@@ -221,6 +233,11 @@ export function CasePublicationWorkflow({caseId,revisionId,etag,digest,status,on
         محتوای این مانیفست، مسئولیت انتشار و اثر آن بر نمایش عمومی را بررسی کردم.</label>
       {plan.status==="frozen"&&canApprove&&<button className="button secondary" type="button"
         disabled={busy||!actionAck} onClick={()=>void approve()}>تأیید مانیفست</button>}
+      {plan.status==="withdrawn"&&canReinstate&&<>
+        <p className="muted">بازگردانی، تأیید قبلی را دوباره به کار نمی‌برد: یک طرح تازه ساخته می‌شود و انتشار آن به تأیید مستقل و MFA تازه نیاز دارد. تاریخ انتشار اولیه حفظ می‌شود.</p>
+        <button className="button secondary" type="button" disabled={busy||!actionAck}
+          onClick={()=>void reinstate()}>ساخت طرح بازگردانی نمایش عمومی</button>
+      </>}
       {((plan.status==="approved"&&canApply)||(plan.status==="applied"&&canWithdraw))&&<>
         <label>روش احراز دوباره
           <select value={mfaMethod} onChange={e=>setMfaMethod(e.target.value as "totp"|"recovery")}>
