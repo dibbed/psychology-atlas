@@ -273,13 +273,15 @@ class DecidedRightsPublicTests(SecurityFixture, TransactionTestCase):
             url="https://example.org/rights", verification_status="source_checked")
         self.public = APIClient()
 
-    def propose(self, status, material="metadata", use="public_display", expires_on=None):
+    def propose(self, status, material="metadata", use="public_display", expires_on=None,
+                resource_type="disorder", resource=None):
         from .cms_governance import create_governance, resource_binding
         from django.utils import timezone
+        resource = resource or self.disorder
         evidence = [{"source_id": self.source.pk, "locator": "Synthetic scope, test only"}]
         return create_governance(self.editor.pk, self.editor_session, "rights", {
-            "resource_type": "disorder", "resource_id": self.disorder.pk,
-            "resource_version": resource_binding("disorder", self.disorder.pk)["resource_version"],
+            "resource_type": resource_type, "resource_id": resource.pk,
+            "resource_version": resource_binding(resource_type, resource.pk)["resource_version"],
             "material": material, "intended_use": use, "status": status,
             "rightsholder": "Synthetic fixture holder", "holder_identification": "Synthetic holder evidence",
             "holder_evidence": evidence, "evidence": evidence, "public_access": "public",
@@ -352,6 +354,22 @@ class DecidedRightsPublicTests(SecurityFixture, TransactionTestCase):
         cache.set("atlas_graph_revision", old_revision)
         cache.set("atlas_public_rights_scopes", {"scopes": set(), "inactive_sources": set()})
         self.assert_public(False)
+
+    def test_restricted_symptom_text_is_redacted_from_disorder_detail(self):
+        symptom = m.Symptom.objects.create(slug="rights-symptom", name_en="Synthetic symptom",
+                                           description="PRIVATE SYNTHETIC SYMPTOM TEXT")
+        m.DisorderSymptom.objects.create(disorder=self.disorder, symptom=symptom)
+        url = "/api/disorders/real-rights-disorder/"
+        before = self.public.get(url)
+        self.assertEqual(before.status_code, 200)
+        self.assertEqual(before.data["symptoms"][0]["description"], symptom.description)
+        self.approve(self.propose("restricted", material="text",
+                                  resource_type="symptom", resource=symptom))
+        after = self.public.get(url)
+        self.assertEqual(after.status_code, 200)
+        self.assertEqual(after.data["symptoms"][0]["slug"], symptom.slug)
+        self.assertEqual(after.data["symptoms"][0]["description"], "")
+        self.assertNotIn(symptom.description, str(after.data))
 
     def test_approved_item_restriction_does_not_hide_metadata(self):
         self.approve(self.propose("restricted", material="item"))

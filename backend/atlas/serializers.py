@@ -108,6 +108,9 @@ class SymptomLinkSerializer(serializers.ModelSerializer):
         model = DisorderSymptom
         fields = ("slug", "name_en", "name_fa", "description", "domain", "prominence", "note")
 
+    def to_representation(self, instance):
+        return public_text(instance.symptom, super().to_representation(instance), fields={"description"})
+
 
 class RelatedDisorderSerializer(serializers.ModelSerializer):
     slug = serializers.CharField(source="related_disorder.slug")
