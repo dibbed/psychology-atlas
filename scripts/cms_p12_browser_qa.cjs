@@ -131,6 +131,7 @@ function historySnapshot(){
   await editor.getByRole('button',{name:'ذخیرهٔ ساختار Draft'}).click();
   const graphResponse=await graphWrite;
   const graphResult=await graphResponse.json();
+  await editor.getByRole('button',{name:'ذخیرهٔ ساختار Draft'}).waitFor();
   check(graphResponse.status()===200,'Graph save response commits before verification '+
     JSON.stringify({status:graphResponse.status(),code:graphResult.code}));
   const updated=await query(owner,prefix+draft.revision_id+'/graph/');
@@ -335,6 +336,10 @@ function historySnapshot(){
     'Browser retry returns the original receipt without duplicate publication');
   check(current.data.current_revision_id===draft.revision_id&&current.data.revision_status==='published',
     'Successful browser Apply switches current revision to the reviewed draft');
+  const selectedHistory=owner.locator('section[aria-labelledby="case-versions-title"] li').filter({hasText:'نسخهٔ '+current.data.revision_version});
+  await selectedHistory.getByText('published',{exact:false}).waitFor();
+  check((await selectedHistory.textContent()).includes('نسخهٔ جاری'),
+    'Revision history refreshes the published status and current revision after Apply');
   check(JSON.stringify(old.data.steps)===JSON.stringify(unchanged.data.steps)&&old.data.revision_status==='published',
     'Previous published revision graph remains unchanged after Apply');
   check(historySnapshot().digest===historyBefore.digest,
@@ -384,6 +389,46 @@ function historySnapshot(){
     analytics.data.recent_attempts[0].revision_number===1&&analytics.data.recent_attempts[0].event_count===3&&
     analytics.data.completed_paths[0].revision_number===1&&analytics.data.dimensions[0].revision_number===1,
     'Personal analytics retain the original scored revision, events, rubric and completed path after withdrawal');
+  // A withdrawn case requires a fresh plan, independent approval and fresh MFA.
+  await panel.getByRole('checkbox').last().check();
+  await panel.getByRole('button',{name:'ساخت طرح بازگردانی نمایش عمومی'}).click();
+  await panel.getByText('frozen',{exact:true}).first().waitFor();
+  const reinstatement=await panel.getByPlaceholder('UUID مانیفست').inputValue();
+  const reinstatementRoute='/publication/cases/plans/'+reinstatement+'/';
+  const reinstatementPlan=await query(owner,reinstatementRoute);
+  check(reinstatement!==p16Plan&&reinstatementPlan.status===200&&
+    reinstatementPlan.data.status==='frozen'&&reinstatementPlan.data.receipts.length===0&&
+    (await publicRequest(owner,'/cases/'+fixture.p12.slug+'/',null)).status===404,
+    'Reinstatement creates a separate frozen plan without restoring public visibility');
+  await approvalPanel.getByPlaceholder('UUID مانیفست').fill(reinstatement);
+  await approvalPanel.getByRole('button',{name:'دریافت وضعیت و رسید'}).click();
+  await approvalPanel.getByText('frozen',{exact:true}).first().waitFor();
+  await approvalPanel.getByRole('checkbox').last().check();
+  await approvalPanel.getByRole('button',{name:'تأیید مانیفست'}).click();
+  await approvalPanel.getByText('approved',{exact:true}).first().waitFor();
+  await panel.getByRole('button',{name:'دریافت وضعیت و رسید'}).click();
+  await panel.getByText('approved',{exact:true}).first().waitFor();
+  check((await post(owner,reinstatementRoute+'apply/',{
+    manifest_digest:reinstatementPlan.data.manifest_digest,idempotency_key:crypto.randomUUID()})).status===403&&
+    (await publicRequest(owner,'/cases/'+fixture.p12.slug+'/',null)).status===404,
+    'Fresh independent approval alone cannot reinstate without action-bound MFA');
+  await panel.getByRole('checkbox').last().check();
+  await panel.getByLabel('روش احراز دوباره').selectOption('recovery');
+  await panel.getByLabel('کد MFA').fill(fixture.users.owner.tokens[4]);
+  await panel.getByRole('button',{name:'تأیید نهایی و انتشار نسخه'}).click();
+  await panel.getByText('applied',{exact:true}).first().waitFor();
+  await panel.getByRole('button',{name:'طرح '+reinstatement.slice(0,8)+' | applied'}).waitFor();
+  check(true,'Publication plan list reflects the current reinstatement status');
+  const reinstated=await query(owner,reinstatementRoute);
+  const reinstatedPublic=await publicRequest(owner,'/cases/'+fixture.p12.slug+'/',null);
+  check(reinstated.data.receipts.length===1&&reinstatedPublic.status===200&&
+    reinstatedPublic.data.title===current.data.title&&
+    (await publicRequest(owner,'/cases/',null)).data.results.some(item=>item.slug===fixture.p12.slug),
+    'Fresh approval and MFA restore public detail and list with one new receipt');
+  check((await publicRequest(owner,'/case-attempts/'+fixture.p12.attempt+'/',learnerToken)).data.status==='completed',
+    'Reinstatement preserves the completed historical learner attempt');
+  await owner.screenshot({path:path.join(out,'case-reinstatement-receipt.png'),fullPage:true});
+  report.screenshots.push('case-reinstatement-receipt.png');
   check(report.errors.length===0,'Browser emitted no uncaught runtime errors');
   report.status='PASS';
   await approverContext.close();await reviewerContext.close();await readerContext.close();await ownerContext.close();

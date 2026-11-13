@@ -125,7 +125,8 @@ export default function CaseGraphInspector(){
             {busy?"در حال آماده‌سازی…":"ساخت پیش‌نویس مستقل از این نسخه"}
           </button>}
       </section>
-      <CaseRevisionHistory caseId={graph.case_id} selectedId={graph.revision_id}
+      <CaseRevisionHistory key={graph.case_id+"-"+graph.revision_status+"-"+graph.current_revision_id}
+        caseId={graph.case_id} selectedId={graph.revision_id}
         onPick={revision=>reload(revision,String(graph.case_id))}/>
       {graph.revision_status==="draft"&&can("cms_cases_edit")&&
         <section className="card stack" aria-labelledby="draft-metadata">

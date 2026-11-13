@@ -114,6 +114,7 @@ export function CasePublicationWorkflow({caseId,revisionId,etag,digest,status,on
           manifest_digest:plan.manifest_digest,self_review_ack:true}),
       });
       await openPlan(plan.id);
+      await load();
       setActionAck(false);
       setSuccess("تأیید مانیفست ثبت شد. هنوز هیچ انتشار عمومی انجام نشده است.");
     });
@@ -125,6 +126,7 @@ export function CasePublicationWorkflow({caseId,revisionId,etag,digest,status,on
         ("/publication/cases/plans/"+plan.id+"/reinstate/",{method:"POST",
           body:JSON.stringify({manifest_digest:plan.manifest_digest})});
       await openPlan(response.data.plan_id);
+      await load();
       setActionAck(false);
       setSuccess("طرح بازگردانی ساخته شد. نمایش عمومی هنوز غیرفعال است؛ تأیید تازه و MFA جداگانه لازم است.");
     });
@@ -149,6 +151,7 @@ export function CasePublicationWorkflow({caseId,revisionId,etag,digest,status,on
           }),
         });
       await openPlan(plan.id);
+      await load();
       setActionAck(false);
       setSuccess(operation==="apply"
         ?"نسخه با رسید سروری منتشر شد. تاریخچهٔ تلاش‌های قبلی دست‌نخورده است."
