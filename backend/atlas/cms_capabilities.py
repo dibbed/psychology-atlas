@@ -279,7 +279,7 @@ READY_CAPABILITIES |= frozenset({"cms_cases_view", "cms_cases_preview", "cms_cas
 READY_CAPABILITIES |= frozenset({
     "cms_review_decide_cases_source", "cms_review_decide_cases_scientific", "cms_review_decide_cases_rights",
     "cms_publication_freeze_cases", "cms_publication_approve_cases", "cms_publication_apply_cases",
-    "cms_publication_verify_cases", "cms_publication_withdraw_cases",
+    "cms_publication_verify_cases", "cms_publication_withdraw_cases", "cms_publication_reinstate_cases",
 })
 
 # P17 bounded authenticated slug-only CMS search; public search unchanged.

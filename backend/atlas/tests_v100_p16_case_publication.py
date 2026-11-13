@@ -91,6 +91,18 @@ class CasePublicationFixture(SecurityFixture):
 
 @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
 class CasePublicationContractTests(CasePublicationFixture, TestCase):
+    def test_reinstatement_capability_is_ready_only_for_authorized_users(self):
+        capability = "cms_publication_reinstate_cases"
+        scoped = self.user("scoped-reinstatement", staff=True, caps=("cms_enter", capability))
+        other = self.user("scoped-case-viewer", staff=True, caps=("cms_enter", "cms_cases_view"))
+        for client in (self.client_owner, self.sign_in(scoped)):
+            response = client.get(BASE + "me/")
+            self.assertEqual(response.status_code, 200)
+            self.assertIn(capability, response.json()["ready_capabilities"])
+        response = self.sign_in(other).get(BASE + "me/")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(capability, response.json()["ready_capabilities"])
+
     def rights_reviewer(self):
         reviewer = self.user("scoped-rights-reviewer", staff=True, caps=(
             "cms_enter", "cms_cases_view", "cms_review_decide_cases_rights", "cms_rights_decide"))
