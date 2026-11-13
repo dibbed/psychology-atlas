@@ -23,6 +23,7 @@ All notable changes to Psychology Atlas. This project follows Semantic Versionin
 
 ### Fixed
 
+- 2026-11-13: Expose case reinstatement to authorized administrators and refresh publication plan and revision-history statuses after actions.
 - Withdrawn case revisions can be reinstated through a fresh, separately approved and MFA-guarded plan, preserving the original publication timestamp and historical attempts.
 - Learning previews and preparation reject whitespace-only active choices.
 - Preparation dossiers become stale when a learning item or its dependency loses public visibility.
