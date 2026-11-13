@@ -85,6 +85,8 @@ def _snapshot(quiz):
         if not q["is_active"]:
             continue
         choices = [c for c in q["choices"] if c["is_active"]]
+        if any(not c["text"].strip() for c in choices):
+            issues.append("CHOICE_TEXT_MISSING")
         if not q["prompt"].strip() or len(choices) < 2 or sum(c["is_correct"] for c in choices) != 1:
             issues.append("QUESTION_INVALID:" + str(q["id"]))
     if result and not any(q["is_active"] for q in result):

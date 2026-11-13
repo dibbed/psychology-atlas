@@ -119,6 +119,8 @@ def _snapshot(kind, item):
     issues = []
     if not item.prompt.strip():
         issues.append("PROMPT_MISSING")
+    if any(not c["text"].strip() for c in active):
+        issues.append("CHOICE_TEXT_MISSING")
     if len(active) < 2 or sum(c["is_correct"] for c in active) != 1:
         issues.append("ANSWER_KEY_INVALID")
     if kind == "distortions" and (not any(c["is_correct"] and

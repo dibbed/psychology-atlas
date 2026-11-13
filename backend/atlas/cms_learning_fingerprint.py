@@ -107,6 +107,8 @@ def draft_fingerprint(kind, item):
             children.append({"question": question, "choices": choices})
             if question["is_active"]:
                 active = [choice for choice in choices if choice["is_active"]]
+                if any(not choice["text"].strip() for choice in active):
+                    issues.append("CHOICE_TEXT_MISSING")
                 if not question["prompt"].strip() or not 2 <= len(active) <= 10:
                     issues.append("QUESTION_INVALID")
                 if sum(bool(choice["is_correct"]) for choice in active) != 1:
@@ -120,6 +122,8 @@ def draft_fingerprint(kind, item):
         children = _choices(item.choices.all(),
                             ("id", "text", "is_correct", "is_active", "sort_order"), limit=20)
         active = [choice for choice in children if choice["is_active"]]
+        if any(not choice["text"].strip() for choice in active):
+            issues.append("CHOICE_TEXT_MISSING")
         if not item.prompt.strip():
             issues.append("CONTENT_MISSING")
         if not 2 <= len(active) <= 10:
@@ -130,6 +134,8 @@ def draft_fingerprint(kind, item):
         children = _choices(item.choices.all(),
                             ("id", "concept_id", "text", "is_correct", "is_active", "sort_order"), limit=20)
         active = [choice for choice in children if choice["is_active"]]
+        if any(not choice["text"].strip() for choice in active):
+            issues.append("CHOICE_TEXT_MISSING")
         if not item.prompt.strip() or not item.explanation.strip():
             issues.append("CONTENT_MISSING")
         if not 2 <= len(active) <= 10:

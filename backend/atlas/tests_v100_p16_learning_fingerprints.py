@@ -1,4 +1,6 @@
 """P16 closed Learning draft fingerprints: no publication authority is granted."""
+import uuid
+
 from django.db import connection
 from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
@@ -124,3 +126,54 @@ class LearningDraftFingerprintTests(SecurityFixture, TestCase):
         self.assertEqual(snapshot["content_issues"], [])
         # One questions fetch, one bulk choices fetch and bounded dependencies.
         self.assertLessEqual(len(captured), 5)
+
+    def test_blank_active_choices_block_previews_and_preparation(self):
+        from .cms_publication_preparation_models import PublicationPreparationDossier
+
+        self.correct.text = " \t "
+        self.correct.save(update_fields=["text"])
+        concept = Concept.objects.create(slug="blank-choice-concept", name_en="Synthetic",
+            subtype=Concept.Subtype.COGNITIVE_DISTORTION, is_active=True)
+        other = Concept.objects.create(slug="blank-choice-other", name_en="Synthetic other", is_active=True)
+        daily = DailyChallenge.objects.create(prompt="Synthetic daily", concept=concept, is_active=False)
+        daily_blank = DailyChallengeChoice.objects.create(challenge=daily, text=" ", is_correct=True)
+        DailyChallengeChoice.objects.create(challenge=daily, text="Valid", is_correct=False)
+        practice = CognitiveDistortionPracticeItem.objects.create(slug="blank-choice-practice",
+            prompt="Synthetic", explanation="Synthetic", target_concept=concept, is_active=False)
+        practice_blank = CognitiveDistortionPracticeChoice.objects.create(
+            item=practice, concept=concept, text=" ", is_correct=True)
+        CognitiveDistortionPracticeChoice.objects.create(
+            item=practice, concept=other, text="Valid", is_correct=False)
+
+        cases = (
+            ("quiz", self.quiz, self.correct, f"learning/quizzes/{self.quiz.pk}/",
+             {"answers": [{"question_id": self.question.pk, "choice_id": self.correct.pk}]}),
+            ("daily_challenge", daily, daily_blank, f"learning/practice/daily/{daily.pk}/",
+             {"choice_id": daily_blank.pk}),
+            ("distortion_practice", practice, practice_blank,
+             f"learning/practice/distortions/{practice.pk}/", {"choice_id": practice_blank.pk}),
+        )
+        for kind, item, blank, editor, payload in cases:
+            with self.subTest(kind=kind):
+                detail = self.client.get(BASE + editor)
+                self.assertEqual(detail.status_code, 200)
+                self.assertFalse(detail.json()["valid"])
+                self.assertEqual(self.post(self.client, editor + "simulate/", payload).status_code, 409)
+                row, _ = self.item(kind, item.pk)
+                self.assertIn("CHOICE_TEXT_MISSING", row["content_issues"])
+                selected = self.post(self.client, "publication/selections/", {
+                    "domain": "learning", "request_key": str(uuid.uuid4()),
+                    "entries": [{"kind": kind, "resource_id": item.pk,
+                                 "expected_digest": row["content_digest"]}],
+                })
+                self.assertEqual(selected.status_code, 201)
+                self.assertEqual(self.post(self.client,
+                    f'publication/selections/{selected.json()["id"]}/prepare/', {
+                        "request_key": str(uuid.uuid4()),
+                        "selection_digest": selected.json()["selection_digest"],
+                    }).status_code, 409)
+                blank.is_active = False
+                blank.save(update_fields=["is_active"])
+                self.assertNotIn("CHOICE_TEXT_MISSING", self.item(kind, item.pk)[0]["content_issues"])
+        self.assertFalse(StudyActivity.objects.exists())
+        self.assertFalse(PublicationPreparationDossier.objects.exists())
