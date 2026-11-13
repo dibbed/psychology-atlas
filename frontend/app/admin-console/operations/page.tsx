@@ -32,7 +32,7 @@ const blockerNames:Record<string,string>={
   atlas_migration_history_not_current:"Migrationهای Atlas با فایل‌های کد هماهنگ نیستند",
   atlas_runtime_tables_missing:"حداقل یک جدول حیاتی CMS با وجود تاریخچهٔ Migration ثبت‌شده در دیتابیس وجود ندارد",
   atlas_runtime_columns_missing:"حداقل یک ستون ضروری در جدول‌های حیاتی CMS وجود ندارد؛ انتشار و بررسی مدل‌ها مسدود است",
-  atlas_runtime_idempotency_constraints_missing:"محدودیت یکتایی ضروری برای جلوگیری از درخواست تکراری و رسید تکراری از ساختار دیتابیس حذف شده است",
+  atlas_runtime_idempotency_constraints_missing:"محدودیت یکتایی یا ممنوعیت مقدار تهی (NULL) در کلید درخواست در ساختار دیتابیس معتبر نیست",
   atlas_runtime_foreign_keys_missing:"حداقل یک رابطهٔ Foreign Key ضروری در ساختار دیتابیس وجود ندارد؛ انتشار تا بررسی و بازیابی ساختار مسدود است",
   observed_receipt_inconsistencies:"مغایرت در رسیدهای ثبت‌شدهٔ انتشار یا منابع",
   source_receipt_audit_sample_incomplete:"همهٔ رسیدهای منابع در سقف نمونه بررسی نشده‌اند",
