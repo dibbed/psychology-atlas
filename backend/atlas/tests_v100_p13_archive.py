@@ -395,9 +395,10 @@ class LearningArchiveConcurrencyTests(SecurityFixture, TransactionTestCase):
     def test_all_four_admitted_learner_writes_wait_for_archive(self):
         from concurrent.futures import ThreadPoolExecutor
         from threading import Event
-        from django.db import close_old_connections, connection, transaction
+        from django.db import close_old_connections, connection, connections
         from .cms_case_editor import revision_etag
         from .cms_learning_lifecycle import archive_learning
+        from .cms_policy import policy_lock
         from .learning import review_flashcard
         from .services import submit_quiz
 
@@ -429,7 +430,8 @@ class LearningArchiveConcurrencyTests(SecurityFixture, TransactionTestCase):
                 def learner_write():
                     close_old_connections()
                     def observe_lock(execute, sql, params, many, context):
-                        if "FOR UPDATE" in sql and item._meta.db_table in sql:
+                        if ("FOR UPDATE" in sql and item._meta.db_table in sql) or (
+                                kind in {"daily", "distortions"} and "pg_advisory_xact_lock" in sql):
                             started.set()
                         return execute(sql, params, many, context)
                     try:
@@ -452,10 +454,12 @@ class LearningArchiveConcurrencyTests(SecurityFixture, TransactionTestCase):
                     except (ValidationError, ValueError):
                         return "archived_denied"
                     finally:
-                        close_old_connections()
+                        # CONN_MAX_AGE is nonzero in PostgreSQL settings; prevent idle
+                        # worker connections from holding the disposable test DB open.
+                        connections.close_all()
 
                 with ThreadPoolExecutor(max_workers=1) as executor:
-                    with transaction.atomic():
+                    with policy_lock():
                         type(item).objects.select_for_update().get(pk=item.pk)
                         future = executor.submit(learner_write)
                         self.assertTrue(started.wait(5))

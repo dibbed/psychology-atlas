@@ -9,7 +9,7 @@ from unittest.mock import patch
 from django.core.cache import cache
 from django.contrib.auth.models import User
 from django.db import transaction
-from django.test import TestCase, TransactionTestCase, override_settings
+from django.test import TestCase, TransactionTestCase, override_settings, skipUnlessDBFeature
 from rest_framework.test import APIClient
 
 from . import models as m
@@ -354,6 +354,265 @@ class DecidedRightsPublicTests(SecurityFixture, TransactionTestCase):
         cache.set("atlas_graph_revision", old_revision)
         cache.set("atlas_public_rights_scopes", {"scopes": set(), "inactive_sources": set()})
         self.assert_public(False)
+
+    def test_restricted_distortion_choice_is_not_disclosed_or_submittable(self):
+        target = m.Concept.objects.create(slug="synthetic-rights-target", name_en="Synthetic target",
+            subtype=m.Concept.Subtype.COGNITIVE_DISTORTION, is_active=True)
+        visible = m.Concept.objects.create(slug="synthetic-rights-visible", name_en="Synthetic visible",
+            subtype=m.Concept.Subtype.COGNITIVE_DISTORTION, is_active=True)
+        hidden = m.Concept.objects.create(slug="synthetic-rights-hidden", name_en="PRIVATE SYNTHETIC CONCEPT",
+            subtype=m.Concept.Subtype.COGNITIVE_DISTORTION, is_active=True)
+        item = m.CognitiveDistortionPracticeItem.objects.create(slug="synthetic-rights-practice",
+            prompt="Synthetic exercise", explanation="Synthetic explanation", target_concept=target)
+        m.CognitiveDistortionPracticeChoice.objects.create(item=item, concept=target, text="Target", is_correct=True)
+        m.CognitiveDistortionPracticeChoice.objects.create(item=item, concept=visible, text="Visible")
+        denied = m.CognitiveDistortionPracticeChoice.objects.create(item=item, concept=hidden, text="Hidden")
+        self.assertEqual(self.public.get("/api/cognitive-distortions/practice/").data["count"], 1)
+        self.approve(self.propose("restricted", resource_type="concept", resource=hidden))
+        response = self.public.get("/api/cognitive-distortions/practice/")
+        self.assertEqual(response.data["count"], 1)
+        self.assertNotIn("PRIVATE SYNTHETIC CONCEPT", str(response.data))
+        self.assertNotIn(denied.pk, [choice["id"] for choice in response.data["items"][0]["choices"]])
+        self.public.force_authenticate(self.normal)
+        submit = self.public.post(f"/api/cognitive-distortions/practice/{item.slug}/submit/", {"choice_id": denied.pk}, format="json")
+        self.assertEqual(submit.status_code, 404)
+        self.assertFalse(m.CognitiveDistortionPracticeAttempt.objects.exists())
+        self.assertFalse(m.StudyActivity.objects.exists())
+
+    def test_distortion_submission_rechecks_rights_after_admission(self):
+        from .views import _practice_item_queryset
+        target = m.Concept.objects.create(slug="synthetic-race-target", name_en="Synthetic target",
+            subtype=m.Concept.Subtype.COGNITIVE_DISTORTION, is_active=True)
+        other = m.Concept.objects.create(slug="synthetic-race-other", name_en="Synthetic other",
+            subtype=m.Concept.Subtype.COGNITIVE_DISTORTION, is_active=True)
+        item = m.CognitiveDistortionPracticeItem.objects.create(slug="synthetic-race-practice",
+            prompt="Synthetic exercise", explanation="Synthetic explanation", target_concept=target)
+        correct = m.CognitiveDistortionPracticeChoice.objects.create(item=item, concept=target, text="Correct", is_correct=True)
+        m.CognitiveDistortionPracticeChoice.objects.create(item=item, concept=other, text="Other")
+        admitted = list(_practice_item_queryset())
+        self.assertEqual(len(admitted), 1)
+        self.approve(self.propose("restricted", resource_type="concept", resource=target))
+        self.public.force_authenticate(self.normal)
+        with patch("atlas.views._practice_item_queryset", return_value=admitted):
+            response = self.public.post(f"/api/cognitive-distortions/practice/{item.slug}/submit/",
+                                        {"choice_id": correct.pk}, format="json")
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(m.CognitiveDistortionPracticeAttempt.objects.exists())
+        self.assertFalse(m.UserConceptProgress.objects.exists())
+        self.assertFalse(m.StudyActivity.objects.exists())
+
+    def test_distortion_submission_rechecks_selected_choice_after_admission(self):
+        from .views import _practice_item_queryset
+        target = m.Concept.objects.create(slug="synthetic-choice-race-target", name_en="Synthetic target",
+            subtype=m.Concept.Subtype.COGNITIVE_DISTORTION, is_active=True)
+        visible = m.Concept.objects.create(slug="synthetic-choice-race-visible", name_en="Synthetic visible",
+            subtype=m.Concept.Subtype.COGNITIVE_DISTORTION, is_active=True)
+        hidden = m.Concept.objects.create(slug="synthetic-choice-race-hidden", name_en="Synthetic hidden",
+            subtype=m.Concept.Subtype.COGNITIVE_DISTORTION, is_active=True)
+        item = m.CognitiveDistortionPracticeItem.objects.create(slug="synthetic-choice-race-practice",
+            prompt="Synthetic exercise", explanation="Synthetic explanation", target_concept=target)
+        m.CognitiveDistortionPracticeChoice.objects.create(item=item, concept=target, text="Correct", is_correct=True)
+        m.CognitiveDistortionPracticeChoice.objects.create(item=item, concept=visible, text="Visible")
+        denied = m.CognitiveDistortionPracticeChoice.objects.create(item=item, concept=hidden, text="Hidden")
+        admitted = list(_practice_item_queryset())
+        self.approve(self.propose("restricted", resource_type="concept", resource=hidden))
+        self.public.force_authenticate(self.normal)
+        with patch("atlas.views._practice_item_queryset", return_value=admitted):
+            response = self.public.post(f"/api/cognitive-distortions/practice/{item.slug}/submit/",
+                                        {"choice_id": denied.pk}, format="json")
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(m.CognitiveDistortionPracticeAttempt.objects.exists())
+        self.assertFalse(m.UserConceptProgress.objects.exists())
+        self.assertFalse(m.StudyActivity.objects.exists())
+
+    @skipUnlessDBFeature("has_select_for_update")
+    def test_distortion_submit_waits_for_concurrent_rights_restriction(self):
+        import time
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Event
+        from django.db import connection, connections, transaction
+        from .views import _practice_item_queryset
+
+        target = m.Concept.objects.create(slug="synthetic-pg-target", name_en="Synthetic target",
+            subtype=m.Concept.Subtype.COGNITIVE_DISTORTION, is_active=True)
+        other = m.Concept.objects.create(slug="synthetic-pg-other", name_en="Synthetic other",
+            subtype=m.Concept.Subtype.COGNITIVE_DISTORTION, is_active=True)
+        item = m.CognitiveDistortionPracticeItem.objects.create(slug="synthetic-pg-practice",
+            prompt="Synthetic exercise", explanation="Synthetic explanation", target_concept=target)
+        correct = m.CognitiveDistortionPracticeChoice.objects.create(item=item, concept=target, text="Correct", is_correct=True)
+        m.CognitiveDistortionPracticeChoice.objects.create(item=item, concept=other, text="Other")
+        admitted = list(_practice_item_queryset())
+        self.assertEqual(len(admitted), 1)
+        record = self.action(self.propose("restricted", resource_type="concept", resource=target),
+                             "assign", {"reviewer_id": self.owner.pk})
+        decision_saved, release_writer, reader_ready = Event(), Event(), Event()
+        reader_pid = []
+
+        def restrict():
+            try:
+                with transaction.atomic():
+                    self.action(record, "decide", {"outcome": "approve", "reason": "RIGHTS_SCOPE_VERIFIED", "self_review_ack": False})
+                    decision_saved.set()
+                    if not release_writer.wait(15):
+                        raise TimeoutError("Synthetic rights writer timed out")
+            finally:
+                connections.close_all()
+
+        def submit():
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT pg_backend_pid()")
+                    reader_pid.append(cursor.fetchone()[0])
+                client = APIClient()
+                client.force_authenticate(self.normal)
+                reader_ready.set()
+                return client.post(f"/api/cognitive-distortions/practice/{item.slug}/submit/",
+                                   {"choice_id": correct.pk}, format="json").status_code
+            finally:
+                connections.close_all()
+
+        with patch("atlas.views._practice_item_queryset", return_value=admitted):
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                writer = pool.submit(restrict)
+                try:
+                    self.assertTrue(decision_saved.wait(10))
+                    reader = pool.submit(submit)
+                    self.assertTrue(reader_ready.wait(10))
+                    observed_lock = False
+                    deadline = time.monotonic() + 8
+                    while time.monotonic() < deadline and not reader.done():
+                        with connection.cursor() as cursor:
+                            cursor.execute("SELECT wait_event_type FROM pg_stat_activity WHERE pid = %s", reader_pid)
+                            row = cursor.fetchone()
+                        if row and row[0] == "Lock":
+                            observed_lock = True
+                            break
+                        time.sleep(0.02)
+                    self.assertTrue(observed_lock, "Submission did not wait for the rights decision")
+                finally:
+                    release_writer.set()
+                writer.result(timeout=15)
+                self.assertEqual(reader.result(timeout=15), 404)
+        self.assertFalse(m.CognitiveDistortionPracticeAttempt.objects.exists())
+        self.assertFalse(m.UserConceptProgress.objects.exists())
+        self.assertFalse(m.StudyActivity.objects.exists())
+
+    def test_restricted_distortion_target_hides_practice_and_denies_submit(self):
+        target = m.Concept.objects.create(slug="synthetic-rights-denied-target", name_en="PRIVATE TARGET",
+            subtype=m.Concept.Subtype.COGNITIVE_DISTORTION, is_active=True)
+        other = m.Concept.objects.create(slug="synthetic-rights-other", name_en="Synthetic other",
+            subtype=m.Concept.Subtype.COGNITIVE_DISTORTION, is_active=True)
+        item = m.CognitiveDistortionPracticeItem.objects.create(slug="synthetic-rights-target-practice",
+            prompt="Synthetic exercise", explanation="Synthetic explanation", target_concept=target)
+        correct = m.CognitiveDistortionPracticeChoice.objects.create(item=item, concept=target, text="Correct", is_correct=True)
+        m.CognitiveDistortionPracticeChoice.objects.create(item=item, concept=other, text="Other")
+        self.assertEqual(self.public.get("/api/cognitive-distortions/practice/").data["count"], 1)
+        self.approve(self.propose("restricted", resource_type="concept", resource=target))
+        self.assertEqual(self.public.get("/api/cognitive-distortions/practice/").data["count"], 0)
+        self.assertEqual(self.public.get("/api/cognitive-distortions/overview/").data["practice_count"], 0)
+        self.public.force_authenticate(self.normal)
+        self.assertEqual(self.public.post(f"/api/cognitive-distortions/practice/{item.slug}/submit/",
+                                         {"choice_id": correct.pk}, format="json").status_code, 404)
+        self.assertFalse(m.CognitiveDistortionPracticeAttempt.objects.exists())
+        self.assertFalse(m.StudyActivity.objects.exists())
+
+    def _daily_fixture(self, concept=None, disorder=None):
+        challenge = m.DailyChallenge.objects.create(
+            prompt="PRIVATE SYNTHETIC CHALLENGE", explanation="PRIVATE SYNTHETIC EXPLANATION",
+            concept=concept, disorder=disorder,
+        )
+        right = m.DailyChallengeChoice.objects.create(
+            challenge=challenge, text="Synthetic right", is_correct=True)
+        m.DailyChallengeChoice.objects.create(
+            challenge=challenge, text="Synthetic wrong", is_correct=False)
+        return challenge, right
+
+    def test_daily_restricted_concept_hides_anonymous_and_existing_attempt_without_erasure(self):
+        target = m.Concept.objects.create(
+            slug="daily-rights-target", name_en="PRIVATE SYNTHETIC CONCEPT",
+            simple_definition="PRIVATE SYNTHETIC DEFINITION")
+        challenge, right = self._daily_fixture(concept=target)
+        self.assertEqual(self.public.get("/api/daily-challenge/").status_code, 200)
+        self.public.force_authenticate(self.normal)
+        first = self.public.post("/api/daily-challenge/", {"choice_id": right.pk}, format="json")
+        self.assertEqual(first.status_code, 200, first.data)
+        historical = m.DailyChallengeAttempt.objects.get(user=self.normal, challenge=challenge)
+        before = (historical.pk, historical.selected_choice_id, historical.is_correct)
+        activity_count = m.StudyActivity.objects.count()
+        self.approve(self.propose("restricted", resource_type="concept", resource=target))
+        self.public.force_authenticate(user=None)
+        anonymous = self.public.get("/api/daily-challenge/")
+        self.assertEqual(anonymous.status_code, 404)
+        self.assertNotIn("PRIVATE", str(anonymous.data))
+        self.public.force_authenticate(self.normal)
+        existing_get = self.public.get("/api/daily-challenge/")
+        repeated_post = self.public.post("/api/daily-challenge/", {"choice_id": right.pk}, format="json")
+        self.assertEqual(existing_get.status_code, 404)
+        self.assertEqual(repeated_post.status_code, 404)
+        self.assertNotIn("PRIVATE", str(existing_get.data) + str(repeated_post.data))
+        historical.refresh_from_db()
+        self.assertEqual(before, (historical.pk, historical.selected_choice_id, historical.is_correct))
+        self.assertEqual(m.StudyActivity.objects.count(), activity_count)
+        from .learning import today_challenge
+        self.assertIsNone(today_challenge())
+
+    def test_daily_restricted_disorder_denies_new_attempt_and_activity(self):
+        challenge, right = self._daily_fixture(disorder=self.disorder)
+        self.assertEqual(self.public.get("/api/daily-challenge/").status_code, 200)
+        self.approve(self.propose("restricted", resource_type="disorder", resource=self.disorder))
+        self.assertEqual(self.public.get("/api/daily-challenge/").status_code, 404)
+        self.public.force_authenticate(self.normal)
+        result = self.public.post("/api/daily-challenge/", {"choice_id": right.pk}, format="json")
+        self.assertEqual(result.status_code, 404)
+        self.assertFalse(m.DailyChallengeAttempt.objects.exists())
+        self.assertFalse(m.StudyActivity.objects.exists())
+
+    def test_daily_restricted_related_material_does_not_expose_nested_text(self):
+        concept = m.Concept.objects.create(
+            slug="daily-text-target", name_en="SYNTHETIC TEXT",
+            simple_definition="PRIVATE SYNTHETIC DEFINITION")
+        self._daily_fixture(concept=concept)
+        self.approve(self.propose(
+            "restricted", material="text", resource_type="concept", resource=concept))
+        response = self.public.get("/api/daily-challenge/")
+        self.assertEqual(response.status_code, 404)
+        self.assertNotIn("PRIVATE", str(response.data))
+
+    def test_daily_expired_rights_hide_content_and_prevent_new_learning_evidence(self):
+        from django.utils import timezone
+        today = timezone.localdate()
+        concept = m.Concept.objects.create(slug="daily-expiry-target", name_en="Synthetic")
+        challenge, choice = self._daily_fixture(concept=concept)
+        self.approve(self.propose(
+            "allowed", resource_type="concept", resource=concept,
+            expires_on=today.isoformat()))
+        self.assertEqual(self.public.get("/api/daily-challenge/").status_code, 200)
+        with patch("atlas.views.timezone.localdate", return_value=today + timedelta(days=1)):
+            anonymous = self.public.get("/api/daily-challenge/")
+            self.assertEqual(anonymous.status_code, 404)
+            self.public.force_authenticate(self.normal)
+            denied = self.public.post(
+                "/api/daily-challenge/", {"choice_id": choice.pk}, format="json")
+            self.assertEqual(denied.status_code, 404)
+        self.assertFalse(m.DailyChallengeAttempt.objects.exists())
+        self.assertFalse(m.StudyActivity.objects.exists())
+        self.assertFalse(m.UserConceptProgress.objects.exists())
+
+    def test_daily_submit_rechecks_rights_after_admission_and_preserves_no_write(self):
+        concept = m.Concept.objects.create(slug="daily-admitted-target", name_en="Synthetic")
+        challenge, right = self._daily_fixture(concept=concept)
+        from .learning import today_challenge
+        admitted = today_challenge()
+        self.assertEqual(admitted.pk, challenge.pk)
+        self.approve(self.propose("restricted", resource_type="concept", resource=concept))
+        self.public.force_authenticate(self.normal)
+        with patch("atlas.views.today_challenge", return_value=admitted):
+            response = self.public.post(
+                "/api/daily-challenge/", {"choice_id": right.pk}, format="json")
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(m.DailyChallengeAttempt.objects.exists())
+        self.assertFalse(m.StudyActivity.objects.exists())
+        self.assertFalse(m.UserConceptProgress.objects.exists())
 
     def test_restricted_symptom_text_is_redacted_from_disorder_detail(self):
         symptom = m.Symptom.objects.create(slug="rights-symptom", name_en="Synthetic symptom",

@@ -840,6 +840,7 @@ from .learning import (
     activity_heatmap,
     available_flashcards,
     challenge_attempt_for_today,
+    challenge_public_eligible,
     current_streak,
     get_recommendations,
     get_review_queue,
@@ -1598,7 +1599,7 @@ def daily_challenge(request):
     if request.method == "GET":
         attempt = challenge_attempt_for_today(request.user) if request.user.is_authenticated else None
         challenge = attempt.challenge if attempt else today_challenge()
-        if not challenge:
+        if not challenge_public_eligible(challenge, allow_archived=bool(attempt)):
             return Response({"detail": "چالش روزانه هنوز آماده نشده است."}, status=404)
         data = DailyChallengeSerializer(challenge).data
         data["date"] = timezone.localdate().isoformat()
@@ -1616,6 +1617,8 @@ def daily_challenge(request):
 
     existing = challenge_attempt_for_today(request.user)
     if existing:
+        if not challenge_public_eligible(existing.challenge, allow_archived=True):
+            return Response({"detail": "چالش روزانه در دسترس نیست."}, status=404)
         return Response({
             "detail": "چالش امروز قبلاً پاسخ داده شده است.",
             "correct": existing.is_correct,
@@ -1630,9 +1633,15 @@ def daily_challenge(request):
     choice_id = _positive_int(payload.get("choice_id"), field="choice_id")
     choice = get_object_or_404(challenge.choices.filter(is_active=True), id=choice_id)
     try:
-        with transaction.atomic():
-            challenge = get_object_or_404(DailyChallenge.objects.select_for_update(),
-                pk=challenge.pk, archived_at__isnull=True)
+        from .cms_policy import policy_lock
+        with policy_lock():
+            challenge = get_object_or_404(DailyChallenge.objects.select_for_update(), pk=challenge.pk, archived_at__isnull=True, is_active=True)
+            if not challenge_public_eligible(challenge):
+                return Response({"detail": "چالش روزانه در دسترس نیست."}, status=404)
+            choice = get_object_or_404(challenge.choices.filter(is_active=True), pk=choice_id)
+            active_choices = list(challenge.choices.filter(is_active=True))
+            if sum(1 for row in active_choices if row.is_correct) != 1:
+                return Response({"detail": "محتوای چالش ناسازگار است."}, status=409)
             attempt = DailyChallengeAttempt.objects.create(
                 user=request.user,
                 challenge=challenge,
@@ -2699,25 +2708,26 @@ def graph_path(request):
     })
 
 
+def _practice_choice_queryset():
+    return (CognitiveDistortionPracticeChoice.objects.filter(
+        is_active=True, concept__is_active=True,
+        concept__subtype=Concept.Subtype.COGNITIVE_DISTORTION,
+        concept__in=public_resources(Concept),
+    ).select_related("concept").order_by("sort_order", "id"))
+
+
 def _practice_item_queryset(*, difficulty=""):
     qs = (
         CognitiveDistortionPracticeItem.objects.filter(
             archived_at__isnull=True, is_active=True,
             target_concept__is_active=True,
             target_concept__subtype=Concept.Subtype.COGNITIVE_DISTORTION,
+            target_concept__in=public_resources(Concept),
         )
         .select_related("target_concept")
         .prefetch_related(Prefetch(
             "choices",
-            queryset=(
-                CognitiveDistortionPracticeChoice.objects.filter(
-                    is_active=True,
-                    concept__is_active=True,
-                    concept__subtype=Concept.Subtype.COGNITIVE_DISTORTION,
-                )
-                .select_related("concept")
-                .order_by("sort_order", "id")
-            ),
+            queryset=_practice_choice_queryset(),
             to_attr="active_choices",
         ))
         .order_by("sort_order", "id")
@@ -2808,11 +2818,20 @@ def distortion_practice_submit(request, slug):
             {"detail": "محتوای این تمرین از نظر پاسخ صحیح ناسازگار است."},
             status=status.HTTP_409_CONFLICT,
         )
-    correct_choice = next(choice for choice in item.active_choices if choice.is_correct)
-
-    with transaction.atomic():
+    from .cms_policy import policy_lock
+    with policy_lock():
         item = get_object_or_404(CognitiveDistortionPracticeItem.objects.select_for_update(),
-            pk=item.pk, archived_at__isnull=True)
+            pk=item.pk, archived_at__isnull=True, is_active=True, target_concept__is_active=True,
+            target_concept__subtype=Concept.Subtype.COGNITIVE_DISTORTION,
+            target_concept__in=public_resources(Concept))
+        item.active_choices = list(_practice_choice_queryset().filter(item=item))
+        choice = next((row for row in item.active_choices if row.pk == choice_id), None)
+        if choice is None:
+            return Response({"detail": "گزینه انتخاب‌شده معتبر نیست."}, status=status.HTTP_404_NOT_FOUND)
+        if not _practice_item_is_valid(item):
+            return Response({"detail": "محتوای این تمرین از نظر پاسخ صحیح ناسازگار است."},
+                            status=status.HTTP_409_CONFLICT)
+        correct_choice = next(row for row in item.active_choices if row.is_correct)
         attempt = CognitiveDistortionPracticeAttempt.objects.create(
             user=request.user,
             item=item,
