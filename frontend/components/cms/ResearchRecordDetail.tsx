@@ -7,6 +7,7 @@ import { faNumber } from "@/lib/fa";
 import { CmsState } from "./CmsShell";
 import { GovernancePagination } from "./GovernanceForms";
 import { PrivateMutationError, ResearchBoundary, usePrivateCms } from "./CmsJobsShared";
+import ResearchExport from "./ResearchExport";
 
 const capabilities: Record<ResearchAction, string> = { map: "cms_research_map", reject: "cms_research_reject", defer: "cms_research_defer", stage: "cms_research_derive" };
 const blank = { canonical_key: "", name_en: "", name_fa: "", source_ids: "" };
@@ -90,6 +91,7 @@ export default function ResearchRecordDetail({ id }: { id: string }) {
         <div className="cms-actions"><button className="button secondary" disabled={busy} onClick={refresh}>بازخوانی رکورد و تاریخچه</button>{can("cms_research_raw_read") && <button className="button secondary" disabled={busy || blocked} onClick={previewRaw}>دریافت متن خام؛ با ثبت رویداد دسترسی</button>}</div>
         {raw && <section className="cms-preview stack" aria-label="پیش‌نمایش خام خصوصی"><h3>پیش‌نمایش خام با مجوز جاری</h3><p className="muted">هدف ثبت‌شده: بررسی پژوهش. این نمایش، راستی‌آزمایی علمی نیست.</p><button className="button secondary" onClick={() => setRaw(undefined)}>بستن و پاک کردن پیش‌نمایش خام</button><pre className="cms-prose" dir="auto">{JSON.stringify(raw.payload, null, 2)}</pre></section>}
       </section>
+      <ResearchExport targetKind="record" targetId={record.id} />
       {Object.values(capabilities).some(cap => can(cap)) && <form className="card stack" onSubmit={review}><h2>تصمیم تازهٔ مشتق</h2><fieldset className="cms-fieldset" disabled={busy || blocked || !snapshot?.etag}>
         <label>اقدام صریح<select value={action} onChange={event => { setAction(event.target.value as ResearchAction | ""); setConfirmation(false); }}><option value="">یک اقدام را انتخاب کنید</option>{(Object.keys(capabilities) as ResearchAction[]).filter(value => can(capabilities[value])).map(value => <option key={value} value={value}>{researchActionLabels[value]}</option>)}</select></label>
         {action === "map" && <><label>کلید معنایی مشتق<input id="research-canonical_key" dir="ltr" maxLength={400} value={form.canonical_key} onChange={event => { setForm({ ...form, canonical_key: event.target.value }); setConfirmation(false); }} /></label><label>نام انگلیسی مشتق<input id="research-name_en" dir="ltr" maxLength={500} value={form.name_en} onChange={event => { setForm({ ...form, name_en: event.target.value }); setConfirmation(false); }} /></label><label>نام فارسی مشتق<input id="research-name_fa" dir="rtl" maxLength={500} value={form.name_fa} onChange={event => { setForm({ ...form, name_fa: event.target.value }); setConfirmation(false); }} /></label><label>شناسهٔ عددی منابع؛ جداشده با ویرگول<input id="research-source_ids" dir="ltr" maxLength={2000} value={form.source_ids} disabled={!can("cms_source_view")} onChange={event => { setForm({ ...form, source_ids: event.target.value }); setConfirmation(false); }} /><small>منبع و نشانی به‌تنهایی شاهد علمی یا حقوقی نیستند.</small></label></>}

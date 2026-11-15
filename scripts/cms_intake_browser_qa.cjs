@@ -360,7 +360,52 @@ async function testBrainStaging(fixture) {
   await screenshot("w06-brain-mobile-validation");
   check(dbState().canonical === before.canonical && dbState().datasets === before.datasets + 1,
     "Brain UI/worker staging does not modify canonical content");
-  report.journey.push("Brain JSON multipart upload, validation, durable job, worker, scoped dataset/record and issue report");
+
+  const exportPanel = page.getByRole("region", { name: "درخواست خروجی خصوصی پژوهش", exact: true });
+  await exportPanel.getByRole("button", { name: "بررسی درخواست خروجی", exact: true }).click();
+  const queuedExport = await uiResponse("/research/exports/",
+    exportPanel.getByRole("button", { name: "تأیید و ایجاد کار خروجی", exact: true }), 202);
+  check(queuedExport.data.job.kind === "research_export", "Browser dataset export creates a distinct research-export job");
+  await exportPanel.getByRole("link", { name: "پیگیری کار و دریافت فایل" }).click();
+  await page.getByRole("heading", { name: "در صف", exact: true }).waitFor();
+  runPython(["manage.py", "cms_worker", "--once"]);
+  await page.getByRole("heading", { name: "پایان‌یافته", exact: true }).waitFor({ timeout: 20000 });
+  const exportJob = (await api(`/jobs/${queuedExport.data.job.id}/`)).data.job;
+  check(exportJob.status === "succeeded" && !!exportJob.output_artifact_id,
+    "Browser export worker produces a ready private output artifact");
+  await page.getByRole("heading", { name: "خروجی خصوصی پژوهشی", exact: true }).waitFor();
+  const exportArtifact = (await api(`/artifacts/${exportJob.output_artifact_id}/`)).data.artifact;
+  const exported = await page.context().request.get(origin +
+    `/api/admin/artifacts/${exportJob.output_artifact_id}/download/?purpose=research_review`);
+  assert.equal(exported.status(), 200);
+  const exportedBytes = await exported.body();
+  const snapshot = JSON.parse(exportedBytes.toString("utf-8"));
+  check(exportArtifact.sha256 === sha(exportedBytes) && snapshot.schema_version === "psychology-atlas-research-export-v1",
+    "Downloaded private export verifies SHA-256 and format");
+  check(snapshot.records.length === 1
+    && Object.keys(snapshot.records[0]).sort().join(",") === snapshot.projection.slice().sort().join(",")
+    && !exportedBytes.toString("utf-8").includes("source_notes")
+    && !exportedBytes.toString("utf-8").includes("source_ids"),
+    "Browser export contains exact allowlist only, without Brain raw or restricted source notes");
+  const recordId = snapshot.records[0].id;
+  await page.goto(origin + `/admin-console/research/records/${recordId}`);
+  const recordPanel = page.getByRole("region", { name: "درخواست خروجی خصوصی پژوهش", exact: true });
+  await recordPanel.getByRole("button", { name: "بررسی درخواست خروجی", exact: true }).click();
+  const recordQueued = await uiResponse("/research/exports/",
+    recordPanel.getByRole("button", { name: "تأیید و ایجاد کار خروجی", exact: true }), 202);
+  runPython(["manage.py", "cms_worker", "--once"]);
+  const recordJob = (await api(`/jobs/${recordQueued.data.job.id}/`)).data.job;
+  check(recordJob.status === "succeeded" && recordJob.result.records === 1,
+    "Record-only export completes through same fenced worker");
+  const recordFile = await page.context().request.get(origin +
+    `/api/admin/artifacts/${recordJob.output_artifact_id}/download/?purpose=research_review`);
+  assert.equal(recordFile.status(), 200);
+  const recordDoc = JSON.parse((await recordFile.body()).toString("utf-8"));
+  check(recordDoc.target.kind === "record" && recordDoc.target.id === recordId
+    && recordDoc.records.length === 1, "Record export preserves exact selected identity and provenance");
+  check(dbState().canonical === before.canonical, "Research exports do not write canonical Brain rows");
+  report.journey.push("Brain JSON multipart upload, validation, durable job, worker, scoped dataset/record and issue report",
+    "Dataset/record export request, job, worker, checksummed private download and raw exclusion");
   await page.close();
   page = previousPage;
 }

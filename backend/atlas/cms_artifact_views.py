@@ -42,6 +42,12 @@ class ArtifactListView(AdminAPIView):
                 write = "cms_research_intake" if domain == "research" else "cms_" + domain + "_edit"
                 if {"cms_" + domain + "_view", write} <= held:
                     allowed |= Q(kind=kind, domain=domain)
+            if {"cms_research_view", "cms_research_export"} <= held:
+                research_files = Q(kind__in=("research_request_json", "research_export_json"), domain="research",
+                    resource_id__in=service.scoped_datasets(request.user).values("pk"))
+                if "cms_research_raw_read" not in held:
+                    research_files &= ~Q(resource_type="research_dataset_export_sensitive")
+                allowed |= research_files
             learning, _ = service.learning_artifact_filter(held)
             allowed |= learning
             if {"cms_user_view", "cms_privacy_export"} <= held:
@@ -71,7 +77,7 @@ class ArtifactListView(AdminAPIView):
             for field in ("kind", "state"):
                 value = request.query_params.get(field)
                 if value is not None:
-                    choices = {*service.KINDS, *service.PRIVATE_KINDS, "evidence_json", "learning_export_json"} if field == "kind" else {"quarantine", "ready", "rejected", "revoked", "expired"}
+                    choices = {*service.KINDS, *service.PRIVATE_KINDS, "evidence_json", "learning_export_json", "research_request_json", "research_export_json"} if field == "kind" else {"quarantine", "ready", "rejected", "revoked", "expired"}
                     if value not in choices:
                         raise CMSFailure("INVALID_QUERY", 400)
                     if field == "state" and value == "expired":
@@ -182,6 +188,21 @@ class ResearchIntakeView(AdminAPIView):
         return response
 
 
+class ResearchExportView(AdminAPIView):
+    capability = "cms_research_export"
+
+    def post(self, request):
+        from .cms_research_export import enqueue_export
+        from .cms_jobs import job_data
+        no_query(request)
+        data = payload(request, {"target_kind", "target_id", "projection", "request_key"})
+        job = enqueue_export(request.user.pk, request.cms_session.pk, data, self.request_id)
+        response = versioned({"job": job_data(job)}, job.version)
+        response.status_code = 202
+        response["Location"] = "/api/admin/jobs/" + str(job.pk) + "/"
+        return response
+
+
 class ResearchDatasetsView(AdminAPIView):
     capability = "cms_research_view"
 
@@ -272,6 +293,7 @@ urlpatterns = [
     path("artifacts/<uuid:artifact_id>/cleanup/", ArtifactCleanupView.as_view()),
     path("artifacts/<uuid:artifact_id>/download/", ArtifactDownloadView.as_view()),
     path("research/imports/", ResearchIntakeView.as_view()),
+    path("research/exports/", ResearchExportView.as_view()),
     path("research/datasets/", ResearchDatasetsView.as_view()),
     path("research/datasets/<int:dataset_id>/", ResearchDatasetDetailView.as_view()),
     path("research/datasets/<int:dataset_id>/records/", ResearchRecordsView.as_view()),

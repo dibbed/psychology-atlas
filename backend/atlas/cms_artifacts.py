@@ -138,6 +138,7 @@ def artifact_scope(actor, artifact, download=False):
     held = effective_permissions(actor)
     reviewer = False
     learning = artifact.kind in {"learning_json", "learning_export_json"}
+    research_export = artifact.kind in {"research_request_json", "research_export_json"}
     private = artifact.kind in PRIVATE_KINDS
     if private:
         from .cms_privacy import require_privacy
@@ -147,6 +148,18 @@ def artifact_scope(actor, artifact, download=False):
         require_privacy(actor, "export")
         if download:
             artifact_binding(artifact)
+    elif research_export:
+        if download and artifact.kind == "research_request_json":
+            raise CMSFailure("NOT_FOUND", 404)
+        from .cms_research_export import EXPORT_RESOURCE, SENSITIVE_RESOURCE, require_export
+        if artifact.domain != "research" or artifact.resource_type not in (EXPORT_RESOURCE, SENSITIVE_RESOURCE):
+            raise CMSFailure("NOT_FOUND", 404)
+        require_export(actor)
+        if artifact.resource_type == SENSITIVE_RESOURCE:
+            require(actor, "cms_research_raw_read")
+        dataset = get_dataset(actor, artifact.resource_id)
+        if dataset.source_sha256 != artifact.resource_version:
+            raise CMSFailure("NOT_FOUND", 404)
     elif learning:
         if artifact.domain != "learning":
             raise CMSFailure("NOT_FOUND", 404)
@@ -469,7 +482,7 @@ def cleanup_eligible(artifact):
             or AdminJob.objects.filter(kind="research_intake", artifact__sha256=artifact.sha256,
                 status__in=("queued", "running", "reconciling", "succeeded")).exists()):
         raise CMSFailure("ARTIFACT_RETENTION_HOLD", 409)
-    if AdminJob.objects.filter(kind__in=("learning_import", "learning_export", "privacy_export"),
+    if AdminJob.objects.filter(kind__in=("learning_import", "learning_export", "privacy_export", "research_export"),
             status__in=("queued", "running", "reconciling")).filter(
                 Q(artifact_id=artifact.pk) | Q(output_artifact_id=artifact.pk)).exists():
         raise CMSFailure("ARTIFACT_RETENTION_HOLD", 409)

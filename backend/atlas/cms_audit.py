@@ -126,7 +126,8 @@ def failure_response(request, exc):
     return JsonResponse({"code": code, "request_id": str(request_id)}, status=status)
 
 ACTIONS |= frozenset({"learning.archived"})
-ACTIONS |= frozenset({"learning.imported", "learning.exported", "learning.transfer_prepared"})
+ACTIONS |= frozenset({"learning.imported", "learning.exported", "learning.transfer_prepared",
+    "research.export_requested", "research.exported"})
 ACTIONS |= frozenset("privacy.read." + scope for scope in (
     "disorder_notes", "concept_notes", "therapy_notes", "disorder_progress", "concept_progress", "flashcard_srs",
     "quiz_attempts", "quiz_answers", "case_attempts", "case_events", "daily_attempts", "distortion_attempts",
@@ -138,7 +139,7 @@ ACTIONS |= frozenset({"privacy.export_requested", "privacy.exported"})
 REASONS |= frozenset({"PRIVACY_REQUEST"})
 ACTIONS |= frozenset({"study.operated"})
 REASONS |= frozenset({"STUDY_SUPPORT"})
-REASONS |= frozenset({"LEARNING_TRANSFER"})
+REASONS |= frozenset({"LEARNING_TRANSFER", "RESEARCH_EXPORT"})
 REASONS |= frozenset({"CONTENT_ARCHIVE"})
 TARGET_KINDS |= frozenset({"daily", "distortions"})
 SAFE_FIELDS |= frozenset({"archived_at"})

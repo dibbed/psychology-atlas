@@ -18,6 +18,7 @@ from .cms_sessions import current_session
 LEASE_SECONDS = 120
 MAX_ATTEMPTS = 3
 JOB_INPUT_KINDS = {"research_intake": {"research_json", "dsm_json", "assessment_json", "brain_json"},
+                   "research_export": {"research_request_json"},
                    "learning_import": {"learning_json"}, "learning_export": {"learning_json"},
                    "privacy_export": {"privacy_request_json"}}
 MANUAL_RETRY = {"TRANSIENT_DATABASE", "WORKER_INTERRUPTED", "UNAUTHENTICATED", "PERMISSION_DENIED", "POLICY_CHANGED", "INTERNAL_ERROR"}
@@ -51,6 +52,13 @@ def action_scope(actor, artifact, kind):
         artifact_binding(artifact)
     elif kind == "research_intake":
         require_intake(actor)
+        _edit_scope(actor, artifact)
+    elif kind == "research_export":
+        from .cms_research_export import require_export
+        require_export(actor)
+        from .cms_research_export import EXPORT_RESOURCE, SENSITIVE_RESOURCE
+        if artifact.kind != "research_request_json" or artifact.resource_type not in (EXPORT_RESOURCE, SENSITIVE_RESOURCE):
+            raise CMSFailure("INVALID_JOB_INPUT", 409)
         _edit_scope(actor, artifact)
     elif kind == "artifact_cleanup":
         require(actor, "cms_enter")
@@ -86,6 +94,14 @@ def visible_jobs(actor, rows):
         scope |= private & Q(kind="privacy_export", artifact__kind="privacy_request_json")
         if "cms_artifact_upload" in held:
             scope |= private & Q(kind="artifact_cleanup")
+        allowed = True
+    if {"cms_research_view", "cms_research_export"} <= held:
+        from .cms_artifacts import scoped_datasets
+        research_jobs = Q(kind="research_export", artifact__domain="research",
+            artifact__resource_id__in=scoped_datasets(actor).values("pk"))
+        if "cms_research_raw_read" not in held:
+            research_jobs &= ~Q(artifact__resource_type="research_dataset_export_sensitive")
+        scope |= research_jobs
         allowed = True
     if {"cms_learning_view", "cms_learning_export"} <= held:
         scope |= Q(kind="learning_export", artifact__kind="learning_json", artifact__domain="learning",
@@ -254,6 +270,9 @@ def claim_job():
                 elif job.kind == "privacy_export":
                     from .cms_privacy_io import reconcile_export
                     result = reconcile_export(job)
+                elif job.kind == "research_export":
+                    from .cms_research_export import reconcile_export
+                    result = reconcile_export(job)
                 else:
                     result = (reconcile_cleanup if job.kind == "artifact_cleanup" else reconcile_intake)(job)
             except CMSFailure:
@@ -344,6 +363,9 @@ def run_once():
             result = process_learning(job.pk, job.lease_token)
         elif job.kind == "privacy_export":
             from .cms_privacy_io import process_export
+            result = process_export(job.pk, job.lease_token)
+        elif job.kind == "research_export":
+            from .cms_research_export import process_export
             result = process_export(job.pk, job.lease_token)
         elif job.kind == "artifact_cleanup":
             from .cms_artifacts import process_cleanup

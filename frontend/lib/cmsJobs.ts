@@ -1,6 +1,6 @@
 import { cms, CmsError, CmsMe } from "./cms";
 
-export type ArtifactKind = "research_json" | "dsm_json" | "assessment_json" | "brain_json" | "evidence_json" | "learning_json" | "learning_export_json" | "privacy_request_json" | "privacy_export_json";
+export type ArtifactKind = "research_json" | "dsm_json" | "assessment_json" | "brain_json" | "research_request_json" | "research_export_json" | "evidence_json" | "learning_json" | "learning_export_json" | "privacy_request_json" | "privacy_export_json";
 export type LearningKind = "quiz" | "flashcard" | "daily" | "distortions";
 export const learningKindLabels: Record<LearningKind, string> = {quiz:"آزمون",flashcard:"فلش‌کارت",daily:"چالش روزانه",distortions:"تمرین خطاهای شناختی"};
 export const learningEditorPaths: Record<LearningKind, string> = {quiz:"learning-quizzes",flashcard:"learning-flashcards",daily:"learning-practice",distortions:"learning-practice"};
@@ -11,7 +11,7 @@ export type AdminArtifact = {
   expires_at: string; purged_at: string | null; cleanup_supported?: boolean; validation_code: string; created_at: string;
 };
 export type AdminJob = {
-  id: string; kind: "research_intake" | "artifact_cleanup" | "learning_import" | "learning_export" | "privacy_export"; status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "reconciling";
+  id: string; kind: "research_intake" | "research_export" | "artifact_cleanup" | "learning_import" | "learning_export" | "privacy_export"; status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "reconciling";
   version: number; attempt: number; progress_done: number; progress_total: number | null;
   error_code: string; artifact_id: string; output_artifact_id: string | null; retry_available: boolean; cancel_requested: boolean;
   result: { dataset_id?: number; records?: number; duplicate?: boolean; artifact_id?: string; cleaned?: boolean;
@@ -39,6 +39,7 @@ export type Snapshot<T> = { data: T; etag: string | null };
 export const artifactKindLabels: Record<ArtifactKind, string> = {
   research_json: "دادهٔ پژوهشی JSON", dsm_json: "دادهٔ DSM به صورت JSON",
   brain_json: "دیتاست مغز JSON (پژوهش خصوصی)",
+  research_request_json: "درخواست ثابت خروجی پژوهشی", research_export_json: "خروجی پژوهشی خصوصی JSON",
   assessment_json: "فرادادهٔ ارزیابی JSON", evidence_json: "مدرک JSON؛ بدون گواهی علمی یا حقوقی",
   learning_json: "بستهٔ خصوصی محتوای آموزشی", learning_export_json: "خروجی خصوصی محتوای آموزشی",
   privacy_request_json:"درخواست خصوصی صاحب داده", privacy_export_json:"خروجی خصوصی اطلاعات شخصی",
@@ -52,7 +53,7 @@ export const jobStatusLabels: Record<AdminJob["status"], string> = {
   cancelled: "لغوشده", reconciling: "در حال تطبیق نتیجهٔ قبلی",
 };
 export const jobKindLabels: Record<AdminJob["kind"], string> = {
-  research_intake: "ورود پژوهش", artifact_cleanup: "پاکسازی فایل منقضی بدون وابستگی",
+  research_intake: "ورود پژوهش", research_export: "خروجی کنترل‌شدهٔ پژوهش", artifact_cleanup: "پاکسازی فایل منقضی بدون وابستگی",
   learning_import:"ورود محتوای آموزشی به Draft تازه", learning_export:"خروجی خصوصی محتوای آموزشی",
   privacy_export:"خروجی خصوصی اطلاعات شخصی",
 };

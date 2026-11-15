@@ -255,7 +255,7 @@ READY_CAPABILITIES |= frozenset({"cms_rights_decide", "cms_rights_revoke", "cms_
 READY_CAPABILITIES |= frozenset(f"cms_{domain}_{operation}" for domain in GOVERNANCE_DOMAINS for operation in ("view", "edit"))
 READY_CAPABILITIES |= frozenset(f"cms_review_decide_{domain}_{kind}" for domain in GOVERNANCE_DOMAINS for kind in ("rights", "terminology"))
 READY_CAPABILITIES |= frozenset({"cms_artifact_upload", "cms_artifact_download", "cms_research_view",
-    "cms_research_intake", "cms_research_map", "cms_research_derive", "cms_research_reject", "cms_research_defer", "cms_research_raw_read"})
+    "cms_research_intake", "cms_research_export", "cms_research_map", "cms_research_derive", "cms_research_reject", "cms_research_defer", "cms_research_raw_read"})
 READY_CAPABILITIES |= frozenset(f"cms_{domain}_{operation}" for domain in ("core", "dsm")
     for operation in ("view", "create", "edit", "submit", "validate", "preview", "archive"))
 READY_CAPABILITIES |= frozenset({"cms_review_decide_dsm_source", "cms_review_decide_dsm_scientific"})

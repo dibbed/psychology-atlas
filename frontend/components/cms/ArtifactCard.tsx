@@ -19,10 +19,11 @@ export default function ArtifactCard({ id, allowImport = true, onChange, onBusy 
   const artifact = snapshot?.data.artifact; const blocked = mutationBlocked(writeError);
   const learningInput = artifact?.kind === "learning_json" && !artifact.resource_type;
   const privateExport = artifact?.domain === "privacy";
-  const serverTransfer = privateExport || artifact?.domain === "learning" && (artifact.kind === "learning_export_json" || artifact.resource_type === "learning_export_manifest");
+  const researchTransfer = artifact?.kind === "research_export_json" || artifact?.kind === "research_request_json";
+  const serverTransfer = privateExport || researchTransfer || artifact?.domain === "learning" && (artifact.kind === "learning_export_json" || artifact.resource_type === "learning_export_manifest");
   const viewAllowed = !!artifact && can(privateExport ? "cms_user_view" : `cms_${artifact.domain}_view`);
-  const exportAllowed = privateExport ? can("cms_privacy_export") : artifact?.domain !== "learning" || can("cms_learning_export");
-  const editable = !!artifact && can("cms_artifact_upload") && viewAllowed && can(privateExport ? "cms_privacy_export" : serverTransfer ? "cms_learning_export" : artifact.domain === "research" ? "cms_research_intake" : `cms_${artifact.domain}_edit`);
+  const exportAllowed = privateExport ? can("cms_privacy_export") : researchTransfer ? can("cms_research_export") : artifact?.domain !== "learning" || can("cms_learning_export");
+  const editable = !!artifact && can("cms_artifact_upload") && viewAllowed && can(privateExport ? "cms_privacy_export" : researchTransfer ? "cms_research_export" : serverTransfer ? "cms_learning_export" : artifact.domain === "research" ? "cms_research_intake" : `cms_${artifact.domain}_edit`);
   const canReplay = learningInput && uncertainImport && writeError instanceof CmsError && writeError.code === "UNKNOWN_OUTCOME";
   const importAllowed = !!artifact && (learningInput ? can("cms_learning_view") && can("cms_learning_create") && can("cms_learning_edit") && can("cms_artifact_upload") :
     ["research_json", "dsm_json", "assessment_json", "brain_json"].includes(artifact.kind) && can("cms_research_view") && can("cms_research_intake"));
@@ -76,7 +77,7 @@ export default function ArtifactCard({ id, allowImport = true, onChange, onBusy 
       {artifact.cleanup_supported === false && expired && !artifact.purged_at && <p className="cms-notice">{p06ErrorMessages.CLEANUP_PLATFORM_UNAVAILABLE}</p>}
       <div className="cms-actions"><button className="button secondary" disabled={busy || blocked} onClick={() => { setConfirmation(undefined); setReload(n => n + 1); }}>بازخوانی فراداده</button>
         {editable && !serverTransfer && artifact.state === "quarantine" && <button className="button primary" disabled={busy || blocked || !snapshot?.etag} onClick={() => action("validate")}>اعتبارسنجی جداگانهٔ فایل</button>}
-        {can("cms_artifact_download") && viewAllowed && exportAllowed && artifactUsable(artifact) && <a className="button secondary" href={`/api/admin/artifacts/${artifact.id}/download/?purpose=${privateExport ? "privacy_request" : artifact.domain === "learning" ? "learning_authoring" : "research_review"}`} download>{artifact.resource_type === "learning_export_manifest" ? "دریافت فهرست ثابت درخواست" : "دریافت خصوصی با مجوز جاری"}</a>}
+        {can("cms_artifact_download") && artifact.kind !== "research_request_json" && viewAllowed && exportAllowed && artifactUsable(artifact) && <a className="button secondary" href={`/api/admin/artifacts/${artifact.id}/download/?purpose=${privateExport ? "privacy_request" : artifact.domain === "learning" ? "learning_authoring" : "research_review"}`} download>{artifact.resource_type === "learning_export_manifest" ? "دریافت فهرست ثابت درخواست" : "دریافت خصوصی با مجوز جاری"}</a>}
         {editable && !["revoked", "expired"].includes(artifact.state) && <button className="button secondary" disabled={busy || blocked || !snapshot?.etag} onClick={() => setConfirmation("revoke")}>بررسی لغو دسترسی فایل</button>}
         <button className="button secondary" disabled={busy || blocked || !snapshot?.etag || !cleanupAllowed} onClick={() => setConfirmation("cleanup")}>پاکسازی فایل منقضی بدون وابستگی</button>
         {allowImport && importAllowed && artifactUsable(artifact) && !jobId && <button className="button primary" disabled={busy || (blocked && !canReplay) || (uncertainImport && !canReplay)} onClick={() => setConfirmation("import")}>{canReplay ? "تطبیق همان کار ورود" : "بررسی ایجاد کار ورود"}</button>}
