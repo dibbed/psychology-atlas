@@ -139,6 +139,12 @@ def configure_admin():
     from .models import SourceReference
     from .cms_domains import DOMAIN_SPECS, MODEL_KINDS, domain_for
     class ContentView(ReadOnlySecurityAdmin):
+        # Raw DSM imports require the purpose-bound, audited CMS raw endpoint.
+        # A Django-admin view permission does not grant that separate capability.
+        def get_fields(self, request, obj=None):
+            fields = super().get_fields(request, obj)
+            return [field for field in fields if field not in {"raw_document", "source_payload"}]
+
         def has_view_permission(self, request, obj=None):
             return "cms_" + domain_for(MODEL_KINDS[self.model]) + "_view" in effective_permissions(request.user)
     for model in (spec["model"] for spec in DOMAIN_SPECS.values()):
@@ -151,6 +157,11 @@ def configure_admin():
     if admin.site.is_registered(SourceReference):
         admin.site.unregister(SourceReference)
     admin.site.register(SourceReference, SourceView)
+    # Legacy ModelAdmin registrations can write cases, quiz answers, learner history
+    # and metadata outside the revision/audit/policy services. Never expose them.
+    for model, handler in tuple(admin.site._registry.items()):
+        if model._meta.app_label == "atlas" and not isinstance(handler, ReadOnlySecurityAdmin):
+            admin.site.unregister(model)
     # No raw permission/device/session/security-state edit route; services own the writes.
     from django_otp.plugins.otp_static.models import StaticDevice, StaticToken
     from django_otp.plugins.otp_totp.models import TOTPDevice
