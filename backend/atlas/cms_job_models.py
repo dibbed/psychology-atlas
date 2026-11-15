@@ -31,7 +31,7 @@ class AdminArtifact(models.Model):
         default_permissions = ()
         constraints = [
             models.CheckConstraint(condition=models.Q(state__in=("quarantine", "ready", "rejected", "revoked", "expired")), name="ck_cms_artifact_state"),
-            models.CheckConstraint(condition=models.Q(kind__in=("research_json", "dsm_json", "assessment_json", "evidence_json", "learning_json", "learning_export_json", "privacy_request_json", "privacy_export_json")), name="ck_cms_artifact_kind"),
+            models.CheckConstraint(condition=models.Q(kind__in=("research_json", "dsm_json", "assessment_json", "brain_json", "evidence_json", "learning_json", "learning_export_json", "privacy_request_json", "privacy_export_json")), name="ck_cms_artifact_kind"),
         ]
 
 

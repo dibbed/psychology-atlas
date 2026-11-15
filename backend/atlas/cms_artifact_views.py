@@ -191,6 +191,24 @@ class ResearchDatasetsView(AdminAPIView):
             return Response({**meta, "results": [service.dataset_data(row) for row in rows]})
 
 
+class ResearchDatasetDetailView(AdminAPIView):
+    capability = "cms_research_view"
+
+    def get(self, request, dataset_id):
+        no_query(request)
+        with policy_lock():
+            dataset = service.get_dataset(request.user, dataset_id)
+            data = service.dataset_data(dataset)
+            validation = None
+            if data["brain_staging"]:
+                if not data["intake_complete"]:
+                    raise CMSFailure("INTAKE_INCOMPLETE", 409)
+                from .brain_staging import validate_brain_staging
+                report = validate_brain_staging(dataset.key)
+                validation = {key: report[key] for key in ("candidate_count", "ready_for_curation", "classifications", "issues", "canonical_writes")}
+            return Response({"dataset": data, "brain_validation": validation})
+
+
 class ResearchRecordsView(AdminAPIView):
     capability = "cms_research_view"
 
@@ -255,6 +273,7 @@ urlpatterns = [
     path("artifacts/<uuid:artifact_id>/download/", ArtifactDownloadView.as_view()),
     path("research/imports/", ResearchIntakeView.as_view()),
     path("research/datasets/", ResearchDatasetsView.as_view()),
+    path("research/datasets/<int:dataset_id>/", ResearchDatasetDetailView.as_view()),
     path("research/datasets/<int:dataset_id>/records/", ResearchRecordsView.as_view()),
     path("research/records/<int:record_id>/", ResearchRecordView.as_view()),
     path("research/records/<int:record_id>/history/", ResearchHistoryView.as_view()),

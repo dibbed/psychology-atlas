@@ -8,6 +8,7 @@ const net = require("node:net");
 const crypto = require("node:crypto");
 const { spawn, execFileSync } = require("node:child_process");
 const root = path.resolve(__dirname, "..");
+const frontendDir = path.resolve(process.env.CMS_QA_FRONTEND_DIR || path.join(root, "frontend"));
 const origin = "http://127.0.0.1:3023";
 const output = process.env.CMS_QA_OUTPUT ? path.join(process.env.CMS_QA_OUTPUT, "p06") : path.join(root, "qa/p06-browser");
 const python = process.env.CMS_QA_PYTHON || (process.platform === "win32" ? path.join(root, "backend/.venv/Scripts/python.exe") : "python");
@@ -313,6 +314,56 @@ async function testJourney(fixture) {
   report.archiveArtifactId = artifact.id;
   report.journey.push("multipart quarantine", "separate validation", "authorised audited download", "queued durable job", "same-key replay", "real worker", "automatic UI polling and true progress", "dataset and record UI", "map/stage/defer/reject", "raw permission denial and audited owner access", "foreign ownership denials", "revocation denial", "320px RTL keyboard and overflow", "canonical and raw preservation");
 }
+async function testBrainStaging(fixture) {
+  const previousPage = page;
+  await configurePage();
+  await login(fixture.users.owner);
+  const before = dbState();
+  const document = { schema_version: "brain-staging-v1",
+    dataset_metadata: { key: "synthetic-brain-cms-qa", version: "v1" },
+    records: [{ id: "brain-test-one", category: "anatomy", slug: "synthetic-brain-qa",
+      name_en: "Synthetic Brain QA Only", kind: "structure", laterality: "bilateral",
+      source_version: "synthetic-v1", spatial_scope: "synthetic-only", review_status: "unreviewed",
+      source_ids: ["no-source"], source_notes: {"no-source": "unverified synthetic reference"} }] };
+  const bytes = Buffer.from(JSON.stringify(document, null, 2) + "\n");
+  await page.goto(origin + "/admin-console/research/intake");
+  await page.locator("#artifact-kind").selectOption("brain_json");
+  await page.locator("#artifact-file").setInputFiles({
+    name: "P06-NON-SCIENTIFIC-brain.json", mimeType: "application/json", buffer: bytes,
+  });
+  const uploaded = await uiResponse("/artifacts/", page.getByRole("button", { name: "بارگذاری فایل؛ بدون اعتبارسنجی خودکار", exact: true }), 201);
+  check(uploaded.data.artifact.kind === "brain_json" && uploaded.data.artifact.sha256 === sha(bytes),
+    "Brain UI uploads brain-staging-v1 to private quarantine with exact raw checksum");
+  const id = uploaded.data.artifact.id;
+  const card = page.getByRole("region", { name: "جزئیات فایل خصوصی", exact: true });
+  const validated = await uiResponse(`/artifacts/${id}/validate/`,
+    card.getByRole("button", { name: "اعتبارسنجی جداگانهٔ فایل", exact: true }));
+  check(validated.data.artifact.state === "ready", "Brain structural validation creates ready private artifact only");
+  await card.getByRole("button", { name: "بررسی ایجاد کار ورود", exact: true }).click();
+  const enqueued = await uiResponse("/research/imports/", card.getByRole("button", { name: "تأیید ایجاد کار", exact: true }), 202);
+  await card.getByRole("link", { name: "پیگیری کار ایجادشده ←", exact: true }).click();
+  await page.getByRole("heading", { name: "در صف", exact: true }).waitFor();
+  runPython(["manage.py", "cms_worker", "--once"]);
+  await page.getByRole("heading", { name: "پایان‌یافته", exact: true }).waitFor({timeout:20000});
+  const job = (await api(`/jobs/${enqueued.data.job.id}/`)).data.job;
+  check(job.status === "succeeded" && job.result.records === 1 && job.progress_done === 1,
+    "Real Brain durable worker completes one research staging record");
+  const detail = (await api(`/research/datasets/${job.result.dataset_id}/`)).data;
+  check(detail.dataset.brain_staging && detail.brain_validation.canonical_writes === 0
+    && detail.brain_validation.issues.some(issue => issue.record === "brain-test-one" && issue.code === "unresolved_source"),
+    "Brain scoped validation exposes unresolved-source code but no canonical publication");
+  await page.goto(origin + `/admin-console/research/${job.result.dataset_id}`);
+  await page.getByRole("heading", { name: "اعتبارسنجی ساختار Brain در محیط خصوصی", exact: true }).waitFor();
+  await page.getByText("unresolved_source", {exact: true}).waitFor();
+  await page.setViewportSize(report.viewports[1]);
+  await layout("320px Brain staging validation");
+  await screenshot("w06-brain-mobile-validation");
+  check(dbState().canonical === before.canonical && dbState().datasets === before.datasets + 1,
+    "Brain UI/worker staging does not modify canonical content");
+  report.journey.push("Brain JSON multipart upload, validation, durable job, worker, scoped dataset/record and issue report");
+  await page.close();
+  page = previousPage;
+}
 async function testGovernanceEvidence(fixture) {
   const previousPage = page;
   await configurePage(); await login(fixture.users.owner);
@@ -526,12 +577,12 @@ async function testCleanup(fixture) {
 }
 async function main() {
   // An exact build ID from the parent is the run authorisation and prevents stale-build claims.
-  const build = fs.readFileSync(path.join(root, "frontend/.next/BUILD_ID"), "utf8").trim();
+  const build = fs.readFileSync(path.join(frontendDir, ".next/BUILD_ID"), "utf8").trim();
   assert(process.env.CMS_QA_BUILD_ID && process.env.CMS_QA_BUILD_ID === build, "Parent production-build handoff required: set CMS_QA_BUILD_ID to the ready BUILD_ID");
-  const manifest = JSON.parse(fs.readFileSync(path.join(root, "frontend/.next/routes-manifest.json"), "utf8"));
+  const manifest = JSON.parse(fs.readFileSync(path.join(frontendDir, ".next/routes-manifest.json"), "utf8"));
   const rewrites = Array.isArray(manifest.rewrites) ? manifest.rewrites : Object.values(manifest.rewrites).flat();
   assert(rewrites.some(rule => rule.source === "/api/admin/:path*" && rule.destination.startsWith("http://127.0.0.1:8023/api/admin/")), "Production admin rewrite must target isolated QA API 8023");
-  const routes = Object.keys(JSON.parse(fs.readFileSync(path.join(root, "frontend/.next/server/app-paths-manifest.json"), "utf8")));
+  const routes = Object.keys(JSON.parse(fs.readFileSync(path.join(frontendDir, ".next/server/app-paths-manifest.json"), "utf8")));
   for (const route of ["/admin-console/research/page", "/admin-console/research/intake/page", "/admin-console/research/[id]/page", "/admin-console/research/records/[id]/page", "/admin-console/jobs/page", "/admin-console/jobs/[id]/page"]) assert(routes.includes(route), "Production build missing " + route);
   report.build_id = build;
   await freePort(8023); await freePort(3023);
@@ -552,11 +603,11 @@ async function main() {
   report.isolation = { database: "new TEMP/atlas-p06-browser-*/cms-journey.sqlite3", private_storage: "same owned directory/private", original_database_selected: false, response_mocks: false };
   const backend = start(python, ["manage.py", "runserver", "127.0.0.1:8023", "--noreload"], path.join(root, "backend"), "backend");
   await ready("http://127.0.0.1:8023/api/admin/auth/csrf/", backend);
-  const frontend = start(process.execPath, [path.join(root, "frontend/node_modules/next/dist/bin/next"), "start", "-p", "3023"], path.join(root, "frontend"), "frontend");
+  const frontend = start(process.execPath, [path.join(frontendDir, "node_modules/next/dist/bin/next"), "start", "-p", "3023"], frontendDir, "frontend");
   await ready(origin + "/admin-console", frontend);
   const { chromium } = require("playwright");
-  browser = await chromium.launch({ headless: true }); report.chromium = browser.version();
-  await configurePage(); await testJourney(fixture); await testGovernanceEvidence(fixture); await testCleanup(fixture);
+  browser = await chromium.launch({ headless: true, ...(process.env.CMS_QA_CHROME_PATH ? { executablePath: process.env.CMS_QA_CHROME_PATH } : {}) }); report.chromium = browser.version();
+  await configurePage(); await testJourney(fixture); await testBrainStaging(fixture); await testGovernanceEvidence(fixture); await testCleanup(fixture);
   report.expectedHttpErrors = badResponses.filter(response => expectedResponses.has(response.path + ":" + response.status));
   check(badResponses.every(response => expectedResponses.has(response.path + ":" + response.status)), "All browser HTTP errors correspond to explicit MFA/CSRF/ownership/retention denial probes");
   check(resourceErrors.length <= report.expectedHttpErrors.length, "Browser resource errors are accounted for by expected denials");
@@ -595,7 +646,7 @@ if (process.argv.includes("--self-check")) {
     report.finished_at = new Date().toISOString();
     const serialized = sanitize(JSON.stringify(report, null, 2));
     fs.writeFileSync(path.join(output, "cms-intake-browser-report.json"), serialized);
-    if (process.platform === "win32") fs.writeFileSync(path.join(root, "docs/v1.0-p06-browser-report.json"), serialized);
+    if (process.platform === "win32" && !process.env.CMS_QA_OUTPUT) fs.writeFileSync(path.join(root, "docs/v1.0-p06-browser-report.json"), serialized);
     console.log(JSON.stringify({ status: report.status, assertions: report.checks.length, failure: report.failure,
       report: process.platform === "win32" && !process.env.CMS_QA_OUTPUT ? "docs/v1.0-p06-browser-report.json" : path.resolve(output, "cms-intake-browser-report.json") }));
   });

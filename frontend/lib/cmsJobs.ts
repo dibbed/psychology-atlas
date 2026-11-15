@@ -1,6 +1,6 @@
 import { cms, CmsError, CmsMe } from "./cms";
 
-export type ArtifactKind = "research_json" | "dsm_json" | "assessment_json" | "evidence_json" | "learning_json" | "learning_export_json" | "privacy_request_json" | "privacy_export_json";
+export type ArtifactKind = "research_json" | "dsm_json" | "assessment_json" | "brain_json" | "evidence_json" | "learning_json" | "learning_export_json" | "privacy_request_json" | "privacy_export_json";
 export type LearningKind = "quiz" | "flashcard" | "daily" | "distortions";
 export const learningKindLabels: Record<LearningKind, string> = {quiz:"آزمون",flashcard:"فلش‌کارت",daily:"چالش روزانه",distortions:"تمرین خطاهای شناختی"};
 export const learningEditorPaths: Record<LearningKind, string> = {quiz:"learning-quizzes",flashcard:"learning-flashcards",daily:"learning-practice",distortions:"learning-practice"};
@@ -20,7 +20,7 @@ export type AdminJob = {
 };
 export type ResearchDataset = {
   id: number; dataset_name: string; dataset_version: string; source_filename: string;
-  sha256: string; records: number; intake_complete: boolean; created_at: string;
+  sha256: string; records: number; intake_complete: boolean; brain_staging: boolean; created_at: string;
 };
 export type ResearchMapping = { canonical_key?: string; name_en?: string; name_fa?: string; source_ids?: number[] };
 export type ResearchAction = "map" | "reject" | "defer" | "stage";
@@ -38,6 +38,7 @@ export type Snapshot<T> = { data: T; etag: string | null };
 
 export const artifactKindLabels: Record<ArtifactKind, string> = {
   research_json: "دادهٔ پژوهشی JSON", dsm_json: "دادهٔ DSM به صورت JSON",
+  brain_json: "دیتاست مغز JSON (پژوهش خصوصی)",
   assessment_json: "فرادادهٔ ارزیابی JSON", evidence_json: "مدرک JSON؛ بدون گواهی علمی یا حقوقی",
   learning_json: "بستهٔ خصوصی محتوای آموزشی", learning_export_json: "خروجی خصوصی محتوای آموزشی",
   privacy_request_json:"درخواست خصوصی صاحب داده", privacy_export_json:"خروجی خصوصی اطلاعات شخصی",

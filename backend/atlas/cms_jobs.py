@@ -17,7 +17,7 @@ from .cms_sessions import current_session
 
 LEASE_SECONDS = 120
 MAX_ATTEMPTS = 3
-JOB_INPUT_KINDS = {"research_intake": {"research_json", "dsm_json", "assessment_json"},
+JOB_INPUT_KINDS = {"research_intake": {"research_json", "dsm_json", "assessment_json", "brain_json"},
                    "learning_import": {"learning_json"}, "learning_export": {"learning_json"},
                    "privacy_export": {"privacy_request_json"}}
 MANUAL_RETRY = {"TRANSIENT_DATABASE", "WORKER_INTERRUPTED", "UNAUTHENTICATED", "PERMISSION_DENIED", "POLICY_CHANGED", "INTERNAL_ERROR"}
@@ -51,6 +51,7 @@ def action_scope(actor, artifact, kind):
         artifact_binding(artifact)
     elif kind == "research_intake":
         require_intake(actor)
+        _edit_scope(actor, artifact)
     elif kind == "artifact_cleanup":
         require(actor, "cms_enter")
         require(actor, "cms_artifact_upload")

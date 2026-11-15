@@ -25,7 +25,7 @@ export default function ArtifactCard({ id, allowImport = true, onChange, onBusy 
   const editable = !!artifact && can("cms_artifact_upload") && viewAllowed && can(privateExport ? "cms_privacy_export" : serverTransfer ? "cms_learning_export" : artifact.domain === "research" ? "cms_research_intake" : `cms_${artifact.domain}_edit`);
   const canReplay = learningInput && uncertainImport && writeError instanceof CmsError && writeError.code === "UNKNOWN_OUTCOME";
   const importAllowed = !!artifact && (learningInput ? can("cms_learning_view") && can("cms_learning_create") && can("cms_learning_edit") && can("cms_artifact_upload") :
-    ["research_json", "dsm_json", "assessment_json"].includes(artifact.kind) && can("cms_research_view") && can("cms_research_intake"));
+    ["research_json", "dsm_json", "assessment_json", "brain_json"].includes(artifact.kind) && can("cms_research_view") && can("cms_research_intake"));
   const expired = !!artifact && (artifact.state === "expired" || new Date(artifact.expires_at).getTime() <= Date.now());
   const cleanupAllowed = editable && expired && artifact?.cleanup_supported !== false && !artifact?.purged_at && !cleanupJobId;
   useEffect(() => { onBusy?.(busy); return () => onBusy?.(false); }, [busy, onBusy]);

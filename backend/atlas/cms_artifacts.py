@@ -36,7 +36,8 @@ MAX_DEPTH = 64
 MAX_STRING = 100000
 MAX_NODES = 1000000
 MAX_EVIDENCE_BYTES = 65536
-KINDS = {"research_json": "research", "dsm_json": "dsm", "assessment_json": "assessment", "learning_json": "learning"}
+KINDS = {"research_json": "research", "dsm_json": "dsm", "assessment_json": "assessment",
+         "brain_json": "brain", "learning_json": "learning"}
 PURPOSES = {"research_review", "source_review", "rights_review", "intake_validation", "learning_authoring", "privacy_request"}
 PRIVATE_KINDS = {"privacy_request_json", "privacy_export_json"}
 
@@ -720,6 +721,43 @@ def prepare_document(kind, raw):
         rows = _assessment(text, document)
         metadata = document["dataset_metadata"]
         audit_data = {"assessment_staging_schema": ASSESSMENT_SCHEMA}
+    elif kind == "brain_json":
+        from .brain_staging import CATEGORIES, COMMON_FIELDS, FIELDS, SCHEMA, stable_slug
+        if (set(document) != {"schema_version", "dataset_metadata", "records"}
+                or document.get("schema_version") != SCHEMA
+                or not isinstance(document.get("dataset_metadata"), dict)
+                or not isinstance(document.get("records"), list)):
+            raise CMSFailure("UNSUPPORTED_SCHEMA", 400)
+        metadata = document["dataset_metadata"]
+        if (set(metadata) - {"key", "version", "dataset_name", "description", "generated_at"}
+                or not stable_slug(metadata.get("key")) or len(metadata["key"]) > 160
+                or type(metadata.get("version")) is not str or not 0 < len(metadata["version"].strip()) <= 120
+                or any(type(value) is not str or len(value) > 500 for value in metadata.values())):
+            raise CMSFailure("INVALID_METADATA", 400)
+        rows = []
+        for index, value in enumerate(document["records"]):
+            if not isinstance(value, dict) or type(value.get("category")) is not str or value["category"] not in CATEGORIES:
+                raise CMSFailure("UNSUPPORTED_SCHEMA", 400)
+            if (type(value.get("id")) is not str or not 0 < len(value["id"]) <= 270
+                    or set(value) - (COMMON_FIELDS | FIELDS[value["category"]])):
+                raise CMSFailure("UNSUPPORTED_SCHEMA", 400)
+            if any(type(value[k]) is not str for k in value if k in
+                   (COMMON_FIELDS | FIELDS[value["category"]]) - {"source_ids", "source_notes",
+                       "is_active", "persian_reviewed", "source_reference_id"}):
+                raise CMSFailure("INVALID_METADATA", 400)
+            if any(k in value and type(value[k]) is not bool for k in ("is_active", "persian_reviewed")):
+                raise CMSFailure("INVALID_METADATA", 400)
+            if ("source_reference_id" in value and
+                    (type(value["source_reference_id"]) is not int or value["source_reference_id"] <= 0)):
+                raise CMSFailure("INVALID_METADATA", 400)
+            if ("source_ids" in value and (not isinstance(value["source_ids"], list)
+                    or any(type(item) is not str or len(item) > 270 for item in value["source_ids"]))):
+                raise CMSFailure("INVALID_METADATA", 400)
+            if ("source_notes" in value and (not isinstance(value["source_notes"], dict)
+                    or any(type(k) is not str or type(v) is not str for k, v in value["source_notes"].items()))):
+                raise CMSFailure("INVALID_METADATA", 400)
+            rows.append(("brain", value, index))
+        audit_data = {"brain_staging_schema": SCHEMA}
     elif kind == "dsm_json":
         from .dsm_import import _collect_nodes, _validate_document, NODE_ROOT_KEYS
         if not any(key in document for key in NODE_ROOT_KEYS):
@@ -803,6 +841,8 @@ def revoke_artifact(actor_id, session_id, artifact_id, expected, request_id):
 
 
 def _record_identity(importer, section, row, index):
+    if section == "brain":
+        return row["id"]
     if section == "assessment":
         return row["id"]
     if section == "dsm":
@@ -811,7 +851,10 @@ def _record_identity(importer, section, row, index):
 
 
 def _record_fields(importer, section, row, index):
-    if section == "assessment":
+    if section == "brain":
+        from .brain_staging import brain_record_fields
+        result = brain_record_fields(row, row["id"])
+    elif section == "assessment":
         result = archive_fields(row)
     elif section == "dsm":
         from .dsm_import import _as_text, _prune_nested_nodes
@@ -971,6 +1014,10 @@ def scoped_datasets(actor):
     if "cms_assessment_view" in held:
         domains.append("assessment")
         sections.extend("assessment_" + category for category in ASSESSMENT_FIELDS)
+    if "cms_brain_view" in held:
+        from .brain_staging import CATEGORIES
+        domains.append("brain")
+        sections.extend(section for section, _ in CATEGORIES.values())
     excluded = ResearchRecord.objects.exclude(section__in=sections).values("dataset_id")
     rows = ResearchDataset.objects.exclude(pk__in=excluded).filter(
         ~Q(ingestion_audit__has_key="cms_domain") | Q(ingestion_audit__cms_domain__in=domains))
@@ -980,6 +1027,8 @@ def scoped_datasets(actor):
         rows = rows.exclude(ingestion_audit__has_key="assessment_staging_schema")
     if "dsm" not in domains:
         rows = rows.exclude(ingestion_audit__has_key="dsm_staging_schema")
+    if "brain" not in domains:
+        rows = rows.exclude(ingestion_audit__has_key="brain_staging_schema")
     return rows.defer("raw_text", "raw_document", "metadata", "statistics", "quality_control").order_by("pk")
 
 
@@ -998,6 +1047,7 @@ def dataset_data(dataset):
     return {"id": dataset.pk, "dataset_name": dataset.dataset_name, "dataset_version": dataset.dataset_version,
         "sha256": dataset.source_sha256, "source_filename": dataset.source_filename,
         "records": count, "created_at": dataset.created_at,
+        "brain_staging": dataset.ingestion_audit.get("brain_staging_schema") == "brain-staging-v1",
         "intake_complete": count == dataset.ingestion_audit.get("list_record_total", count)}
 
 
