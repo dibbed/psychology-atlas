@@ -14,7 +14,13 @@ const out = process.env.CMS_QA_OUTPUT || path.join(root, 'qa', 'p07-browser');
 fs.mkdirSync(out, { recursive: true });
 const python = process.env.CMS_QA_PYTHON || (process.platform === 'win32' ? path.join(root, 'backend', '.venv', 'Scripts', 'python.exe') : 'python');
 const origin = process.env.CMS_QA_ORIGIN || 'http://127.0.0.1:3000';
-const backendOrigin = process.env.CMS_QA_API_ORIGIN || 'http://127.0.0.1:8000';
+const builtRewrites = JSON.parse(fs.readFileSync(path.join(root, 'frontend/.next/routes-manifest.json'), 'utf8')).rewrites.afterFiles;
+const bakedApi = builtRewrites.find(rule => rule.source === '/api/admin/:path*');
+assert(bakedApi, 'Production Next build has no CMS API rewrite');
+const expectedApiOrigin = new URL(bakedApi.destination).origin;
+const backendOrigin = process.env.CMS_QA_API_ORIGIN || expectedApiOrigin;
+assert(backendOrigin === expectedApiOrigin && new URL(backendOrigin).hostname === '127.0.0.1',
+  'Backend origin must match production build loopback API rewrite');
 const frontendPort = new URL(origin).port, backendPort = new URL(backendOrigin).port;
 const env = { ...process.env, CMS_QA_PHASE: 'p07',
     SQLITE_PATH: path.join(temporary, 'cms-journey.sqlite3'),
@@ -83,7 +89,7 @@ async function shot(page, filename) {
     check(await page.getByRole('button',{name:'خروج',exact:true}).count()===1,
       'Actual owner signed in with MFA and session');
     let result=await api(page,'/content/schema/');
-    check(result.status===200 && result.json.kinds.length===17,'Schema response includes all 17 P07 kinds');
+    check(result.status===200 && result.json.kinds.filter(k=>['core','dsm'].includes(k.domain)).length===17,'Schema response includes all 17 P07 core/DSM kinds');
     const names=result.json.kinds.map(k=>k.kind);
     check(names.includes('concept') && names.includes('dsm-record-relation'),
         'Concept and DSM relations are authorized typed schemas');
@@ -143,8 +149,10 @@ async function shot(page, filename) {
     const restricted=await limited.newPage();
     await login(restricted,fixture.users.scoped);
     const denied=await api(restricted,'/content/schema/');
-    check(denied.status===200 && denied.json.kinds.length===0,
-      'Scoped Brain staff sees zero Core/DSM schemas');
+    check(denied.status===200
+      && denied.json.kinds.filter(k=>['core','dsm'].includes(k.domain)).length===0
+      && denied.json.kinds.some(k=>k.domain==='brain'),
+      'Scoped Brain staff sees zero Core/DSM schemas while retaining authorized Brain');
     const denial=await api(restricted,'/content/dsm/tree/?corpus='+fixture.p07.corpus);
     check(denial.status===403,'Scoped staff cannot read DSM tree via direct API');
     await restricted.goto(origin+'/admin-console/content/concept');

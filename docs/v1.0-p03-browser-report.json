@@ -18,6 +18,7 @@
     "Escape cancels leave without losing draft",
     "Scientific name input is independently LTR",
     "Keyboard focus has visible outline",
+    "Stale editor receives actual HTTP 412 and blocks unsupervised retry",
     "412 retains unsaved editor text",
     "Overlapping conflict requires explicit field choice",
     "Explicit rebase saves against new server ETag",
@@ -62,7 +63,7 @@
       "status": 400
     },
     {
-      "path": "/api/admin/content/category/2ef61269-3fcb-47d4-bf6f-85ed16fc4871/revisions",
+      "path": "/api/admin/content/category/938deb7a-7bca-4ad6-9576-fab72ff0b614/revisions",
       "status": 412
     },
     {
@@ -74,7 +75,7 @@
       "status": 403
     },
     {
-      "path": "/api/admin/content/category/2ef61269-3fcb-47d4-bf6f-85ed16fc4871/revisions",
+      "path": "/api/admin/content/category/938deb7a-7bca-4ad6-9576-fab72ff0b614/revisions",
       "status": 403
     },
     {
@@ -82,7 +83,7 @@
       "status": 403
     },
     {
-      "path": "/api/admin/content/category/2ef61269-3fcb-47d4-bf6f-85ed16fc4871",
+      "path": "/api/admin/content/category/938deb7a-7bca-4ad6-9576-fab72ff0b614",
       "status": 404
     }
   ],
@@ -102,6 +103,6 @@
     "Local HTTP; no target HTTPS/proxy/deployment rehearsal",
     "Loading/error/unknown-outcome checks use explicit network fault injection; normal journey uses real API"
   ],
-  "browserVersion": "151.0.7922.34",
+  "browserVersion": "156.0.8078.4",
   "status": "passed"
 }

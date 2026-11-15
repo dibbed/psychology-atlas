@@ -74,6 +74,6 @@
     "Source mutation is a guarded fixture injection; P05 source editor is separate",
     "Local HTTP, no deployment rehearsal"
   ],
-  "chromium": "151.0.7922.34",
+  "chromium": "156.0.8078.4",
   "status": "passed"
 }

@@ -11,7 +11,12 @@ const output = process.env.CMS_QA_OUTPUT || temporary;
 fs.mkdirSync(output, { recursive: true });
 const python = process.env.CMS_QA_PYTHON || (process.platform === "win32" ? path.join(root, "backend/.venv/Scripts/python.exe") : "python");
 const origin = "http://127.0.0.1:3023";
-const env = { ...process.env, CMS_QA_PHASE: "p04", NEXT_PUBLIC_API_URL: "http://127.0.0.1:8023/api",
+const builtRewrites = JSON.parse(fs.readFileSync(path.join(root, "frontend/.next/routes-manifest.json"), "utf8")).rewrites.afterFiles;
+const bakedApi = builtRewrites.find(rule => rule.source === "/api/admin/:path*");
+assert(bakedApi, "Production Next build has no CMS API rewrite");
+const backendOrigin = new URL(bakedApi.destination).origin;
+assert(new URL(backendOrigin).hostname === "127.0.0.1", "Browser fixture requires a loopback backend");
+const env = { ...process.env, CMS_QA_PHASE: "p04", NEXT_PUBLIC_API_URL: backendOrigin + "/api",
   SQLITE_PATH: path.join(temporary, "cms-journey.sqlite3"), CSRF_TRUSTED_ORIGINS: origin, DEBUG: "1" };
 const report = { runtime: "Production Next / real Django session, MFA, CSRF, services / synthetic disposable SQLite / Chromium",
   checks: [], journey: [], browserErrors: [], screenshots: [], limitations: ["Chromium desktop and 320px viewport only", "Synthetic evidence, not scientific content", "Source mutation is a guarded fixture injection; P05 source editor is separate", "Local HTTP, no deployment rehearsal"] };
@@ -67,8 +72,8 @@ async function waitForState(apiPath, predicate) {
 }
 async function main() {
   const fixture = JSON.parse(execFileSync(python, [path.join(root, "scripts/cms_browser_fixture.py")], { env, encoding: "utf8" }));
-  const backend = start(python, ["manage.py", "runserver", "127.0.0.1:8023", "--noreload"], path.join(root, "backend"), "backend");
-  await ready("http://127.0.0.1:8023/api/admin/auth/csrf/", backend);
+  const backend = start(python, ["manage.py", "runserver", "127.0.0.1:" + new URL(backendOrigin).port, "--noreload"], path.join(root, "backend"), "backend");
+  await ready(backendOrigin + "/api/admin/auth/csrf/", backend);
   const frontend = start(process.execPath, [path.join(root, "frontend/node_modules/next/dist/bin/next"), "start", "-p", "3023"], path.join(root, "frontend"), "frontend");
   await ready(origin + "/admin-console", frontend);
   browser = await chromium.launch({ headless: true }); report.chromium = browser.version();
@@ -86,6 +91,7 @@ async function main() {
   await page.getByLabel("توضیح", { exact: true }).fill("دادهٔ مصنوعی برای بررسی workflow؛ محتوای علمی نیست.");
   await page.getByRole("button", { name: "ذخیرهٔ پیشنهاد", exact: true }).click();
   await page.getByRole("heading", { name: "پیشنهاد آزمون داوری P04", exact: true }).waitFor();
+  await page.waitForURL(/\/admin-console\/content\/category\/[0-9a-f-]+$/);
   const id = new URL(page.url()).pathname.split("/").pop();
   const reviewPath = `/reviews/category/${id}/`;
   const reviewUrl = origin + `/admin-console/reviews/category/${id}`;

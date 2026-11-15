@@ -7,7 +7,13 @@ const out=process.env.CMS_QA_OUTPUT||path.join(root,'qa/p08-browser');
 fs.mkdirSync(out,{recursive:true});
 const py=process.env.CMS_QA_PYTHON||(process.platform==='win32'?path.join(root,'backend/.venv/Scripts/python.exe'):'python');
 const origin=process.env.CMS_QA_ORIGIN||'http://127.0.0.1:3000';
-const apiOrigin=process.env.CMS_QA_API_ORIGIN||'http://127.0.0.1:8000';
+const builtRewrites=JSON.parse(fs.readFileSync(path.join(root,'frontend/.next/routes-manifest.json'),'utf8')).rewrites.afterFiles;
+const bakedApi=builtRewrites.find(rule=>rule.source==='/api/admin/:path*');
+assert(bakedApi,'Production Next build has no CMS API rewrite');
+const expectedApiOrigin=new URL(bakedApi.destination).origin;
+const apiOrigin=process.env.CMS_QA_API_ORIGIN||expectedApiOrigin;
+assert(apiOrigin===expectedApiOrigin&&new URL(apiOrigin).hostname==='127.0.0.1',
+  'Backend origin must match production build loopback API rewrite');
 const env={...process.env,CMS_QA_PHASE:'p08',SQLITE_PATH:path.join(temp,'cms-journey.sqlite3'),NEXT_PUBLIC_API_URL:apiOrigin+'/api',CSRF_TRUSTED_ORIGINS:origin,DEBUG:'1'};
 const report={stage:'P08',status:'RUNNING',checks:[],screenshots:[],errors:[],limits:['Synthetic MFA fixture, not enrolled local owner','No P16 canonical publication','Local HTTP, no production release']};
 const procs=[];let browser;
@@ -27,7 +33,7 @@ const next=start(process.execPath,[path.join(root,'frontend/node_modules/next/di
 await ready(origin+'/admin-console',next);
 browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'chrome'}:{})});const context=await browser.newContext({viewport:{width:1280,height:900}});const page=await context.newPage();page.on('pageerror',e=>report.errors.push(e.name));
 await login(page,fixture.users.owner);check(true,'Owner session with real MFA and CSRF');
-const schema=await get(page,'/content/schema/');check(schema.status===200&&schema.data.kinds.length===34,'34 typed kinds available to Owner');check(schema.data.kinds.filter(x=>x.domain==='therapy').length===17,'All 17 P08 kinds are visible');
+const schema=await get(page,'/content/schema/');check(schema.status===200&&schema.data.kinds.filter(k=>['core','dsm','therapy'].includes(k.domain)).length===34,'All 34 P07/P08 typed kinds available to Owner');check(schema.data.kinds.filter(x=>x.domain==='therapy').length===17,'All 17 P08 kinds are visible');
 await page.goto(origin+'/admin-console/content/technique/new');
 await page.locator('input[name=slug]').fill('p08-browser-non-scientific');
 await page.locator('input[name=name_en]').fill('P08 NON-SCIENTIFIC technique');

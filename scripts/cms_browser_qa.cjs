@@ -11,7 +11,12 @@ const output = process.env.CMS_QA_OUTPUT || temporary;
 fs.mkdirSync(output, { recursive: true });
 const python = process.env.CMS_QA_PYTHON || (process.platform === "win32" ? path.join(root, "backend/.venv/Scripts/python.exe") : "python");
 const origin = "http://127.0.0.1:3023";
-const env = { ...process.env, NEXT_PUBLIC_API_URL: "http://127.0.0.1:8023/api", SQLITE_PATH: path.join(temporary, "cms-journey.sqlite3"), CSRF_TRUSTED_ORIGINS: origin, DEBUG: "1" };
+const builtRewrites = JSON.parse(fs.readFileSync(path.join(root, "frontend/.next/routes-manifest.json"), "utf8")).rewrites.afterFiles;
+const bakedApi = builtRewrites.find(rule => rule.source === "/api/admin/:path*");
+assert(bakedApi, "Production Next build has no CMS API rewrite");
+const backendOrigin = new URL(bakedApi.destination).origin;
+assert(new URL(backendOrigin).hostname === "127.0.0.1", "Browser fixture requires a loopback backend");
+const env = { ...process.env, NEXT_PUBLIC_API_URL: backendOrigin + "/api", SQLITE_PATH: path.join(temporary, "cms-journey.sqlite3"), CSRF_TRUSTED_ORIGINS: origin, DEBUG: "1" };
 const report = { runtime: "Production Next / real Django / migrated synthetic disposable SQLite / Chromium", checks: [], expectedHttpErrors: [], browserErrors: [], screenshots: [], limitations: ["Chromium only; no Firefox, WebKit, real mobile device or screen reader", "Local HTTP; no target HTTPS/proxy/deployment rehearsal", "Loading/error/unknown-outcome checks use explicit network fault injection; normal journey uses real API"] };
 const check = (condition, label) => { assert(condition, label); report.checks.push(label); };
 const services = [];
@@ -58,8 +63,8 @@ async function request(page, apiPath, body, etag) {
 }
 async function main() {
   const fixture = JSON.parse(execFileSync(python, [path.join(root, "scripts/cms_browser_fixture.py")], { env, encoding: "utf8" }));
-  const backend = start(python, ["manage.py", "runserver", "127.0.0.1:8023", "--noreload"], path.join(root, "backend"), "backend");
-  await ready("http://127.0.0.1:8023/api/admin/auth/csrf/", backend);
+  const backend = start(python, ["manage.py", "runserver", "127.0.0.1:" + new URL(backendOrigin).port, "--noreload"], path.join(root, "backend"), "backend");
+  await ready(backendOrigin + "/api/admin/auth/csrf/", backend);
   const frontend = start(process.execPath, [path.join(root, "frontend/node_modules/next/dist/bin/next"), "start", "-p", "3023"], path.join(root, "frontend"), "frontend");
   await ready(origin + "/admin-console", frontend);
   browser = await chromium.launch(); report.browserVersion = browser.version();
@@ -103,6 +108,7 @@ async function main() {
   await page.getByLabel("توضیح", { exact: true }).fill("دادهٔ مصنوعی آزمون؛ ادعای علمی نیست.");
   await page.getByRole("button", { name: "ذخیرهٔ پیشنهاد", exact: true }).click();
   await page.getByRole("heading", { name: "پیش‌نویس آزمون CMS", exact: true }).waitFor();
+  await page.waitForURL(/\/admin-console\/content\/category\/[0-9a-f-]+$/);
   const draftId = new URL(page.url()).pathname.split("/").pop();
   const draft = await request(page, `/content/category/${draftId}/`);
   check(draft.data.canonical_pk === null && draft.data.version === 1, "UI creates actual revision without canonical publication");
@@ -136,13 +142,18 @@ async function main() {
   await second.getByLabel("توضیح", { exact: true }).fill("پیشنهاد ویرایشگر دوم");
   await page.getByRole("button", { name: "ذخیرهٔ پیشنهاد", exact: true }).click();
   await waitText(page, "پیشنهاد ذخیره شد. محتوای عمومی بدون تغییر است.");
+  const staleResponse = second.waitForResponse(response =>
+    response.url().includes("/content/category/") && response.url().includes("/revisions") && response.status() === 412);
   await second.getByRole("button", { name: "ذخیرهٔ پیشنهاد", exact: true }).click();
-  await second.getByRole("heading", { name: "نسخه تغییر کرده است", exact: true }).waitFor();
+  await staleResponse;
+  await second.getByRole("alert").filter({ hasText: "نتیجه نامعلوم یا نسخه قدیمی است" }).waitFor();
+  check(true, "Stale editor receives actual HTTP 412 and blocks unsupervised retry");
   check(await second.getByLabel("توضیح", { exact: true }).inputValue() === "پیشنهاد ویرایشگر دوم", "412 retains unsaved editor text");
   await second.getByRole("button", { name: "دریافت نسخهٔ سرور و مقایسه", exact: true }).click();
-  await second.getByLabel("انتخاب توضیح", { exact: true }).waitFor();
-  check(await second.getByLabel("انتخاب توضیح", { exact: true }).inputValue() === "", "Overlapping conflict requires explicit field choice");
-  await second.getByLabel("انتخاب توضیح", { exact: true }).selectOption("mine");
+  const descriptionChoice = second.getByRole("group", { name: "توضیح", exact: true }).getByRole("combobox");
+  await descriptionChoice.waitFor();
+  check(await descriptionChoice.inputValue() === "", "Overlapping conflict requires explicit field choice");
+  await descriptionChoice.selectOption("mine");
   await second.getByRole("button", { name: "پذیرش مقایسه و ادامهٔ ویرایش", exact: true }).click();
   await second.getByRole("button", { name: "ذخیرهٔ پیشنهاد", exact: true }).click();
   await waitText(second, "پیشنهاد ذخیره شد. محتوای عمومی بدون تغییر است.");
@@ -187,7 +198,7 @@ async function main() {
   await login(page, fixture.users.reader);
   await second.getByRole("heading", { name: "نشست مدیریت پایان یافته است", exact: true }).waitFor();
   check(await second.locator("textarea").count() === 0, "Cross-tab session/account change clears old editor snapshots");
-  await page.goto(origin + recordPath); await page.getByRole("heading", { name: "آخرین پیشنهاد ذخیره‌شده", exact: true }).waitFor();
+  await page.goto(origin + recordPath); await page.getByRole("heading", { name: "پیشنهاد ذخیره‌شده", exact: true }).waitFor();
   check(await page.getByRole("button", { name: "ویرایش پیشنهاد", exact: true }).count() === 0, "Read-only capability exposes no editor action");
   const deniedWrite = await request(page, `/content/category/${fixture.category}/revisions/`, { payload: { description: "forbidden" }, base_digest: "" }, '"3"');
   check(deniedWrite.status === 403 && deniedWrite.data.code === "PERMISSION_DENIED", "Real backend rejects forged read-only write");

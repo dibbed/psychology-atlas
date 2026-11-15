@@ -1,10 +1,10 @@
 {
   "stage": "P07",
   "environment": "Windows/Chromium/Next production/Django/disposable SQLite/real MFA",
-  "started_at": "2026-10-31T16:32:23.617Z",
+  "started_at": "2026-11-15T10:27:40.343Z",
   "checks": [
     "Actual owner signed in with MFA and session",
-    "Schema response includes all 17 P07 kinds",
+    "Schema response includes all 17 P07 core/DSM kinds",
     "Concept and DSM relations are authorized typed schemas",
     "Browser creates Concept draft without canonical write",
     "Browser edits Concept draft revision with ETag",
@@ -15,7 +15,7 @@
     "DSM study and graph previews are real, private, no-publication",
     "DSM raw archive is omitted from ordinary viewers",
     "320px DSM workspace has no horizontal document overflow",
-    "Scoped Brain staff sees zero Core/DSM schemas",
+    "Scoped Brain staff sees zero Core/DSM schemas while retaining authorized Brain",
     "Scoped staff cannot read DSM tree via direct API",
     "Scoped staff cannot see Concept draft through direct page",
     "No unexpected uncaught browser page errors"
@@ -32,7 +32,7 @@
     "Local HTTP only, not production TLS",
     "No actual user database is opened"
   ],
-  "browser_version": "156.0.8078.74",
+  "browser_version": "157.0.8103.79",
   "status": "PASS",
-  "completed_at": "2026-10-31T16:32:53.502Z"
+  "completed_at": "2026-11-15T10:28:09.932Z"
 }

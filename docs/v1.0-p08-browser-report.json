@@ -4,7 +4,7 @@
   "checks": [
     "Guarded isolated P08 fixture seeded",
     "Owner session with real MFA and CSRF",
-    "34 typed kinds available to Owner",
+    "All 34 P07/P08 typed kinds available to Owner",
     "All 17 P08 kinds are visible",
     "Technique editor creates private proposal",
     "Preview never promotes technique",
