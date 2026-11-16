@@ -283,6 +283,12 @@ class AdminSearchSafeScopeTests(SecurityFixture, TestCase):
         owner = self.owner_client.get(url)
         self.assertEqual(owner.status_code, 200, owner.content[:400])
         self.assertEqual(owner.json()["count"], 2)
+        self.assertEqual(owner.json()["alias_ambiguity"], {
+            "status": "multiple_visible_exact_matches",
+            "matched_visible_count": 2,
+            "scope": "caller_authorized_alias_domains_only",
+            "globally_complete": True,
+        })
         self.assertEqual(owner.json()["results"], [
             {"kind": "concept_alias", "resource_id": concept_alias.pk, "slug": str(concept_alias.pk),
              "collection_kind": "concept-alias"},
@@ -302,6 +308,11 @@ class AdminSearchSafeScopeTests(SecurityFixture, TestCase):
         selected = scoped.get(url)
         self.assertEqual(selected.status_code, 200, selected.content[:450])
         self.assertEqual([row["kind"] for row in selected.json()["results"]], ["concept_alias"])
+        self.assertEqual(selected.json()["alias_ambiguity"], {
+            "status": "one_visible_exact_match", "matched_visible_count": 1,
+            "scope": "caller_authorized_alias_domains_only",
+            "globally_complete": False,
+        })
         self.assertEqual([row["kind"] for row in scoped.get(
             BASE + "search/?q=p17-exactalias&domain=all").json()["results"]], ["concept_alias"])
         core.user_permissions.filter(codename="cms_core_view").first().user_set.remove(core)

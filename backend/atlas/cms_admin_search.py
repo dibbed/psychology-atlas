@@ -188,7 +188,21 @@ class AdminSearchView(AdminAPIView):
                                      -v["resource_id"] if isinstance(v["resource_id"], int) else 0))
             total = len(rows)
             start = (page - 1) * size
+            # An exact alias may belong to several typed concepts. Express
+            # ambiguity only over authorized results; no private alias text or
+            # existence outside the caller's permissions is disclosed.
+            alias_rows = [item for item in rows
+                          if item["kind"] in {alias_kind for alias_kind, _, _, _ in _ALIASES}]
+            alias_ambiguity = {
+                "status": ("multiple_visible_exact_matches" if len(alias_rows) > 1
+                           else "one_visible_exact_match" if alias_rows
+                           else "no_visible_exact_match"),
+                "matched_visible_count": len(alias_rows),
+                "scope": "caller_authorized_alias_domains_only",
+                "globally_complete": all(cap in permissions for _, _, cap, _ in _ALIASES),
+            }
             return Response({
+                **({"alias_ambiguity": alias_ambiguity} if "aliases" in selected else {}),
                 "scope": "private_slug_index", "query": q, "domain": domain,
                 "count": total, "page": page, "page_size": size,
                 "results": rows[start:start + size],
