@@ -6,6 +6,8 @@ All notable changes to Psychology Atlas. This project follows Semantic Versionin
 
 ### Added
 
+- W13 private, versioned source locators for individual QuizQuestion explanations, Flashcards, Daily Challenges and Distortion Practice, with stale-source/rights indicators and no automatic scientific approval or publication. Legacy Learning transfer fails closed for actively sourced content until a provenance-preserving transfer format is authorized.
+- W13 Daily Challenge admin contract documents server-local date rotation, eligible-pool order and historical answer pinning; the existing scheduling engine is unchanged.
 - Capability-based Admin CMS with MFA, revocable sessions, append-only audit, permission-aware Persian/RTL navigation and owner/curator/delegate roles.
 - Canonical editors and governance for core content, concepts, DSM, therapy, history, Brain, Assessment, Learning, cases and privacy operations.
 - Source and rights governance with scoped material/use decisions, evidence, expiry, review and public-read enforcement.
@@ -23,6 +25,7 @@ All notable changes to Psychology Atlas. This project follows Semantic Versionin
 
 ### Fixed
 
+- W13-01: Admin Distortion Practice snapshots and simulations now revalidate active target/choice Concept dependencies after subtype and active-state drift and deny invalid previews without writing learner history.
 - 2026-11-13: Allow fresh reviews for withdrawn case revisions and unblock review renewal after source changes while retaining stale-manifest and MFA gates.
 - 2026-11-13: Expose case reinstatement to authorized administrators and refresh publication plan and revision-history statuses after actions.
 - Withdrawn case revisions can be reinstated through a fresh, separately approved and MFA-guarded plan, preserving the original publication timestamp and historical attempts.
