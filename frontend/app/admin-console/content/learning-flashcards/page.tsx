@@ -3,6 +3,7 @@ import {useEffect, useState, type FormEvent} from "react";
 import {cms, type CmsPage} from "@/lib/cms";
 import {CmsState,useCms} from "@/components/cms/CmsShell";
 import {LearningArchiveAction} from "@/components/cms/LearningArchiveAction";
+import {LearningEvidenceCard} from "@/components/cms/LearningEvidenceCard";
 
 type Item={flashcard_id:number;slug:string;is_active:boolean;seed_managed:boolean;archived_at:string|null};
 type Detail=Item&{front:string;back:string;hint:string;difficulty:string;
@@ -161,6 +162,8 @@ export default function FlashcardCMS(){
         {dirty&&<p className="muted" role="status">ویرایش ذخیره‌نشده دارید.</p>}
         </fieldset>
       </form>}
+      <LearningEvidenceCard key={"evidence-card-"+selected.flashcard_id} kind="flashcard"
+        itemId={selected.flashcard_id} editable={Boolean(edit)&&Boolean(selected.back.trim())} blocked={busy||dirty}/>
       <p className="muted">انتشار عمومی فقط پس از گیت علمی/حقوقی P16 ممکن می‌شود.</p>
     </section>}
   </div>;

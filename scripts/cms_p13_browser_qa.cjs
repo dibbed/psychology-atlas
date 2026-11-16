@@ -124,6 +124,7 @@ async function learnerRequest(page,token,route,body){
   const question=owner.getByRole('heading',{name:'سؤال‌ها (1)',exact:true}).locator('..').locator('details').first();
   await question.locator('summary').click();
   await question.getByLabel('متن سؤال').fill('Fictional question?');
+  await question.getByLabel('توضیح علمی و آموزشی').fill('NON-SCIENTIFIC claim requiring an explicit source');
   await question.getByLabel('گزینه 1',{exact:true}).fill('Synthetic correct choice');
   await question.getByLabel('گزینه 2',{exact:true}).fill('Synthetic distractor');
   const savedQuestions=writeResponse(owner,'/questions/replace');
@@ -141,6 +142,45 @@ async function learnerRequest(page,token,route,body){
   check((await savedMetadata).status()===200,'Keyboard submission saves Quiz metadata through the real form');
   await owner.getByRole('heading',{name:'P13 saved fictional title',exact:true}).waitFor();
   const changed=await request(owner,route);
+  const w13QuestionId=changed.data.questions[0].id;
+  const w13EvidenceRoute='/learning/evidence/quiz-question/'+w13QuestionId+'/';
+  const w13Before=await request(owner,w13EvidenceRoute);
+  check(w13Before.status===200&&w13Before.data.status==='unlinked',
+    'W13 private QuizQuestion evidence begins explicitly unlinked');
+  const w13Source=Number(execFileSync(py,['-c',"import os,tempfile,pathlib\ndb=pathlib.Path(os.environ['SQLITE_PATH']).resolve()\nassert db.parent.parent==pathlib.Path(tempfile.gettempdir()).resolve()\nassert db.parent.name.startswith('atlas-p13-browser-') and db.name=='cms-journey.sqlite3'\nos.environ.setdefault('DJANGO_SETTINGS_MODULE','config.settings')\nimport django;django.setup()\nfrom atlas.models import SourceReference\nprint(SourceReference.objects.create(title='NON-SCIENTIFIC W13 browser citation source').pk)"],{
+    cwd:path.join(root,'backend'),env,encoding:'utf8'}).trim());
+  const w13Form=owner.getByRole('region',{name:'منابع توضیح آموزشی'}).first();
+  await w13Form.getByText(/منبعی ثبت نشده/).waitFor();
+  await w13Form.getByLabel('شناسهٔ SourceReference').fill(String(w13Source));
+  await w13Form.getByLabel('محل دقیق ادعای پشتیبان در منبع').fill('NON-SCIENTIFIC source section A');
+  await w13Form.getByRole('button',{name:'افزودن منبع'}).click();
+  const w13Write=writeResponse(owner,w13EvidenceRoute.slice(0,-1));
+  await w13Form.getByRole('button',{name:'ذخیرهٔ نسخهٔ جدید شواهد'}).click();
+  const w13Response=await w13Write;
+  check(w13Response.status()===200&&(await w13Response.json()).scientific_review==='unreviewed'&&
+    (await request(owner,w13EvidenceRoute)).data.revision===1,
+    'W13 Persian source form persists private claim locator without review or learner writes');
+  await w13Form.getByText(/منبع ثبت‌شده، بازبینی علمی انجام نشده/).waitFor();
+  const selectedForExport=await request(owner,'/learning/transfer/selection/?kind=quiz');
+  const w13Entry=selectedForExport.data.results.find(row=>row.resource_id===id);
+  assert(w13Entry,'W13 quiz must appear in the private transfer selection');
+  const w13Export=await request(owner,'/learning/transfer/export/',{
+    items:[{kind:'quiz',resource_id:id,etag:w13Entry.etag}],request_key:crypto.randomUUID()
+  });
+  check(w13Export.status===409&&w13Export.data.code==='LEARNING_EVIDENCE_TRANSFER_UNSUPPORTED',
+    'W13 v1 transfer refuses to silently drop an attached source locator');
+  await owner.setViewportSize({width:320,height:790});
+  check(await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),
+    'W13 Persian evidence form fits 320px RTL without overflow');
+  await owner.screenshot({path:path.join(out,'w13-evidence-mobile.png'),fullPage:true});
+  report.screenshots.push('w13-evidence-mobile.png');
+  await owner.setViewportSize({width:1280,height:850});
+  execFileSync(py,['-c',"import os,tempfile,pathlib,sys\ndb=pathlib.Path(os.environ['SQLITE_PATH']).resolve()\nassert db.parent.parent==pathlib.Path(tempfile.gettempdir()).resolve()\nassert db.parent.name.startswith('atlas-p13-browser-') and db.name=='cms-journey.sqlite3'\nos.environ.setdefault('DJANGO_SETTINGS_MODULE','config.settings')\nimport django;django.setup()\nfrom atlas.models import SourceReference\nsource=SourceReference.objects.get(pk=int(sys.argv[1]))\nsource.title='NON-SCIENTIFIC source drift revision'\nsource.save(update_fields=['title'])",String(w13Source)],{
+    cwd:path.join(root,'backend'),env,encoding:'utf8'});
+  await w13Form.getByRole('button',{name:'بازخوانی وضعیت منبع و مجوزها'}).click();
+  await w13Form.getByText(/شواهد تغییرکرده یا محدود است/).waitFor();
+  check((await request(owner,w13EvidenceRoute)).data.status==='requires_review',
+    'W13 live source drift forces review without fabricated scientific approval');
   check(changed.etag!==original.etag&&!changed.data.is_active&&
     JSON.stringify(changed.data.questions)===JSON.stringify(original.data.questions),
     'Metadata changes advance ETag and preserve question IDs, answer key and private visibility');
@@ -430,7 +470,12 @@ async function learnerRequest(page,token,route,body){
   check(await exporter.getByLabel('فایل بستهٔ آموزشی').count()===0&&
     (await request(exporter,'/learning/transfer/import/',{artifact_id:inputId,request_key:crypto.randomUUID()})).status===403,
     'Export-only MFA actor has no import/upload/editor form and cannot forge import');
-  await exporter.getByRole('checkbox').first().check();
+  const safeExportQuiz=created.find(row=>row.kind==='quiz');
+  const exporterRows=await request(exporter,'/learning/transfer/selection/?kind=quiz');
+  const safeExportRow=exporterRows.data.results.find(row=>row.resource_id===safeExportQuiz?.resource_id);
+  assert(safeExportRow,'Imported evidence-free quiz must be available to export-only actor');
+  await exporter.locator('li').filter({has:exporter.getByText(safeExportRow.label,{exact:true})})
+    .getByRole('checkbox').check();
   const exporterQueued=writeResponse(exporter,'/learning/transfer/export');
   await exporter.getByRole('button',{name:'ثبت کار خروجی خصوصی',exact:true}).focus();await exporter.keyboard.press('Enter');
   const exporterResponse=await exporterQueued;assert.equal(exporterResponse.status(),202);runWorker();

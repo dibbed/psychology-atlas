@@ -4246,6 +4246,7 @@ from .cms_case_publication_models import (  # noqa: E402,F401
 )
 
 from .cms_learning_lifecycle_models import LearningArchiveReceipt  # noqa: E402,F401
+from .cms_learning_evidence_models import LearningEvidenceRevision, LearningEvidenceSource  # noqa: E402,F401
 from .cms_study_operation_models import StudyOperationReceipt  # noqa: E402,F401
 from .cms_publication_selection_models import PublicationCandidateSelection  # noqa: E402,F401
 from .cms_publication_preparation_models import PublicationPreparationDossier  # noqa: E402,F401

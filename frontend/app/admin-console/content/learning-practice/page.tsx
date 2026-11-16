@@ -1,15 +1,18 @@
 "use client";
-import {useEffect,useState,type FormEvent} from "react";
+import {useEffect,useRef,useState,type FormEvent} from "react";
 import {cms,CmsError,type CmsPage} from "@/lib/cms";
 import {CmsState,useCms} from "@/components/cms/CmsShell";
 import {LearningArchiveAction} from "@/components/cms/LearningArchiveAction";
+import {LearningEvidenceCard} from "@/components/cms/LearningEvidenceCard";
 
 type Kind="daily"|"distortions";
 type Item={item_id:number;prompt:string;is_active:boolean;seed_managed:boolean;archived_at:string|null};
 type Choice={id?:number;text:string;is_correct:boolean;is_active?:boolean;concept_id?:number};
 type Detail=Item&{kind:Kind;explanation:string;choices:Choice[];valid:boolean;issues:string[];
   history_protected:boolean;publication_available:false;target_concept_id?:number;
-  concept_id?:number|null;disorder_id?:number|null;slug?:string;difficulty?:string};
+  concept_id?:number|null;disorder_id?:number|null;slug?:string;difficulty?:string;
+  schedule?:{rule:string;timezone:string;activity_date:string;candidate_order:string[];
+    candidate_pool_dynamic:boolean;editorial_calendar_supported:boolean}};
 type Draft={prompt:string;explanation:string;choices:Choice[]};
 type Result={correct:boolean;explanation:string;preview_only:true};
 const empty=():Draft=>({prompt:"",explanation:"",choices:[]});
@@ -23,6 +26,8 @@ export default function PracticeCMS(){
   const [draft,setDraft]=useState<Draft>(empty);
   const [dirty,setDirty]=useState(false);const [busy,setBusy]=useState(false);
   const [loading,setLoading]=useState(true);const [error,setError]=useState("");
+  const issuesRef=useRef<HTMLDivElement>(null);
+  useEffect(()=>{if(selected?.issues.length)issuesRef.current?.focus();},[selected?.item_id,selected?.issues.join("|")]);
   const [creation,setCreation]=useState({slug:"",prompt:"",explanation:"",
     target_concept_id:"",difficulty:"basic"});
   const [preview,setPreview]=useState<Result>();const [previewChoice,setPreviewChoice]=useState("");
@@ -185,7 +190,14 @@ export default function PracticeCMS(){
       <h2>ویرایش آیتم #{selected.item_id}</h2>
       <p>وضعیت اعتبار: {selected.valid?"معتبر":"نیازمند اصلاح"} |
         {selected.history_protected?" حفاظت‌شده به‌علت سابقهٔ پاسخ":""}</p>
-      {selected.issues.includes("CHOICE_TEXT_MISSING")&&<p>متن یک گزینهٔ فعال خالی است.</p>}
+      {selected.issues.length>0&&<div role="alert" tabIndex={-1} ref={issuesRef}>
+        <p>اعتبارسنجی محتوای فعال:</p><ul>{selected.issues.map(issue=><li key={issue}>{
+          issue==="CHOICE_TEXT_MISSING"?"متن یک گزینهٔ فعال خالی است.":
+          issue==="TARGET_INVALID"?"مفهوم هدف غیرفعال است یا دیگر خطای شناختی نیست.":
+          issue==="CHOICE_CONCEPT_INVALID"?"یکی از مفاهیم گزینه‌های فعال غیرفعال یا از نوع نادرست است.":
+          issue==="CORRECT_CONCEPT_MISMATCH"?"گزینهٔ صحیح با مفهوم هدف مطابقت ندارد.":
+          <code dir="ltr">{issue}</code>
+        }</li>)}</ul></div>}
       {!editable&&<p className="muted">ویرایش آیتم بایگانی، فعال، Seed یا دارای attempt مسدود است؛ تاریخچهٔ دانشجو حفظ می‌شود.</p>}
       <LearningArchiveAction key={"archive-"+kind+"-"+selected.item_id} kind={kind} itemId={selected.item_id}
         etag={etag} archivedAt={selected.archived_at} blocked={busy||dirty} onBusyChange={setBusy}
@@ -236,6 +248,14 @@ export default function PracticeCMS(){
         {preview.correct?"گزینه صحیح است.":"گزینه نادرست است."} {preview.explanation}
         <p className="muted">نتیجهٔ این پیش‌نمایش در پروفایل دانشجو ثبت نمی‌شود.</p>
       </div>}
+      {kind==="daily"&&<div className="card stack" role="note">
+        <h3>قاعدهٔ چالش روزانه</h3>
+        <p>انتخاب روزانه از مجموعهٔ محتوای فعال و مجاز، به ترتیب sort_order و شناسه و بر پایهٔ تاریخ محلی سرور انجام می‌شود. تغییر فهرست محتوا ممکن است انتخاب روزهای بعد را جابه‌جا کند؛ تلاش‌های قبلی با تاریخ و شناسهٔ چالش خود محفوظ‌اند.</p>
+        {selected.schedule&&<p>تاریخ محلی سرور: {selected.schedule.activity_date} | منطقهٔ زمانی: <code dir="ltr">{selected.schedule.timezone}</code></p>}
+        <p className="muted">این صفحه تقویم انتشار مستقل ایجاد نمی‌کند. مدیریت انتشار و حقوق در P16 انجام می‌شود.</p>
+      </div>}
+      <LearningEvidenceCard key={"evidence-"+kind+"-"+selected.item_id} kind={kind}
+        itemId={selected.item_id} editable={Boolean(editable)&&Boolean(selected.explanation.trim())} blocked={busy||dirty}/>
       <p className="muted">انتشار و فعال‌سازی تا پایان P16 غیرفعال است.</p>
     </section>}
   </div>;

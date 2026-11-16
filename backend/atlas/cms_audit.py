@@ -19,6 +19,7 @@ ACTIONS |= frozenset({"artifact.upload", "artifact.validate", "artifact.revoke",
     "artifact.cleanup",
     "research.intake", "research.raw", "research.decision", "job.enqueued", "job.claimed", "job.reconciled",
     "job.succeeded", "job.failed", "job.cancelled", "job.cancel_requested", "job.retried"})
+ACTIONS |= frozenset({"learning.evidence_revised"})
 CONTENT_REASONS = frozenset({"DRAFT_CREATION", "CONTENT_UPDATE", "EDITORIAL_CORRECTION"})
 REVIEW_REASONS = frozenset({"EVIDENCE_INSUFFICIENT", "LOCATOR_INVALID", "CLAIM_UNSUPPORTED", "CORRECTION_REQUIRED"})
 POLICY_REASONS = frozenset({"TEAM_POLICY", "SENSITIVE_DOMAIN", "OWNER_OPERATION"})
@@ -51,7 +52,7 @@ SAFE_FIELDS |= frozenset({
 })
 SAFE_FIELDS |= frozenset({"family", "classification", "clinical_role", "evidence_basis", "evidence_note", "historical_context", "core_principles", "typical_structure", "appropriate_contexts", "limitations", "safety_notes", "application_notes", "academic_definition"})
 SAFE_FIELDS |= frozenset({"title_en","title_fa","description_en","description_fa","historical_importance_en","historical_importance_fa","summary_en","summary_fa","explanation_en","explanation_fa","birth_year","death_year","nationality_en","nationality_fa","year_start","year_end","date_precision","exact_date","date_text","event_type","academic_disciplines","contributions_en","contributions_fa","period_text","core_proposition_en","core_proposition_fa","related_psychologist","related_theory","psychologist","theory","event","modern_status"})
-TARGET_KINDS = frozenset({"", "user", "group", "session", "category", "disorder", "symptom", "disorder-symptom",
+TARGET_KINDS = frozenset({"learning-evidence","", "user", "group", "session", "category", "disorder", "symptom", "disorder-symptom",
     "differential-relationship", "disorder-source", "concept", "concept-relationship", "concept-alias",
     "concept-relationship-source", "concept-symptom", "concept-symptom-source", "disorder-concept", "concept-source",
     "dsm-corpus", "dsm-record", "dsm-record-relation",

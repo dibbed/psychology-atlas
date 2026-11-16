@@ -21,6 +21,7 @@ from . import cms_case_validation as case_validation
 from . import cms_quiz_editor as quiz_editor
 from . import cms_flashcard_editor as flashcard_editor
 from . import cms_practice_editor as practice_editor
+from . import cms_learning_evidence as learning_evidence
 from .cms_learning_lifecycle import LearningArchiveView
 from . import cms_learning_io_views as learning_io
 from . import cms_user_directory as user_directory
@@ -35,6 +36,7 @@ from . import cms_release_readiness as release_readiness
 from . import cms_pipeline_analytics as pipeline_analytics
 
 urlpatterns = [
+    path("learning/evidence/<str:kind>/<int:item_id>/", learning_evidence.LearningEvidenceView.as_view()),
     path("learning/transfer/", include(learning_io.urlpatterns)),
     path("learning/archive/<str:kind>/<int:item_id>/", LearningArchiveView.as_view()),
     path("", include(jobs.urlpatterns)),

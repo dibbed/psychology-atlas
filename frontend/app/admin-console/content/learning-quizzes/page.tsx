@@ -3,6 +3,7 @@ import {useEffect, useState, type FormEvent} from "react";
 import {cms, CmsError, type CmsPage} from "@/lib/cms";
 import {CmsState, useCms} from "@/components/cms/CmsShell";
 import {LearningArchiveAction} from "@/components/cms/LearningArchiveAction";
+import {LearningEvidenceCard} from "@/components/cms/LearningEvidenceCard";
 
 type Row={quiz_id:number;slug:string;title:string;is_active:boolean;seed_managed:boolean;archived_at:string|null};
 type Choice={id?:number;text:string;is_correct:boolean;is_active?:boolean};
@@ -265,6 +266,15 @@ export default function LearningQuizEditor(){
           </fieldset>)}
           <button type="submit" className="button secondary" disabled={busy}>اجرای پیش‌نمایش بی‌اثر</button>
         </form>}
+      {selected.questions.length>0&&<div className="stack">
+        <h3>منابع توضیح هر سؤال</h3>
+        <p className="muted">ویرایش سؤال‌ها با جایگزینی رکورد انجام می‌شود. پیوند قدیمی خودکار به سؤال جدید منتقل نمی‌شود؛ هر ادعا به بررسی منبع تازه نیاز دارد.</p>
+        {selected.questions.filter(q=>q.id!==undefined).map((q,i)=><div key={q.id}>
+          <h4>سؤال {i+1}: {q.prompt.slice(0,85)}</h4>
+          <LearningEvidenceCard kind="quiz-question" itemId={q.id!} editable={Boolean(editable)&&Boolean(q.explanation.trim())}
+            blocked={busy||dirty||metadataDirty}/>
+        </div>)}
+      </div>}
       {feedback&&<div className="stack" aria-live="polite" role="status">
         <p><strong>امتیاز فرضی: {feedback.score_percent}٪</strong>، {feedback.correct_count} پاسخ درست از {feedback.total_questions}</p>
         <p className="muted">نتیجه فقط پیش‌نمایش است و هیچ سابقهٔ یادگیری ایجاد نشده.</p>

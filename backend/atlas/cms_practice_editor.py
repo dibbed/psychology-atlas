@@ -67,6 +67,11 @@ def _validate_edit(kind, data, item):
             field == "prompt" and not data[field].strip()
         ):
             raise CMSFailure("INVALID_FIELDS", 400)
+    if kind == "distortions" and not Concept.objects.filter(
+        pk=item.target_concept_id, is_active=True,
+        subtype=Concept.Subtype.COGNITIVE_DISTORTION,
+    ).exists():
+        raise CMSFailure("INVALID_REFERENCE", 400)
     choices = data["choices"]
     if type(choices) is not list or not 2 <= len(choices) <= 10:
         raise CMSFailure("INVALID_CHOICES", 400)
@@ -123,9 +128,21 @@ def _snapshot(kind, item):
         issues.append("CHOICE_TEXT_MISSING")
     if len(active) < 2 or sum(c["is_correct"] for c in active) != 1:
         issues.append("ANSWER_KEY_INVALID")
-    if kind == "distortions" and (not any(c["is_correct"] and
-        c["concept_id"] == item.target_concept_id for c in active)):
-        issues.append("CORRECT_CONCEPT_MISMATCH")
+    if kind == "distortions":
+        if not Concept.objects.filter(
+            pk=item.target_concept_id, is_active=True,
+            subtype=Concept.Subtype.COGNITIVE_DISTORTION,
+        ).exists():
+            issues.append("TARGET_INVALID")
+        concept_ids = {choice["concept_id"] for choice in active}
+        valid_count = Concept.objects.filter(
+            pk__in=concept_ids, is_active=True,
+            subtype=Concept.Subtype.COGNITIVE_DISTORTION,
+        ).count()
+        if valid_count != len(concept_ids) or len(concept_ids) != len(active):
+            issues.append("CHOICE_CONCEPT_INVALID")
+        if not any(c["is_correct"] and c["concept_id"] == item.target_concept_id for c in active):
+            issues.append("CORRECT_CONCEPT_MISMATCH")
     return choices, issues
 
 
@@ -184,6 +201,14 @@ def _result(kind, item):
         "valid": not issues, "issues": issues, "archived_at": item.archived_at, "is_active": item.is_active,
         "seed_managed": item.seed_managed, "history_protected": item.attempts.exists(),
         "publication_available": False,
+        **({"schedule": {
+            "rule": "localdate_eligible_rotation_v1",
+            "timezone": timezone.get_current_timezone_name(),
+            "activity_date": timezone.localdate().isoformat(),
+            "candidate_order": ["sort_order", "id"],
+            "candidate_pool_dynamic": True,
+            "editorial_calendar_supported": False,
+        }} if kind == "daily" else {}),
         **({"target_concept_id": item.target_concept_id, "slug": item.slug,
              "difficulty": item.difficulty} if kind == "distortions" else
             {"concept_id": item.concept_id, "disorder_id": item.disorder_id}),

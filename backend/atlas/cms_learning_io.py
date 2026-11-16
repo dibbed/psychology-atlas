@@ -176,6 +176,36 @@ def selection_items(value):
     return sorted(result, key=lambda row: (row["kind"], row["resource_id"]))
 
 
+def _guard_evidence_export(rows):
+    """Version-1 content bundles cannot carry claim-level citation evidence.
+
+    Fail closed rather than silently dropping source locators or suggesting the
+    imported draft retained independent scientific review or provenance.
+    """
+    from .cms_learning_evidence_models import LearningEvidenceRevision, LearningEvidenceSource
+
+    targets = {"quiz-question": [], "flashcard": [], "daily": [], "distortions": []}
+    for kind, item in rows:
+        if kind == "quiz":
+            targets["quiz-question"].extend(
+                QuizQuestion.objects.filter(quiz_id=item.pk).values_list("pk", flat=True)
+            )
+        else:
+            targets[kind].append(item.pk)
+    for kind, identifiers in targets.items():
+        if not identifiers:
+            continue
+        latest = {}
+        for pk, revision_pk in (LearningEvidenceRevision.objects
+                .filter(kind=kind, target_pk__in=identifiers)
+                .order_by("target_pk", "sequence")
+                .values_list("target_pk", "pk")):
+            latest[pk] = revision_pk
+        if latest and LearningEvidenceSource.objects.filter(
+                revision_id__in=latest.values()).exists():
+            raise CMSFailure("LEARNING_EVIDENCE_TRANSFER_UNSUPPORTED", 409)
+
+
 def _selected_rows(items):
     rows = []
     for entry in items:
@@ -187,6 +217,7 @@ def _selected_rows(items):
         if revision_etag(item) != int(entry["etag"]):
             raise CMSFailure("STALE_REVISION", 412)
         rows.append((kind, item))
+    _guard_evidence_export(rows)
     return rows
 
 
@@ -220,6 +251,7 @@ def _guard_export(rows):
 
 
 def _export_document(rows):
+    _guard_evidence_export(rows)
     _guard_export(rows)
     loaded = {}
     for kind in KINDS:
