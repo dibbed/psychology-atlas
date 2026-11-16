@@ -52,6 +52,18 @@ class PreparationDetailView(AdminAPIView):
         ))
 
 
+class PreparationCandidatePreviewView(AdminAPIView):
+    capability = "cms_enter"
+
+    def get(self, request, dossier_id):
+        if request.query_params:
+            raise CMSFailure("INVALID_QUERY", 400)
+        from .cms_publication_candidate_preview import private_candidate_projection
+        return Response(private_candidate_projection(
+            request.user.pk, request.cms_session.pk, dossier_id,
+        ))
+
+
 class PreparationVerifyView(AdminAPIView):
     capability = "cms_enter"
 

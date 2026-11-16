@@ -125,6 +125,7 @@ urlpatterns = [
     path("publication/preparations/recheck/", publication_preparation.PreparationBulkRecheckView.as_view()),
     path("publication/preparations/<uuid:dossier_id>/", publication_preparation.PreparationDetailView.as_view()),
     path("publication/preparations/<uuid:dossier_id>/verify/", publication_preparation.PreparationVerifyView.as_view()),
+    path("publication/preparations/<uuid:dossier_id>/candidate-preview/", publication_preparation.PreparationCandidatePreviewView.as_view()),
     path("publication/cases/<int:case_id>/revisions/<int:revision_id>/reviews/", case_publication.CasePublicationReviewView.as_view()),
     path("publication/cases/<int:case_id>/revisions/<int:revision_id>/freeze/", case_publication.CasePublicationFreezeView.as_view()),
     path("publication/cases/plans/<uuid:plan_id>/", case_publication.CasePublicationPlanView.as_view()),
