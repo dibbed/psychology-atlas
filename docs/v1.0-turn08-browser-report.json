@@ -1,0 +1,30 @@
+{
+  "kind": "TURN08_CHROMIUM_ISOLATED",
+  "status": "PASS",
+  "checks": [
+    "Fresh guarded synthetic DB only",
+    "Isolated production Webpack build succeeded without touching original next-env.d.ts",
+    "Real owner MFA login through same-origin proxy",
+    "Private candidate preview rendered in Persian UI",
+    "Private alias text not leaked through limited candidate projection",
+    "Dossier receipt appears under authorized actor",
+    "Exact version-bound preview GET 200",
+    "Chosen candidate kind/identity preserved",
+    "Public projection remains unavailable without science and rights",
+    "Private candidate API has no-store response",
+    "320px RTL candidate preview has no horizontal overflow",
+    "Candidate preview persists on mobile viewport",
+    "Candidate preview control is keyboard focusable",
+    "Zero Chromium JS runtime errors"
+  ],
+  "screenshots": [
+    "turn08-candidate-1280.png",
+    "turn08-candidate-320.png"
+  ],
+  "errors": [],
+  "backend": "real Django on guarded disposable SQLite",
+  "build": "isolated Next webpack production",
+  "public_apply": false,
+  "scientific_rights_approved": false,
+  "canonical_db_opened": false
+}

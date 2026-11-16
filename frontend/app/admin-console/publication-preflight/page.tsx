@@ -42,6 +42,15 @@ type PreparationCheck=PreparationReceipt&{
   recheck_summary:RecheckSummary;review_blockers:string[];
 };
 type PreparationPayload={selection_digest:string;request_key:string};
+type CandidatePreview={
+  schema:"cms-private-candidate-projection-v1";scope:"authorized_private_candidate_only";
+  domain:Domain;selection_id:string;selection_digest:string;dossier_id:string;dossier_digest:string;
+  snapshot_current:true;published:false;approved:false;publication_available:false;
+  items:Array<{kind:string;resource_id:string|number;revision_id:number|null;
+    version:number|null;fingerprint:string;display:Record<string,string>;
+    visibility:"authorized_private_draft_only"}>;
+  public_projection:{available:false;payload:null;reason:string};
+};
 type PreparationInbox={count:number;page:number;page_size:number;domain:Domain;
   results:PreparationReceipt[];publication_available:false;approved:false};
 type PreparationBulkCheck={scope:string;domain:Domain;checked_count:number;
@@ -98,6 +107,11 @@ const reasons:Record<string,string>={
   TITLE_MISSING:"عنوان لازم ثبت نشده است.",
   CONTENT_MISSING:"متن اصلی لازم ناقص است.",
   TARGET_INVALID:"مفهوم هدف با نوع تمرین سازگار نیست.",
+  CHOICE_CONCEPT_INVALID:"یکی از مفهوم‌های گزینه‌های فعال، غیرفعال یا از نوع خطای شناختی نیست؛ یا گزینه تکراری است.",
+  REVIEW_RIGHTS_BASELINE_MISSING:"در این بستهٔ قدیمی مبنای داوری و حقوق منابع ثبت نشده است. انتخاب تازه لازم است.",
+  EDITORIAL_REVIEW_DRIFT:"وضعیت یا اعتبار بازبینی علمی پس از انتخاب تغییر کرده است.",
+  SOURCE_RIGHTS_DRIFT:"شواهد حقوق فرادادهٔ منابع پس از انتخاب تغییر کرده است.",
+  SOURCE_RIGHTS_UNVERIFIABLE:"بررسی حقوق همهٔ منابع با محدودیت ایمن کامل نشد.",
   DIFFICULTY_INVALID:"درجه دشواری نامعتبر است.",
   SOURCE_DEPENDENCIES_NOT_REVALIDATED:"وابستگی‌های منبع و حقوقِ پیشنهاد هنوز با نسخهٔ جاری تطبیق داده نشده‌اند.",
   SOURCE_SCIENCE_RIGHTS_UNVERIFIED:"منابع، تأیید علمی و حقوق استفادهٔ عمومی هنوز مستقل بررسی نشده‌اند.",
@@ -149,6 +163,9 @@ export default function PublicationPreflight(){
   const [preparationCheck,setPreparationCheck]=useState<PreparationCheck>();
   const [checkingPreparation,setCheckingPreparation]=useState(false);
   const [preparationCheckError,setPreparationCheckError]=useState("");
+  const [candidatePreview,setCandidatePreview]=useState<CandidatePreview>();
+  const [candidatePreviewError,setCandidatePreviewError]=useState("");
+  const [candidatePreviewLoading,setCandidatePreviewLoading]=useState(false);
   const [previousDossierId,setPreviousDossierId]=useState("");
   const [loadingPrevious,setLoadingPrevious]=useState(false);
   const [previousError,setPreviousError]=useState("");
@@ -177,6 +194,7 @@ export default function PublicationPreflight(){
     setVerification(undefined);setVerifyError("");
     setPreparation(undefined);setPreparationError("");setPreparing(false);
     setPreparationCheck(undefined);setPreparationCheckError("");setCheckingPreparation(false);
+    setCandidatePreview(undefined);setCandidatePreviewError("");setCandidatePreviewLoading(false);
     preparationRetryRef.current=undefined;
   };
   async function createSelection(){
@@ -239,6 +257,7 @@ export default function PublicationPreflight(){
       });
       if(stamp!==generation.current)return;
       setPreparation(result.data);setPreparationCheck(undefined);
+      setCandidatePreview(undefined);setCandidatePreviewError("");
       setPreparationCheckError("");preparationRetryRef.current=undefined;
       setInboxVersion(v=>v+1);setBulkCheck(undefined);
     }catch(e){
@@ -261,6 +280,24 @@ export default function PublicationPreflight(){
       setPreparationCheckError(e instanceof CmsError?e.message:
         "پروندهٔ ثابت با وضعیت زنده تطبیق داده نشد. اعتبار آن تأیید نشده است.");
     }finally{if(stamp===generation.current)setCheckingPreparation(false);}
+  }
+  async function previewExactCandidate(){
+    if(!preparation||candidatePreviewLoading||!canSelect)return;
+    const stamp=generation.current;
+    setCandidatePreviewLoading(true);setCandidatePreview(undefined);setCandidatePreviewError("");
+    try{
+      const res=await cms<CandidatePreview>(
+        "/publication/preparations/"+encodeURIComponent(preparation.id)+"/candidate-preview/");
+      if(stamp!==generation.current)return;
+      if(res.data.dossier_digest!==preparation.dossier_digest||
+          res.data.selection_digest!==preparation.selection_digest||
+          res.data.domain!==activeDomain)throw new Error("PREVIEW_BINDING_MISMATCH");
+      setCandidatePreview(res.data);
+    }catch(e){
+      if(stamp!==generation.current)return;
+      setCandidatePreviewError(e instanceof CmsError?e.message:
+        "پیش‌نمایش معتبر نیست یا نسخه تغییر کرده است. پرونده را دوباره بررسی کنید.");
+    }finally{if(stamp===generation.current)setCandidatePreviewLoading(false);}
   }
   async function loadPreviousPreparation(identifier?:string){
     const id=(identifier??previousDossierId).trim();
@@ -287,6 +324,7 @@ export default function PublicationPreflight(){
       applied=true;
       setChosen({});setSelection(selected.data);setVerification(rechecked.data);
       setPreparation(saved.data);setPreparationError("");setPreparationCheck(undefined);
+      setCandidatePreview(undefined);setCandidatePreviewError("");
       setPreparationCheckError("");setSelectionError("");setVerifyError("");
       preparationRetryRef.current=undefined;retryRef.current=undefined;
     }catch(e){
@@ -337,6 +375,7 @@ export default function PublicationPreflight(){
     setVerification(undefined);setVerifyError("");setSaving(false);setVerifying(false);
     setPreparation(undefined);setPreparationError("");setPreparing(false);
     setPreparationCheck(undefined);setPreparationCheckError("");setCheckingPreparation(false);
+    setCandidatePreview(undefined);setCandidatePreviewError("");setCandidatePreviewLoading(false);
     setPreviousDossierId("");setPreviousError("");setLoadingPrevious(false);
     setBulkCheck(undefined);setBulkError("");setBulkBusy(false);
     setSelectedDossierIds([]);
@@ -518,6 +557,22 @@ export default function PublicationPreflight(){
               onClick={()=>void verifyPreparation()}>
               {checkingPreparation?"در حال تطبیق پرونده…":"تطبیق پروندهٔ ثابت با وضعیت زنده"}
             </button>
+            <button type="button" className="button secondary"
+              disabled={candidatePreviewLoading} onClick={()=>void previewExactCandidate()}>
+              {candidatePreviewLoading?"در حال تطبیق…":"پیش‌نمایش خصوصی دقیق همین کاندیدا"}
+            </button>
+            {candidatePreviewError&&<p role="alert">{candidatePreviewError}</p>}
+            {candidatePreviewLoading&&<p role="status">در حال اعتبارسنجی نسخه و دسترسی…</p>}
+            {candidatePreview&&<div role="region" className="stack" aria-label="پیش‌نمایش خصوصی کاندیدای منتخب">
+              <h4>نمای خصوصی موارد انتخاب‌شده</h4>
+              <p role="status">این محتوا تنها در پنل مجاز نمایش داده می‌شود؛ نه تأیید علمی است و نه مجوز انتشار.</p>
+              <ul>{candidatePreview.items.map(item=><li key={item.kind+":"+item.resource_id}>
+                <strong>{item.kind} #{item.resource_id}</strong>
+                <p>{Object.values(item.display).join(" | ")||"فقط شناسهٔ این رکورد قابل نمایش است."}</p>
+                <p className="muted">نسخه: {item.version??"ثبت‌نشده"}؛ صرفاً خصوصی</p>
+              </li>)}</ul>
+              <p className="muted">نمای عمومی به‌دلیل نیاز به تأیید علمی و حقوق نشر و Manifest مستقل مسدود است.</p>
+            </div>}
             {preparationCheckError&&<p role="alert">{preparationCheckError}</p>}
             {preparationCheck&&<p role="status">{preparationCheck.snapshot_current?
               "نسخه و شواهدِ بررسی‌شده با پروندهٔ ثابت مطابق‌اند. هنوز مجوز انتشار وجود ندارد.":
