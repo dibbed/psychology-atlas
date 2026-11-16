@@ -13,8 +13,9 @@ from .cms_learning_evidence_models import LearningEvidenceRevision, LearningEvid
 from .cms_source_models import SourceState
 from .models import (
     Concept, Quiz, QuizQuestion, QuizAttempt, Flashcard, UserFlashcardProgress,
-    DailyChallenge, DailyChallengeAttempt, CognitiveDistortionPracticeItem,
-    CognitiveDistortionPracticeAttempt, SourceReference, StudyActivity,
+    DailyChallenge, DailyChallengeAttempt, DailyChallengeChoice,
+    CognitiveDistortionPracticeItem, CognitiveDistortionPracticeChoice,
+    CognitiveDistortionPracticeAttempt, QuizChoice, SourceReference, StudyActivity,
 )
 from .tests_v100_p01 import BASE, SecurityFixture
 
@@ -171,7 +172,9 @@ class LearningEvidenceContractTests(SecurityFixture, TestCase):
 
     def test_explicit_source_detachment_makes_content_transferable_without_deleting_history(self):
         self.assertEqual(self.bind("flashcard", self.card.pk).status_code, 200)
-        self.assertEqual(self.bind("flashcard", self.card.pk, sources=[]).status_code, 200)
+        etag = self.admin.get(self.url("flashcard", self.card.pk))["ETag"]
+        self.assertEqual(self.post(self.admin, f"learning/evidence/flashcard/{self.card.pk}/",
+            {"sources": [], "change_reason": "Synthetic explicit withdrawal"}, etag=etag).status_code, 200)
         selection = [{"kind": "flashcard", "resource_id": self.card.pk,
                       "etag": str(revision_etag(self.card))}]
         exported = _export_document(_selected_rows(selection))
@@ -196,4 +199,187 @@ class LearningEvidenceContractTests(SecurityFixture, TestCase):
         self.assertEqual(self.admin.get(self.url("quiz-question", old)).status_code, 404)
         self.assertEqual(self.admin.get(self.url("quiz-question", replacement.pk)).json()["status"], "unlinked")
         self.assertEqual(LearningEvidenceRevision.objects.count(), 1)
+        self.assertEqual(LearningEvidenceSource.objects.count(), 1)
+
+    def test_claim_context_mutations_invalidate_attached_sources(self):
+        QuizChoice.objects.create(question=self.question, text="a", is_correct=True)
+        alternate = QuizChoice.objects.create(question=self.question, text="b", is_correct=False)
+        for kind, item in (("quiz-question", self.question),
+                           ("flashcard", self.card), ("daily", self.daily),
+                           ("distortions", self.distortion)):
+            with self.subTest(kind=kind):
+                if kind == "daily":
+                    DailyChallengeChoice.objects.create(challenge=item, text="one", is_correct=True)
+                    DailyChallengeChoice.objects.create(challenge=item, text="two", is_correct=False)
+                if kind == "distortions":
+                    CognitiveDistortionPracticeChoice.objects.create(
+                        item=item, concept=item.target_concept, text="one", is_correct=True)
+                self.assertEqual(self.bind(kind, item.pk).status_code, 200)
+                before = self.admin.get(self.url(kind, item.pk))
+                self.assertEqual(before.json()["status"], "source_attached_unreviewed")
+                if kind == "quiz-question":
+                    item.prompt = "New prompt, same explanation"
+                    item.save(update_fields=["prompt"])
+                elif kind == "flashcard":
+                    item.front = "New front, same back"
+                    item.save(update_fields=["front"])
+                elif kind == "daily":
+                    item.prompt = "New daily prompt, same explanation"
+                    item.save(update_fields=["prompt"])
+                else:
+                    item.prompt = "New practice prompt, same explanation"
+                    item.save(update_fields=["prompt"])
+                changed = self.admin.get(self.url(kind, item.pk))
+                self.assertEqual(changed.json()["status"], "requires_review")
+                self.assertNotEqual(changed["ETag"], before["ETag"])
+        self.question.prompt = "Synthetic question"
+        self.question.save(update_fields=["prompt"])
+        previous = self.admin.get(self.url("quiz-question", self.question.pk))
+        self.assertEqual(self.bind("quiz-question", self.question.pk).status_code, 200)
+        alternate.is_correct = True
+        alternate.save(update_fields=["is_correct"])
+        self.assertEqual(self.admin.get(self.url("quiz-question", self.question.pk)).json()["status"],
+                         "requires_review")
+
+    def test_legacy_explanation_only_fingerprint_requires_manual_recheck(self):
+        # A 0059-era row has only the explanation digest. Construct an immutable
+        # legacy fixture without bypassing append-only update protections.
+        revision = LearningEvidenceRevision.objects.create(
+            kind="flashcard", target_pk=self.card.pk, sequence=1,
+            fingerprint_version="claim-text-v1", content_digest="0" * 64,
+            actor=self.owner,
+        )
+        LearningEvidenceSource.objects.create(
+            revision=revision, source=self.source,
+            locator="Original synthetic claim", source_digest="0" * 64,
+        )
+        response = self.admin.get(self.url("flashcard", self.card.pk))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "requires_review")
+        self.assertEqual(self.bind("flashcard", self.card.pk, etag=response["ETag"]).status_code, 200)
+        self.assertEqual(LearningEvidenceRevision.objects.count(), 2)
+        self.assertEqual(LearningEvidenceRevision.objects.order_by("sequence").first().content_digest, "0" * 64)
+
+    def test_concept_dependency_subtype_drift_marks_evidence_stale(self):
+        self.assertEqual(self.bind("distortions", self.distortion.pk).status_code, 200)
+        original = self.admin.get(self.url("distortions", self.distortion.pk))
+        concept = self.distortion.target_concept
+        concept.subtype = Concept.Subtype.GENERAL
+        concept.save(update_fields=["subtype"])
+        changed = self.admin.get(self.url("distortions", self.distortion.pk))
+        self.assertEqual(changed.json()["status"], "requires_review")
+        self.assertNotEqual(changed["ETag"], original["ETag"])
+
+    def test_real_governance_restriction_redacts_read_and_blocks_new_binding(self):
+        from django.utils import timezone
+        from .cms_governance import resource_binding
+        from .cms_review_models import ReviewPolicy
+        ReviewPolicy.objects.get_or_create(pk=1)
+        self.assertEqual(self.bind("flashcard", self.card.pk).status_code, 200)
+        source_version = resource_binding("source_reference", self.source.pk)["resource_version"]
+        evidence_source = SourceReference.objects.create(title="NON-SCIENTIFIC rights evidence")
+        evidence = [{"source_id": evidence_source.pk, "locator": "Synthetic rights decision only"}]
+        request = {
+            "resource_type": "source_reference", "resource_id": self.source.pk,
+            "resource_version": source_version, "material": "metadata",
+            "intended_use": "public_display", "status": "restricted",
+            "rightsholder": "NON-SCIENTIFIC fixture holder",
+            "holder_identification": "No real rights grant",
+            "holder_evidence": evidence, "public_access": "unknown",
+            "evidence": evidence, "reviewed_on": timezone.localdate().isoformat(),
+            "effective_on": timezone.localdate().isoformat(), "expires_on": None,
+            "review_on": None, "limitations": "Synthetic tests only",
+            "territory": "", "conflict_note": "", "reason": "CORRECTION_REQUIRED",
+        }
+        created = self.post(self.admin, "governance/rights/", request)
+        self.assertEqual(created.status_code, 201, created.content[:500])
+        row = created.json()["record"]
+        for action, values in (
+            ("assign", {"reviewer_id": self.owner.pk}),
+            ("decide", {"outcome": "approve", "reason": "RIGHTS_SCOPE_VERIFIED",
+                         "self_review_ack": True}),
+        ):
+            result = self.post(self.admin, f"governance/rights/{row['id']}/{action}/", values,
+                               etag=f'"{row["version"]}"')
+            self.assertEqual(result.status_code, 200, result.content[:500])
+            row = result.json()["record"]
+        from django.core.cache import cache
+        cache.clear()
+        detail = self.admin.get(self.url("flashcard", self.card.pk))
+        self.assertEqual(detail.status_code, 200, detail.content[:400])
+        link = detail.json()["links"][0]
+        self.assertEqual(link["status"], "restricted")
+        self.assertIsNone(link["locator"])
+        self.assertIsNone(link["source_title"])
+        self.assertEqual(self.bind("flashcard", self.card.pk, etag=detail["ETag"]).status_code, 409)
+        history = self.admin.get(self.url("flashcard", self.card.pk) + "history/")
+        self.assertEqual(history.status_code, 200)
+        self.assertIsNone(history.json()["revisions"][0]["links"][0]["locator"])
+
+    def test_repeated_identical_revision_does_not_create_extra_history(self):
+        first = self.bind("flashcard", self.card.pk)
+        self.assertEqual(first.status_code, 200)
+        replay = self.bind("flashcard", self.card.pk, etag=first["ETag"])
+        self.assertEqual(replay.status_code, 200, replay.content[:400])
+        self.assertEqual(LearningEvidenceRevision.objects.count(), 1)
+
+    def test_source_removal_requires_a_real_reason_and_keeps_history(self):
+        self.assertEqual(self.bind("flashcard", self.card.pk).status_code, 200)
+        etag = self.admin.get(self.url("flashcard", self.card.pk))["ETag"]
+        attempt = self.post(self.admin, f"learning/evidence/flashcard/{self.card.pk}/",
+                            {"sources": [], "change_reason": "  "}, etag=etag)
+        self.assertEqual(attempt.status_code, 400, attempt.content[:300])
+        self.assertEqual(LearningEvidenceRevision.objects.count(), 1)
+
+    def test_history_reuses_source_and_context_state_across_revisions(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        first = self.bind("flashcard", self.card.pk, sources=[
+            {"source_id": self.source.pk, "locator": "Synthetic revision 0"}])
+        self.assertEqual(first.status_code, 200)
+        with CaptureQueriesContext(connection) as first_queries:
+            initial = self.admin.get(self.url("flashcard", self.card.pk) + "history/")
+        self.assertEqual(initial.status_code, 200)
+        for number in range(1, 12):
+            response = self.bind("flashcard", self.card.pk, sources=[
+                {"source_id": self.source.pk, "locator": f"Synthetic revision {number}"}])
+            self.assertEqual(response.status_code, 200, response.content[:200])
+        with CaptureQueriesContext(connection) as all_queries:
+            history = self.admin.get(self.url("flashcard", self.card.pk) + "history/")
+        self.assertEqual(history.status_code, 200)
+        self.assertEqual(len(history.json()["revisions"]), 12)
+        self.assertLess(len(all_queries) - len(first_queries), 25,
+                        "Repeated revisions of one source must reuse current policy and source checks")
+
+    def test_history_role_denial_cannot_disclose_old_locator(self):
+        self.assertEqual(self.bind("flashcard", self.card.pk).status_code, 200)
+        limited = self.user("w13-history-unprivileged", staff=True,
+                            caps=("cms_enter", "cms_learning_view", "cms_learning_edit"))
+        client = self.sign_in(limited)
+        response = client.get(self.url("flashcard", self.card.pk) + "history/")
+        self.assertEqual(response.status_code, 403)
+        self.assertNotIn(b"Synthetic claim location", response.content)
+
+    def test_revision_and_audit_are_atomic_if_audit_insert_fails(self):
+        etag = self.admin.get(self.url("flashcard", self.card.pk))["ETag"]
+        with patch("atlas.cms_learning_evidence.AdminAuditEvent.objects.create",
+                   side_effect=RuntimeError("synthetic audit database failure")):
+            with self.assertRaises(RuntimeError):
+                self.bind("flashcard", self.card.pk, etag=etag)
+        self.assertEqual(LearningEvidenceRevision.objects.count(), 0)
+        self.assertEqual(LearningEvidenceSource.objects.count(), 0)
+
+    def test_evidence_history_is_append_only_and_records_removal_reason(self):
+        self.assertEqual(self.bind("flashcard", self.card.pk).status_code, 200)
+        detached = self.post(self.admin, f"learning/evidence/flashcard/{self.card.pk}/",
+            {"sources": [], "change_reason": "Evidence was withdrawn for further review"},
+            etag=self.admin.get(self.url("flashcard", self.card.pk))["ETag"])
+        self.assertEqual(detached.status_code, 200, detached.content[:400])
+        response = self.admin.get(self.url("flashcard", self.card.pk) + "history/")
+        self.assertEqual(response.status_code, 200, response.content[:400])
+        revisions = response.json()["revisions"]
+        self.assertEqual([row["revision"] for row in revisions], [1, 2])
+        self.assertEqual(revisions[1]["removed_source_ids"], [self.source.pk])
+        self.assertEqual(revisions[1]["change_reason"], "Evidence was withdrawn for further review")
+        self.assertEqual(LearningEvidenceRevision.objects.count(), 2)
         self.assertEqual(LearningEvidenceSource.objects.count(), 1)

@@ -34,8 +34,10 @@ from . import cms_admin_search as admin_search
 from . import cms_operations_health as operations_health
 from . import cms_release_readiness as release_readiness
 from . import cms_pipeline_analytics as pipeline_analytics
+from . import cms_learning_evidence_history as evidence_history
 
 urlpatterns = [
+    path("learning/evidence/<str:kind>/<int:item_id>/history/", evidence_history.LearningEvidenceHistoryView.as_view()),
     path("learning/evidence/<str:kind>/<int:item_id>/", learning_evidence.LearningEvidenceView.as_view()),
     path("learning/transfer/", include(learning_io.urlpatterns)),
     path("learning/archive/<str:kind>/<int:item_id>/", LearningArchiveView.as_view()),

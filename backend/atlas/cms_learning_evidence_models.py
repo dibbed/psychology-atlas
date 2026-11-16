@@ -14,6 +14,8 @@ class LearningEvidenceRevision(AppendOnlyModel):
     target_pk = models.PositiveBigIntegerField()
     sequence = models.PositiveBigIntegerField()
     content_digest = models.CharField(max_length=64)
+    fingerprint_version = models.CharField(max_length=32, default="claim-text-v1")
+    change_reason = models.CharField(max_length=500, blank=True, default="")
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
