@@ -1,9 +1,12 @@
 "use client";
 import {useEffect,useState} from "react";
 import {cms,CmsPage} from "@/lib/cms";
+import {originLabels} from "@/lib/cmsDomains";
 import {CmsState,useCms} from "@/components/cms/CmsShell";
 
-type TimelineRow={id:number;cms_state_id?:string;slug:string;title_en:string;title_fa:string;year_start:number|null;year_end:number|null;exact_date:string|null;date_text:string;date_precision:string;event_type:string;source_count:number;checked_source_count:number;citation_debt:boolean;revision_status:string};
+type OriginRecord={record_id:number;dataset_id:number;dataset_name:string;external_id:string;section:string;staging_state:string};
+type Origin={status:"linked"|"unlinked"|"unknown"|"restricted"|"unavailable";reason?:string;records:OriginRecord[];count:number;restricted_count:number};
+type TimelineRow={id:number;cms_state_id?:string;slug:string;title_en:string;title_fa:string;year_start:number|null;year_end:number|null;exact_date:string|null;date_text:string;date_precision:string;event_type:string;source_count:number;checked_source_count:number;citation_debt:boolean;revision_status:string;origin?:Origin};
 type DebtRow={id:number;cms_state_id?:string;name:string;source_count:number;checked_source_count:number;citation_debt:boolean;revision_status:string;auto_approval:false};
 type Results<T>=CmsPage<T>&{notice:string;scope?:string;date_inference?:string};
 const precisionLabels:Record<string,string>={exact_date:"تاریخ قطعی",year:"فقط سال",year_range:"بازهٔ سال",approximate_year:"سال تقریبی",unknown:"نامشخص"};
@@ -51,7 +54,7 @@ export default function HistoryChronology(){
     {error!=null?<CmsState error={error} retry={()=>setRetry(n=>n+1)}/>:!value?<CmsState loading/>:!value.results.length?<CmsState empty="برای این فیلتر رکوردی وجود ندارد."/>:<>
       <div className="cms-table-wrap" role="region" tabIndex={0} aria-label="مرور تاریخ و منبع">
         <table className="cms-table"><caption>{mode==="timeline"?"خط زمان با دقت ثبت‌شده":"رکوردهای دارای بدهی ارجاع"} · {value.count} رکورد</caption>
-          <thead><tr><th scope="col">عنوان و ویرایش</th><th scope="col">{mode==="timeline"?"تاریخ ثبت‌شده":"نوع"}</th><th scope="col">منابع و داوری</th></tr></thead>
+          <thead><tr><th scope="col">عنوان و ویرایش</th><th scope="col">{mode==="timeline"?"تاریخ ثبت‌شده":"نوع"}</th><th scope="col">منابع و داوری</th><th scope="col">منشأ پژوهشی</th></tr></thead>
           <tbody>{value.results.map((record)=>{
             const timeline=mode==="timeline"?record as TimelineRow:null;
             const label=timeline?(timeline.title_fa||timeline.title_en):(record as DebtRow).name;
@@ -60,6 +63,7 @@ export default function HistoryChronology(){
               <th scope="row">{state?<a className="cms-link" href={`/admin-console/content/${mode==="timeline"?"timeline-event":kind}/${state}`}><bdi>{label}</bdi></a>:<bdi>{label}</bdi>}</th>
               <td>{timeline?<><span>{precisionLabels[timeline.date_precision]||timeline.date_precision}</span><p><bdi>{timeline.exact_date||timeline.date_text||[timeline.year_start,timeline.year_end].filter(x=>x!==null).join(" تا ")||"نامشخص"}</bdi></p></>:kind}</td>
               <td>{record.checked_source_count} منبع بررسی‌شده از {record.source_count}<p>{record.citation_debt?"نیازمند شواهد بهتر":"دارای ارجاع بررسی‌شده"}</p><small>{record.revision_status}</small></td>
+              <td>{timeline?.origin?<>{timeline.origin.status==="linked"?<a className="cms-link" href={`/admin-console/research/records/${timeline.origin.records[0]?.record_id}`}>{timeline.origin.count} locator مجاز</a>:<span>{originLabels[timeline.origin.status]}</span>}{timeline.origin.restricted_count>0&&<p className="muted">بخشی خارج از scope</p>}</>:"—"}</td>
             </tr>;
           })}</tbody>
         </table>

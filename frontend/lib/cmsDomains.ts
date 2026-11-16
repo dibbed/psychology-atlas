@@ -24,9 +24,13 @@ export type DuplicateCandidate = {id: number; state_id: string | null; label: st
 export type DuplicateResult = {kind: string; domain: string; state_id: string; canonical_pk: number | null; subject: {label: string; identity: {field: string; value: string | null}} | null; candidates: DuplicateCandidate[]; count: number; truncated: boolean; tiers: Record<DuplicateTier, number>; merge_available: false; canonical_write: 0; reason?: string; notice: string};
 export type ArchiveRelation = {model: string; field: string; label: string; count: number; on_delete: string; impact: string; domain: string};
 export type ArchiveImpact = {kind: string; domain: string; state_id: string; canonical_pk: number | null; relations: ArchiveRelation[]; totals: {relations: number; checked_relations: number; rows: number; by_impact: Record<string, number>}; impact_digest: string; content_state?: {version: number; publication: string; revision_status: string | null; intent: string | null; legacy_origin: boolean; revisions: number}; canonical_write: 0; raw_archive_changed: false; search_graph: string; reason?: string; notice: string};
+export type ResearchOriginRecord = {record_id: number; dataset_id: number; dataset_name: string; dataset_version: string; section: string; external_id: string; promoted_model: string; staging_state: string; version: number; name_en?: string; name_fa?: string};
+export type ResearchOrigin = {status: 'linked' | 'unlinked' | 'unknown' | 'restricted' | 'unavailable'; reason?: string; records: ResearchOriginRecord[]; count: number; restricted_count: number; truncated: boolean; canonical_write: 0; auto_review: false};
+export type ProvenanceResult = {kind: string; state_id: string; canonical_pk: number | null; origin: ResearchOrigin; canonical_write: 0; auto_review: false; notice: string};
 export const duplicateTierLabels: Record<DuplicateTier, string> = {identity_conflict: 'تعارض هویت', probable_duplicate: 'تکرار احتمالی', lexical_only: 'فقط شباهت متنی'};
 export const duplicateKinds = new Set(['category', 'disorder', 'symptom', 'concept', 'dsm-corpus', 'dsm-record']);
 export const impactLabels: Record<string, string> = {cascade: 'وابستگی حذف‌شونده', protect: 'وابستگی محافظت‌شده', detach: 'قطع پیوند', link: 'پیوند', orphan_risk: 'ریسک یتیم‌ماندن', other: 'سایر'};
+export const originLabels: Record<ResearchOrigin['status'], string> = {linked: 'متصل به ResearchRecord', unlinked: 'بدون lineage ثبت‌شده (legacy)', unknown: 'lineage نامشخص', restricted: 'خارج از scope پژوهش', unavailable: 'دسترسی پژوهش لازم است'};
 
 export function fieldWritable(field: DomainField, creating: boolean) {
   return field.type !== 'readonly' && (field.create_only ? creating : !field.readonly_reason);

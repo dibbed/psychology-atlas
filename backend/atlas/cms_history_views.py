@@ -6,8 +6,10 @@ association as authorship, scientific support or publication eligibility.
 from django.db.models import Count, Q
 from rest_framework.response import Response
 
+from .cms_content import resolve
 from .cms_content_models import ContentState
 from .cms_policy import CMSFailure, policy_lock, require
+from .cms_provenance import lineage_for_many, provenance_data
 from .cms_views import AdminAPIView, page
 from .models import Psychologist, Theory, TimelineEvent
 
@@ -61,6 +63,7 @@ class HistoryChronologyView(AdminAPIView):
             status = {state.canonical_pk: {"status": state.current_revision.status, "id": str(state.pk)} for state in
                 ContentState.objects.filter(kind="timeline-event", canonical_pk__in=ids).select_related("current_revision")
                 if state.current_revision_id}
+            origins = lineage_for_many(request.user, "timeline-event", ids)
             results = [{"id":row.pk, "slug":row.slug, "title_en":row.title_en, "title_fa":row.title_fa,
                 "event_type":row.event_type,"date_precision":row.date_precision,
                 "date_text":row.date_text,"year_start":row.year_start,"year_end":row.year_end,
@@ -68,11 +71,24 @@ class HistoryChronologyView(AdminAPIView):
                 "checked_source_count":row.checked_count,
                 "citation_debt":row.checked_count == 0,
                 "revision_status":status.get(row.pk,{}).get("status","not_anchored"),
-                "cms_state_id":status.get(row.pk,{}).get("id")} for row in selection]
+                "cms_state_id":status.get(row.pk,{}).get("id"),
+                "origin":origins[row.pk]} for row in selection]
             return Response({**meta, "results":results,
                 "scope":"private_canonical_history_metadata",
                 "date_inference":"none; unknown and approximate precisions remain explicit",
                 "notice":"PRIVATE_PREVIEW_ONLY; SOURCE_COUNTS_ARE_NOT_APPROVAL; PUBLIC_TIMELINE_UNCHANGED"})
+
+
+class HistoryProvenanceView(AdminAPIView):
+    capability = "cms_history_view"
+
+    def get(self, request, kind, target_id):
+        if request.query_params:
+            raise CMSFailure("INVALID_QUERY", 400)
+        with policy_lock():
+            require(request.user, "cms_history_view")
+            state, obj = resolve(request.user, kind, target_id)
+            return Response(provenance_data(request.user, kind, state, obj))
 
 
 class HistoryCitationDebtView(AdminAPIView):

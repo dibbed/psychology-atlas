@@ -88,6 +88,7 @@ urlpatterns = [
     path("content/<str:kind>/", content.ContentCreateView.as_view()),
     path("content/<str:kind>/<str:target_id>/duplicates/", content.ContentDuplicatesView.as_view()),
     path("content/<str:kind>/<str:target_id>/archive-impact/", content.ContentArchiveImpactView.as_view()),
+    path("content/<str:kind>/<str:target_id>/provenance/", history.HistoryProvenanceView.as_view()),
     path("content/<str:kind>/<str:target_id>/", content.ContentDetailView.as_view()),
     path("content/<str:kind>/<str:target_id>/revisions/", content.ContentRevisionView.as_view()),
     path("content/<str:kind>/<str:target_id>/discard/", content.ContentDiscardView.as_view()),
