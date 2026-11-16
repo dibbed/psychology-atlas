@@ -260,7 +260,14 @@ def select_candidates(actor_id, session_id, data, request_id):
             if existing.actor_id != actor.pk or existing.request_digest != request_digest or existing.domain != domain:
                 raise CMSFailure("IDEMPOTENCY_CONFLICT", 409)
             return existing, False
-        snapshots = [_resolve(actor, domain, item) for item in entries]
+        rights_budget = {"remaining": MAX_RIGHTS_SOURCES}
+        snapshots = [
+            _resolve(actor, domain, item,
+                     include_editorial_review=domain != "learning",
+                     include_rights=domain != "learning",
+                     rights_budget=rights_budget)
+            for item in entries
+        ]
         current_session(session_id, actor)
         _permissions(actor, domain)
         manifest = {
@@ -382,8 +389,28 @@ def verify_selection(actor_id, session_id, selection_id):
                     previous = snapshot.get("live_dependencies")
                     if previous is not None:
                         dependency_state = "matching" if previous == live else "stale"
-                    if dependency_issues:
-                        dependency_state = "invalid"
+                    if selected.domain != "learning":
+                        # Store the same safe evidence status at selection time
+                        # as at recheck time. Older selections lacking this
+                        # baseline remain readable but cannot seal new dossiers.
+                        if ("editorial_review" not in snapshot or
+                                "source_rights_evidence" not in snapshot):
+                            dependency_state = "baseline_missing"
+                            dependency_issues.append("REVIEW_RIGHTS_BASELINE_MISSING")
+                        else:
+                            if snapshot["editorial_review"] != editorial_review:
+                                state = "stale"
+                                dependency_issues.append("EDITORIAL_REVIEW_DRIFT")
+                            if snapshot["source_rights_evidence"] != source_rights_evidence:
+                                state = "stale"
+                                dependency_issues.append("SOURCE_RIGHTS_DRIFT")
+                        if source_rights_evidence["status"] == "unverifiable":
+                            dependency_issues.append("SOURCE_RIGHTS_UNVERIFIABLE")
+                    if dependency_issues and dependency_state != "baseline_missing":
+                        dependency_state = "invalid" if (
+                            "SOURCE_RIGHTS_UNVERIFIABLE" in dependency_issues or
+                            any(issue in live["issues"] for issue in dependency_issues)
+                        ) else "stale"
             except CMSFailure as error:
                 code = str(error.detail.get("code", ""))
                 if code == "NOT_FOUND":

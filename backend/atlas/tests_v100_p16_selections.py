@@ -343,6 +343,40 @@ class PublicationSelectionsTests(SecurityFixture, TestCase):
         entry = self.entry(domain, kind, str(proposal.pk))
         return source, parent, proposal, entry
 
+    def test_review_task_drift_invalidates_selected_baseline_before_preparation(self):
+        from .cms_review_models import ReviewTask
+        from .cms_publication_preparation_models import PublicationPreparationDossier
+
+        entry = self.entry("brain", "brain-anatomical-entity", str(self.brain.pk))
+        selected = self.post_selection("brain", [entry])
+        self.assertEqual(selected.status_code, 201, selected.content[:300])
+        selection_id = selected.json()["id"]
+        self.assertTrue(self.verify(selection_id).json()["all_snapshots_current"])
+
+        # A new editorial task is evidence of a changed review context,
+        # never a scientific approval. Even its invalid "approved" state
+        # must make the original selection stale, without leaking the draft.
+        ReviewTask.objects.create(
+            subject=self.brain.current_revision, review_type="source",
+            assignee=self.owner, status="approved",
+            revision_hash="0" * 64, dependency_digest="1" * 64,
+            evidence=[], authors=[], policy_version=0,
+            policy_mode="solo_owner",
+        )
+        current = self.verify(selection_id)
+        self.assertEqual(current.status_code, 200, current.content[:300])
+        self.assertFalse(current.json()["all_snapshots_current"])
+        self.assertIn("EDITORIAL_REVIEW_DRIFT",
+                      current.json()["items"][0]["dependency_issues"])
+        self.assertNotIn("P16 confidential brain", current.content.decode())
+        refused = self.post(self.owner_client,
+            f"publication/selections/{selection_id}/prepare/", {
+                "selection_digest": selected.json()["selection_digest"],
+                "request_key": str(uuid.uuid4()),
+            })
+        self.assertEqual(refused.status_code, 409)
+        self.assertFalse(PublicationPreparationDossier.objects.exists())
+
     def test_rights_evidence_is_explicit_and_never_equivalent_to_publication_clearance(self):
         for domain in ("brain", "assessment"):
             with self.subTest(domain=domain):
