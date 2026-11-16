@@ -63,8 +63,14 @@ def _dependency_snapshot(dependency_ids):
         identifiers = dependency_ids.get(name, [])
         if not identifiers:
             continue
-        rows = list(klass.objects.filter(pk__in=identifiers).order_by("pk").values(
-            "id", "is_active", "updated_at"))
+        # Lock the live semantic dependencies while a selection/recheck holds
+        # the policy transaction. A timestamp alone cannot represent taxonomy.
+        fields = ("id", "is_active", "updated_at", "subtype") if name == "concept" else (
+            "id", "is_active", "updated_at",
+        )
+        rows = list(klass.objects.select_for_update().filter(
+            pk__in=identifiers,
+        ).order_by("pk").values(*fields))
         result[name] = rows
         if len(rows) != len(identifiers):
             issues.append("DEPENDENCY_MISSING")
@@ -160,6 +166,26 @@ def draft_fingerprint(kind, item):
         issues.append("TARGET_REQUIRED")
     dependency_state, dependency_issues = _dependency_snapshot(dependency_ids)
     issues.extend(dependency_issues)
+    if kind == "distortion_practice":
+        # Match the active-answer semantics of the P13 practice validator.
+        # Inactive choices stay in the immutable digest/history, but only
+        # active choices must be eligible for new learner interactions.
+        live_concepts = {
+            row["id"]: row for row in dependency_state.get("concept", [])
+        }
+        def valid_distortion(identifier):
+            row = live_concepts.get(identifier)
+            return bool(row and row["is_active"] and
+                        row["subtype"] == models.Concept.Subtype.COGNITIVE_DISTORTION)
+
+        if not valid_distortion(item.target_concept_id):
+            issues.append("TARGET_INVALID")
+        active_ids = [
+            choice["concept_id"] for choice in children if choice["is_active"]
+        ]
+        if (len(active_ids) != len(set(active_ids)) or
+                any(not valid_distortion(identifier) for identifier in active_ids)):
+            issues.append("CHOICE_CONCEPT_INVALID")
     document = {
         "schema": "learning-draft-preflight-v1",
         "kind": kind, "parent": parent, "children": children,
