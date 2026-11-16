@@ -377,6 +377,67 @@ class PublicationSelectionsTests(SecurityFixture, TestCase):
         self.assertEqual(refused.status_code, 409)
         self.assertFalse(PublicationPreparationDossier.objects.exists())
 
+    def test_review_task_version_drift_is_not_hidden_by_same_blocker_status(self):
+        from .cms_review_models import ReviewTask
+        from .cms_publication_preparation_models import PublicationPreparationDossier
+        task = ReviewTask.objects.create(
+            subject=self.brain.current_revision, review_type="source",
+            assignee=self.owner, status="queued", version=1,
+            revision_hash="0" * 64, dependency_digest="1" * 64,
+            evidence=[], authors=[], policy_version=0, policy_mode="solo_owner",
+        )
+        entry = self.entry("brain", "brain-anatomical-entity", str(self.brain.pk))
+        selected = self.post_selection("brain", [entry])
+        self.assertEqual(selected.status_code, 201, selected.content[:300])
+        selection_id = selected.json()["id"]
+        before = self.verify(selection_id)
+        self.assertEqual(before.status_code, 200, before.content[:300])
+        self.assertTrue(before.json()["all_snapshots_current"])
+        # Task version changed but review *status* and blocker labels may not.
+        ReviewTask.objects.filter(pk=task.pk).update(version=2)
+        after = self.verify(selection_id)
+        self.assertEqual(after.status_code, 200, after.content[:300])
+        self.assertFalse(after.json()["all_snapshots_current"])
+        self.assertIn("EDITORIAL_REVIEW_DRIFT", after.json()["items"][0]["dependency_issues"])
+        refused = self.post(self.owner_client,
+            f"publication/selections/{selection_id}/prepare/", {
+                "request_key": str(uuid.uuid4()),
+                "selection_digest": selected.json()["selection_digest"],
+            })
+        self.assertEqual(refused.status_code, 409)
+        self.assertFalse(PublicationPreparationDossier.objects.exists())
+
+    def test_learning_claim_evidence_source_change_invalidates_selection(self):
+        from .cms_learning_evidence import _claim_context, _source_context_digest
+        from .cms_learning_evidence_models import LearningEvidenceRevision, LearningEvidenceSource
+        from .models import SourceReference
+        question = self.quiz.questions.first()
+        source = SourceReference.objects.create(
+            title="P16 private synthetic source", citation="Synthetic source citation",
+            verification_status="source_checked",
+        )
+        revision = LearningEvidenceRevision.objects.create(
+            kind="quiz-question", target_pk=question.pk, sequence=1,
+            fingerprint_version="claim-context-v2",
+            content_digest=_claim_context("quiz-question", question), actor=self.owner,
+        )
+        LearningEvidenceSource.objects.create(
+            revision=revision, source=source,
+            locator="P16 PRIVATE EXACT SOURCE LOCATOR",
+            source_digest=_source_context_digest(source),
+        )
+        entry = self.entry("learning", "quiz", self.quiz.pk)
+        created = self.post_selection("learning", [entry])
+        self.assertEqual(created.status_code, 201, created.content[:300])
+        selection_id = created.json()["id"]
+        self.assertTrue(self.verify(selection_id).json()["all_snapshots_current"])
+        SourceReference.objects.filter(pk=source.pk).update(title="Changed source title")
+        changed = self.verify(selection_id)
+        self.assertEqual(changed.status_code, 200, changed.content[:300])
+        self.assertFalse(changed.json()["all_snapshots_current"])
+        self.assertNotIn("P16 PRIVATE EXACT SOURCE LOCATOR", changed.content.decode())
+        self.assertNotIn("Changed source title", changed.content.decode())
+
     def test_rights_evidence_is_explicit_and_never_equivalent_to_publication_clearance(self):
         for domain in ("brain", "assessment"):
             with self.subTest(domain=domain):

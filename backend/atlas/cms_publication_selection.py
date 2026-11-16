@@ -15,13 +15,13 @@ from .cms_content import canonical_snapshot, digest, scoped_states
 from .cms_content_models import ContentState
 from .cms_domains import DOMAIN_SPECS, dependency_snapshot
 from .cms_governance import governance_dependency_snapshot, resource_binding, rights_eligibility
-from .cms_learning_fingerprint import KIND_MODELS, draft_fingerprint
+from .cms_learning_fingerprint import KIND_MODELS, MAX_QUESTIONS, draft_fingerprint
 from .cms_models import AdminAuditEvent
 from .cms_policy import CMSFailure, policy_lock, require
 from .cms_publication_preflight import EDITORIAL_STATUSES, editorial_proposal_fingerprint
 from .cms_publication_selection_models import PublicationCandidateSelection
-from .cms_review import approval_eligibility
-from .cms_review_models import ReviewPolicy
+from .cms_review import approval_eligibility, latest_tasks
+from .cms_review_models import ReviewPolicy, ReviewTask
 from .cms_sessions import current_session
 from .models import SourceReference, lock_brain_curation
 
@@ -175,19 +175,112 @@ def _editorial_review_gate(state):
             pk=state.canonical_pk).first()
         if canonical is None:
             return {"status": "unverifiable", "blockers": ["CANONICAL_UNAVAILABLE"]}
+    # Revision/decision identities matter even when visible status and blocker
+    # labels remain unchanged. Hash the exact private review context rather
+    # than serializing evidence, author details, or review notes to clients.
+    tasks = latest_tasks(state)
+    locked = list(ReviewTask.objects.select_for_update().filter(
+        pk__in=[task.pk for task in tasks],
+    ).order_by("review_type", "pk"))
+    review_context = []
+    for task in locked:
+        decision = task.decisions.order_by("-pk").values(
+            "pk", "revision_id", "actor_id", "outcome", "reason",
+            "fields", "evidence", "revision_hash", "dependency_digest",
+            "policy_version", "policy_mode", "self_review", "supersedes_id",
+        ).first()
+        review_context.append({
+            "task_id": task.pk, "subject_id": task.subject_id,
+            "review_type": task.review_type, "status": task.status,
+            "version": task.version, "assignee_id": task.assignee_id,
+            "revision_hash": task.revision_hash, "dependency_digest": task.dependency_digest,
+            "evidence": task.evidence, "authors": task.authors,
+            "policy_version": task.policy_version, "policy_mode": task.policy_mode,
+            "latest_decision": decision,
+        })
+    context_digest = digest({"schema": "cms-review-task-decision-context-v1",
+                             "tasks": review_context})
     try:
         gate = approval_eligibility(state, canonical, lock=True)
     except ValidationError:
-        return {"status": "unverifiable", "blockers": ["EDITORIAL_REVIEW_UNVERIFIABLE"]}
+        return {"status": "unverifiable", "blockers": ["EDITORIAL_REVIEW_UNVERIFIABLE"],
+                "context_digest": context_digest}
     return {
         "status": "editorial_tasks_current" if gate["eligible"] else "blocked",
-        "blockers": gate["blockers"],
+        "blockers": gate["blockers"], "context_digest": context_digest,
     }
+
+
+def _learning_evidence_dependencies(kind, candidate, *, rights_budget=None):
+    """Seal private claim-level learning evidence without exposing locators.
+
+    The P13 evidence stream is separate from a content fingerprint: changing a
+    source/locator/revision must invalidate the original Selection even when no
+    canonical question, answer, or timestamp changes.
+    """
+    from .cms_learning_evidence import _latest, _state
+
+    if kind == "quiz":
+        targets = list(candidate.questions.select_for_update().order_by("pk")[:MAX_QUESTIONS + 1])
+        if len(targets) > MAX_QUESTIONS:
+            raise CMSFailure("DEPENDENCY_UNVERIFIABLE", 409)
+        evidence_kind, field = "quiz-question", "explanation"
+    else:
+        targets = [candidate]
+        evidence_kind, field = {
+            "flashcard": ("flashcard", "back"),
+            "daily_challenge": ("daily", "explanation"),
+            "distortion_practice": ("distortions", "explanation"),
+        }[kind]
+
+    revisions = []
+    source_ids = set()
+    for target in targets:
+        revision = _latest(evidence_kind, target.pk)
+        if revision is not None:
+            links = list(revision.links.all())
+            if len(links) > 10:
+                raise CMSFailure("DEPENDENCY_UNVERIFIABLE", 409)
+            source_ids.update(link.source_id for link in links)
+        revisions.append((target, revision))
+
+    if len(source_ids) > MAX_RIGHTS_SOURCES:
+        # Still hash the historical identities, but do not claim rights review
+        # from a truncated set of sources.
+        raise CMSFailure("DEPENDENCY_UNVERIFIABLE", 409)
+    locked_sources = list(SourceReference.objects.select_for_update().filter(
+        pk__in=source_ids).order_by("pk"))
+    if len(locked_sources) != len(source_ids):
+        raise CMSFailure("DEPENDENCY_UNVERIFIABLE", 409)
+    cache, records, issues = {}, [], set()
+    for target, revision in revisions:
+        if revision is None:
+            records.append({"kind": evidence_kind, "target_id": target.pk,
+                            "revision_id": None, "state_digest": None})
+            continue
+        private_state, _ = _state(
+            evidence_kind, target, field, revision, source_cache=cache,
+        )
+        records.append({"kind": evidence_kind, "target_id": target.pk,
+                        "revision_id": revision.pk, "sequence": revision.sequence,
+                        "fingerprint_version": revision.fingerprint_version,
+                        "state_digest": digest(private_state)})
+        if private_state["status"] == "requires_review":
+            issues.add("LEARNING_EVIDENCE_STALE")
+    snapshot = {
+        "schema": "cms-learning-evidence-dependencies-v1",
+        "digest": digest({"records": records, "source_ids": sorted(source_ids)}),
+        "target_count": len(records), "linked_source_count": len(source_ids),
+        "issues": sorted(issues),
+    }
+    rights = _source_rights_coverage(source_ids, budget=rights_budget)
+    return snapshot, rights
 
 
 def _resolve(actor, domain, item, *, enforce_digest=True, include_editorial_review=False, include_rights=False, rights_budget=None):
     kind, identifier = item["kind"], item["resource_id"]
     if domain == "learning":
+        lock_brain_curation(connection.alias)
         model = KIND_MODELS[kind]
         candidate = model.objects.select_for_update().filter(
             pk=identifier, is_active=False, seed_managed=False, archived_at__isnull=True,
@@ -202,6 +295,11 @@ def _resolve(actor, domain, item, *, enforce_digest=True, include_editorial_revi
             "dependency_ids": preview["dependency_ids"],
             "content_issues": preview["content_issues"],
         }
+        if include_rights:
+            evidence, rights = _learning_evidence_dependencies(
+                kind, candidate, rights_budget=rights_budget)
+            snapshot["learning_evidence"] = evidence
+            snapshot["source_rights_evidence"] = rights
     else:
         lock_brain_curation(connection.alias)
         states = scoped_states(actor, ContentState.objects.select_for_update(of=("self",)).select_related(
@@ -264,7 +362,7 @@ def select_candidates(actor_id, session_id, data, request_id):
         snapshots = [
             _resolve(actor, domain, item,
                      include_editorial_review=domain != "learning",
-                     include_rights=domain != "learning",
+                     include_rights=True,
                      rights_budget=rights_budget)
             for item in entries
         ]
@@ -383,6 +481,27 @@ def verify_selection(actor_id, session_id, selection_id):
                     state = "stale"
                 if selected.domain == "learning":
                     issues = current["content_issues"]
+                    previous = snapshot.get("learning_evidence")
+                    latest = current.get("learning_evidence")
+                    if previous is None or "source_rights_evidence" not in snapshot:
+                        dependency_state = "baseline_missing"
+                        dependency_issues.append("LEARNING_EVIDENCE_BASELINE_MISSING")
+                    else:
+                        dependency_state = "matching"
+                        if previous != latest:
+                            state = "stale"
+                            dependency_state = "stale"
+                            dependency_issues.append("LEARNING_EVIDENCE_DRIFT")
+                        if snapshot["source_rights_evidence"] != source_rights_evidence:
+                            state = "stale"
+                            dependency_state = "stale"
+                            dependency_issues.append("SOURCE_RIGHTS_DRIFT")
+                    if latest is not None and latest["issues"]:
+                        dependency_issues.extend(latest["issues"])
+                        dependency_state = "invalid"
+                    if source_rights_evidence and source_rights_evidence["status"] == "unverifiable":
+                        dependency_issues.append("SOURCE_RIGHTS_UNVERIFIABLE")
+                        dependency_state = "invalid"
                 else:
                     live = current["live_dependencies"]
                     dependency_issues = live["issues"]
@@ -438,6 +557,7 @@ def verify_selection(actor_id, session_id, selection_id):
             }
             if selected.domain != "learning":
                 item_result["editorial_review"] = editorial_review
+            if source_rights_evidence is not None:
                 item_result["source_rights_evidence"] = source_rights_evidence
             checks.append(item_result)
         current_session(session_id, actor)

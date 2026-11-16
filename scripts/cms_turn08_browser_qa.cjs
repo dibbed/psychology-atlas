@@ -128,6 +128,55 @@ async function getPreview(page,dossierId){
       "Candidate preview control is keyboard focusable");
     await page.screenshot({path:path.join(out,"turn08-candidate-320.png"),fullPage:true});
     report.screenshots.push("turn08-candidate-320.png");
+    // W16-00: real Learning UI recheck after semantic subtype drift, using
+    // synthetic records in the *same guarded disposable* browser database.
+    const learningFixture=JSON.parse(exec(py,["-c",[
+      "import os,json,tempfile",
+      "from pathlib import Path",
+      "db=Path(os.environ['SQLITE_PATH']).resolve()",
+      "assert os.environ.get('CMS_QA_PHASE')=='p14' and db.name=='cms-journey.sqlite3'",
+      "assert db.parent.name.startswith('atlas-p14-browser-turn08-') and db.parent.parent==Path(tempfile.gettempdir()).resolve()",
+      "import django",
+      "os.environ.setdefault('DJANGO_SETTINGS_MODULE','config.settings')",
+      "django.setup()",
+      "from atlas.models import Concept,CognitiveDistortionPracticeItem,CognitiveDistortionPracticeChoice",
+      "c=Concept.objects.create(slug='qa-w16-target',name_en='Synthetic target',subtype=Concept.Subtype.COGNITIVE_DISTORTION,is_active=True)",
+      "alt=Concept.objects.create(slug='qa-w16-alternative',name_en='Synthetic alternative',subtype=Concept.Subtype.COGNITIVE_DISTORTION,is_active=True)",
+      "item=CognitiveDistortionPracticeItem.objects.create(slug='qa-w16-item',prompt='Synthetic private question',explanation='Synthetic private explanation',target_concept=c,is_active=False,seed_managed=False)",
+      "CognitiveDistortionPracticeChoice.objects.create(item=item,concept=c,text='Correct',is_correct=True,is_active=True)",
+      "CognitiveDistortionPracticeChoice.objects.create(item=item,concept=alt,text='Alternative',is_correct=False,is_active=True)",
+      "print(json.dumps({'target':c.pk,'item':item.pk}))",
+    ].join("\n")],path.join(root,"backend"),90000));
+    await page.setViewportSize({width:1280,height:860});
+    await page.goto(origin+"/admin-console/publication-preflight");
+    await page.getByLabel("حوزهٔ مجاز").selectOption("learning");
+    const learningEntry=page.locator("li.card.stack").filter({hasText:"distortion_practice #"+learningFixture.item}).first();
+    await learningEntry.getByRole("checkbox").check();
+    await page.getByRole("button",{name:"ثبت بستهٔ بازبینی بدون انتشار"}).click();
+    await page.getByRole("button",{name:"بررسی وضعیت فعلی بسته"}).click();
+    await page.getByRole("button",{name:"ثبت پروندهٔ آماده‌سازی بدون انتشار"}).click();
+    const driftPy=[
+      "import os,tempfile",
+      "from pathlib import Path",
+      "db=Path(os.environ['SQLITE_PATH']).resolve()",
+      "assert os.environ.get('CMS_QA_PHASE')=='p14' and db.name=='cms-journey.sqlite3' and db.parent.name.startswith('atlas-p14-browser-turn08-') and db.parent.parent==Path(tempfile.gettempdir()).resolve()",
+      "import django",
+      "os.environ.setdefault('DJANGO_SETTINGS_MODULE','config.settings')",
+      "django.setup()",
+      "from atlas.models import Concept",
+      "assert Concept.objects.filter(pk="+learningFixture.target+",slug='qa-w16-target').update(subtype=Concept.Subtype.GENERAL)==1",
+    ].join("\n");
+    exec(py,["-c",driftPy],path.join(root,"backend"),90000);
+    await page.getByRole("button",{name:"تطبیق پروندهٔ ثابت با وضعیت زنده"}).click();
+    await page.getByText("نسخه، سیاست یا شواهد از زمان ثبت پرونده تغییر کرده‌اند.",{exact:false}).waitFor();
+    check(true,"W16-00 Learning UI recheck explicitly shows semantic stale dossier");
+    const learningListing=await page.evaluate(async()=>{
+      const r=await fetch("/api/admin/publication/preparations/?domain=learning",{cache:"no-store"});
+      return r.json();
+    });
+    const learningId=learningListing.results[0].id;
+    const denied=await getPreview(page,learningId);
+    check(denied.status===409,"W16-00 stale Learning candidate is withheld from private preview");
     check(report.errors.length===0,"Zero Chromium JS runtime errors");
     report.status="PASS";
   } catch(e) {

@@ -105,3 +105,35 @@ class LearningPublicationFreshnessTests(SecurityFixture, TestCase):
                 Concept.objects.filter(pk=self.alternative.pk).update(
                     is_active=True, subtype=Concept.Subtype.COGNITIVE_DISTORTION)
         self.assertFalse(StudyActivity.objects.exists())
+
+    def test_inactive_historical_choice_does_not_block_new_preparation(self):
+        historical = Concept.objects.create(
+            slug="w16-historical", name_en="Inactive historical choice",
+            subtype=Concept.Subtype.GENERAL, is_active=False,
+        )
+        CognitiveDistortionPracticeChoice.objects.create(
+            item=self.practice, concept=historical, text="Retired choice",
+            is_correct=False, is_active=False,
+        )
+        fresh = draft_fingerprint("distortion_practice", self.practice)
+        self.assertEqual(fresh["content_issues"], [], fresh)
+        selected, dossier = self._prepared()
+        self.assertEqual(self.client.get(
+            BASE + f'publication/preparations/{dossier["id"]}/verify/').json()["snapshot_current"], True)
+        old_digest = fresh["content_digest"]
+        # Retired history still belongs to the sealed fingerprint, but does not
+        # make the active learner option pool invalid.
+        Concept.objects.filter(pk=historical.pk).update(subtype=Concept.Subtype.COGNITIVE_DISTORTION)
+        after = draft_fingerprint("distortion_practice", self.practice)
+        self.assertNotEqual(after["content_digest"], old_digest)
+        self.assertEqual(after["content_issues"], [])
+        stale = self.client.get(BASE + f'publication/preparations/{dossier["id"]}/verify/')
+        self.assertEqual(stale.status_code, 200)
+        self.assertFalse(stale.json()["snapshot_current"])
+        self.assertEqual(self.post(self.client,
+            f'publication/selections/{selected["id"]}/prepare/', {
+                "request_key": str(uuid.uuid4()),
+                "selection_digest": selected["selection_digest"],
+            }).status_code, 409)
+        self.assertFalse(StudyActivity.objects.exists())
+        self.assertFalse(UserConceptProgress.objects.exists())

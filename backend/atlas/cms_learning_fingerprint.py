@@ -57,7 +57,8 @@ def _dependencies(kind, item, children):
     return {name: sorted(values) for name, values in ids.items() if values}
 
 
-def _dependency_snapshot(dependency_ids):
+def _dependency_snapshot(dependency_ids, *, required_ids=None):
+    """Fingerprint all referenced history; enforce eligibility on active uses."""
     result, issues = {}, []
     for name, klass in (("concept", models.Concept), ("disorder", models.Disorder)):
         identifiers = dependency_ids.get(name, [])
@@ -72,11 +73,14 @@ def _dependency_snapshot(dependency_ids):
             pk__in=identifiers,
         ).order_by("pk").values(*fields))
         result[name] = rows
+        # Retired, inactive choices are immutable history rather than eligible
+        # answers. Their identities and semantic state still affect the digest.
+        required = set(identifiers if required_ids is None else required_ids.get(name, identifiers))
         if len(rows) != len(identifiers):
             issues.append("DEPENDENCY_MISSING")
-        if any(not row["is_active"] for row in rows):
+        if any(not row["is_active"] for row in rows if row["id"] in required):
             issues.append("INACTIVE_DEPENDENCY")
-        if any(not scope_visible(name, row["id"]) for row in rows):
+        if any(not scope_visible(name, row["id"]) for row in rows if row["id"] in required):
             issues.append("DEPENDENCY_PUBLIC_UNAVAILABLE")
     return result, issues
 
@@ -164,7 +168,12 @@ def draft_fingerprint(kind, item):
     dependency_ids = _dependencies(kind, item, children)
     if not dependency_ids:
         issues.append("TARGET_REQUIRED")
-    dependency_state, dependency_issues = _dependency_snapshot(dependency_ids)
+    required_ids = None
+    if kind == "distortion_practice":
+        required_ids = {"concept": [item.target_concept_id] + [
+            choice["concept_id"] for choice in children if choice["is_active"] and choice["concept_id"]
+        ]}
+    dependency_state, dependency_issues = _dependency_snapshot(dependency_ids, required_ids=required_ids)
     issues.extend(dependency_issues)
     if kind == "distortion_practice":
         # Match the active-answer semantics of the P13 practice validator.
