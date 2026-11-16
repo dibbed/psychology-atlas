@@ -1,8 +1,9 @@
 from rest_framework.response import Response
 from django.utils import timezone
 
-from .cms_content import (REGISTRY, capability, discard, inspect_proposal, kind_entry, propose, resolve,
-    revision_data, safe_payload, scoped_states, scoped_revisions, immutable_metadata, archive_proposal)
+from .cms_content import (REGISTRY, archive_impact, archive_proposal, capability, discard, duplicate_candidates,
+    inspect_proposal, kind_entry, propose, resolve, revision_data, safe_payload, scoped_states, scoped_revisions,
+    immutable_metadata)
 from .cms_domains import domain_for, schema_data
 from .cms_content_models import ContentState, ContentRevision
 from .cms_models import AdminAuditEvent
@@ -167,3 +168,29 @@ class ContentArchiveView(AdminAPIView):
         state = archive_proposal(request.user.pk, request.cms_session.pk, kind, target_id,
             expected_version(request), self.request_id)
         return versioned(revision_data(state), state.version)
+
+
+class ContentDuplicatesView(AdminAPIView):
+    capability = "cms_enter"
+
+    def get(self, request, kind, target_id):
+        if request.query_params:
+            raise CMSFailure("INVALID_QUERY", 400)
+        with policy_lock():
+            kind_entry(kind)
+            require(request.user, capability(kind, "view"))
+            require(request.user, capability(kind, "preview"))
+            return Response(duplicate_candidates(request.user, kind, target_id))
+
+
+class ContentArchiveImpactView(AdminAPIView):
+    capability = "cms_enter"
+
+    def get(self, request, kind, target_id):
+        if request.query_params:
+            raise CMSFailure("INVALID_QUERY", 400)
+        with policy_lock():
+            kind_entry(kind)
+            require(request.user, capability(kind, "view"))
+            require(request.user, capability(kind, "preview"))
+            return Response(archive_impact(request.user, kind, target_id))

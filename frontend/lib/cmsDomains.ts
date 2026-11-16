@@ -18,6 +18,15 @@ export type DsmTreeRow = { id: number; master_id: string; name_en: string; name_
 export type DsmCompareRow = { master_id: string; status: 'added' | 'removed' | 'changed' | 'unchanged'; changed_fields: string[]; left_id: number | null; right_id: number | null; name_en: string; name_fa: string };
 export type DsmGraph = {corpus: DsmCorpus; focus_id: number; scope: 'same_corpus_neighborhood'; truncated: boolean; nodes: Omit<DsmTreeRow, 'children_count'>[]; edges: {source_id: number; target_id: number; relationship_type: string}[]; notice: string; publication_available: false};
 export type DsmStudy = {record_id: number; corpus_id: number; master_id: string; name_en: string; name_fa: string; summary: string; sections: {key: string; value: DomainValue}[]; notice: string; publication_available: false};
+export type DuplicateTier = 'identity_conflict' | 'probable_duplicate' | 'lexical_only';
+export type DuplicateEvidence = {type: 'identity' | 'name' | 'alias' | 'token'; field?: string; fields?: string[]; value?: string; values?: string[]; similarity?: number};
+export type DuplicateCandidate = {id: number; state_id: string | null; label: string; tier: DuplicateTier; score: number; evidence: DuplicateEvidence[]; is_active: boolean; identity: {field: string; value: string | null}};
+export type DuplicateResult = {kind: string; domain: string; state_id: string; canonical_pk: number | null; subject: {label: string; identity: {field: string; value: string | null}} | null; candidates: DuplicateCandidate[]; count: number; truncated: boolean; tiers: Record<DuplicateTier, number>; merge_available: false; canonical_write: 0; reason?: string; notice: string};
+export type ArchiveRelation = {model: string; field: string; label: string; count: number; on_delete: string; impact: string; domain: string};
+export type ArchiveImpact = {kind: string; domain: string; state_id: string; canonical_pk: number | null; relations: ArchiveRelation[]; totals: {relations: number; checked_relations: number; rows: number; by_impact: Record<string, number>}; impact_digest: string; content_state?: {version: number; publication: string; revision_status: string | null; intent: string | null; legacy_origin: boolean; revisions: number}; canonical_write: 0; raw_archive_changed: false; search_graph: string; reason?: string; notice: string};
+export const duplicateTierLabels: Record<DuplicateTier, string> = {identity_conflict: 'تعارض هویت', probable_duplicate: 'تکرار احتمالی', lexical_only: 'فقط شباهت متنی'};
+export const duplicateKinds = new Set(['category', 'disorder', 'symptom', 'concept', 'dsm-corpus', 'dsm-record']);
+export const impactLabels: Record<string, string> = {cascade: 'وابستگی حذف‌شونده', protect: 'وابستگی محافظت‌شده', detach: 'قطع پیوند', link: 'پیوند', orphan_risk: 'ریسک یتیم‌ماندن', other: 'سایر'};
 
 export function fieldWritable(field: DomainField, creating: boolean) {
   return field.type !== 'readonly' && (field.create_only ? creating : !field.readonly_reason);

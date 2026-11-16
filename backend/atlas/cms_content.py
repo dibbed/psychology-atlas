@@ -1,23 +1,242 @@
 """Typed immutable proposals; canonical publication/withdrawal belongs to P16."""
 import hashlib
 import json
+import re
+import unicodedata
 import uuid
 
 from django.contrib.auth.models import User
 from django.core.serializers.json import DjangoJSONEncoder
-from django.db.models import F, Q
+from django.db.models import F, ManyToManyRel, ManyToOneRel, OneToOneRel, Q
 
 from .cms_audit import CONTENT_REASONS, changed_fields
 from .cms_content_models import ContentRevision, ContentState
-from .cms_domains import (DOMAIN_SPECS, dependency_snapshot, domain_for, entry_tuple,
+from .cms_domains import (DOMAIN_SPECS, MODEL_KINDS, dependency_snapshot, domain_for, entry_tuple,
     preview_snapshot, required_reference_capabilities, schema_data, validate_snapshot)
 from .cms_models import AdminAuditEvent
 from .cms_policy import CMSFailure, effective_permissions, policy_lock, require
 from .cms_sessions import current_session
+from .models import ConceptAlias
 
 REGISTRY = {kind: entry_tuple(kind) for kind in DOMAIN_SPECS}
 CategoryProposal = REGISTRY["category"][1]
 DisorderProposal = REGISTRY["disorder"][1]
+
+# P07.04: bounded, read-only duplicate evidence. These kinds own a human-facing
+# name and a persisted identity; relationship kinds are intentionally excluded.
+DUPLICATE_KINDS = {
+    "category": {"identity": "slug", "names": ("name_en", "name_fa")},
+    "disorder": {"identity": "slug", "names": ("name_en", "name_fa")},
+    "symptom": {"identity": "slug", "names": ("name_en", "name_fa")},
+    "concept": {"identity": "slug", "names": ("name_en", "name_fa")},
+    "dsm-corpus": {"identity": "key", "names": ("title",)},
+    "dsm-record": {"identity": "master_id", "names": ("name_en", "name_fa")},
+}
+MAX_DUPLICATE_CANDIDATES = 50
+MAX_DUPLICATE_POOL = 400
+LEXICAL_THRESHOLD = 0.6
+IMPACT_LABELS = {"CASCADE": "cascade", "PROTECT": "protect", "RESTRICT": "protect",
+    "SET_NULL": "detach", "SET_DEFAULT": "detach", "DO_NOTHING": "orphan_risk", "LINK": "link"}
+
+
+def _normalize_duplicate_text(value):
+    if not isinstance(value, str):
+        return ""
+    return " ".join(unicodedata.normalize("NFKC", value).split()).casefold()
+
+
+def _duplicate_tokens(value):
+    return set(re.findall(r"[^\W_]+", _normalize_duplicate_text(value), flags=re.UNICODE))
+
+
+def _token_similarity(left, right):
+    return len(left & right) / len(left | right) if left and right else 0.0
+
+
+def _duplicate_aliases(kind, obj):
+    if kind != "concept":
+        return []
+    return list(ConceptAlias.objects.filter(concept_id=obj.pk).order_by("pk").values_list("text", flat=True)[:100])
+
+
+def _duplicate_pool(kind, obj):
+    model, _, _ = kind_entry(kind)
+    spec = DUPLICATE_KINDS[kind]
+    base = model.objects.exclude(pk=obj.pk)
+    if kind == "dsm-record":
+        base = base.filter(corpus_id=obj.corpus_id)
+    ids = set()
+    identity = getattr(obj, spec["identity"], "")
+    if identity:
+        ids.update(base.filter(**{spec["identity"] + "__iexact": identity})
+            .order_by("pk").values_list("pk", flat=True)[:MAX_DUPLICATE_POOL])
+    names = [getattr(obj, field, "") for field in spec["names"]]
+    aliases = _duplicate_aliases(kind, obj)
+    for field in spec["names"]:
+        for value in names:
+            if isinstance(value, str) and value:
+                ids.update(base.filter(**{field + "__iexact": value})
+                    .order_by("pk").values_list("pk", flat=True)[:MAX_DUPLICATE_POOL])
+    tokens = set()
+    for value in names + aliases:
+        tokens.update(token for token in _duplicate_tokens(value) if len(token) >= 3)
+    if tokens:
+        condition = Q(pk__in=[])
+        for field in spec["names"]:
+            for token in sorted(tokens)[:12]:
+                condition |= Q(**{field + "__icontains": token})
+        ids.update(base.filter(condition).order_by("pk").values_list("pk", flat=True)[:MAX_DUPLICATE_POOL])
+    if kind == "concept":
+        exact = {value for value in names + aliases if isinstance(value, str) and value}
+        if exact:
+            ids.update(ConceptAlias.objects.filter(text__in=exact).order_by("pk")
+                .values_list("concept_id", flat=True)[:MAX_DUPLICATE_POOL])
+        alias_condition = Q(pk__in=[])
+        for token in sorted(tokens)[:12]:
+            alias_condition |= Q(text__icontains=token)
+        if tokens:
+            ids.update(ConceptAlias.objects.filter(alias_condition).order_by("pk")
+                .values_list("concept_id", flat=True)[:MAX_DUPLICATE_POOL])
+    ids.discard(obj.pk)
+    return model.objects.filter(pk__in=ids).order_by("pk"), len(ids) > MAX_DUPLICATE_POOL
+
+
+def _duplicate_evidence(kind, obj, candidate, aliases):
+    spec = DUPLICATE_KINDS[kind]
+    subject_identity = _normalize_duplicate_text(getattr(obj, spec["identity"], ""))
+    candidate_identity = _normalize_duplicate_text(getattr(candidate, spec["identity"], ""))
+    evidence, rank, score = [], 3, 0.0
+    if subject_identity and subject_identity == candidate_identity:
+        evidence.append({"type": "identity", "field": spec["identity"], "value": getattr(candidate, spec["identity"])})
+        rank, score = 0, 1.0
+    subject_names = {field: _normalize_duplicate_text(getattr(obj, field, "")) for field in spec["names"]}
+    candidate_names = {field: _normalize_duplicate_text(getattr(candidate, field, "")) for field in spec["names"]}
+    matched_names = sorted(field for field in spec["names"] if subject_names[field] and subject_names[field] == candidate_names[field])
+    if matched_names:
+        evidence.append({"type": "name", "fields": matched_names, "value": next(getattr(candidate, field) for field in matched_names)})
+        rank, score = min(rank, 1), max(score, 0.9)
+    subject_aliases = {_normalize_duplicate_text(value) for value in _duplicate_aliases(kind, obj) if value}
+    candidate_aliases = {_normalize_duplicate_text(value) for value in aliases if value}
+    alias_hits = sorted(subject_aliases & (candidate_aliases | set(candidate_names.values())))
+    if alias_hits:
+        evidence.append({"type": "alias", "values": alias_hits[:5]})
+        rank, score = min(rank, 1), max(score, 0.85)
+    if rank > 1:
+        subject_tokens = set().union(*[_duplicate_tokens(value) for value in set(subject_names.values()) | subject_aliases])
+        candidate_tokens = set().union(*[_duplicate_tokens(value) for value in set(candidate_names.values()) | candidate_aliases])
+        similarity = _token_similarity(subject_tokens, candidate_tokens)
+        if similarity >= LEXICAL_THRESHOLD:
+            evidence.append({"type": "token", "similarity": round(similarity, 4)})
+            rank, score = 2, similarity
+    if not evidence:
+        return None
+    label = next((getattr(candidate, field) for field in spec["names"] if getattr(candidate, field, "")),
+        str(getattr(candidate, spec["identity"], "") or candidate.pk))
+    return {"id": candidate.pk, "label": str(label)[:500], "tier": {0: "identity_conflict", 1: "probable_duplicate",
+        2: "lexical_only"}[rank], "score": round(score, 4), "evidence": evidence,
+        "is_active": bool(getattr(candidate, "is_active", True)),
+        "identity": {"field": spec["identity"], "value": getattr(candidate, spec["identity"], None)}}
+
+
+def duplicate_candidates(actor, kind, target_id):
+    """Read-only duplicate evidence; never merges, deletes or rewrites an identity."""
+    kind_entry(kind)
+    if kind not in DUPLICATE_KINDS:
+        raise CMSFailure("INVALID_QUERY", 400)
+    state, obj = resolve(actor, kind, target_id)
+    if obj is None:
+        return {"kind": kind, "domain": domain_for(kind), "state_id": str(state.pk), "canonical_pk": None,
+            "subject": None, "candidates": [], "count": 0, "truncated": False,
+            "tiers": {"identity_conflict": 0, "probable_duplicate": 0, "lexical_only": 0},
+            "merge_available": False, "canonical_write": 0, "reason": "NO_CANONICAL_IDENTITY",
+            "notice": "پیش‌نویس بدون هویت اصلی است؛ نامزد تکراری فقط برای رکورد اصلی محاسبه می‌شود."}
+    pool, truncated = _duplicate_pool(kind, obj)
+    candidates = list(pool[:MAX_DUPLICATE_POOL])
+    alias_map = {}
+    if kind == "concept" and candidates:
+        for concept_id, text in ConceptAlias.objects.filter(concept_id__in=[row.pk for row in candidates]).order_by("pk").values_list("concept_id", "text"):
+            alias_map.setdefault(concept_id, []).append(text)
+    state_ids = dict(ContentState.objects.filter(kind=kind, canonical_pk__in=[row.pk for row in candidates])
+        .values_list("canonical_pk", "pk"))
+    results = []
+    for candidate in candidates:
+        evidence = _duplicate_evidence(kind, obj, candidate, alias_map.get(candidate.pk, []))
+        if evidence is None:
+            continue
+        evidence["state_id"] = str(state_ids[candidate.pk]) if candidate.pk in state_ids else None
+        results.append(evidence)
+    order = {"identity_conflict": 0, "probable_duplicate": 1, "lexical_only": 2}
+    results.sort(key=lambda row: (order[row["tier"]], -row["score"], row["id"]))
+    truncated = truncated or len(results) > MAX_DUPLICATE_CANDIDATES
+    results = results[:MAX_DUPLICATE_CANDIDATES]
+    spec = DUPLICATE_KINDS[kind]
+    subject_label = next((getattr(obj, field) for field in spec["names"] if getattr(obj, field, "")),
+        str(getattr(obj, spec["identity"], "") or obj.pk))
+    return {"kind": kind, "domain": domain_for(kind), "state_id": str(state.pk), "canonical_pk": obj.pk,
+        "subject": {"label": str(subject_label)[:500], "identity": {"field": spec["identity"],
+            "value": getattr(obj, spec["identity"], None)}},
+        "candidates": results, "count": len(results), "truncated": truncated,
+        "tiers": {tier: sum(1 for row in results if row["tier"] == tier) for tier in order},
+        "merge_available": False, "canonical_write": 0,
+        "notice": "فقط شواهد خواندنی؛ هیچ merge، حذف یا بازنویسی هویت انجام نمی‌شود."}
+
+
+def _impact_relations(model):
+    for field in model._meta.get_fields():
+        if not isinstance(field, (ManyToOneRel, ManyToManyRel, OneToOneRel)):
+            continue
+        related = field.related_model
+        if related.__module__.startswith("atlas.cms_"):
+            continue
+        accessor = field.get_accessor_name()
+        if not accessor or accessor.startswith("+"):
+            continue
+        fk = getattr(field, "field", None)
+        on_delete = getattr(getattr(fk, "remote_field", None), "on_delete", None)
+        yield field, related, accessor, getattr(on_delete, "__name__", "LINK" if isinstance(field, ManyToManyRel) else "UNKNOWN")
+
+
+def _relation_count(obj, field, related, accessor):
+    if isinstance(field, ManyToManyRel):
+        return getattr(obj, accessor).count()
+    return related._base_manager.filter(**{field.field.name: obj}).count()
+
+
+def archive_impact(actor, kind, target_id):
+    """Live reverse-relation counts for archive review; performs no canonical write."""
+    kind_entry(kind)
+    state, obj = resolve(actor, kind, target_id)
+    if obj is None:
+        return {"kind": kind, "domain": domain_for(kind), "state_id": str(state.pk), "canonical_pk": None,
+            "relations": [], "totals": {"relations": 0, "checked_relations": 0, "rows": 0, "by_impact": {}},
+            "impact_digest": digest({"kind": kind, "canonical_pk": None, "relations": []}),
+            "canonical_write": 0, "raw_archive_changed": False, "search_graph": "computed_at_read_time",
+            "reason": "NO_CANONICAL_RECORD", "notice": "پیش‌نویس منتشرنشده اثر بایگانی اصلی ندارد."}
+    relations = []
+    for field, related, accessor, on_delete in _impact_relations(type(obj)):
+        count = _relation_count(obj, field, related, accessor)
+        kind_name = MODEL_KINDS.get(related)
+        relations.append({"model": related._meta.label_lower, "field": field.field.name if not isinstance(field, ManyToManyRel) else field.name,
+            "label": str(related._meta.verbose_name), "count": count, "on_delete": on_delete,
+            "impact": IMPACT_LABELS.get(on_delete, "link" if isinstance(field, ManyToManyRel) else "other"),
+            "domain": domain_for(kind_name) if kind_name else "other"})
+    relations.sort(key=lambda row: (row["model"], row["field"]))
+    by_impact = {}
+    for row in relations:
+        if row["count"]:
+            by_impact[row["impact"]] = by_impact.get(row["impact"], 0) + row["count"]
+    digest_input = [[row["model"], row["field"], row["count"], row["on_delete"]] for row in relations]
+    return {"kind": kind, "domain": domain_for(kind), "state_id": str(state.pk), "canonical_pk": obj.pk,
+        "relations": relations, "totals": {"relations": sum(1 for row in relations if row["count"]),
+            "checked_relations": len(relations), "rows": sum(row["count"] for row in relations),
+            "by_impact": by_impact},
+        "impact_digest": digest({"kind": kind, "canonical_pk": obj.pk, "relations": digest_input}),
+        "content_state": {"version": state.version, "publication": state.publication,
+            "revision_status": state.current_revision.status if state.current_revision_id else None,
+            "intent": state.current_revision.intent if state.current_revision_id else None,
+            "legacy_origin": state.legacy_origin, "revisions": state.revisions.count()},
+        "canonical_write": 0, "raw_archive_changed": False, "search_graph": "computed_at_read_time",
+        "notice": "شمارش‌ها از روابط ORM فعلی‌اند؛ پیش‌نمایش بایگانی هیچ نوشتن، merge یا تغییر raw انجام نمی‌دهد."}
 
 
 def digest(value):
