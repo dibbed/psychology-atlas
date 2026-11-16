@@ -50,6 +50,16 @@ type CandidatePreview={
     version:number|null;fingerprint:string;display:Record<string,string>;
     visibility:"authorized_private_draft_only"}>;
   public_projection:{available:false;payload:null;reason:string};
+  impact_preview:{schema:"cms-private-public-surface-impact-v1";dossier_digest:string;
+    public_effect:false;scope:string;notice:string;
+    items:Array<{kind:string;resource_id:string|number;revision_id:number|null;
+      readers:Record<"detail"|"search"|"graph"|"compare",string|null>;
+      mapping_complete:false;after_apply:string;
+      change_intent:"create"|"update"|"potential_activation";
+      before_public_visibility:boolean|null;
+      change_footprint:{changed_public_fields:string[];
+        unmapped_or_private_changed_count:number;
+        surface_field_names:Record<"detail"|"search"|"graph"|"compare",string[]>}}>};
 };
 type PreparationInbox={count:number;page:number;page_size:number;domain:Domain;
   results:PreparationReceipt[];publication_available:false;approved:false};
@@ -180,7 +190,14 @@ export default function PublicationPreflight(){
   const retryRef=useRef<SelectionPayload|undefined>(undefined);
   const generation=useRef(0);
   const canSelect=activeDomain!=="cases"&&can("cms_publication_select_"+activeDomain);
+  const canPreview=canSelect&&can("cms_"+activeDomain+"_preview");
   useEffect(()=>()=>{generation.current++;},[activeDomain,canSelect]);
+  useEffect(()=>{
+    if(!canPreview){
+      generation.current++;
+      setCandidatePreview(undefined);setCandidatePreviewError("");
+    }
+  },[canPreview]);
   const entryKey=(item:Entry)=>item.kind+":"+item.resource_id;
   const toggle=(item:Entry,checked:boolean)=>{
     generation.current++;
@@ -228,6 +245,7 @@ export default function PublicationPreflight(){
     if(!selection||verifying||!canSelect)return;
     const stamp=generation.current;
     setVerifying(true);setVerifyError("");setVerification(undefined);setPreparationCheck(undefined);
+    setCandidatePreview(undefined);setCandidatePreviewError("");
     try{
       const result=await cms<VerificationResult>(
         "/publication/selections/"+encodeURIComponent(selection.id)+"/verify/");
@@ -270,6 +288,7 @@ export default function PublicationPreflight(){
     if(!preparation||checkingPreparation||!canSelect)return;
     const stamp=generation.current;
     setCheckingPreparation(true);setPreparationCheckError("");setPreparationCheck(undefined);
+    setCandidatePreview(undefined);setCandidatePreviewError("");
     try{
       const result=await cms<PreparationCheck>(
         "/publication/preparations/"+encodeURIComponent(preparation.id)+"/verify/");
@@ -282,7 +301,7 @@ export default function PublicationPreflight(){
     }finally{if(stamp===generation.current)setCheckingPreparation(false);}
   }
   async function previewExactCandidate(){
-    if(!preparation||candidatePreviewLoading||!canSelect)return;
+    if(!preparation||candidatePreviewLoading||!canPreview)return;
     const stamp=generation.current;
     setCandidatePreviewLoading(true);setCandidatePreview(undefined);setCandidatePreviewError("");
     try{
@@ -557,10 +576,10 @@ export default function PublicationPreflight(){
               onClick={()=>void verifyPreparation()}>
               {checkingPreparation?"در حال تطبیق پرونده…":"تطبیق پروندهٔ ثابت با وضعیت زنده"}
             </button>
-            <button type="button" className="button secondary"
+            {canPreview&&<button type="button" className="button secondary"
               disabled={candidatePreviewLoading} onClick={()=>void previewExactCandidate()}>
               {candidatePreviewLoading?"در حال تطبیق…":"پیش‌نمایش خصوصی دقیق همین کاندیدا"}
-            </button>
+            </button>}
             {candidatePreviewError&&<p role="alert">{candidatePreviewError}</p>}
             {candidatePreviewLoading&&<p role="status">در حال اعتبارسنجی نسخه و دسترسی…</p>}
             {candidatePreview&&<div role="region" className="stack" aria-label="پیش‌نمایش خصوصی کاندیدای منتخب">
@@ -572,6 +591,14 @@ export default function PublicationPreflight(){
                 <p className="muted">نسخه: {item.version??"ثبت‌نشده"}؛ صرفاً خصوصی</p>
               </li>)}</ul>
               <p className="muted">نمای عمومی به‌دلیل نیاز به تأیید علمی و حقوق نشر و Manifest مستقل مسدود است.</p>
+              <h5>نقشهٔ محدود مصرف‌کنندگان عمومی، بدون اعمال تغییر</h5>
+              <p className="muted">این فهرست فقط نشان می‌دهد هر نوع رکورد ممکن است کدام بخش عمومی را تحت تأثیر قرار دهد. پیش‌بینی خروجی نهایی، مجوز نشر یا تغییر در سایت نیست.</p>
+              <ul>{candidatePreview.impact_preview.items.map(item=><li key={item.kind+":"+item.resource_id}>
+                <span>{item.kind} #{item.resource_id}</span>
+                <span className="muted"> جزئیات: {item.readers.detail??"نامشخص"}؛ جست‌وجو: {item.readers.search??"نامشخص"}؛ گراف: {item.readers.graph??"نامشخص"}؛ مقایسه: {item.readers.compare??"در این نوع موجود نیست یا نیازمند نگاشت مستقل"}</span>
+                <p className="muted">نوع تغییر مشروط: {item.change_intent==="create"?"ایجاد":item.change_intent==="update"?"ویرایش":"فعال‌سازی احتمالی"}؛ مشاهده‌پذیری عمومی فعلی: {item.before_public_visibility===null?"نامشخص":item.before_public_visibility?"قابل‌مشاهده":"غیرقابل‌مشاهده"}</p>
+                <p className="muted">فیلدهای قابل‌ردیابی و تغییرکرده: {item.change_footprint.changed_public_fields.join("، ")||"بدون نام فیلد عمومی قابل‌اعلام"}؛ تعداد فیلدهای خصوصی یا نامشخص: {item.change_footprint.unmapped_or_private_changed_count.toLocaleString("fa-IR")}</p>
+              </li>)}</ul>
             </div>}
             {preparationCheckError&&<p role="alert">{preparationCheckError}</p>}
             {preparationCheck&&<p role="status">{preparationCheck.snapshot_current?

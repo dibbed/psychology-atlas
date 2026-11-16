@@ -99,6 +99,10 @@ async function getPreview(page,dossierId){
     await page.getByRole("button",{name:"پیش‌نمایش خصوصی دقیق همین کاندیدا"}).click();
     const region=page.getByRole("region",{name:"پیش‌نمایش خصوصی کاندیدای منتخب"});
     await region.waitFor();
+    check(await region.getByText("نقشهٔ محدود مصرف‌کنندگان عمومی",{exact:false}).count()>0,
+      "W17-01 private surface footprint visible with explicit non-public boundary");
+    check(await region.getByText("فیلدهای قابل‌ردیابی و تغییرکرده",{exact:false}).count()>0,
+      "W17-01 field-level proposal impact rendered without raw draft payload");
     check(await region.getByText("صرفاً خصوصی",{exact:false}).count()>0,
       "Private candidate preview rendered in Persian UI");
     check(!((await region.innerText()).includes("P16 PRIVATE SYNTHETIC SECRET")),
@@ -177,6 +181,64 @@ async function getPreview(page,dossierId){
     const learningId=learningListing.results[0].id;
     const denied=await getPreview(page,learningId);
     check(denied.status===409,"W16-00 stale Learning candidate is withheld from private preview");
+    await page.goto(origin+"/admin-console/search");
+    await page.getByRole("combobox").selectOption("research");
+    const searchInput=page.locator('input[type="search"]');
+    await searchInput.fill("p17-browser");
+    const suggestions=page.getByRole("region",{name:"پیشنهادهای مجاز"});
+    await suggestions.waitFor();
+    check(await suggestions.getByRole("button").count()===2,
+      "W17-01 debounced slug autocomplete only exposes two synthetic authorized identities");
+    await suggestions.getByRole("button",{name:/رکورد پژوهشی داخلی/}).click();
+    check(await searchInput.inputValue()==="p17-browser-record",
+      "W17-01 autocomplete selects exact safe record slug");
+    await page.getByRole("button",{name:"جست‌وجو",exact:true}).click();
+    const searchResults=page.locator("section.card.stack").filter({hasText:"نتایج:"}).last();
+    await searchResults.waitFor();
+    check(!(await searchResults.innerText()).includes("P17 SECRET"),
+      "W17-01 private search does not leak staged research raw/answers");
+    // Public routes intentionally bypass the admin-only Next rewrite.
+    // Query the owned loopback Django API, not Next's 404 public path.
+    const publicResponse=await fetch(api+"/api/search/?q=p17-browser-record",{
+      signal:AbortSignal.timeout(10000),
+    });
+    const publicSearch={status:publicResponse.status,text:await publicResponse.text()};
+    check(publicSearch.status===200&&!publicSearch.text.includes("P17 SECRET"),
+      "W17-01 public search keeps private staging hidden");
+    const aliasSetup=[
+      "import os,tempfile",
+      "from pathlib import Path",
+      "db=Path(os.environ['SQLITE_PATH']).resolve()",
+      "assert os.environ.get('CMS_QA_PHASE')=='p14' and db.name=='cms-journey.sqlite3' and db.parent.name.startswith('atlas-p14-browser-turn08-') and db.parent.parent==Path(tempfile.gettempdir()).resolve()",
+      "import django",
+      "os.environ.setdefault('DJANGO_SETTINGS_MODULE','config.settings')",
+      "django.setup()",
+      "from atlas.models import BrainAnatomicalAlias,AssessmentAlias,BrainAnatomicalEntity,AssessmentInstrument,SourceReference",
+      "source=SourceReference.objects.get(title='P16 synthetic dependency evidence')",
+      "brain=BrainAnatomicalEntity.objects.get(slug='p16-private-parent')",
+      "assessment=AssessmentInstrument.objects.create(slug='p17-alias-synthetic-parent',name_en='Synthetic assessment parent',is_active=True)",
+      "BrainAnatomicalAlias.objects.create(entity=brain,source=source,text='p17exact',language='en',alias_type='alternative')",
+      "AssessmentAlias.objects.create(instrument=assessment,source=source,source_note='Synthetic non-scientific locator',text='p17exact',language='en',alias_type='acronym')",
+    ].join("\n");
+    exec(py,["-c",aliasSetup],path.join(root,"backend"),90000);
+    await page.getByRole("combobox").selectOption("aliases");
+    await searchInput.fill("p17exact");
+    await page.getByRole("button",{name:"جست‌وجو",exact:true}).click();
+    await page.getByText("ابهام نام جایگزین:",{exact:false}).waitFor();
+    check(true,"W17-01 two exact aliases produce explicit scoped ambiguity in Persian UI");
+    check(!(await searchResults.innerText()).includes("P16 PRIVATE SYNTHETIC SECRET"),
+      "W17-01 alias match hides proposal text and parent details");
+    // Independent browser context ensures no privileged owner cookies are
+    // reused by the permission-scoped account.
+    const restrictedCtx=await browser.newContext({viewport:{width:1280,height:860}});
+    const restrictedPage=await restrictedCtx.newPage();
+    restrictedPage.setDefaultTimeout(20000);
+    restrictedPage.on("pageerror",error=>report.errors.push(error.message));
+    await login(restrictedPage,fixture.users.scoped);
+    await restrictedPage.goto(origin+"/admin-console/search");
+    await restrictedPage.getByText("برای جست‌وجوی داخلی به مجوز مستقل cms_search نیاز است.",{exact:false}).waitFor();
+    check(true,"W17-01 scoped role without search permission denied in browser");
+    await restrictedCtx.close();
     check(report.errors.length===0,"Zero Chromium JS runtime errors");
     report.status="PASS";
   } catch(e) {

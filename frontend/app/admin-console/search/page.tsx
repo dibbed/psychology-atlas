@@ -5,7 +5,9 @@ import {CmsState,useCms} from "@/components/cms/CmsShell";
 
 type Kind="content_proposal"|"clinical_case"|"quiz"|"flashcard"|"source_reference"|"research_dataset"|"research_record"|"audit_event"|"review_task"|"admin_job"|"concept_alias"|"therapy_alias"|"technique_alias"|"psychologist_alias"|"theory_alias"|"brain_anatomical_alias"|"brain_network_alias"|"assessment_alias";
 type Item={kind:Kind;resource_id:number|string;slug:string;is_active?:boolean;label?:string;review_kind?:string;review_state?:string;collection_kind?:string};
-type Result=CmsPage<Item>&{scope:string;domain:string;query:string};
+type Result=CmsPage<Item>&{scope:string;domain:string;query:string;
+  alias_ambiguity?:{status:"multiple_visible_exact_matches"|"one_visible_exact_match"|"no_visible_exact_match";
+    matched_visible_count:number;scope:"caller_authorized_alias_domains_only";globally_complete:boolean}};
 const target:Record<Kind,string>={
   content_proposal:"/admin-console/content/",
   clinical_case:"/admin-console/content/cases",
@@ -47,8 +49,27 @@ export default function PrivateSearch(){
   const [term,setTerm]=useState("");const [domain,setDomain]=useState("all");
   const [page,setPage]=useState(1);const [data,setData]=useState<Result>();
   const [error,setError]=useState("");const [busy,setBusy]=useState(false);
+  const [suggestions,setSuggestions]=useState<Item[]>([]);
   const requestGeneration=useRef(0);
   useEffect(()=>()=>{requestGeneration.current++;},[]);
+  // Suggestions reuse the same permission-scoped slug-only endpoint. Avoid
+  // prefix enumeration of exact alias, UUID, audit, task or job identities.
+  useEffect(()=>{
+    let live=true;
+    const value=term.trim().toLowerCase();
+    const supported=allowed&&["all","cases","learning","sources","research"].includes(domain);
+    if(!supported||!/^[a-z0-9-]{3,80}$/.test(value)){
+      setSuggestions([]);return;
+    }
+    const timer=setTimeout(()=>{
+      void cms<Result>("/search/?"+new URLSearchParams({
+        q:value,domain,page:"1",page_size:"5",
+      }).toString()).then(res=>{
+        if(live)setSuggestions(res.data.results.filter(row=>/^[a-z0-9-]{1,80}$/.test(row.slug)));
+      }).catch(()=>{if(live)setSuggestions([]);});
+    },350);
+    return ()=>{live=false;clearTimeout(timer);};
+  },[allowed,term,domain]);
   const clearResults=()=>{
     requestGeneration.current++;
     setData(undefined);setError("");setBusy(false);setPage(1);
@@ -95,11 +116,29 @@ export default function PrivateSearch(){
         </select>
       </label>
       <button className="button" type="submit" disabled={busy||term.trim().length<(["tasks","audit","sources","all"].includes(domain)?1:2)}>جست‌وجو</button>
+      {suggestions.length>0&&<section aria-label="پیشنهادهای مجاز" className="stack">
+        <p className="muted">پیشنهادهای محدود از کلیدها و شناسه‌های مجاز، نه متن محتوای خصوصی:</p>
+        <ul>{suggestions.map(row=><li key={row.kind+"-"+row.resource_id}>
+          <button type="button" className="button secondary"
+            onClick={()=>{clearResults();setTerm(row.slug);}}>
+            {label[row.kind]} #{row.resource_id}
+          </button>
+        </li>)}</ul>
+      </section>}
     </form>
     {error&&<p role="alert">{error}</p>}
     {busy&&<p role="status">در حال جست‌وجو…</p>}
     {data&&<section className="card stack">
       <h2>نتایج: {data.count.toLocaleString("fa-IR")}</h2>
+      {data.alias_ambiguity&&<p role="status" className="muted">
+        {data.alias_ambiguity.status==="multiple_visible_exact_matches"?
+          "ابهام نام جایگزین: چند رکورد مجاز با این عبارت دقیق مطابقت دارند. برای انتخاب، نوع و شناسهٔ رکورد را بررسی کنید.":
+          data.alias_ambiguity.status==="one_visible_exact_match"?
+            "یک نام جایگزین در محدودهٔ دسترسی شما پیدا شد.":
+            "در حوزه‌های دارای مجوز شما نام جایگزین دقیقی پیدا نشد."}
+        {!data.alias_ambiguity.globally_complete&&
+          " این نتیجه فقط دامنه‌های مجاز حساب شما را پوشش می‌دهد و یکتایی سراسری را اثبات نمی‌کند."}
+      </p>}
       {data.results.length===0?<p>هیچ شناسهٔ مطابق پیدا نشد.</p>:
         <ul className="stack">{data.results.map(row=><li key={row.kind+"-"+row.resource_id}>
           <strong>{label[row.kind]}</strong> <code dir="ltr">{row.label??row.slug}</code>
