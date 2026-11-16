@@ -335,7 +335,11 @@ def challenge_public_eligible(challenge, *, allow_archived=False):
     for kind, obj in (("concept", challenge.concept), ("disorder", challenge.disorder)):
         if obj is None:
             continue
-        if not obj.is_active or any(
+        # A historical attempt may keep its deactivated linked content readable,
+        # but a revoked rights scope must still block it.
+        if not allow_archived and not obj.is_active:
+            return False
+        if any(
             not scope_visible(kind, obj.pk, material)
             for material in ("metadata", "text", "translation", "item")
         ):
