@@ -6,6 +6,8 @@ All notable changes to Psychology Atlas. This project follows Semantic Versionin
 
 ### Added
 
+- Turn 07 W13-02 follow-up: versioned `claim-context-v2` evidence fingerprints cover prompts, answer keys, choices and linked Concept/Disorder state across all four Learning authoring kinds; original explanation-only evidence stays marked for review after additive migration `0060`.
+- Permission-aware, paged, append-only Learning evidence history includes per-revision actor, timestamp, source changes/removal reasons and current-rights redaction. Historical source and learner data are not rewritten.
 - W13 private, versioned source locators for individual QuizQuestion explanations, Flashcards, Daily Challenges and Distortion Practice, with stale-source/rights indicators and no automatic scientific approval or publication. Legacy Learning transfer fails closed for actively sourced content until a provenance-preserving transfer format is authorized.
 - W13 Daily Challenge admin contract documents server-local date rotation, eligible-pool order and historical answer pinning; the existing scheduling engine is unchanged.
 - Capability-based Admin CMS with MFA, revocable sessions, append-only audit, permission-aware Persian/RTL navigation and owner/curator/delegate roles.
@@ -25,6 +27,8 @@ All notable changes to Psychology Atlas. This project follows Semantic Versionin
 
 ### Fixed
 
+- W13-02: ETag changes on relevant source/right/context drift, repeated identical source submissions do not generate duplicate revisions, source removal without a real reason is rejected, and a failed AuditEvent insert rolls back the whole evidence revision.
+- W13-02: Persian Learning Evidence UI refetches after parent content saves, discards stale asynchronous responses, protects both staged/unadded inputs and changed source locators from unintended navigation, and reuses current source/rights state during history pagination.
 - W13-01: Admin Distortion Practice snapshots and simulations now revalidate active target/choice Concept dependencies after subtype and active-state drift and deny invalid previews without writing learner history.
 - 2026-11-13: Allow fresh reviews for withdrawn case revisions and unblock review renewal after source changes while retaining stale-manifest and MFA gates.
 - 2026-11-13: Expose case reinstatement to authorized administrators and refresh publication plan and revision-history statuses after actions.
@@ -41,6 +45,8 @@ All notable changes to Psychology Atlas. This project follows Semantic Versionin
 
 ### Known limitations
 
+- Portable citation/provenance transfer v2 remains explicitly **DESIGN_ONLY**, pending verified cross-environment SourceReference identity mapping and owner/legal permission for source-derived private locators. Existing v1 transfer continues to reject source-bound exports with 409 rather than silently lose provenance.
+- `W16-00` still owns P16 F03 dependency-`subtype` fingerprint drift; it is not considered fixed by W13 claim fingerprinting.
 - Generic multi-domain publication (Learning/Brain/Assessment apply, receipts, recovery) is incomplete; only case publication has the full local path.
 - Real scientific/rights attestations, retention/legal-hold policy, representative backup/restore, target TLS/secrets, hosted CI and per-model end-to-end acceptance remain open.
 - No v1.0.0 tag, release, deployment or public publication has been performed.

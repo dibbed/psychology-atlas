@@ -70,6 +70,20 @@
     "Export-only actor completes native worker export and real download without edit/upload",
     "Actual transfer result fits the 320px RTL layout with keyboard controls",
     "All transfer operations retain exact job/audit counts and unchanged canonical content/history after exports",
+    "F02 valid Distortion practice has a real preview form",
+    "F02 real keyboard preview creates no learner Attempt/Progress/SRS",
+    "F02 Persian invalid dependency blocks preview after refresh",
+    "F02 direct simulation rejects dependency drift with 409 and no SRS write",
+    "F02 real Persian invalid-state UI fits 320px RTL",
+    "W13 append-only source history is navigable with current permissions",
+    "Child evidence draft triggers shared CMS navigation warning",
+    "Cancel leave preserves the unsaved claim locator exactly",
+    "Switching Quiz items prompts before dropping child evidence changes",
+    "Dismissed item switch retains the uncommitted Evidence draft",
+    "Historical evidence and dirty state do not overflow Persian 320px UI",
+    "Reason-only unsaved draft triggers navigation warning and is preserved",
+    "Unadded source ID is protected against silent navigation loss",
+    "A reason or unadded staged source cannot create an unintended revision",
     "No uncaught browser runtime errors"
   ],
   "screenshots": [
@@ -82,12 +96,13 @@
     "archive-daily-mobile.png",
     "archive-distortions-mobile.png",
     "transfer-export-only-mobile.png",
-    "transfer-output-mobile.png"
+    "transfer-output-mobile.png",
+    "f02-invalid-practice-mobile.png"
   ],
   "errors": [],
   "limits": [
     "Synthetic isolated SQLite only",
     "No scientific/rights approval or publication; no production rollout"
   ],
-  "completed_at": "2026-11-16T07:52:29.436Z"
+  "completed_at": "2026-11-16T11:25:32.520Z"
 }
