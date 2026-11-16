@@ -17,6 +17,7 @@ All notable changes to Psychology Atlas. This project follows Semantic Versionin
 - Immutable P16 preparation dossiers with live dependency, source and rights rechecks for Learning, Brain and Assessment proposals.
 - Turn 08: selection snapshots now bind current editorial-review and source-metadata-rights statuses, with bounded source inspection and fail-closed stale/missing-baseline rechecks.
 - Turn 08: `GET /api/admin/publication/preparations/{id}/candidate-preview/` projects the **exact sealed private candidate** only to a scope-authorized admin; public payload, approval and publication remain unavailable.
+- Turn 08 continuation: revision-pinned private candidate field-change footprint, bounded reader-impact topology for the Brain/Assessment/Learning selection kinds, permission-scoped exact-alias ambiguity, and debounced slug-only private autocomplete. Public post-Apply projection is still unavailable without a frozen authorized manifest.
 - Durable job queue with leases, fenced retries, queue triage, worker-poll evidence and receipt-drift detection.
 - Release-readiness API and fail-closed `cms_release_gate` CLI.
 - P20 model/content/governance inventory and migration, FK, UNIQUE and NOT NULL integrity gates.
@@ -33,6 +34,8 @@ All notable changes to Psychology Atlas. This project follows Semantic Versionin
 - W13-02: Persian Learning Evidence UI refetches after parent content saves, discards stale asynchronous responses, protects both staged/unadded inputs and changed source locators from unintended navigation, and reuses current source/rights state during history pagination.
 - W13-01: Admin Distortion Practice snapshots and simulations now revalidate active target/choice Concept dependencies after subtype and active-state drift and deny invalid previews without writing learner history.
 - Turn 08 W16-00 (F03): P16 Learning publication dependency fingerprints now include Concept `subtype` even without an `updated_at` change; invalid target/active choice Concept types reject stale preparation while preserving historical choices.
+- Turn 08 W16-00 follow-up: inactive historical choices remain fingerprinted without incorrectly blocking new preparation when current options are eligible.
+- Turn 08 W16-01 follow-up: immutable Selection snapshots now invalidate on ReviewTask version/decision-context drift and Learning claim evidence/source metadata/rights drift.
 - 2026-11-13: Allow fresh reviews for withdrawn case revisions and unblock review renewal after source changes while retaining stale-manifest and MFA gates.
 - 2026-11-13: Expose case reinstatement to authorized administrators and refresh publication plan and revision-history statuses after actions.
 - Withdrawn case revisions can be reinstated through a fresh, separately approved and MFA-guarded plan, preserving the original publication timestamp and historical attempts.
@@ -50,7 +53,7 @@ All notable changes to Psychology Atlas. This project follows Semantic Versionin
 
 - Portable citation/provenance transfer v2 remains explicitly **DESIGN_ONLY**, pending verified cross-environment SourceReference identity mapping and owner/legal permission for source-derived private locators. Existing v1 transfer continues to reject source-bound exports with 409 rather than silently lose provenance.
 - P16 F03 subtype drift is fixed and covered by focused SQLite regression in Turn 08; full-suite/PostgreSQL and external publication acceptance remain independent.
-- W17 candidate preview is **private only**; public Search/Graph/Compare projection parity, cross-domain alias resolution and a rights-cleared frozen manifest still need independently authorized implementation.
+- W17 candidate preview and its field-name-only impact map are **private only**; public post-Apply Search/Graph/Compare projection parity and a rights-cleared frozen manifest still need independently authorized implementation. Scoped exact-alias ambiguity does not imply global cross-domain identity resolution.
 - Generic multi-domain publication (Learning/Brain/Assessment apply, receipts, recovery) is incomplete; only case publication has the full local path.
 - Real scientific/rights attestations, retention/legal-hold policy, representative backup/restore, target TLS/secrets, hosted CI and per-model end-to-end acceptance remain open.
 - No v1.0.0 tag, release, deployment or public publication has been performed.
