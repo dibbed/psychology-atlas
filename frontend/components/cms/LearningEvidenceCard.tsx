@@ -17,8 +17,9 @@ const label=(s:string)=>({
 }[s]??s);
 const message=(e:unknown)=>e instanceof CmsError?e.message:"بارگذاری یا ذخیرهٔ منبع انجام نشد.";
 
-export function LearningEvidenceCard({kind,itemId,editable,blocked=false}:{
+export function LearningEvidenceCard({kind,itemId,editable,blocked=false,refreshToken=0,onDirtyChange}:{
   kind:LearningEvidenceKind;itemId:number;editable:boolean;blocked?:boolean;
+  refreshToken?:number;onDirtyChange?:(dirty:boolean)=>void;
 }){
   const {can}=useCms();
   const authorized=can("cms_learning_view")&&can("cms_source_view");
@@ -29,23 +30,42 @@ export function LearningEvidenceCard({kind,itemId,editable,blocked=false}:{
   const [sourceId,setSourceId]=useState("");
   const [locator,setLocator]=useState("");
   const [busy,setBusy]=useState(false);
-  const [dirty,setDirty]=useState(false);
   const [error,setError]=useState("");
   const [loading,setLoading]=useState(true);
+  const [changeReason,setChangeReason]=useState("");
+  const [history,setHistory]=useState<{revisions:{
+    revision:number;created_at:string;actor_id:number|null;status:string;
+    fingerprint_version:string;change_reason:string;removed_source_ids:number[];links:Link[];
+  }[];next_page:number|null;count:number}>();
+  const [historyBusy,setHistoryBusy]=useState(false);
+  const normalized=(rows:EditableLink[])=>JSON.stringify([...rows].sort(
+    (a,b)=>a.source_id-b.source_id).map(row=>({source_id:row.source_id,locator:row.locator.trim()})));
+  const linksChanged=Boolean(evidence)&&normalized(draft)!==
+    normalized((evidence?.links??[]).map(row=>({source_id:row.source_id,locator:row.locator??""})));
+  const dirty=linksChanged||Boolean(sourceId.trim()||locator.trim()||changeReason.trim());
   const errorRef=useRef<HTMLParagraphElement>(null);
+  const requestStamp=useRef(0);
+  const dirtyReporter=useRef(onDirtyChange);
+  dirtyReporter.current=onDirtyChange;
+  useEffect(()=>{
+    dirtyReporter.current?.(dirty);
+    return ()=>{if(dirty)dirtyReporter.current?.(false);};
+  },[dirty]);
   const endpoint="/learning/evidence/"+kind+"/"+itemId+"/";
   useEffect(()=>{
-    if(!authorized)return;
+    if(!authorized||dirty)return;
     let mounted=true;
-    setEvidence(undefined);setEtag(null);setDirty(false);setError("");setLoading(true);
+    const stamp=++requestStamp.current;
+    setEvidence(undefined);setEtag(null);setError("");setLoading(true);setBusy(false);
+    setHistory(undefined);setChangeReason("");setSourceId("");setLocator("");
     void cms<Evidence>(endpoint).then(res=>{
-      if(mounted){
+      if(mounted&&stamp===requestStamp.current){
         setEvidence(res.data);setEtag(res.etag);setLoading(false);
         setDraft(res.data.links.map(link=>({source_id:link.source_id,locator:link.locator??""})));
       }
-    }).catch(e=>{if(mounted){setError(message(e));setLoading(false);}});
-    return ()=>{mounted=false;};
-  },[authorized,endpoint]);
+    }).catch(e=>{if(mounted&&stamp===requestStamp.current){setError(message(e));setLoading(false);}});
+    return ()=>{mounted=false;requestStamp.current++;};
+  },[authorized,endpoint,refreshToken]);
   useEffect(()=>{
     if(!dirty)return;
     const warn=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue="";};
@@ -55,14 +75,26 @@ export function LearningEvidenceCard({kind,itemId,editable,blocked=false}:{
   useEffect(()=>{if(error)errorRef.current?.focus();},[error]);
   const refreshEvidence=async()=>{
     if(dirty&&!window.confirm("ویرایش ثبت‌نشدهٔ شواهد کنار گذاشته شود؟"))return;
+    const stamp=++requestStamp.current;
     setBusy(true);setError("");
     try{
       const res=await cms<Evidence>(endpoint);
+      if(stamp!==requestStamp.current)return;
       setEvidence(res.data);setEtag(res.etag);
       setDraft(res.data.links.map(link=>({source_id:link.source_id,locator:link.locator??""})));
-      setDirty(false);
-    }catch(e){setError(message(e));}
-    finally{setBusy(false);}
+      setChangeReason("");setSourceId("");setLocator("");setHistory(undefined);
+    }catch(e){if(stamp===requestStamp.current)setError(message(e));}
+    finally{if(stamp===requestStamp.current)setBusy(false);}
+  };
+  const loadHistory=async(page=1)=>{
+    const stamp=requestStamp.current;
+    setHistoryBusy(true);setError("");
+    try{
+      const res=await cms<NonNullable<typeof history>>(endpoint+"history/?page="+page);
+      if(stamp!==requestStamp.current)return;
+      setHistory(old=>page===1?res.data:{...res.data,revisions:[...(old?.revisions??[]),...res.data.revisions]});
+    }catch(e){if(stamp===requestStamp.current)setError(message(e));}
+    finally{if(stamp===requestStamp.current)setHistoryBusy(false);}
   };
   const add=()=>{
     const id=Number(sourceId);
@@ -71,18 +103,21 @@ export function LearningEvidenceCard({kind,itemId,editable,blocked=false}:{
       setError("شناسهٔ منبع مثبت و یکتا و نشانی ادعا حداکثر ۵۰۰ نویسه لازم است.");return;
     }
     setDraft(old=>[...old,{source_id:id,locator:locator.trim()}]);
-    setDirty(true);setError("");setSourceId("");setLocator("");
+    setError("");setSourceId("");setLocator("");
   };
   const save=async(event:FormEvent<HTMLFormElement>)=>{
-    event.preventDefault();if(!canEdit||busy||blocked||!etag||!dirty)return;
+    event.preventDefault();if(!canEdit||busy||blocked||!etag||!linksChanged||
+      sourceId.trim()||locator.trim())return;
+    const stamp=++requestStamp.current;
     setBusy(true);setError("");
     try{
       const result=await cms<Evidence>(endpoint,{method:"POST",headers:{"If-Match":etag},
-        body:JSON.stringify({sources:draft})});
-      setEvidence(result.data);setEtag(result.etag);setDirty(false);
+        body:JSON.stringify({sources:draft,change_reason:changeReason.trim()})});
+      if(stamp!==requestStamp.current)return;
+      setEvidence(result.data);setEtag(result.etag);setHistory(undefined);setChangeReason("");
       setDraft(result.data.links.map(link=>({source_id:link.source_id,locator:link.locator??""})));
-    }catch(e){setError(message(e));}
-    finally{setBusy(false);}
+    }catch(e){if(stamp===requestStamp.current)setError(message(e));}
+    finally{if(stamp===requestStamp.current)setBusy(false);}
   };
   if(!authorized)return <p className="muted">برای مشاهدهٔ منابع توضیح، مجوز مشاهدهٔ منابع لازم است.</p>;
   return <section className="card stack" aria-label="منابع توضیح آموزشی">
@@ -118,20 +153,51 @@ export function LearningEvidenceCard({kind,itemId,editable,blocked=false}:{
             <span>منبع #{link.source_id}</span>
             <label>نشانی ادعا
               <input value={link.locator} maxLength={500}
-                onChange={e=>{setDraft(old=>old.map(row=>row.source_id===link.source_id?
-                  {...row,locator:e.target.value}:row));setDirty(true);}}/>
+                onChange={e=>setDraft(old=>old.map(row=>row.source_id===link.source_id?
+                  {...row,locator:e.target.value}:row))}/>
             </label>
             <button className="button secondary" type="button"
-              onClick={()=>{setDraft(old=>old.filter(row=>row.source_id!==link.source_id));setDirty(true);}}>
+              onClick={()=>setDraft(old=>old.filter(row=>row.source_id!==link.source_id))}>
               حذف از نسخهٔ جدید
             </button>
           </div>)}
-          <button type="submit" className="button" disabled={!dirty||busy||blocked||!etag}>
+          <label>دلیل تغییر یا حذف پیوند (در صورت حذف حتماً توضیح دهید)
+            <textarea maxLength={500} rows={2} value={changeReason}
+              onChange={e=>setChangeReason(e.target.value)}
+              placeholder="مثلاً منبع فعلی دیگر پشتیبان ادعا نیست"/></label>
+          <button type="submit" className="button" disabled={!linksChanged||busy||blocked||!etag||
+            Boolean(sourceId.trim()||locator.trim())||
+            (evidence.links.some(link=>!draft.some(row=>row.source_id===link.source_id))&&!changeReason.trim())}>
             ذخیرهٔ نسخهٔ جدید شواهد
           </button>
-          {dirty&&<p role="status">تغییرات شواهد هنوز ذخیره نشده‌اند.</p>}
+          {dirty&&<p role="status">تغییرات شواهد هنوز ذخیره نشده‌اند.
+            {Boolean(sourceId.trim()||locator.trim())&&" ابتدا منبع واردشده را با دکمهٔ افزودن ثبت کنید."}
+          </p>}
         </fieldset>
       </form>:<p className="muted">ویرایش پیوند فقط برای محتوای خصوصی با متن توضیح ثبت‌شده و بدون سابقهٔ یادگیرنده مجاز است؛ شواهد قبلی تغییر نمی‌کنند.</p>}
+      <div className="stack">
+        <button type="button" className="button secondary" disabled={historyBusy||busy}
+          onClick={()=>void loadHistory(1)}>مشاهدهٔ تاریخچهٔ نسخه‌های شواهد</button>
+        {history&&<section className="stack" aria-label="تاریخچهٔ شواهد">
+          <p className="muted">تاریخچه فقط خواندنی است. وضعیت حقوق و نمایش نشانی منابع بر اساس مجوز جاری ارزیابی می‌شوند.</p>
+          {history.revisions.length===0?<p>نسخه‌ای ثبت نشده است.</p>:
+            <ol>{history.revisions.map(revision=><li key={revision.revision} className="stack">
+              <strong>نسخه {revision.revision} | {revision.status==="requires_review"?"نیازمند بازبینی":revision.status==="unlinked"?"بدون پیوند":"منبع پیوست شده"}</strong>
+              <span><bdi>{revision.created_at}</bdi> | ثبت‌کننده: {revision.actor_id??"نامشخص"}</span>
+              <span>دلیل: {revision.change_reason}</span>
+              {revision.removed_source_ids.length>0&&<span>پیوند حذف‌شده در این نسخه: {revision.removed_source_ids.join("، ")}</span>}
+              <span>قرارداد: <code dir="ltr">{revision.fingerprint_version}</code></span>
+              <ul>{revision.links.map(link=><li key={link.source_id}>
+                منبع #{link.source_id} | {label(link.status)}
+                {link.locator&&<> | <bdi>{link.locator}</bdi></>}
+              </li>)}</ul>
+            </li>)}</ol>}
+          {history.next_page&&<button type="button" className="button secondary"
+            disabled={historyBusy} onClick={()=>void loadHistory(history.next_page!)}>
+            نمایش نسخه‌های بعدی
+          </button>}
+        </section>}
+      </div>
     </>}
   </section>;
 }

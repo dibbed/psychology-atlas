@@ -22,7 +22,7 @@ function errorMessage(value:unknown){
   return value instanceof CmsError?value.message:"درخواست انجام نشد. دسترسی یا داده‌ها را بررسی کنید.";
 }
 export default function LearningQuizEditor(){
-  const {can}=useCms();
+  const {can,setDirty:setCmsDirty}=useCms();
   const allowed=can("cms_learning_view");
   const [list,setList]=useState<Row[]>([]);
   const [page,setPage]=useState(1);
@@ -36,12 +36,18 @@ export default function LearningQuizEditor(){
   const [feedback,setFeedback]=useState<Result>();
   const [answers,setAnswers]=useState<Record<number,number>>({});
   const [dirty,setDirty]=useState(false);
+  const [evidenceDirtyIds,setEvidenceDirtyIds]=useState<number[]>([]);
+  const [evidenceRefresh,setEvidenceRefresh]=useState(0);
+  const evidenceDirty=evidenceDirtyIds.length>0;
   const [slug,setSlug]=useState("");
   const [title,setTitle]=useState("");
   const [description,setDescription]=useState("");
   const [metadata,setMetadata]=useState({title:"",description:"",disorder_id:""});
   const metadataDirty=!!selected&&(metadata.title!==selected.title||metadata.description!==selected.description||
     metadata.disorder_id!==String(selected.disorder_id??""));
+  useEffect(()=>{setCmsDirty(dirty||metadataDirty||evidenceDirty);
+    return ()=>setCmsDirty(false);
+  },[dirty,metadataDirty,evidenceDirty,setCmsDirty]);
   useEffect(()=>{
     if(!allowed)return;
     let valid=true;
@@ -51,11 +57,11 @@ export default function LearningQuizEditor(){
     return ()=>{valid=false;};
   },[allowed,page]);
   useEffect(()=>{
-    if(!dirty&&!metadataDirty)return;
+    if(!dirty&&!metadataDirty&&!evidenceDirty)return;
     const prevent=(e:BeforeUnloadEvent)=>{e.preventDefault();e.returnValue="";};
     window.addEventListener("beforeunload",prevent);
     return ()=>window.removeEventListener("beforeunload",prevent);
-  },[dirty,metadataDirty]);
+  },[dirty,metadataDirty,evidenceDirty]);
   const load=async(id:number)=>{
     const result=await cms<Details>("/learning/quizzes/"+id+"/");
     setSelected(result.data);setEtag(result.etag);
@@ -64,9 +70,10 @@ export default function LearningQuizEditor(){
     setDraft(result.data.questions.map(q=>({...q,
       choices:q.choices.map(c=>({...c}))})));
     setFeedback(undefined);setAnswers({});setDirty(false);
+    setEvidenceRefresh(value=>value+1);
   };
   const open=async(id:number)=>{
-    if((dirty||metadataDirty)&&!window.confirm("تغییرات ذخیره‌نشده کنار گذاشته شوند؟"))return;
+    if((dirty||metadataDirty||evidenceDirty)&&!window.confirm("تغییرات ذخیره‌نشده کنار گذاشته شوند؟"))return;
     setBusy(true);setError("");
     try{await load(id);}catch(e){setError(errorMessage(e));}
     finally{setBusy(false);}
@@ -74,7 +81,7 @@ export default function LearningQuizEditor(){
   const refresh=async()=>{const r=await cms<CmsPage<Row>>("/learning/quizzes/?page="+page+"&page_size=30");setList(r.data.results);setCount(r.data.count);};
   const create=async(e:FormEvent<HTMLFormElement>)=>{
     e.preventDefault();if(busy||!can("cms_learning_create"))return;
-    if((dirty||metadataDirty)&&!window.confirm("تغییرات ذخیره‌نشده کنار گذاشته شوند؟"))return;
+    if((dirty||metadataDirty||evidenceDirty)&&!window.confirm("تغییرات ذخیره‌نشده کنار گذاشته شوند؟"))return;
     setBusy(true);setError("");
     try{
       const r=await cms<{quiz_id:number}>("/learning/quizzes/",{method:"POST",
@@ -100,7 +107,7 @@ export default function LearningQuizEditor(){
   };
   const save=async(e:FormEvent<HTMLFormElement>)=>{
     e.preventDefault();
-    if(!selected||!etag||!can("cms_learning_edit")||busy||metadataDirty)return;
+    if(!selected||!etag||!can("cms_learning_edit")||busy||metadataDirty||evidenceDirty)return;
     setBusy(true);setError("");
     try{
       const response=await cms("/learning/quizzes/"+selected.quiz_id+"/questions/replace/",{
@@ -117,7 +124,7 @@ export default function LearningQuizEditor(){
   };
   const saveMetadata=async(e:FormEvent<HTMLFormElement>)=>{
     e.preventDefault();
-    if(!selected||!etag||busy||dirty||!can("cms_learning_edit"))return;
+    if(!selected||!etag||busy||dirty||evidenceDirty||!can("cms_learning_edit"))return;
     const disorderId=metadata.disorder_id===""?null:Number(metadata.disorder_id);
     if(disorderId!==null&&(!Number.isSafeInteger(disorderId)||disorderId<1)){
       setError("شناسهٔ اختلال باید عدد صحیح مثبت باشد.");return;
@@ -186,7 +193,7 @@ export default function LearningQuizEditor(){
       <p className="muted">نسخهٔ داخلی #{selected.quiz_id} | {selected.is_active?"فعال":"غیرفعال"} | اعتبار ساختاری: {selected.valid?"معتبر":"نیازمند اصلاح"}</p>
       {!editable&&<p>سؤال‌های این آزمون به علت بایگانی، فعال بودن، مدیریت Seed یا وجود تلاش‌های قدیمی قفل هستند. کلید پاسخ و تاریخچه از این ویرایشگر تغییر نمی‌کنند.</p>}
       <LearningArchiveAction key={"archive-quiz-"+selected.quiz_id} kind="quiz" itemId={selected.quiz_id}
-        etag={etag} archivedAt={selected.archived_at} blocked={busy||dirty||metadataDirty} onBusyChange={setBusy}
+        etag={etag} archivedAt={selected.archived_at} blocked={busy||dirty||metadataDirty||evidenceDirty} onBusyChange={setBusy}
         onArchived={async at=>{
           const id=selected.quiz_id;setSelected(old=>old?.quiz_id===id?{...old,is_active:false,archived_at:at}:old);
           await Promise.all([load(id),refresh()]);
@@ -271,8 +278,11 @@ export default function LearningQuizEditor(){
         <p className="muted">ویرایش سؤال‌ها با جایگزینی رکورد انجام می‌شود. پیوند قدیمی خودکار به سؤال جدید منتقل نمی‌شود؛ هر ادعا به بررسی منبع تازه نیاز دارد.</p>
         {selected.questions.filter(q=>q.id!==undefined).map((q,i)=><div key={q.id}>
           <h4>سؤال {i+1}: {q.prompt.slice(0,85)}</h4>
-          <LearningEvidenceCard kind="quiz-question" itemId={q.id!} editable={Boolean(editable)&&Boolean(q.explanation.trim())}
-            blocked={busy||dirty||metadataDirty}/>
+          <LearningEvidenceCard key={"evidence-question-"+q.id} kind="quiz-question"
+            itemId={q.id!} editable={Boolean(editable)&&Boolean(q.explanation.trim())}
+            blocked={busy||dirty||metadataDirty} refreshToken={evidenceRefresh}
+            onDirtyChange={value=>setEvidenceDirtyIds(old=>value?
+              old.includes(q.id!)?old:[...old,q.id!]:old.filter(id=>id!==q.id))}/>
         </div>)}
       </div>}
       {feedback&&<div className="stack" aria-live="polite" role="status">

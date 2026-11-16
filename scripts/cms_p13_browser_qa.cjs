@@ -3,6 +3,7 @@ const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),asse
 const {spawn,execFileSync}=require('node:child_process');
 let chromium;try{({chromium}=require('playwright'));}catch(e){if(e.code!=='MODULE_NOT_FOUND')throw e;({chromium}=require(path.join(os.tmpdir(),'atlas-p07-browser-tools/node_modules/playwright')));}
 const root=path.resolve(__dirname,'..'),tmp=fs.mkdtempSync(path.join(os.tmpdir(),'atlas-p13-browser-'));
+const frontendRoot=process.env.CMS_QA_FRONTEND_DIR||path.join(root,'frontend');
 const out=process.env.CMS_QA_OUTPUT||path.join(root,'qa/p13-browser');fs.mkdirSync(out,{recursive:true});
 const py=process.env.CMS_QA_PYTHON||(process.platform==='win32'?path.join(root,'backend/.venv/Scripts/python.exe'):'python');
 const origin=process.env.CMS_QA_ORIGIN||'http://127.0.0.1:3000',api=process.env.CMS_QA_API_ORIGIN||'http://127.0.0.1:8000';
@@ -109,7 +110,7 @@ async function learnerRequest(page,token,route,body){
   const before=history();check(before.counts.every(n=>n>0),'Existing synthetic quiz answers, learning activity and SRS are nonempty');
   const django=start(py,['manage.py','runserver','127.0.0.1:'+new URL(api).port,'--noreload'],path.join(root,'backend'),'django');
   await ready(api+'/api/admin/auth/csrf/',django);
-  const next=start(process.execPath,[path.join(root,'frontend/node_modules/next/dist/bin/next'),'start','-H','127.0.0.1','-p',new URL(origin).port],path.join(root,'frontend'),'next');
+  const next=start(process.execPath,[path.join(frontendRoot,'node_modules/next/dist/bin/next'),'start','-H','127.0.0.1','-p',new URL(origin).port],frontendRoot,'next');
   await ready(origin+'/admin-console',next);
   browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'chrome'}:{})});
   const ownerContext=await browser.newContext({viewport:{width:1280,height:850}}),owner=await ownerContext.newPage();
@@ -495,6 +496,114 @@ async function learnerRequest(page,token,route,body){
     finalTransfer.content_counts.every((n,index)=>n===afterImport.content_counts[index])&&history().digest===before.digest,
     'All transfer operations retain exact job/audit counts and unchanged canonical content/history after exports');
   await exporterContext.close();
+  // F02 real Chromium flow: item remains private and all learner state is preserved.
+  const f02=JSON.parse(execFileSync(py,['-c',[
+    'import os,tempfile,pathlib,json',
+    'db=pathlib.Path(os.environ["SQLITE_PATH"]).resolve()',
+    'assert db.parent.parent==pathlib.Path(tempfile.gettempdir()).resolve()',
+    'assert db.parent.name.startswith("atlas-p13-browser-") and db.name=="cms-journey.sqlite3"',
+    'os.environ.setdefault("DJANGO_SETTINGS_MODULE","config.settings")',
+    'import django;django.setup()',
+    'from atlas.models import Concept,CognitiveDistortionPracticeItem,CognitiveDistortionPracticeChoice',
+    't=Concept.objects.create(slug="f02-qa-target",name_en="NON-SCIENTIFIC browser target",subtype=Concept.Subtype.COGNITIVE_DISTORTION,is_active=True)',
+    'a=Concept.objects.create(slug="f02-qa-alternative",name_en="NON-SCIENTIFIC browser alternative",subtype=Concept.Subtype.COGNITIVE_DISTORTION,is_active=True)',
+    'item=CognitiveDistortionPracticeItem.objects.create(slug="f02-qa-private",prompt="F02 NON-SCIENTIFIC browser private scenario",explanation="Synthetic only",target_concept=t,is_active=False,seed_managed=False)',
+    'good=CognitiveDistortionPracticeChoice.objects.create(item=item,concept=t,text="Synthetic correct",is_correct=True,is_active=True)',
+    'CognitiveDistortionPracticeChoice.objects.create(item=item,concept=a,text="Synthetic incorrect",is_correct=False,is_active=True)',
+    'print(json.dumps({"id":item.pk,"target":t.pk,"choice":good.pk}))',
+  ].join('\n')],{cwd:path.join(root,'backend'),env,encoding:'utf8'}));
+  await owner.goto(origin+'/admin-console/content/learning-practice');
+  await owner.getByLabel('نوع تمرین').selectOption('distortions');
+  await owner.locator('li').filter({hasText:'F02 NON-SCIENTIFIC browser private scenario'})
+    .getByRole('button',{name:'باز کردن',exact:true}).click();
+  await owner.getByText(/وضعیت اعتبار: معتبر/).waitFor();
+  check(await owner.getByRole('button',{name:'مشاهدهٔ بازخورد آموزشی'}).count()===1,
+    'F02 valid Distortion practice has a real preview form');
+  await owner.getByLabel('گزینهٔ فرضی').selectOption(String(f02.choice));
+  const f02Response=writeResponse(owner,'/practice/distortions/'+f02.id+'/simulate');
+  await owner.getByRole('button',{name:'مشاهدهٔ بازخورد آموزشی'}).focus();
+  await owner.keyboard.press('Enter');
+  check((await f02Response).status()===200&&history().digest===before.digest,
+    'F02 real keyboard preview creates no learner Attempt/Progress/SRS');
+  execFileSync(py,['-c',[
+    'import os,tempfile,pathlib,sys',
+    'db=pathlib.Path(os.environ["SQLITE_PATH"]).resolve()',
+    'assert db.parent.parent==pathlib.Path(tempfile.gettempdir()).resolve()',
+    'assert db.parent.name.startswith("atlas-p13-browser-") and db.name=="cms-journey.sqlite3"',
+    'os.environ.setdefault("DJANGO_SETTINGS_MODULE","config.settings")',
+    'import django;django.setup()','from atlas.models import Concept',
+    't=Concept.objects.get(pk=int(sys.argv[1]))',
+    't.subtype=Concept.Subtype.GENERAL;t.save(update_fields=["subtype"])',
+  ].join('\n'),String(f02.target)],{cwd:path.join(root,'backend'),env,encoding:'utf8'});
+  await owner.reload();
+  await owner.getByLabel('نوع تمرین').selectOption('distortions');
+  await owner.locator('li').filter({hasText:'F02 NON-SCIENTIFIC browser private scenario'})
+    .getByRole('button',{name:'باز کردن',exact:true}).click();
+  await owner.getByText(/مفهوم هدف غیرفعال است یا دیگر خطای شناختی نیست/).waitFor();
+  check(await owner.getByRole('button',{name:'مشاهدهٔ بازخورد آموزشی'}).count()===0,
+    'F02 Persian invalid dependency blocks preview after refresh');
+  const invalid=await request(owner,'/learning/practice/distortions/'+f02.id+'/simulate/',{choice_id:f02.choice});
+  check(invalid.status===409&&history().digest===before.digest,
+    'F02 direct simulation rejects dependency drift with 409 and no SRS write');
+  await owner.setViewportSize({width:320,height:790});
+  check(await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),
+    'F02 real Persian invalid-state UI fits 320px RTL');
+  await owner.screenshot({path:path.join(out,'f02-invalid-practice-mobile.png'),fullPage:true});
+  report.screenshots.push('f02-invalid-practice-mobile.png');
+  // Evidence history and unsaved-draft guard are exercised in the rendered UI.
+  await owner.setViewportSize({width:1280,height:850});
+  await owner.goto(origin+'/admin-console/content/learning-quizzes');
+  await owner.locator('li').filter({hasText:'P13 saved fictional title'})
+    .getByRole('button',{name:'باز کردن',exact:true}).click();
+  const evidenceCard=owner.getByRole('region',{name:'منابع توضیح آموزشی'}).first();
+  await evidenceCard.getByRole('button',{name:'مشاهدهٔ تاریخچهٔ نسخه‌های شواهد'}).click();
+  await evidenceCard.getByRole('region',{name:'تاریخچهٔ شواهد'}).getByText('نسخه 1',{exact:false}).waitFor();
+  check((await request(owner,w13EvidenceRoute+'history/')).status===200,
+    'W13 append-only source history is navigable with current permissions');
+  await evidenceCard.getByLabel('نشانی ادعا').fill('NON-SCIENTIFIC unsaved provenance change');
+  await owner.getByRole('link',{name:'خانهٔ مدیریت'}).click();
+  await owner.getByRole('heading',{name:'تغییرات ذخیره نشده‌اند'}).waitFor();
+  check(new URL(owner.url()).pathname.includes('learning-quizzes'),
+    'Child evidence draft triggers shared CMS navigation warning');
+  await owner.getByRole('button',{name:'ادامهٔ ویرایش'}).click();
+  check(await evidenceCard.getByLabel('نشانی ادعا').inputValue()==='NON-SCIENTIFIC unsaved provenance change',
+    'Cancel leave preserves the unsaved claim locator exactly');
+  const dismissed=owner.waitForEvent('dialog');
+  const attemptedSwitch=owner.locator('li').filter({hasText:'Synthetic historical quiz'})
+    .getByRole('button',{name:'باز کردن',exact:true}).click();
+  const dialog=await dismissed;
+  check(dialog.type()==='confirm'&&dialog.message().includes('ذخیره'),
+    'Switching Quiz items prompts before dropping child evidence changes');
+  await dialog.dismiss();
+  await attemptedSwitch;
+  check(new URL(owner.url()).pathname.includes('learning-quizzes')&&
+    await evidenceCard.getByLabel('نشانی ادعا').inputValue()==='NON-SCIENTIFIC unsaved provenance change',
+    'Dismissed item switch retains the uncommitted Evidence draft');
+  await owner.setViewportSize({width:320,height:790});
+  check(await owner.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),
+    'Historical evidence and dirty state do not overflow Persian 320px UI');
+  // A reason-only draft and an incompletely entered new SourceReference
+  // must also activate leave protection, not only modified persisted links.
+  await evidenceCard.getByLabel('نشانی ادعا').fill('NON-SCIENTIFIC source section A');
+  await evidenceCard.getByText('تغییرات شواهد هنوز ذخیره نشده‌اند.',{exact:false}).waitFor({state:'hidden'});
+  const reasonField=evidenceCard.getByLabel('دلیل تغییر یا حذف پیوند (در صورت حذف حتماً توضیح دهید)');
+  await reasonField.fill('NON-SCIENTIFIC unsaved reason only');
+  await evidenceCard.getByText('تغییرات شواهد هنوز ذخیره نشده‌اند.',{exact:false}).waitFor();
+  await owner.getByRole('link',{name:'خانهٔ مدیریت'}).click();
+  await owner.getByRole('heading',{name:'تغییرات ذخیره نشده‌اند'}).waitFor();
+  await owner.getByRole('button',{name:'ادامهٔ ویرایش'}).click();
+  check(await reasonField.inputValue()==='NON-SCIENTIFIC unsaved reason only',
+    'Reason-only unsaved draft triggers navigation warning and is preserved');
+  await reasonField.fill('');
+  await evidenceCard.getByLabel('شناسهٔ SourceReference').fill('999991');
+  await owner.getByRole('link',{name:'خانهٔ مدیریت'}).click();
+  await owner.getByRole('heading',{name:'تغییرات ذخیره نشده‌اند'}).waitFor();
+  await owner.getByRole('button',{name:'ادامهٔ ویرایش'}).click();
+  check(await evidenceCard.getByLabel('شناسهٔ SourceReference').inputValue()==='999991',
+    'Unadded source ID is protected against silent navigation loss');
+  await evidenceCard.getByLabel('شناسهٔ SourceReference').fill('');
+  check(await evidenceCard.getByRole('button',{name:'ذخیرهٔ نسخهٔ جدید شواهد'}).isDisabled(),
+    'A reason or unadded staged source cannot create an unintended revision');
   check(report.errors.length===0,'No uncaught browser runtime errors');report.status='PASS';
   await readerContext.close();await ownerContext.close();
 }catch(e){

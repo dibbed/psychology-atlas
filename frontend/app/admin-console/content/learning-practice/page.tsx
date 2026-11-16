@@ -18,13 +18,17 @@ type Result={correct:boolean;explanation:string;preview_only:true};
 const empty=():Draft=>({prompt:"",explanation:"",choices:[]});
 const message=(e:unknown)=>e instanceof CmsError?e.message:"عملیات در سرور موفق نبود.";
 export default function PracticeCMS(){
-  const {can}=useCms();const allowed=can("cms_learning_view");
+  const {can,setDirty:setCmsDirty}=useCms();const allowed=can("cms_learning_view");
   const [kind,setKind]=useState<Kind>("daily");
   const [items,setItems]=useState<Item[]>([]);
   const [page,setPage]=useState(1);const [total,setTotal]=useState(0);
   const [selected,setSelected]=useState<Detail>();const [etag,setEtag]=useState<string|null>(null);
   const [draft,setDraft]=useState<Draft>(empty);
   const [dirty,setDirty]=useState(false);const [busy,setBusy]=useState(false);
+  const [evidenceDirty,setEvidenceDirty]=useState(false);
+  const [evidenceRefresh,setEvidenceRefresh]=useState(0);
+  useEffect(()=>{setCmsDirty(dirty||evidenceDirty);return ()=>setCmsDirty(false);},
+    [dirty,evidenceDirty,setCmsDirty]);
   const [loading,setLoading]=useState(true);const [error,setError]=useState("");
   const issuesRef=useRef<HTMLDivElement>(null);
   useEffect(()=>{if(selected?.issues.length)issuesRef.current?.focus();},[selected?.item_id,selected?.issues.join("|")]);
@@ -41,31 +45,32 @@ export default function PracticeCMS(){
     return ()=>{active=false;};
   },[allowed,endpoint,page]);
   useEffect(()=>{
-    if(!dirty)return;
+    if(!dirty&&!evidenceDirty)return;
     const guard=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue="";};
     window.addEventListener("beforeunload",guard);
     return ()=>window.removeEventListener("beforeunload",guard);
-  },[dirty]);
+  },[dirty,evidenceDirty]);
   const reload=async(id:number)=>{
     const result=await cms<Detail>(endpoint+id+"/");
     setSelected(result.data);setEtag(result.etag);
     setDraft({prompt:result.data.prompt,explanation:result.data.explanation,
       choices:result.data.choices.map(c=>({...c}))});
     setPreview(undefined);setPreviewChoice("");setDirty(false);
+    setEvidenceRefresh(value=>value+1);
   };
   const refresh=async()=>{
     const r=await cms<CmsPage<Item>>(endpoint+"?page="+page+"&page_size=30");
     setItems(r.data.results);setTotal(r.data.count);
   };
   const open=async(id:number)=>{
-    if(dirty&&!window.confirm("ویرایش ذخیره‌نشده کنار گذاشته شود؟"))return;
+    if((dirty||evidenceDirty)&&!window.confirm("ویرایش ذخیره‌نشده کنار گذاشته شود؟"))return;
     setBusy(true);setError("");
     try{await reload(id);}catch(e){setError(message(e));}
     finally{setBusy(false);}
   };
   const switchKind=(value:Kind)=>{
     if(busy||value===kind)return;
-    if(dirty&&!window.confirm("ویرایش‌های ثبت‌نشده کنار گذاشته شوند؟"))return;
+    if((dirty||evidenceDirty)&&!window.confirm("ویرایش‌های ثبت‌نشده کنار گذاشته شوند؟"))return;
     setKind(value);setPage(1);setSelected(undefined);setError("");setLoading(true);setDirty(false);
   };
   const create=async(event:FormEvent<HTMLFormElement>)=>{
@@ -106,7 +111,7 @@ export default function PracticeCMS(){
     });setDirty(true);
   };
   const save=async(e:FormEvent<HTMLFormElement>)=>{
-    e.preventDefault();if(!selected||!etag||!dirty)return;
+    e.preventDefault();if(!selected||!etag||!dirty||evidenceDirty)return;
     setBusy(true);setError("");
     try{
       const result=await cms<Detail>(endpoint+selected.item_id+"/edit/",{
@@ -200,7 +205,7 @@ export default function PracticeCMS(){
         }</li>)}</ul></div>}
       {!editable&&<p className="muted">ویرایش آیتم بایگانی، فعال، Seed یا دارای attempt مسدود است؛ تاریخچهٔ دانشجو حفظ می‌شود.</p>}
       <LearningArchiveAction key={"archive-"+kind+"-"+selected.item_id} kind={kind} itemId={selected.item_id}
-        etag={etag} archivedAt={selected.archived_at} blocked={busy||dirty} onBusyChange={setBusy}
+        etag={etag} archivedAt={selected.archived_at} blocked={busy||dirty||evidenceDirty} onBusyChange={setBusy}
         onArchived={async at=>{
           const id=selected.item_id;setSelected(old=>old?.item_id===id?{...old,is_active:false,archived_at:at}:old);
           await Promise.all([reload(id),refresh()]);
@@ -255,7 +260,8 @@ export default function PracticeCMS(){
         <p className="muted">این صفحه تقویم انتشار مستقل ایجاد نمی‌کند. مدیریت انتشار و حقوق در P16 انجام می‌شود.</p>
       </div>}
       <LearningEvidenceCard key={"evidence-"+kind+"-"+selected.item_id} kind={kind}
-        itemId={selected.item_id} editable={Boolean(editable)&&Boolean(selected.explanation.trim())} blocked={busy||dirty}/>
+        itemId={selected.item_id} editable={Boolean(editable)&&Boolean(selected.explanation.trim())}
+        blocked={busy||dirty} refreshToken={evidenceRefresh} onDirtyChange={setEvidenceDirty}/>
       <p className="muted">انتشار و فعال‌سازی تا پایان P16 غیرفعال است.</p>
     </section>}
   </div>;

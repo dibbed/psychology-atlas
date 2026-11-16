@@ -20,7 +20,7 @@ function cardPayload(value:FormData){
   return data;
 }
 export default function FlashcardCMS(){
-  const {can}=useCms();
+  const {can,setDirty:setCmsDirty}=useCms();
   const allowed=can("cms_learning_view");
   const [items,setItems]=useState<Item[]>([]);
   const [page,setPage]=useState(1);
@@ -34,6 +34,10 @@ export default function FlashcardCMS(){
   const [etag,setEtag]=useState<string|null>(null);
   const [draft,setDraft]=useState<FormData>(empty);
   const [dirty,setDirty]=useState(false);
+  const [evidenceDirty,setEvidenceDirty]=useState(false);
+  const [evidenceRefresh,setEvidenceRefresh]=useState(0);
+  useEffect(()=>{setCmsDirty(dirty||evidenceDirty);return ()=>setCmsDirty(false);},
+    [dirty,evidenceDirty,setCmsDirty]);
   useEffect(()=>{
     if(!allowed)return;
     let mounted=true;
@@ -43,30 +47,30 @@ export default function FlashcardCMS(){
     return ()=>{mounted=false;};
   },[allowed,page]);
   useEffect(()=>{
-    if(!dirty)return;
+    if(!dirty&&!evidenceDirty)return;
     const guard=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue="";};
     window.addEventListener("beforeunload",guard);
     return ()=>window.removeEventListener("beforeunload",guard);
-  },[dirty]);
+  },[dirty,evidenceDirty]);
   const reload=async(id:number)=>{
     const res=await cms<Detail>("/learning/flashcards/"+id+"/");
     setSelected(res.data);setEtag(res.etag);
     setDraft({front:res.data.front,back:res.data.back,hint:res.data.hint,
       difficulty:res.data.difficulty,concept_id:String(res.data.concept_id??""),disorder_id:String(res.data.disorder_id??"")});
-    setDirty(false);
+    setDirty(false);setEvidenceRefresh(value=>value+1);
   };
   const refresh=async()=>{
     const res=await cms<CmsPage<Item>>("/learning/flashcards/?page="+page+"&page_size=30");
     setItems(res.data.results);setCount(res.data.count);
   };
   const pick=async(id:number)=>{
-    if(dirty&&!window.confirm("تغییر ذخیره‌نشده کنار گذاشته شود؟"))return;
+    if((dirty||evidenceDirty)&&!window.confirm("تغییر ذخیره‌نشده کنار گذاشته شود؟"))return;
     setBusy(true);setError("");
     try{await reload(id);}catch(e){setError(message(e));}finally{setBusy(false);}
   };
   const create=async(event:FormEvent<HTMLFormElement>)=>{
     event.preventDefault();if(busy)return;
-    if(dirty&&!window.confirm("تغییر ذخیره‌نشده کنار گذاشته شود؟"))return;
+    if((dirty||evidenceDirty)&&!window.confirm("تغییر ذخیره‌نشده کنار گذاشته شود؟"))return;
     setBusy(true);setError("");
     try{
       const res=await cms<{flashcard_id:number}>("/learning/flashcards/",{
@@ -78,7 +82,7 @@ export default function FlashcardCMS(){
   };
   const save=async(event:FormEvent<HTMLFormElement>)=>{
     event.preventDefault();
-    if(!selected||!etag||!dirty||busy)return;
+    if(!selected||!etag||!dirty||busy||evidenceDirty)return;
     setBusy(true);setError("");
     try{
       await cms("/learning/flashcards/"+selected.flashcard_id+"/metadata/",{
@@ -163,7 +167,8 @@ export default function FlashcardCMS(){
         </fieldset>
       </form>}
       <LearningEvidenceCard key={"evidence-card-"+selected.flashcard_id} kind="flashcard"
-        itemId={selected.flashcard_id} editable={Boolean(edit)&&Boolean(selected.back.trim())} blocked={busy||dirty}/>
+        itemId={selected.flashcard_id} editable={Boolean(edit)&&Boolean(selected.back.trim())}
+        blocked={busy||dirty} refreshToken={evidenceRefresh} onDirtyChange={setEvidenceDirty}/>
       <p className="muted">انتشار عمومی فقط پس از گیت علمی/حقوقی P16 ممکن می‌شود.</p>
     </section>}
   </div>;
