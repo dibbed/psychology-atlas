@@ -103,6 +103,12 @@ async function getPreview(page,dossierId){
       "W17-01 private surface footprint visible with explicit non-public boundary");
     check(await region.getByText("فیلدهای قابل‌ردیابی و تغییرکرده",{exact:false}).count()>0,
       "W17-01 field-level proposal impact rendered without raw draft payload");
+    check(await region.getByText("برای این نوع، مسیر عمومی مستقلی وجود ندارد",{exact:false}).count()>0,
+      "W17-01 absent public Compare reader is explicitly unavailable");
+    check(await region.getByText("/api/brain-anatomy/{slug}/",{exact:true}).count()>0,
+      "W17-01 reader contract names the real registered Brain detail route");
+    check(await region.getByText("ریشه‌های عمومی موجود، از همان فیلتر عمومی سایت:",{exact:false}).count()>0,
+      "W17-01 existing public root checked without promoting private candidate");
     check(await region.getByText("صرفاً خصوصی",{exact:false}).count()>0,
       "Private candidate preview rendered in Persian UI");
     check(!((await region.innerText()).includes("P16 PRIVATE SYNTHETIC SECRET")),
@@ -239,6 +245,45 @@ async function getPreview(page,dossierId){
     await restrictedPage.getByText("برای جست‌وجوی داخلی به مجوز مستقل cms_search نیاز است.",{exact:false}).waitFor();
     check(true,"W17-01 scoped role without search permission denied in browser");
     await restrictedCtx.close();
+    // Real public Search exact alias ambiguity, from two separately reviewed
+    // synthetic roots only in the guarded disposable browser database.
+    const publicAliasFixture=[
+      "import os,tempfile",
+      "from pathlib import Path",
+      "db=Path(os.environ['SQLITE_PATH']).resolve()",
+      "assert os.environ.get('CMS_QA_PHASE')=='p14' and db.name=='cms-journey.sqlite3' and db.parent.name.startswith('atlas-p14-browser-turn08-') and db.parent.parent==Path(tempfile.gettempdir()).resolve()",
+      "import django",
+      "os.environ.setdefault('DJANGO_SETTINGS_MODULE','config.settings')",
+      "django.setup()",
+      "from atlas.models import (BrainAnatomicalEntity,BrainAnatomicalEntitySource,BrainAnatomicalAlias,AssessmentInstrument,AssessmentSource,AssessmentAlias,SourceReference)",
+      "source=SourceReference.objects.get(title='P16 synthetic dependency evidence')",
+      "brain=BrainAnatomicalEntity.objects.create(slug='w17uiqa-brain',name_en='SYNTHETIC reviewed QA brain',kind='structure',laterality='not_established',is_active=True)",
+      "BrainAnatomicalEntitySource.objects.create(entity=brain,source=source,note='Test-only fabricated metadata')",
+      "brain.review_status='reviewed'",
+      "brain.save(update_fields=['review_status'])",
+      "BrainAnatomicalAlias.objects.create(entity=brain,source=source,source_note='Synthetic test locator',text='w17uiqa',language='en',alias_type='abbreviation',review_status='reviewed')",
+      "assessment=AssessmentInstrument.objects.create(slug='w17uiqa-assessment',name_en='SYNTHETIC reviewed QA instrument',is_active=True)",
+      "AssessmentSource.objects.create(instrument=assessment,source=source,note='Test-only fabricated metadata')",
+      "assessment.review_status='reviewed'",
+      "assessment.save(update_fields=['review_status'])",
+      "AssessmentAlias.objects.create(instrument=assessment,source=source,source_note='Synthetic test locator',text='w17uiqa',language='en',alias_type='acronym',review_status='reviewed')",
+    ].join("\n");
+    exec(py,["-c",publicAliasFixture],path.join(root,"backend"),90000);
+    await page.goto(origin+"/search?q=w17uiqa");
+    const publicAmbiguity=page.getByRole("region",{name:"ابهام نام جایگزین در جست‌وجوی عمومی"});
+    await publicAmbiguity.waitFor();
+    check(await publicAmbiguity.getByRole("link").count()===2,
+      "W17-01 real public Search distinguishes two reviewed synthetic alias identities");
+    check(await publicAmbiguity.locator('a[href="/brain/w17uiqa-brain"]').count()===1 &&
+          await publicAmbiguity.locator('a[href="/assessments/w17uiqa-assessment"]').count()===1,
+      "W17-01 public ambiguity links only to verified public domain routes");
+    check(!(await page.locator("main").innerText()).includes("P16 PRIVATE SYNTHETIC SECRET"),
+      "W17-01 public Search and ambiguity omit private editorial candidate strings");
+    await page.setViewportSize({width:320,height:780});
+    check(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),
+      "W17-01 public alias ambiguity remains responsive at 320px RTL");
+    await page.screenshot({path:path.join(out,"turn08-public-alias-320.png"),fullPage:true});
+    report.screenshots.push("turn08-public-alias-320.png");
     check(report.errors.length===0,"Zero Chromium JS runtime errors");
     report.status="PASS";
   } catch(e) {

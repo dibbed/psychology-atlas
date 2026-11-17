@@ -54,6 +54,23 @@ type CandidatePreview={
     public_effect:false;scope:string;notice:string;
     items:Array<{kind:string;resource_id:string|number;revision_id:number|null;
       readers:Record<"detail"|"search"|"graph"|"compare",string|null>;
+      current_public_anchor:{
+        schema:"cms-current-public-root-v1";
+        status:"learning_candidate_inactive"|"indirect_root_unmapped"|"root_not_created"|
+          "root_unresolved"|"visible_public_root"|"hidden_public_root"|"mixed_public_roots";
+        root_type:"brain_anatomical_entity"|"assessment_instrument"|null;
+        root_count:number;visible_count:number;
+        candidate_public:false;post_apply_projection_available:false;
+        selector?:string;scope?:string
+      };
+      public_reader_contract:{
+        scope:"existing_public_urls_no_post_apply_promise";
+        surfaces:Record<"list"|"detail"|"search"|"graph"|"compare",{
+          status:"existing_reader"|"not_implemented_for_kind";
+          route:string|null
+        }>;
+        public_candidate_payload_available:false;
+      };
       mapping_complete:false;after_apply:string;
       change_intent:"create"|"update"|"potential_activation";
       before_public_visibility:boolean|null;
@@ -595,8 +612,18 @@ export default function PublicationPreflight(){
               <p className="muted">این فهرست فقط نشان می‌دهد هر نوع رکورد ممکن است کدام بخش عمومی را تحت تأثیر قرار دهد. پیش‌بینی خروجی نهایی، مجوز نشر یا تغییر در سایت نیست.</p>
               <ul>{candidatePreview.impact_preview.items.map(item=><li key={item.kind+":"+item.resource_id}>
                 <span>{item.kind} #{item.resource_id}</span>
-                <span className="muted"> جزئیات: {item.readers.detail??"نامشخص"}؛ جست‌وجو: {item.readers.search??"نامشخص"}؛ گراف: {item.readers.graph??"نامشخص"}؛ مقایسه: {item.readers.compare??"در این نوع موجود نیست یا نیازمند نگاشت مستقل"}</span>
-                <p className="muted">نوع تغییر مشروط: {item.change_intent==="create"?"ایجاد":item.change_intent==="update"?"ویرایش":"فعال‌سازی احتمالی"}؛ مشاهده‌پذیری عمومی فعلی: {item.before_public_visibility===null?"نامشخص":item.before_public_visibility?"قابل‌مشاهده":"غیرقابل‌مشاهده"}</p>
+                <p className="muted">وضعیت مصرف‌کنندگان با مسیرهای واقعی API تطبیق داده شده است. وجود مسیر به معنی انتشار این کاندیدا نیست.</p>
+                <ul>{(["list","detail","search","graph","compare"] as const).map(surface=>{
+                  const target=item.public_reader_contract.surfaces[surface];
+                  const names={list:"فهرست",detail:"جزئیات",search:"جست‌وجو",graph:"گراف",compare:"مقایسه"};
+                  return <li key={surface}>{names[surface]}: {target.status==="existing_reader"?
+                    <code dir="ltr">{target.route}</code>:
+                    <span className="muted">برای این نوع، مسیر عمومی مستقلی وجود ندارد</span>}</li>;
+                })}</ul>
+                <p className="muted">نوع تغییر مشروط: {item.change_intent==="create"?"ایجاد":item.change_intent==="update"?"ویرایش":"فعال‌سازی احتمالی"}؛ مشاهده‌پذیری عمومی خودِ نسخهٔ انتخابی: خصوصی و منتشرنشده.</p>
+                <p className="muted">ریشه‌های عمومی موجود، از همان فیلتر عمومی سایت: {item.current_public_anchor.visible_count.toLocaleString("fa-IR")} از {item.current_public_anchor.root_count.toLocaleString("fa-IR")} قابل مشاهده‌اند؛
+                  {item.current_public_anchor.status==="root_unresolved"||item.current_public_anchor.status==="indirect_root_unmapped"?" ریشهٔ این رابطه هنوز قابل استنتاج قطعی نیست.":
+                  " این شمارش فقط دربارهٔ والد یا رکورد قبلی است، نه مجوز نشرِ کاندیدای خصوصی."}</p>
                 <p className="muted">فیلدهای قابل‌ردیابی و تغییرکرده: {item.change_footprint.changed_public_fields.join("، ")||"بدون نام فیلد عمومی قابل‌اعلام"}؛ تعداد فیلدهای خصوصی یا نامشخص: {item.change_footprint.unmapped_or_private_changed_count.toLocaleString("fa-IR")}</p>
               </li>)}</ul>
             </div>}

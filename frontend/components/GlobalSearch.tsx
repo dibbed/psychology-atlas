@@ -100,6 +100,23 @@ export default function GlobalSearch({ initialQuery = "" }: { initialQuery?: str
           <div className="results-count" role="status">{total.toLocaleString("fa-IR")} نتیجه پیدا شد.</div>
           {total === 0 && <p className="card muted">نتیجه‌ای مطابق این عبارت پیدا نشد. نام یا اختصار دیگری را امتحان کنید.</p>}
           <p className="muted">نتایج، هویت‌های ثبت‌شدهٔ اطلس هستند؛ جست‌وجو رابطهٔ علمی، محل عملکرد مغز یا تشخیص ایجاد نمی‌کند.</p>
+          {data.alias_disambiguation &&
+            (data.alias_disambiguation.status === "multiple_exact_public_matches" ||
+             data.alias_disambiguation.status === "more_than_limit") &&
+            <section className="card stack" aria-label="ابهام نام جایگزین در جست‌وجوی عمومی">
+              <strong>ابهام نام جایگزین</strong>
+              <p>این عبارت دقیق با چند هویت قابل‌نمایش در اطلس مغز یا ابزارهای ارزیابی مطابقت دارد.
+                این تطبیق به معنی یکسان‌بودن آن‌ها یا ارتباط علمی نیست.</p>
+              {data.alias_disambiguation.truncated &&
+                <p className="muted">فهرست محدود است و همهٔ تطبیق‌ها را نشان نمی‌دهد.</p>}
+              <ul>{data.alias_disambiguation.matches.map(item =>
+                <li key={item.domain+":"+item.slug}>
+                  <Link href={item.domain==="brain_anatomy"?"/brain/"+item.slug:"/assessments/"+item.slug}>
+                    {item.domain==="brain_anatomy"?"اطلس مغز":"ابزار ارزیابی"}: <bdi dir="ltr">{item.slug}</bdi>
+                  </Link>
+                </li>)}</ul>
+              <p className="muted">این بررسی فقط Aliasهای عمومیِ موجود در نتایج قابل‌نمایش فعلی دو حوزه را پوشش می‌دهد. در صورت محدودشدن نتایج، یکتایی سراسری قابل اثبات نیست؛ هویت‌های خصوصی و سایر حوزه‌ها نیز بررسی نمی‌شوند.</p>
+            </section>}
           {total > 0 && <nav className="search-domain-jumps" aria-label="رفتن به دستهٔ نتایج">
             {data.brain_entities.length > 0 && <a href="#search-brain">اطلس مغز <span>{data.brain_entities.length.toLocaleString("fa-IR")}</span></a>}
             {data.assessments.length > 0 && <a href="#search-assessments">ابزارهای ارزیابی <span>{data.assessments.length.toLocaleString("fa-IR")}</span></a>}
