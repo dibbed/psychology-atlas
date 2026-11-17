@@ -293,6 +293,10 @@ READY_CAPABILITIES |= frozenset({
     "cms_publication_select_assessment",
 })
 
+# W16-02: safe frozen review manifests only; Approval and public Apply remain unready.
+READY_CAPABILITIES |= frozenset(f"cms_publication_{operation}_{domain}"
+    for domain in ("learning", "brain", "assessment") for operation in ("freeze", "verify"))
+
 # P15 aggregate-only study telemetry; no private learner reads/corrections.
 READY_CAPABILITIES |= frozenset({"cms_study_view"})
 

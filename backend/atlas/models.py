@@ -4250,4 +4250,5 @@ from .cms_learning_evidence_models import LearningEvidenceRevision, LearningEvid
 from .cms_study_operation_models import StudyOperationReceipt  # noqa: E402,F401
 from .cms_publication_selection_models import PublicationCandidateSelection  # noqa: E402,F401
 from .cms_publication_preparation_models import PublicationPreparationDossier  # noqa: E402,F401
+from .cms_publication_plan_models import PublicationFrozenManifest  # noqa: E402,F401
 from .cms_worker_pulse import CmsWorkerPulse  # noqa: E402,F401
