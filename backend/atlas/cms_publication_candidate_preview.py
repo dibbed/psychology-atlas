@@ -11,6 +11,7 @@ from .cms_content import scoped_states
 from .cms_content_models import ContentState
 from .cms_learning_fingerprint import KIND_MODELS
 from .cms_policy import CMSFailure, policy_lock, require
+from .cms_publication_surface_parity import public_root_witnesses
 from .cms_publication_preparation import _owned_dossier, verify_preparation
 from .cms_sessions import current_session
 
@@ -99,6 +100,83 @@ _PUBLIC_READER_PATHS = {
     "daily_challenge": {"detail": "learning_daily_challenge"},
     "distortion_practice": {"detail": "learning_distortion_practice"},
 }
+
+
+# Actual URL patterns declared in atlas.urls. These are public *reader*
+# destinations, not hypothetical endpoints or publication permissions.
+# An absent consumer remains None; do not fabricate detail/search/graph/compare.
+_ANATOMY = "/api/brain-anatomy/{slug}/"
+_ASSESSMENT = "/api/assessments/{slug}/"
+_SEARCH = "/api/search/"
+_GRAPH = "/api/concept-map/"
+_PUBLIC_SURFACE_ROUTES = {
+    "brain-anatomical-entity": {
+        "list": "/api/brain-anatomy/", "detail": _ANATOMY,
+        "search": _SEARCH, "graph": _GRAPH,
+    },
+    "brain-anatomical-alias": {
+        "detail": _ANATOMY, "search": _SEARCH, "graph": _GRAPH,
+    },
+    "brain-hierarchy-link": {"detail": _ANATOMY, "graph": _GRAPH},
+    "brain-anatomical-entity-source": {
+        "detail": _ANATOMY, "search": _SEARCH, "graph": _GRAPH,
+    },
+    "brain-hierarchy-link-source": {"detail": _ANATOMY, "graph": _GRAPH},
+    # A BrainNetwork is nested under anatomical detail. There is no public
+    # Brain Network list/detail or graph node dedicated to this model.
+    "brain-network": {},
+    "brain-network-alias": {},
+    "brain-network-source": {},
+    "brain-external-identifier": {"detail": _ANATOMY},
+    "brain-network-membership": {"detail": _ANATOMY},
+    "brain-network-membership-source": {"detail": _ANATOMY},
+    "brain-functional-association": {"detail": _ANATOMY},
+    "brain-functional-association-source": {"detail": _ANATOMY},
+    "assessment-instrument": {
+        "list": "/api/assessments/", "detail": _ASSESSMENT,
+        "search": _SEARCH, "graph": _GRAPH,
+    },
+    "assessment-alias": {
+        "detail": _ASSESSMENT, "search": _SEARCH, "graph": _GRAPH,
+    },
+    "assessment-version": {"detail": _ASSESSMENT, "search": _SEARCH},
+    "assessment-language-form": {"detail": _ASSESSMENT},
+    "assessment-validation-study": {"detail": _ASSESSMENT},
+    "assessment-psychometric-evidence": {"detail": _ASSESSMENT},
+    "assessment-access": {"detail": _ASSESSMENT},
+    "assessment-relation": {"detail": _ASSESSMENT},
+    "assessment-source": {
+        "detail": _ASSESSMENT, "search": _SEARCH, "graph": _GRAPH,
+    },
+    "quiz": {"list": "/api/quizzes/", "detail": "/api/quizzes/{slug}/"},
+    "flashcard": {"list": "/api/flashcards/"},
+    "daily_challenge": {"detail": "/api/daily-challenge/"},
+    "distortion_practice": {"list": "/api/cognitive-distortions/practice/"},
+}
+
+
+# Keep a stable five-surface shape for every kind; missing != existing.
+_PUBLIC_SURFACE_ROUTES = {
+    kind: {surface: routes.get(surface)
+           for surface in ("list", "detail", "search", "graph", "compare")}
+    for kind, routes in _PUBLIC_SURFACE_ROUTES.items()
+}
+
+
+def _real_reader_contract(kind):
+    routes = _PUBLIC_SURFACE_ROUTES.get(kind)
+    if routes is None:
+        raise CMSFailure("CANDIDATE_READER_MAP_UNVERIFIABLE", 409)
+    return {
+        "scope": "existing_public_urls_no_post_apply_promise",
+        "surfaces": {
+            surface: {
+                "status": "existing_reader" if routes.get(surface) else "not_implemented_for_kind",
+                "route": routes.get(surface),
+            } for surface in ("list", "detail", "search", "graph", "compare")
+        },
+        "public_candidate_payload_available": False,
+    }
 
 
 # Only names of fields consumed by real reader paths may leave the private
@@ -204,7 +282,7 @@ def _candidate_footprint(kind, domain, *, state=None):
     }
 
 
-def _private_impact(dossier_digest, selected_items, footprints):
+def _private_impact(dossier_digest, selected_items, footprints, public_roots):
     """Expose exact revision-pinned reader topology, never public candidate data."""
     return {
         "schema": "cms-private-public-surface-impact-v1",
@@ -215,13 +293,16 @@ def _private_impact(dossier_digest, selected_items, footprints):
             "kind": item["kind"], "resource_id": item["resource_id"],
             "revision_id": item["revision_id"], "fingerprint": item["fingerprint"],
             **footprint,
+            "current_public_anchor": public_root,
             "readers": {
-                surface: _PUBLIC_READER_PATHS.get(item["kind"], {}).get(surface)
+                surface: (_PUBLIC_READER_PATHS.get(item["kind"], {}).get(surface)
+                          if _PUBLIC_SURFACE_ROUTES[item["kind"]].get(surface) else None)
                 for surface in ("detail", "search", "graph", "compare")
             },
+            "public_reader_contract": _real_reader_contract(item["kind"]),
             "mapping_complete": False,
             "after_apply": "not_available_without_frozen_authority",
-        } for item, footprint in zip(selected_items, footprints)],
+        } for item, footprint, public_root in zip(selected_items, footprints, public_roots)],
         "notice": "READER_TOPOLOGY_ONLY_NOT_A_PUBLIC_DIFF_OR_APPLY_MANIFEST",
     }
 
@@ -235,7 +316,7 @@ def private_candidate_projection(actor_id, session_id, dossier_id):
         current = verify_preparation(actor_id, session_id, row.pk)
         if not current["snapshot_current"]:
             raise CMSFailure("CANDIDATE_PREVIEW_STALE", 409)
-        items, footprints = [], []
+        items, footprints, projected_states = [], [], []
         for bound in row.dossier["selection_snapshot"]["items"]:
             kind, identifier = bound["kind"], bound["resource_id"]
             if selection.domain == "learning":
@@ -257,6 +338,7 @@ def private_candidate_projection(actor_id, session_id, dossier_id):
                 revision_id = None
                 fingerprint = bound["content_digest"]
                 footprints.append(_candidate_footprint(kind, selection.domain))
+                projected_states.append(None)
             else:
                 # Exact ContentState UUID, not any canonical object whose current
                 # text happens to resemble the selected editorial candidate.
@@ -280,6 +362,7 @@ def private_candidate_projection(actor_id, session_id, dossier_id):
                 revision_id = revision.pk
                 fingerprint = bound["proposal_digest"]
                 footprints.append(_candidate_footprint(kind, selection.domain, state=state))
+                projected_states.append(state)
             items.append({
                 "kind": kind, "resource_id": identifier,
                 "revision_id": revision_id, "version": version,
@@ -296,7 +379,10 @@ def private_candidate_projection(actor_id, session_id, dossier_id):
             "selection_digest": selection.selection_digest,
             "dossier_id": str(row.pk), "dossier_digest": row.dossier_digest,
             "snapshot_current": True, "items": items,
-            "impact_preview": _private_impact(row.dossier_digest, items, footprints),
+            "impact_preview": _private_impact(
+                row.dossier_digest, items, footprints,
+                public_root_witnesses(selection.domain, items, projected_states),
+            ),
             "public_projection": {
                 "available": False, "payload": None,
                 "reason": "INDEPENDENT_SCIENCE_RIGHTS_AND_PUBLIC_MANIFEST_REQUIRED",

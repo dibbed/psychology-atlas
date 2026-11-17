@@ -1206,6 +1206,7 @@ def global_search(request):
         ("slug", "name_en", "name_fa", "description_en", "description_fa"),
     )[:10]
     assessment_sets = public_sets()
+    from .cms_public_alias_disambiguation import public_exact_alias_disambiguation
     assessments = ranked_public_search(
         loaded_instruments(assessment_sets), q, assessment_sets["aliases"].filter(instrument_id=OuterRef("pk")),
         ("slug", "name_en", "name_fa", "description", "construct_overview"),
@@ -1213,6 +1214,10 @@ def global_search(request):
             icontains_any(("label", "key"), q))),
     )[:10]
 
+    # Reuse the already prefetched public aliases and their serializer gates.
+    # Separate exact-alias SQL queries broke the long-standing 13-query budget.
+    brain_payload = BrainAnatomyListSerializer(brain_entities, many=True).data
+    assessment_payload = AssessmentSerializer(assessments, many=True).data
     return Response({
         "query": q,
         "disorders": DisorderListSerializer(disorders, many=True).data,
@@ -1240,8 +1245,9 @@ def global_search(request):
         "psychologists": PsychologistListSerializer(psychologists, many=True).data,
         "theories": TheoryListSerializer(theories, many=True).data,
         "timeline_events": TimelineEventListSerializer(timeline_events, many=True).data,
-        "brain_entities": BrainAnatomyListSerializer(brain_entities, many=True).data,
-        "assessments": AssessmentSerializer(assessments, many=True).data,
+        "brain_entities": brain_payload,
+        "assessments": assessment_payload,
+        "alias_disambiguation": public_exact_alias_disambiguation(q, brain_payload, assessment_payload),
     })
 
 
