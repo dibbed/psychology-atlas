@@ -20,6 +20,12 @@
     "320px RTL candidate preview has no horizontal overflow",
     "Candidate preview persists on mobile viewport",
     "Candidate preview control is keyboard focusable",
+    "W16-02 real frozen dry-run lists field names and canonical public-root impact only",
+    "W16-02 dry-run cannot publish any private projection",
+    "W16-02 exact chosen candidate is sealed by kind and revision",
+    "W16-02 frozen manifest UI discloses no private aliases or raw evidence",
+    "W16-02 manifest response disables cache",
+    "W16-02 frozen-manifest panel does not overflow at 320px RTL",
     "W16-00 Learning UI recheck explicitly shows semantic stale dossier",
     "W16-00 stale Learning candidate is withheld from private preview",
     "W17-01 debounced slug autocomplete only exposes two synthetic authorized identities",
@@ -38,6 +44,7 @@
   "screenshots": [
     "turn08-candidate-1280.png",
     "turn08-candidate-320.png",
+    "turn08-frozen-manifest-320.png",
     "turn08-public-alias-320.png"
   ],
   "errors": [],

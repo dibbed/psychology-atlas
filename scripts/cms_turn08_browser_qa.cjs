@@ -138,6 +138,31 @@ async function getPreview(page,dossierId){
       "Candidate preview control is keyboard focusable");
     await page.screenshot({path:path.join(out,"turn08-candidate-320.png"),fullPage:true});
     report.screenshots.push("turn08-candidate-320.png");
+    // W16-02: actual immutable review-manifest flow, not public Apply.
+    await page.getByRole("button",{name:"تطبیق پروندهٔ ثابت با وضعیت زنده"}).click();
+    const freezePanel=page.getByRole("region",{name:"مانیفست ثابت بررسی پیش از انتشار"});
+    await freezePanel.getByRole("button",{name:"ساخت Dry-run با نسخهٔ فعلی پرونده"}).click();
+    await freezePanel.getByRole("button",{name:"ثبت Immutable Frozen Review Manifest"}).waitFor();
+    check(await freezePanel.getByText("فیلدهای تغییر:",{exact:false}).count()>0,
+      "W16-02 real frozen dry-run lists field names and canonical public-root impact only");
+    await freezePanel.getByRole("button",{name:"ثبت Immutable Frozen Review Manifest"}).click();
+    await freezePanel.getByText("مانیفست بررسی منجمد شد.",{exact:false}).waitFor();
+    const qaFrozen=await page.evaluate(async id=>{
+      const r=await fetch("/api/admin/publication/preparations/"+id+"/dry-run/",{cache:"no-store"});
+      return {status:r.status,body:await r.json(),cache:r.headers.get("cache-control")};
+    },id);
+    check(qaFrozen.status===200&&qaFrozen.body.public_projection===null&&qaFrozen.body.approved===false,
+      "W16-02 dry-run cannot publish any private projection");
+    check(qaFrozen.body.actions.length===1&&qaFrozen.body.actions[0].kind==="brain-anatomical-alias",
+      "W16-02 exact chosen candidate is sealed by kind and revision");
+    check(!(await freezePanel.innerText()).includes("P16 PRIVATE SYNTHETIC SECRET"),
+      "W16-02 frozen manifest UI discloses no private aliases or raw evidence");
+    check(qaFrozen.cache==="no-store","W16-02 manifest response disables cache");
+    await page.setViewportSize({width:320,height:820});
+    check(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),
+      "W16-02 frozen-manifest panel does not overflow at 320px RTL");
+    await page.screenshot({path:path.join(out,"turn08-frozen-manifest-320.png"),fullPage:true});
+    report.screenshots.push("turn08-frozen-manifest-320.png");
     // W16-00: real Learning UI recheck after semantic subtype drift, using
     // synthetic records in the *same guarded disposable* browser database.
     const learningFixture=JSON.parse(exec(py,["-c",[

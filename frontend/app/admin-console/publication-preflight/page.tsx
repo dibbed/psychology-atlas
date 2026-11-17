@@ -2,6 +2,7 @@
 import {useEffect,useRef,useState} from "react";
 import {cms,CmsError,type CmsPage} from "@/lib/cms";
 import {CmsState,useCms} from "@/components/cms/CmsShell";
+import FrozenManifestPanel from "@/components/cms/FrozenManifestPanel";
 
 type Domain="cases"|"learning"|"brain"|"assessment";
 type Entry={kind:string;resource_id:string|number;case_id?:number;version?:number;
@@ -631,7 +632,11 @@ export default function PublicationPreflight(){
             {preparationCheck&&<p role="status">{preparationCheck.snapshot_current?
               "نسخه و شواهدِ بررسی‌شده با پروندهٔ ثابت مطابق‌اند. هنوز مجوز انتشار وجود ندارد.":
               "نسخه، سیاست یا شواهد از زمان ثبت پرونده تغییر کرده‌اند. پرونده باید مجدداً آماده شود."}</p>}
-            <p className="muted">این رسید مجوز نشر عمومی، حقوق محتوا یا تأیید مستقل انسانی نیست و هیچ دکمهٔ Apply ندارد.</p>
+            <FrozenManifestPanel key={preparation.id}
+              domain={activeDomain} dossierId={preparation.id}
+              dossierDigest={preparation.dossier_digest}
+              valid={preparationCheck?.snapshot_current===true}/>
+            <p className="muted">این رسید مجوز نشر عمومی یا تأیید مستقل انسانی نیست. مانیفست بررسی ثابت نیز مجوز Apply نیست.</p>
           </section>}
         </div>}
       </section>}
