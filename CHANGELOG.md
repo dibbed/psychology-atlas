@@ -50,6 +50,7 @@ All notable changes to Psychology Atlas. This project follows Semantic Versionin
 
 ### Security
 
+- 2026-11-21: Upgrade pinned Next.js from `16.4.3` to `16.4.6` (including the npm lockfile) to address all five then-open GitHub Dependabot alerts affecting Next.js on `main` (2 critical, 1 high, 2 moderate). Local `npm audit --audit-level=low` now reports **0 vulnerabilities**. Alert closure on the default branch must be verified after the actual merge and Dependabot re-scan; this code change is not a release or production deployment.
 - Public rights scopes are applied consistently across list, detail, search, graph and nested serializers, including embedded Symptom text.
 - Publication actions require a live admin session, capability checks, independent approval where policy requires it, and single-use MFA step-up bound to the manifest.
 - No scientific, legal or rights approval is fabricated by fixtures or tests.
