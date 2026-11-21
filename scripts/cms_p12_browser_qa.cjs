@@ -203,10 +203,19 @@ function historySnapshot(){
   await owner.getByRole('heading',{name:'صف انتشار، فقط بررسی مقدماتی'}).waitFor();
   const preflight=await query(owner,'/publication/preflight/?domain=cases');
   const draftCandidate=preflight.data.results.find(x=>x.resource_id===draft.revision_id);
-  check(preflight.status===200&&!!draftCandidate&&
-    await owner.getByText(draftCandidate.revision_digest,{exact:true}).count()===1&&
-    !draftCandidate.eligible&&await owner.getByText('پیش‌نیازهای انتشار ناقص است').count()>0,
-    'Publication preflight renders the same server-bound fingerprint and stays closed');
+  // The preflight page loads its inventory asynchronously after its heading.
+  // Wait for the exact server-computed digest, not merely the heading, before
+  // checking the rendered review blockers on slower GitHub Actions runners.
+  check(preflight.status===200&&!!draftCandidate&&!draftCandidate.eligible,
+    'Preflight API retains the current unpublished draft with review blockers');
+  await owner.getByText(draftCandidate.revision_digest,{exact:true}).waitFor({state:'visible',timeout:25000});
+  await owner.getByText('پیش‌نیازهای انتشار ناقص است',{exact:true}).first().waitFor({state:'visible'});
+  const visibleDigests=await owner.getByText(draftCandidate.revision_digest,{exact:true}).count();
+  const blockedItems=await owner.getByText('پیش‌نیازهای انتشار ناقص است',{exact:true}).count();
+  check(visibleDigests===1&&blockedItems>0,
+    'Publication preflight renders the same server-bound fingerprint and stays closed '+JSON.stringify({
+      visibleDigests,blockedItems,resourceId:draft.revision_id
+    }));
   const readerContext=await browser.newContext({viewport:{width:390,height:790}});
   const reader=await readerContext.newPage();
   reader.on('pageerror',e=>report.errors.push(String(e)));
