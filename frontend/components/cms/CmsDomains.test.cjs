@@ -160,7 +160,8 @@ test('all 68 actual P07-P09 backend schemas render with operational controls and
     'print(json.dumps([schema_data(kind) for kind in DOMAIN_SPECS]))',
   ].join('\n');
   try {
-    const schemas = JSON.parse(execFileSync(path.join(backend, '.venv/Scripts/python.exe'), ['-c', code], {cwd: backend, encoding: 'utf8', env: {...process.env, DJANGO_SETTINGS_MODULE: 'config.settings', DB_ENGINE: 'sqlite', SQLITE_PATH: database, CMS_ARTIFACT_ROOT: path.join(temporary, 'artifacts')}, maxBuffer: 1024 * 1024}));
+    const python = process.env.CMS_QA_PYTHON || (process.platform === 'win32' ? path.join(backend, '.venv', 'Scripts', 'python.exe') : 'python');
+    const schemas = JSON.parse(execFileSync(python, ['-c', code], {cwd: backend, encoding: 'utf8', env: {...process.env, DJANGO_SETTINGS_MODULE: 'config.settings', DB_ENGINE: 'sqlite', SQLITE_PATH: database, CMS_ARTIFACT_ROOT: path.join(temporary, 'artifacts')}, maxBuffer: 1024 * 1024}));
     assert.ok(schemas.length >= 90); assert.equal(schemas.filter(x => x.domain === 'brain').length, 13); assert.equal(schemas.filter(x => x.domain === 'assessment').length, 9);
     const api = runtime();
     for (const schema of schemas) {
