@@ -2389,8 +2389,24 @@ def _build_atlas_graph():
             "aliases_truncated": len(entity.public_aliases) > NESTED_LIMIT,
         })
     anatomy_ids = {entity.pk for entity in anatomy}
+    # Public source metadata/rights predicates include expensive regex and
+    # lifecycle guards. Materialize only the sources relevant to displayed
+    # anatomy before the per-link EXISTS query: PostgreSQL otherwise expands
+    # the correlated public_sources() predicate for every hierarchy row and
+    # can exceed the CI statement timeout on a freshly published corpus.
+    link_source_ids = atlas_models.BrainHierarchyLinkSource.objects.filter(
+        relationship__child_id__in=anatomy_ids,
+        relationship__parent_id__in=anatomy_ids,
+        relationship__is_active=True,
+        relationship__review_status="reviewed",
+        relationship__source_version__regex=NONBLANK_PATTERN,
+        note__regex=NONBLANK_PATTERN,
+    ).order_by().values("source_id")
+    permitted_source_ids = list(
+        public_sources().filter(pk__in=link_source_ids).values_list("pk", flat=True)
+    )
     hierarchy_sources = atlas_models.BrainHierarchyLinkSource.objects.filter(
-        source__in=public_sources(), note__regex=NONBLANK_PATTERN,
+        source_id__in=permitted_source_ids, note__regex=NONBLANK_PATTERN,
     ).select_related("source").order_by("source_id", "pk")
     for link in atlas_models.BrainHierarchyLink.objects.filter(
         is_active=True, review_status="reviewed", child_id__in=anatomy_ids, parent_id__in=anatomy_ids,

@@ -35,6 +35,7 @@ All notable changes to Psychology Atlas. This project follows Semantic Versionin
 
 ### Fixed
 
+- 2026-11-21: Materialize the rights-checked SourceReference IDs for the public Brain hierarchy graph before executing the per-link provenance query. This preserves all scientific/rights filters while preventing PostgreSQL from repeatedly inlining expensive source-validation predicates into correlated hierarchy checks. Reproduced GitHub's 60-second statement timeout; the identical 41-test integration suite now passes on a fresh disposable PostgreSQL cluster with matching timeouts.
 - W13-02: ETag changes on relevant source/right/context drift, repeated identical source submissions do not generate duplicate revisions, source removal without a real reason is rejected, and a failed AuditEvent insert rolls back the whole evidence revision.
 - W13-02: Persian Learning Evidence UI refetches after parent content saves, discards stale asynchronous responses, protects both staged/unadded inputs and changed source locators from unintended navigation, and reuses current source/rights state during history pagination.
 - W13-01: Admin Distortion Practice snapshots and simulations now revalidate active target/choice Concept dependencies after subtype and active-state drift and deny invalid previews without writing learner history.
