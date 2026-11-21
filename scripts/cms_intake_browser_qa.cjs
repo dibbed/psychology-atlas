@@ -52,9 +52,17 @@ function privateInventory() {
   assert.equal(fs.realpathSync(directory), directory);
   return fs.readdirSync(directory).sort().map(name => {
     assert(/^[0-9a-f]{32}\.json$/.test(name), "Only synthetic artifact storage keys belong to this run");
-    const file = path.join(directory, name), stat = fs.lstatSync(file);
-    assert(stat.isFile() && !stat.isSymbolicLink() && stat.nlink === 1, "Owned bytes must be ordinary unlinked files");
-    return { name, sha256: sha(fs.readFileSync(file)) };
+    // Open once and validate/read the same descriptor: pathname re-resolution
+    // between lstat and read could otherwise be redirected to other bytes.
+    const file = path.join(directory, name);
+    const fd = fs.openSync(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0));
+    try {
+      const stat = fs.fstatSync(fd);
+      assert(stat.isFile() && stat.nlink === 1, "Owned bytes must be ordinary unlinked files");
+      return { name, sha256: sha(fs.readFileSync(fd)) };
+    } finally {
+      fs.closeSync(fd);
+    }
   });
 }
 function dbState() {
