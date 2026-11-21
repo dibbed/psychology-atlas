@@ -1,0 +1,30 @@
+{
+  "stage": "P08",
+  "status": "PASS",
+  "checks": [
+    "Guarded isolated P08 fixture seeded",
+    "Owner session with real MFA and CSRF",
+    "All 34 P07/P08 typed kinds available to Owner",
+    "All 17 P08 kinds are visible",
+    "Technique editor creates private proposal",
+    "Preview never promotes technique",
+    "Source-linked relation remains unpublished",
+    "Existing public Therapy comparison is available, read-only",
+    "320px therapy compare has no overflow",
+    "Scoped non-therapy staff cannot read content",
+    "Private comparison rejects scoped staff",
+    "Schema denies 17 therapy kinds",
+    "No uncaught page errors"
+  ],
+  "screenshots": [
+    "p08-technique-desktop.png",
+    "p08-compare-desktop.png",
+    "p08-compare-mobile.png"
+  ],
+  "errors": [],
+  "limits": [
+    "Synthetic MFA fixture, not enrolled local owner",
+    "No P16 canonical publication",
+    "Local HTTP, no production release"
+  ]
+}

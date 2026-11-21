@@ -20,7 +20,7 @@ from .models import (
 
 
 def available_flashcards():
-    return Flashcard.objects.filter(is_active=True).filter(
+    return Flashcard.objects.filter(is_active=True, archived_at__isnull=True).filter(
         Q(concept__isnull=True) | Q(concept__is_active=True),
         Q(disorder__isnull=True) | Q(disorder__is_active=True),
     )
@@ -99,7 +99,8 @@ def review_flashcard(*, user, flashcard: Flashcard, rating: str):
     valid = {choice for choice, _ in UserFlashcardProgress.Rating.choices}
     if rating not in valid:
         raise ValueError("invalid_rating")
-    if not flashcard.is_active:
+    flashcard = Flashcard.objects.select_for_update().get(pk=flashcard.pk)
+    if flashcard.archived_at is not None or not flashcard.is_active:
         raise ValueError("inactive_flashcard")
     if flashcard.concept_id and not flashcard.concept.is_active:
         raise ValueError("inactive_concept")
@@ -321,9 +322,34 @@ def get_recommendations(user, *, limit=6):
     return sorted(recommendations, key=lambda item: item["priority"], reverse=True)[:limit]
 
 
+def challenge_public_eligible(challenge, *, allow_archived=False):
+    """Historical archived attempts remain readable; revoked linked rights never do."""
+    if challenge is None:
+        return False
+    from .cms_public_rights import learning_archived, scope_visible
+    if not allow_archived and (
+        not challenge.is_active or challenge.archived_at is not None
+        or learning_archived("daily", challenge.pk)
+    ):
+        return False
+    for kind, obj in (("concept", challenge.concept), ("disorder", challenge.disorder)):
+        if obj is None:
+            continue
+        # A historical attempt may keep its deactivated linked content readable,
+        # but a revoked rights scope must still block it.
+        if not allow_archived and not obj.is_active:
+            return False
+        if any(
+            not scope_visible(kind, obj.pk, material)
+            for material in ("metadata", "text", "translation", "item")
+        ):
+            return False
+    return True
+
+
 def today_challenge(activity_date=None):
     challenges = list(
-        DailyChallenge.objects.filter(is_active=True)
+        DailyChallenge.objects.filter(is_active=True, archived_at__isnull=True)
         .filter(
             Q(concept__isnull=True) | Q(concept__is_active=True),
             Q(disorder__isnull=True) | Q(disorder__is_active=True),
@@ -334,6 +360,8 @@ def today_challenge(activity_date=None):
     )
     valid = []
     for challenge in challenges:
+        if not challenge_public_eligible(challenge):
+            continue
         choices = [choice for choice in challenge.choices.all() if choice.is_active]
         if not choices or sum(1 for choice in choices if choice.is_correct) != 1:
             continue

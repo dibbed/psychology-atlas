@@ -18,7 +18,9 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
+from django.db import connection
 from django.test import TestCase, TransactionTestCase
+from unittest import skipUnless
 from django.utils import timezone
 
 from .models import RecommendationFeedback
@@ -87,13 +89,16 @@ class V083RecommendationFeedbackAuditTests(TestCase):
         self.assertIsNone(RecommendationFeedback.objects.get(pk=event.pk).target_id)
 
 
+@skipUnless(connection.vendor == "sqlite",
+            "Historical migration rehearsal uses PRAGMA and a SQLite file subprocess.")
 class V083RecommendationFeedbackMigrationTests(TransactionTestCase):
     reset_sequences = True
     migrate_from = ("atlas", "0030_studyblock_ck_study_block_started_status_and_more")
     migrate_to = ("atlas", "0031_v083_recommendation_feedback")
 
     def tearDown(self):
-        MigrationExecutor(connection).migrate([("atlas", "0032_v084_study_sessions")])
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
         super().tearDown()
 
     def test_historical_upgrade_preserves_canonical_state_without_backfill(self):
@@ -166,6 +171,7 @@ class V083RecommendationFeedbackMigrationTests(TransactionTestCase):
             database = Path(temp_dir) / "fresh.sqlite3"
             environment = os.environ.copy()
             environment["SQLITE_PATH"] = str(database)
+            environment["SQLITE_TEST_PATH"] = str(Path(temp_dir) / "tests.sqlite3")
             result = subprocess.run(
                 [sys.executable, "manage.py", "migrate", "--noinput", "--skip-checks", "--verbosity", "0"],
                 cwd=Path(__file__).resolve().parents[1],

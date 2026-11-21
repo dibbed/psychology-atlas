@@ -569,8 +569,8 @@ class AssessmentAPITests(CuratedFixture, TestCase):
         for index in range(6):
             self.synthetic_instrument(f"synthetic-query-{index}", f"Synthetic query family {index}")
         self.assertEqual(count("/api/assessments/"), baseline)
-        self.assertEqual(baseline, 7)
-        self.assertEqual(count("/api/assessments/" + self.instrument.slug + "/"), 13)
+        self.assertEqual(baseline, 8)  # One fixed P05 rights/lifecycle read per request.
+        self.assertEqual(count("/api/assessments/" + self.instrument.slug + "/"), 14)
 
     def test_nested_aliases_are_bounded_and_truncation_explicit(self):
         for index in range(32):
@@ -627,7 +627,7 @@ class AssessmentConcurrentPublicationTests(TransactionTestCase):
                 barrier.wait(timeout=20)
                 return publish(apply=True)
             finally:
-                close_old_connections()
+                connection.close()
         with ThreadPoolExecutor(max_workers=2) as executor:
             results = list(executor.map(lambda _: worker(), range(2)))
         self.assertEqual(sorted(row["status"] for row in results), ["ALREADY_PUBLISHED", "PUBLISHED"])

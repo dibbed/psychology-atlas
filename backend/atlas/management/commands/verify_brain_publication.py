@@ -39,6 +39,7 @@ class Command(BaseCommand):
             with CaptureQueriesContext(connection) as queries:
                 response = client.get(path, params, secure=True)
             elapsed = round((perf_counter() - start) * 1000, 2)
+            budget += 1  # P05 checks current rights/lifecycle once per real API request.
             if response.status_code != 200 or len(queries) > budget:
                 raise CommandError(f"Real API probe failed: {label}; status={response.status_code}, queries={len(queries)}, budget={budget}")
             data = response.json()

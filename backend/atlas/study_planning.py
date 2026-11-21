@@ -298,7 +298,10 @@ def _target_active(target_type, target):
     if target_type == "therapy":
         return bool(target.is_active and target.family_id and target.family.is_active)
     if target_type == "quiz":
-        return bool(target.is_active and (target.disorder_id is None or target.disorder.is_active))
+        from .cms_public_rights import learning_archived
+        return bool(target.is_active and target.archived_at is None
+            and not learning_archived("quiz", target.pk)
+            and (target.disorder_id is None or target.disorder.is_active))
     if target_type == "clinical_case":
         revision = target.current_revision
         entry_step = revision.entry_step if revision is not None else None

@@ -10,7 +10,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.db import IntegrityError, close_old_connections, transaction
+from django.db import IntegrityError, close_old_connections, connections, transaction
 from django.test import TransactionTestCase
 from django.utils import timezone
 from rest_framework.test import APIClient, APITestCase
@@ -379,13 +379,15 @@ class StudySessionConcurrencyTests(TransactionTestCase):
         def submit(args):
             block, event = args
             close_old_connections()
-            client = APIClient()
-            client.force_authenticate(self.user)
-            response = client.post(BASE, {
-                "primary_block_id": block.id, "client_event_id": str(event),
-            }, format="json")
-            close_old_connections()
-            return response.status_code, response.data
+            try:
+                client = APIClient()
+                client.force_authenticate(self.user)
+                response = client.post(BASE, {
+                    "primary_block_id": block.id, "client_event_id": str(event),
+                }, format="json")
+                return response.status_code, response.data
+            finally:
+                connections.close_all()
         with ThreadPoolExecutor(max_workers=2) as pool:
             return list(pool.map(submit, requests))
 
@@ -435,11 +437,13 @@ class StudySessionConcurrencyTests(TransactionTestCase):
 
         def end(session_id, suffix):
             close_old_connections()
-            client = APIClient()
-            client.force_authenticate(self.user)
-            response = client.post(BASE + f"{session_id}/{suffix}/", {}, format="json")
-            close_old_connections()
-            return response.status_code, response.data
+            try:
+                client = APIClient()
+                client.force_authenticate(self.user)
+                response = client.post(BASE + f"{session_id}/{suffix}/", {}, format="json")
+                return response.status_code, response.data
+            finally:
+                connections.close_all()
 
         first_id = start()
         with ThreadPoolExecutor(max_workers=2) as pool:

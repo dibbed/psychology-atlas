@@ -26,17 +26,24 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
     "rest_framework",
+    "django_otp",
+    "django_otp.plugins.otp_static",
+    "django_otp.plugins.otp_totp",
+    "two_factor",
     "atlas",
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
-    "django.middleware.gzip.GZipMiddleware",
+    "atlas.cms_integration.CMSGZipMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django_otp.middleware.OTPMiddleware",
+    "atlas.cms_integration.CMSIntegrationMiddleware",
+    "atlas.cms_public_rights.PublicRightsContextMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -45,7 +52,7 @@ ROOT_URLCONF = "config.urls"
 
 TEMPLATES = [{
     "BACKEND": "django.template.backends.django.DjangoTemplates",
-    "DIRS": [],
+    "DIRS": [BASE_DIR / "atlas" / "templates"],
     "APP_DIRS": True,
     "OPTIONS": {
         "context_processors": [
@@ -69,6 +76,8 @@ if DB_ENGINE == "sqlite":
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
             "NAME": db_path,
+            # A file database exercises SQLite's IMMEDIATE lock and busy timeout across connections.
+            "TEST": {"NAME": os.getenv("SQLITE_TEST_PATH") or db_path.with_name("test_" + db_path.name)},
             "OPTIONS": {
                 "transaction_mode": os.getenv("SQLITE_TRANSACTION_MODE", "IMMEDIATE"),
                 "timeout": float(os.getenv("SQLITE_TIMEOUT_SECONDS", "10")),
@@ -115,7 +124,7 @@ CORS_ALLOWED_ORIGINS = [
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "atlas.cms_jwt.VersionedJWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.AllowAny",
@@ -135,7 +144,26 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": False,
+    "TOKEN_OBTAIN_SERIALIZER": "atlas.cms_jwt.VersionedTokenObtainPairSerializer",
+    "TOKEN_REFRESH_SERIALIZER": "atlas.cms_jwt.VersionedTokenRefreshSerializer",
 }
+
+SESSION_COOKIE_NAME = "admin_sessionid"
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_NAME = "admin_csrftoken"
+CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",") if origin.strip()]
+CSRF_COOKIE_SAMESITE = "Lax"
+LOGIN_URL = "two_factor:login"
+LOGIN_REDIRECT_URL = "two_factor:profile"
+TWO_FACTOR_PATCH_ADMIN = False
+TWO_FACTOR_REMEMBER_COOKIE_AGE = None
+CSRF_FAILURE_VIEW = "atlas.cms_csrf.failure"
+
+# Private, authenticated delivery only; no MEDIA/static route points at this root.
+CMS_ARTIFACT_ROOT = Path(os.getenv("CMS_ARTIFACT_ROOT", str(BASE_DIR.parent / ".private-artifacts")))
+FILE_UPLOAD_MAX_MEMORY_SIZE = 64 * 1024
+DATA_UPLOAD_MAX_MEMORY_SIZE = 25 * 1024 * 1024 + 16384
 
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"

@@ -208,7 +208,7 @@ def build_candidates(user, now, *, today=None):
         ))
     actionable_through_today = block_base.filter(scheduled_date__lte=today).filter(
         Q(block_kind=models.StudyBlock.Kind.FLASHCARD_REVIEW)
-        | (Q(block_kind=models.StudyBlock.Kind.QUIZ_PRACTICE, quiz__is_active=True)
+        | (Q(block_kind=models.StudyBlock.Kind.QUIZ_PRACTICE, quiz__is_active=True, quiz__archived_at__isnull=True)
            & (Q(quiz__disorder__isnull=True) | Q(quiz__disorder__is_active=True)))
         | (Q(block_kind=models.StudyBlock.Kind.CASE_PRACTICE, clinical_case__is_active=True,
              clinical_case__current_revision__status=models.CaseRevision.Status.PUBLISHED,
@@ -218,8 +218,10 @@ def build_candidates(user, now, *, today=None):
              clinical_case__current_revision__entry_step__revision_id=F("clinical_case__current_revision_id"))
            & (Q(clinical_case__current_revision__primary_disorder__isnull=True)
               | Q(clinical_case__current_revision__primary_disorder__is_active=True)))
-        | Q(block_kind__in=[models.StudyBlock.Kind.CONCEPT_REVIEW,
-                            models.StudyBlock.Kind.DISTORTION_PRACTICE], concept__is_active=True)
+        | Q(block_kind=models.StudyBlock.Kind.CONCEPT_REVIEW, concept__is_active=True)
+        | Q(block_kind=models.StudyBlock.Kind.DISTORTION_PRACTICE, concept__is_active=True,
+            concept_id__in=models.CognitiveDistortionPracticeItem.objects.filter(
+                is_active=True, archived_at__isnull=True).values("target_concept_id"))
         | Q(block_kind=models.StudyBlock.Kind.DISORDER_REVIEW, disorder__is_active=True)
     ).order_by().values_list("block_kind", "quiz_id", "clinical_case_id", "concept_id", "disorder_id")
     for kind, quiz_id, case_id, concept_id, disorder_id in actionable_through_today.iterator(chunk_size=200):
@@ -314,7 +316,7 @@ def build_candidates(user, now, *, today=None):
 
     quizzes, hit = _capped(models.QuizAttempt.objects.filter(
         user=user, status=models.QuizAttempt.Status.COMPLETED, completed_at__gte=cutoff,
-        quiz__is_active=True,
+        quiz__is_active=True, quiz__archived_at__isnull=True,
     ).filter(
         Q(quiz__disorder__isnull=True) | Q(quiz__disorder__is_active=True),
     ).select_related("quiz", "quiz__disorder").order_by("-completed_at", "-id"), 20)
@@ -347,7 +349,7 @@ def build_candidates(user, now, *, today=None):
     ).select_related("concept", "plan").order_by("plan_id", "id"), 20)
     truncated |= hit
     valid_practice = set(models.CognitiveDistortionPracticeItem.objects.filter(
-        is_active=True, target_concept__is_active=True,
+        archived_at__isnull=True, is_active=True, target_concept__is_active=True,
         target_concept_id__in=[scope.concept_id for scope in distortion_scopes],
     ).values_list("target_concept_id", flat=True).distinct())
     for scope in distortion_scopes:

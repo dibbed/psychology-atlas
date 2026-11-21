@@ -1,6 +1,7 @@
 from django.core.cache import cache
 from django.db import transaction
-from django.db.models.signals import post_delete, post_save
+from django.db.models.signals import m2m_changed, post_delete, post_save
+from django.contrib.auth.models import Group, User
 from django.dispatch import receiver
 from uuid import uuid4
 
@@ -108,14 +109,27 @@ GRAPH_MODELS = (
     TherapyTechniqueSource,
 ) + V06_GRAPH_MODELS + V095_GRAPH_MODELS
 
+GRAPH_MODELS += (atlas_models.GovernanceRecord, atlas_models.GovernanceRevision, atlas_models.GovernanceDecision,
+                atlas_models.SourceState, atlas_models.SourceSuccessor, atlas_models.ReviewPolicy,
+                atlas_models.RolePolicy, atlas_models.LearningArchiveReceipt, User, Group)
+
 
 def _clear_graph_cache():
     cache.set("atlas_graph_revision", uuid4().hex, timeout=None)
     cache.delete("atlas_graph")
 
 
+def _clear_public_scope_cache():
+    cache.set("atlas_public_rights_revision", uuid4().hex, timeout=None)
+    cache.delete("atlas_public_rights_scopes")
+
+
 def invalidate_graph_caches(*_args, **_kwargs):
     _clear_graph_cache()
+    if _kwargs.get("sender") in (atlas_models.GovernanceRecord, atlas_models.SourceState,
+                                atlas_models.LearningArchiveReceipt):
+        _clear_public_scope_cache()
+        transaction.on_commit(_clear_public_scope_cache, using=_kwargs.get("using"))
     # A concurrent reader may refill the old committed graph before this write commits.
     transaction.on_commit(_clear_graph_cache, using=_kwargs.get("using"))
 
@@ -133,3 +147,13 @@ for model in GRAPH_MODELS:
         dispatch_uid=f"atlas.invalidate_graph_cache.delete.{model._meta.label_lower}",
         weak=False,
     )
+
+
+def invalidate_governance_authority(sender, action, **kwargs):
+    if action in {"post_add", "post_remove", "post_clear"}:
+        invalidate_graph_caches(using=kwargs.get("using"))
+
+
+for relationship in (User.user_permissions.through, User.groups.through, Group.permissions.through):
+    m2m_changed.connect(invalidate_governance_authority, sender=relationship,
+                        dispatch_uid=f"atlas.governance_authority.{relationship._meta.label_lower}", weak=False)

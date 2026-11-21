@@ -20,6 +20,73 @@ The v0.9 implementation targets **v0.9.0**, following the repository's full-SemV
 
 This code usage notice does not override licenses on credited third-party scientific data. The selected Brain FMA data are adapted under CC BY 4.0; CBIG network metadata retain their MIT notice. Those licenses permit commercial reuse within their respective scopes. See the [Brain data attribution](docs/research/brain/v0.9.2c/THIRD_PARTY_NOTICES.md).
 
+## V1.0-P09 — History/Attribution/Chronology controlled authoring · 2026-10-31
+
+P09 is locally completed for **34 History kinds** (Psychologist, Theory, Timeline, directional relations, aliases and claim-source links); four kinds are legitimately empty. This is **private editorial authoring and review**, not canonical scientific publication. Chronology respects exact date precision and citation debt; source_checked does not imply final scientific review.
+
+A reproducible direct-import cycle in the P09 registry was fixed and isolated regression added. Final local checks after that patch: **880 SQLite backend tests with 0 failures and 9 PG-only skips**, **72/72 disposable PostgreSQL 17 tests**, **13/13 Chromium QA**, **22/22 frontend CMS Node assertions**, frontend typecheck/build, no high-severity npm audit issues and Django migration drift zero.
+
+The real local SQLite was migrated to **0046_v100_p09_history_domains** after backed-up disposable rehearsal: **1,385 History anchors** and matching revisions, total **6,226 ContentState**; all **4,841 previous states and revisions** and **166 other tables** were preserved; SQLite integrity and FK checks passed. The backup is retained. Public psychology/history list APIs and anonymous admin denial were smoke-tested after migration.
+
+**Boundary:** uncommitted local source, no GitHub CI/PR/release or deployment. Owner MFA is still not verified; P16 handles dynamic publication. Next: P10 Brain curator. See [P09 handoff](docs/v1.0-p09-handoff.md) and [P09 browser report](docs/v1.0-p09-browser-report.json).
+## V1.0-P08 — Therapy/Technique controlled authoring · 2026-10-31
+
+Local P08 extends the existing CMS to **34 typed content kinds**, including all **17 Therapy/Technique taxonomy, alias, relation and source-link models**. Scoping, atomic revision/audit, scientific/source re-review, immutable history, source/rights binding and Persian editor are shared with P01–P07. TherapyBookmark and TherapyNote remain outside editorial writes. The admin public Therapy comparison reuses the existing public endpoint's canonical projection, now intersecting P05 resource rights; it is not therapeutic ranking, publication or a draft showcase.
+
+The actual local SQLite advanced to additive migration `0045_v100_p08_therapy_domains` only after a verified backup, disposable DB rehearsal and backend tests. The comparison confirmed all 166 unrelated tables, 4,124 older anchors and user-owned data were retained; **717 new therapy anchors**, total **4,841**. Full backend: 871 tests without failures, 9 PG-only skips; isolated PostgreSQL 17: 63/63 passed; P08 live synthetic browser: 13/13 passed, 3 screenshots; frontend Next 16.4.3 build/typecheck and Node tests passed, `npm audit` 0 vulnerabilities. A final rights-focused 36-test suite passed after the full run.
+
+Actual local Owner MFA enrollment is still outstanding, and CI/PR/production/release/P16 publication have not been executed. See the [P08 handoff](docs/v1.0-p08-handoff.md) and [browser report](docs/v1.0-p08-browser-report.json).
+
+## V1.0-P07 — Core, Concept and DSM authoring · 2026-10-31
+
+The **local implementation** now covers 17 typed Category/Disorder/Symptom/Concept/DSM entity and relation kinds. Persian/RTL admin routes support scoped list/detail, explicit field and relation editors, immutable revision history, versioned draft creation/edit, scientific/source review, server-side validation, private candidate preview and audited archive intent. DSM has scoped corpus tree, corpus metadata comparison, graph neighborhood, study preview and guarded raw archive access. Drafts, review decisions and archive requests **do not publish, activate, delete or withdraw canonical content**; P16 owns that capability.
+
+The original local SQLite was backed up and then advanced from `0043` to `0044_v100_p07_content_domains`. All 165 unrelated table contents and schema fingerprints matched the pre-migration backup; existing accounts and all 17 canonical/anchor counts were preserved. Backend acceptance: **860 tests, zero failures, nine intentional PostgreSQL-only skips**. Disposable PostgreSQL 17 acceptance: **52 passed, zero skips**, including P02/P04 concurrency. Chromium production-mode P07 acceptance: **16 passed and three screenshots**, with a real synthetic MFA session and no canonical changes. Next.js was raised to **16.4.3** after a critical advisory on 16.3.8, and `npm audit` reports **zero known vulnerabilities**; production build, typecheck and all 11 P07 frontend transport tests passed.
+
+**Important remaining boundary:** the local real Owner account exists and retains its capability but does not yet have a confirmed MFA device. The synthetic browser owner has MFA and proves the UI/API flow, not the real Owner's enrollment. Remote CI, PR/commit, production deployment and publication have not been performed. See the [P07 handoff](docs/v1.0-p07-handoff.md), [P07 work contract](docs/v1.0-p07-work-contract.md) and [sanitized browser evidence](docs/v1.0-p07-browser-report.json).
+
+## V1.0-P06 — Durable jobs, private artifacts and research intake · 2026-10-30
+
+Locally verified: private JSON upload/quarantine/validation, scoped downloads, durable intake jobs and immutable staging decisions are connected to the existing CMS. Explicit expired-file cleanup uses native Windows handles and retains files with historical dependencies; physical cleanup is unavailable on other platforms. Source/rights dependencies retain the existing scientific/publication boundaries. Final checks:813 SQLite tests (9 PostgreSQL-only skips),245 PostgreSQL tests (no skips),90 production-browser checks, build and typecheck passed. No canonical promotion or deployment is implied. See the [P06 handoff and verification ledger](docs/v1.0-p06-handoff.md) and [browser evidence](docs/v1.0-p06-browser-report.json). Run the separately managed worker with `python manage.py cms_worker --once` for one eligible job; no worker is started by importing the application.
+
+## V1.0-P05 — Sources, scoped rights and Persian terminology · 2026-10-11
+
+`/admin-console/sources` manages bibliography and dependency impact through persisted, versioned source plans. Preview and apply share validation under the existing policy and Brain locks; checked Assessment/Brain provenance remains protected. Merge/split require explicit identity, field choices and consumer mappings. The bibliography list loads impact in the scoped detail view.
+
+`/admin-console/rights` and `/admin-console/terminology` bind immutable proposals and explicit reviewer decisions to the exact resource version. Rights distinguish unknown, restricted, conflict, expiry and revocation for each material/use scope. Public consumers intersect effective rights with existing scientific/public gates; pending proposals grant no permission or withdrawal. Persian proposals retain EN/FA, alternatives, source locators and RTL preview without changing canonical scientific/Assessment authorization fields. Additive migration `0041_v100_p05_source_governance` creates no legacy approvals or rights backfill.
+
+See the [P05 handoff](docs/v1.0-p05-handoff.md), [source API](docs/v1.0-p05-source-api.md), [governance API](docs/v1.0-p05-governance-api.md) and [browser evidence](docs/v1.0-p05-browser-report.json). Run `node scripts/cms_governance_browser_qa.cjs` after the same production QA build used by P03/P04. Its evidence and rights fixtures are explicitly synthetic, non-scientific and isolated. Private evidence uploads are covered by the P06 section above; deployment and canonical publication remain later milestones.
+
+## V1.0-P04 — Scientific review workflow · 2026-10-10
+
+`/admin-console/reviews` connects the current Category/Disorder proposal adapters to a real queue, scoped reviewer assignment, evidence/source locator forms and immutable decision history. Submit, source check and scientific approval are separate commands. Decisions bind the exact draft revision hash, canonical base, source identities and locators, Disorder source-link membership/notes, Category dependency and review policy version. Stale approval blocks further decisions and requires an explicit reopen/resubmission; it never changes legacy canonical visibility or grants publication.
+
+Solo-owner requires explicit self-review acknowledgement. Two-person excludes every author of the proposal from its review, including owners and superusers. The core policy page requires owner authority, a separate settings capability, exact ETag, bound MFA step-up and an audited reason; switching the policy back does not revive old approvals. Migration `0040_v100_p04_review_workflow` adds review tasks/decisions/policy history without creating decisions for legacy content.
+
+See the [P04 handoff](docs/v1.0-p04-handoff.md) and [browser report](docs/v1.0-p04-browser-report.json). Run `node scripts/cms_review_browser_qa.cjs` with the same production build/runtime setup as P03. It uses guarded synthetic data, real session/CSRF/services and demonstrates draft → source check → approval → source invalidation → independent two-person re-review. Broader domain editors, source mutation UI, rights/terminology decisions and canonical publication retain their later milestone ownership.
+
+## V1.0-P03 — Admin console and Category journey · 2026-10-10
+
+`/admin-console` provides a Persian/RTL shell, capability-aware navigation, server-measured dashboard, a real Category list/detail/draft editor/preview/history and read-only audit. It reuses the frontend's CSS tokens, card/button patterns and installed dependencies. Scientific review is delivered by P04; publication remains a separate milestone. CMS sessions and snapshots never use the public JWT/localStorage client.
+
+The P02 proposal API is preserved. P03 adds its planned bounded collection GET and dashboard GET, with existing capability checks and scoped counts. CMS responses bypass gzip so strong revision ETags survive the actual browser journey. Saves retain `If-Match`, canonical digest, current permission/session checks and atomic revision/audit.
+
+Next proxies `/api/admin/` and maintained `/account/` routes to the configured `NEXT_PUBLIC_API_URL` backend origin, preserving upstream trailing slashes and cookies. For local split-port development, explicitly set backend `CSRF_TRUSTED_ORIGINS` to the exact frontend origin (e.g. `http://127.0.0.1:3000`) and use the same hostname throughout. The production contract remains one HTTPS origin; target proxy/cookie rehearsal is pending. Install existing backend requirements and apply migrations through `0039` on a backed-up target before using the console; this phase did not migrate the original local database.
+
+See the [P03 handoff](docs/v1.0-p03-handoff.md) for executed checks, routes, state behavior and precise browser limits. The reproducible synthetic journey is `node scripts/cms_browser_qa.cjs`; build with `NEXT_PUBLIC_API_URL=http://127.0.0.1:8023/api`, expose the existing Playwright tooling through `NODE_PATH`, and set `CMS_QA_PYTHON` if the project's backend virtualenv is not used. The harness starts/stops ports 3023/8023, migrates only its guarded temporary SQLite database, and writes a sanitized report/screenshots to `CMS_QA_OUTPUT`.
+
+## V1.0-P02 — Admin audit and revision foundation · 2026-10-10
+
+CMS proposals now use immutable `ContentRevision` snapshots, a versioned `ContentState` anchor and an append-only successor to the existing P01 event table. Saves require `If-Match` and the server's canonical digest; authority, precondition, revision and success audit share one transaction. Denied and failed events commit separately after rollback. Audit and conflict responses contain field names and safe metadata rather than text values or credentials.
+
+The initial resolver supports only Category and Disorder, with explicit text-field allowlists. Creating or editing a draft does not create or change public canonical content. Managed raw-admin entries are read-only; publication, other domain adapters, exports and the P03 console retain their later phase ownership. See the [P02 handoff](docs/v1.0-p02-handoff.md) for APIs, migration preservation, checks and limits.
+
+## V1.0-P01 — Admin authentication foundation · 2026-10-09
+
+`/api/admin/` now uses explicit Django sessions, CSRF, mandatory package-backed TOTP/recovery and a closed Django Permission vocabulary. Grants have delegation ceilings, bound step-up and a shared transactional last-owner guard. Raw Django auth administration is read-only. Public JWT response contracts remain stable; server-side generations revoke old access and refresh tokens immediately without increasing existing authenticated query budgets.
+
+Only seven P01 capabilities are marked ready. Scientific CMS writes, the P03 console and production readiness remain pending. See the [P01 handoff](docs/v1.0-p01-handoff.md) for tested APIs, migration/recovery steps and environment gates.
+
 ## Implemented v0.9.5 — Assessment UI, Global Search and Knowledge Graph · 2026-10-08
 
 `/assessments` and `/assessments/[slug]` now expose the existing reviewed registry with API-supported search, filters, pagination, exact versions/forms, contextual evidence and scoped rights. Global Search adds canonical Brain/Assessment results while preserving its existing domains. The graph adds public anatomical and instrument nodes plus sourced child-to-parent anatomical hierarchy; instruments remain isolated and no scientific cross-domain relationship is inferred.
@@ -67,7 +134,7 @@ desktop 1280x800 and mobile 390x844 Chromium QA            ✅
 
 `GET /api/study/today/` assembles study-local date, capacity, Plans, today/overdue Blocks, SRS review counts, current Session, Daily Challenge and the existing Recommendation V2 result. `POST /api/study/sessions/` starts a Block-anchored Session using a client UUID; current/detail/complete/abandon routes recover and end it. `/study` is the Today Command Center, and `/study/session/[id]` shows one focused Block action with a separate explicit Block-completion control. All personal routes require authentication and ownership. See [the v0.8.4 release record](docs/Psychology_Atlas_v0.8.4_Today_Study_Mode_Study_Sessions_2026-09-29.md) for contracts, migration and validation evidence.
 
-The v0.8 Study Mode + Exam Planning + Advanced Recommendations roadmap family is complete across v0.8.1–v0.8.4. The v0.9 implementation now exists; final publication is governed by the release audit above. The next product phase after release is **v1.0 — Admin CMS, Scientific Review Workflow, Research / Source Management, Full Cross-Domain Integration and final production hardening**; it has not started.
+The v0.8 Study Mode + Exam Planning + Advanced Recommendations roadmap family is complete across v0.8.1–v0.8.4. The v0.9 implementation now exists; final publication is governed by the release audit above. **v1.0 — Admin CMS, Scientific Review Workflow, Research / Source Management, Full Cross-Domain Integration and final production hardening** has local P01–P22 implementations, with P14–P21 still partial and P22 blocked on human/environment acceptance; v1.0.0 is **not** released. See the [P22 release handoff](docs/v1.0-p22-release-handoff.md) for evidence, rollback and the owner checklist.
 
 ## v0.8.3 — Advanced Recommendations V2
 

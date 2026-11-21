@@ -103,7 +103,7 @@ class BrainAPITests(BrainFixtureMixin, TestCase):
             response = self.client.get("/api/brain-anatomy/", {"roots": "true"})
         self.assertEqual(response.status_code, 200)
         self.assertEqual({row["slug"] for row in response.data["results"]}, {self.root.slug, other.slug})
-        self.assertLessEqual(len(queries), 4)
+        self.assertLessEqual(len(queries), 5)  # One fixed P05 rights/lifecycle read.
         self.assertEqual(self.client.get("/api/brain-anatomy/", {"roots": "false"}).data["count"], 3)
         self.assertEqual(self.client.get("/api/brain-anatomy/", {"roots": "true", "kind": "whole_brain"}).data["count"], 1)
         self.assertEqual(self.client.get("/api/brain-anatomy/", {"roots": "true", "q": "Fixture Child"}).data["count"], 0)
@@ -313,8 +313,8 @@ class BrainQueryProfileTests(BrainFixtureMixin, TestCase):
                 self.assertEqual(len(response.data["external_identifiers"]), 30)
                 self.assertTrue(response.data["external_identifiers_truncated"])
         print(f"Brain test-only fixture query measurements: {measurements}")
-        # Budgets frozen after observing populated fixtures, including relation sources.
-        for label, budget in {"list": 4, "detail": 11, "search": 4, "filters": 5}.items():
+        # Populated fixtures include relation sources and one fixed P05 rights/lifecycle read.
+        for label, budget in {"list": 5, "detail": 12, "search": 5, "filters": 6}.items():
             self.assertLessEqual(measurements[label], budget, label)
         with CaptureQueriesContext(connection) as small_page:
             self.assertEqual(self.client.get("/api/brain-anatomy/", {"page_size": 1}).status_code, 200)

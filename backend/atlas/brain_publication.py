@@ -11,6 +11,7 @@ from django.db.models.expressions import RawSQL
 from django.db.models.functions import Length
 
 from .models import BrainAnatomicalEntity, BrainHierarchyLink, SourceReference
+from .cms_public_rights import public_rights
 
 
 SOURCE_LENGTHS = {field.name: field.max_length for field in SourceReference._meta.concrete_fields if field.max_length}
@@ -72,6 +73,11 @@ def resolved_sources():
     )
 
 
+def public_sources():
+    """Lifecycle and rights affect public use, not scientific source resolution."""
+    return public_rights(resolved_sources(), "source_reference")
+
+
 def public_anatomy():
     """One recursive SQL read gates the entire primary ancestry, including cycles.
 
@@ -79,13 +85,13 @@ def public_anatomy():
     UNION terminates safely even if database writes bypassed model validation.
     The CTE uses SQL supported by both configured engines (SQLite/PostgreSQL).
     """
-    entity_sql, entity_params = BrainAnatomicalEntity.objects.filter(
+    entity_sql, entity_params = public_rights(BrainAnatomicalEntity.objects.filter(
         is_active=True, review_status="reviewed", kind__in=BrainAnatomicalEntity.Kind.values,
-        laterality__in=BrainAnatomicalEntity.Laterality.values, source_links__source__in=resolved_sources(),
-    ).order_by().values("pk").distinct().query.sql_with_params()
+        laterality__in=BrainAnatomicalEntity.Laterality.values, source_links__source__in=public_sources(),
+    ), "brain_anatomical_entity").order_by().values("pk").distinct().query.sql_with_params()
     link_sql, link_params = BrainHierarchyLink.objects.filter(
         is_active=True, review_status="reviewed", source_version__regex=NONBLANK_PATTERN,
-        source_links__source__in=resolved_sources(), source_links__note__regex=NONBLANK_PATTERN,
+        source_links__source__in=public_sources(), source_links__note__regex=NONBLANK_PATTERN,
     ).order_by().values("pk").distinct().query.sql_with_params()
     entity_table = BrainAnatomicalEntity._meta.db_table
     hierarchy_table = BrainHierarchyLink._meta.db_table

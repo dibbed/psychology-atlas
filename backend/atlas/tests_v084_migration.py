@@ -13,15 +13,20 @@ from tempfile import TemporaryDirectory
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.test import TransactionTestCase
+from django.db import connection
+from unittest import skipUnless
 from django.utils import timezone
 
 
+@skipUnless(connection.vendor == "sqlite",
+            "Historical migration rehearsal uses PRAGMA and a SQLite file subprocess.")
 class StudySessionMigrationTests(TransactionTestCase):
     migrate_from = ("atlas", "0031_v083_recommendation_feedback")
     migrate_to = ("atlas", "0032_v084_study_sessions")
 
     def tearDown(self):
-        MigrationExecutor(connection).migrate([self.migrate_to])
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
         super().tearDown()
 
     def test_real_tip_upgrade_preserves_data_without_sessions(self):
@@ -95,6 +100,7 @@ class StudySessionMigrationTests(TransactionTestCase):
             database = Path(directory) / "fresh.sqlite3"
             environment = os.environ.copy()
             environment["SQLITE_PATH"] = str(database)
+            environment["SQLITE_TEST_PATH"] = str(Path(directory) / "tests.sqlite3")
             result = subprocess.run(
                 [sys.executable, "manage.py", "migrate", "--noinput", "--skip-checks", "--verbosity", "0"],
                 cwd=Path(__file__).resolve().parents[1], env=environment,

@@ -52,13 +52,16 @@ def _actionable_target_filter(local_date, challenge_available):
         if challenge_available else Q(pk__in=[])
     )
     simple = (
-        Q(block_kind__in=[kind.CONCEPT_REVIEW, kind.DISTORTION_PRACTICE], concept__is_active=True)
+        Q(block_kind=kind.CONCEPT_REVIEW, concept__is_active=True)
+        | Q(block_kind=kind.DISTORTION_PRACTICE, concept__is_active=True,
+            concept_id__in=models.CognitiveDistortionPracticeItem.objects.filter(
+                is_active=True, archived_at__isnull=True).values("target_concept_id"))
         | Q(block_kind=kind.DISORDER_REVIEW, disorder__is_active=True)
         | Q(block_kind=kind.THEORY_READING, theory__is_active=True)
         | Q(block_kind=kind.PSYCHOLOGIST_READING, psychologist__is_active=True)
         | Q(block_kind=kind.TIMELINE_REVIEW, timeline_event__is_active=True)
         | Q(block_kind=kind.THERAPY_READING, therapy__is_active=True, therapy__family__is_active=True)
-        | (Q(block_kind=kind.QUIZ_PRACTICE, quiz__is_active=True)
+        | (Q(block_kind=kind.QUIZ_PRACTICE, quiz__is_active=True, quiz__archived_at__isnull=True)
            & (Q(quiz__disorder__isnull=True) | Q(quiz__disorder__is_active=True)))
     )
     runnable_case = (

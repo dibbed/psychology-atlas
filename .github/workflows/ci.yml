@@ -18,19 +18,23 @@ jobs:
   backend-tests:
     name: Backend tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: backend
     env:
       DEBUG: "1"
       DB_ENGINE: sqlite
-      SQLITE_PATH: ./data/ci.sqlite3
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUNBUFFERED: "1"
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Isolate SQLite runtime and test databases
+        run: |
+          echo "SQLITE_PATH=$RUNNER_TEMP/atlas-backend-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.sqlite3" >> "$GITHUB_ENV"
+          echo "SQLITE_TEST_PATH=$RUNNER_TEMP/atlas-backend-tests-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.sqlite3" >> "$GITHUB_ENV"
 
       - name: Set up Python 3.12
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -65,7 +69,7 @@ jobs:
           python ../scripts/validate_brain_dossier.py --self-test
           python ../scripts/validate_brain_dossier.py \
             --dossier ../docs/research/brain/v0.9.2b/psychology_atlas_brain_curated_dossier_v0.9.2b.json \
-            --database data/ci.sqlite3 \
+            --database "$SQLITE_PATH" \
             --output "$RUNNER_TEMP/brain-dossier-validation"
 
       - name: Compile Python modules
@@ -94,7 +98,7 @@ jobs:
   brain-postgresql:
     name: Brain PostgreSQL publication and concurrency
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:17
@@ -122,6 +126,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Isolate fallback SQLite paths
+        run: |
+          echo "SQLITE_PATH=$RUNNER_TEMP/atlas-pg-fallback-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.sqlite3" >> "$GITHUB_ENV"
+          echo "SQLITE_TEST_PATH=$RUNNER_TEMP/atlas-pg-tests-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.sqlite3" >> "$GITHUB_ENV"
       - name: Set up Python 3.12
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -158,6 +166,21 @@ jobs:
           PGOPTIONS: "-c statement_timeout=60000 -c lock_timeout=15000"
         run: python manage.py test atlas.tests_v095_integration atlas.tests.V063KnowledgeApiTests --noinput --verbosity 2 --durations 10 --timing
 
+      - name: Publication selections and live dependency concurrency
+        run: python manage.py test atlas.tests_v100_p16_learning_fingerprints atlas.tests_v100_p16_domain_preflight atlas.tests_v100_p16_selections atlas.tests_v100_p16_selection_concurrency --noinput --verbosity 2 --timing
+
+      - name: Admin security, revision, audit, migration and concurrency tests
+        run: python manage.py test atlas.tests_v100_p01 atlas.tests_v100_p02 atlas.tests_v100_p03 atlas.tests_v100_p04 atlas.tests_v100_p05_sources atlas.tests_v100_p05_governance atlas.tests_v100_p05_integration atlas.tests_v100_p05_public atlas.tests_v100_p06_jobs atlas.tests_v100_p06_artifacts atlas.tests_v100_p06_research atlas.tests_v100_p06_integration atlas.tests_v100_p07_domains atlas.tests_v100_p07_content atlas.tests_v100_p07_integration atlas.tests_v100_p08_therapy atlas.tests_v100_p12_case_preview atlas.tests_v100_p16_case_publication atlas.tests_v100_p16_publication_preflight atlas.tests.V075CaseConcurrencyTests --noinput --verbosity 2 --timing
+
+
+      - name: Learning editor metadata and history preservation
+        run: python manage.py test atlas.tests_v100_p13_learning atlas.tests_v100_p13_flashcards atlas.tests_v100_p13_practice atlas.tests_v100_p13_archive atlas.tests_v100_p13_learning_io --noinput --verbosity 2 --timing
+
+      - name: Account roles and purpose-bound privacy
+        run: python manage.py test atlas.tests_v100_p14_users atlas.tests_v100_p14_privacy atlas.tests_v100_p14_privacy_export --noinput --verbosity 2 --timing
+
+      - name: Controlled study operations and learner lifecycle
+        run: python manage.py test atlas.tests_v100_p15_actions atlas.tests_v100_p15_study_ops atlas.tests.V081StudyPlanningFoundationTests atlas.tests.V082StudyBlockSchedulerTests atlas.tests_v084_sessions --noinput --verbosity 2 --timing
 
   frontend-build:
     name: Frontend typecheck and build
@@ -180,11 +203,24 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      - name: Set up Python 3.12 for real CMS authoring schema checks
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend schema dependencies
+        run: python -m pip install --disable-pip-version-check -r ../backend/requirements.txt
+
       - name: Install frontend dependencies
         run: npm ci
 
       - name: TypeScript typecheck
         run: npm run typecheck
+
+      - name: P07 typed authoring and transport checks
+        run: node components/cms/CmsDomains.test.cjs
 
       - name: Assessment navigation checks
         run: node --experimental-strip-types app/assessments/assessment.selfcheck.mjs
@@ -198,7 +234,7 @@ jobs:
   browser-release-qa:
     name: Browser release QA
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       DEBUG: "1"
       DB_ENGINE: sqlite
@@ -211,6 +247,7 @@ jobs:
       - name: Configure disposable runner paths
         run: |
           echo "SQLITE_PATH=$RUNNER_TEMP/browser-release.sqlite3" >> "$GITHUB_ENV"
+          echo "SQLITE_TEST_PATH=$RUNNER_TEMP/browser-release-tests.sqlite3" >> "$GITHUB_ENV"
           echo "EMPTY_SQLITE_PATH=$RUNNER_TEMP/browser-empty.sqlite3" >> "$GITHUB_ENV"
           echo "BROWSER_QA_OUTPUT=$RUNNER_TEMP/browser-qa" >> "$GITHUB_ENV"
           echo "NODE_PATH=$RUNNER_TEMP/browser-tools/node_modules" >> "$GITHUB_ENV"
@@ -253,12 +290,31 @@ jobs:
         run: npm run build
       - name: Run all existing browser harnesses and scoped accessibility smoke
         run: node scripts/release_browser_qa.cjs
+      - name: Build and exercise the real CMS journey
+        env:
+          NEXT_PUBLIC_API_URL: http://127.0.0.1:8023/api
+          CMS_QA_PYTHON: python
+          CMS_QA_OUTPUT: ${{ runner.temp }}/browser-qa/cms
+        run: |
+          npm run build --prefix frontend
+          export CMS_QA_BUILD_ID="$(cat frontend/.next/BUILD_ID)"
+          node scripts/cms_browser_qa.cjs
+          node scripts/cms_review_browser_qa.cjs
+          node scripts/cms_governance_browser_qa.cjs
+          node scripts/cms_intake_browser_qa.cjs
+          CMS_QA_PHASE=p07 CMS_QA_PYTHON=python CMS_QA_ORIGIN=http://127.0.0.1:3023 CMS_QA_API_ORIGIN=http://127.0.0.1:8023 CMS_QA_OUTPUT="$RUNNER_TEMP/browser-qa/cms-p07" node scripts/cms_p07_browser_qa.cjs
+          CMS_QA_PHASE=p08 CMS_QA_PYTHON=python CMS_QA_ORIGIN=http://127.0.0.1:3023 CMS_QA_API_ORIGIN=http://127.0.0.1:8023 CMS_QA_OUTPUT="$RUNNER_TEMP/browser-qa/cms-p08" node scripts/cms_p08_browser_qa.cjs
+          CMS_QA_PHASE=p12 CMS_QA_PYTHON=python CMS_QA_ORIGIN=http://127.0.0.1:3023 CMS_QA_API_ORIGIN=http://127.0.0.1:8023 CMS_QA_OUTPUT="$RUNNER_TEMP/browser-qa/cms-p12" node scripts/cms_p12_browser_qa.cjs
+          CMS_QA_PHASE=p13 CMS_QA_PYTHON=python CMS_QA_ORIGIN=http://127.0.0.1:3023 CMS_QA_API_ORIGIN=http://127.0.0.1:8023 CMS_QA_OUTPUT="$RUNNER_TEMP/browser-qa/cms-p13" node scripts/cms_p13_browser_qa.cjs
+          CMS_QA_PHASE=p14 CMS_QA_PYTHON=python CMS_QA_ORIGIN=http://127.0.0.1:3023 CMS_QA_API_ORIGIN=http://127.0.0.1:8023 CMS_QA_OUTPUT="$RUNNER_TEMP/browser-qa/cms-p14" node scripts/cms_p14_browser_qa.cjs
       - name: Preserve browser evidence and failure diagnostics
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: browser-release-qa-${{ github.sha }}
-          path: ${{ runner.temp }}/browser-qa
+          path: |
+            ${{ runner.temp }}/browser-qa
+            qa/p05-browser
           if-no-files-found: warn
           retention-days: 14
 

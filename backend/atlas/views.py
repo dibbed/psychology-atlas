@@ -12,11 +12,12 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework_simplejwt.tokens import RefreshToken
+from .cms_jwt import VersionedRefreshToken as RefreshToken
 
 from . import models as atlas_models
 from .assessment_views import AssessmentSerializer, loaded_instruments, public_sets
-from .brain_publication import NESTED_LIMIT, NONBLANK_PATTERN, public_anatomy, resolved_sources
+from .brain_publication import NESTED_LIMIT, NONBLANK_PATTERN, public_anatomy, public_sources
+from .cms_public_rights import PublicReadMixin, public_cache_safe, public_items, public_resources, public_rights, public_summary, public_visible
 from .brain_serializers import BrainAnatomyListSerializer
 from .brain_views import anatomy_queryset, valid_aliases
 from .learning import (
@@ -129,7 +130,7 @@ def _object_payload(request):
 
 
 def available_quizzes():
-    return Quiz.objects.filter(is_active=True).filter(
+    return Quiz.objects.filter(is_active=True, archived_at__isnull=True).filter(
         Q(disorder__isnull=True) | Q(disorder__is_active=True)
     )
 
@@ -149,6 +150,11 @@ def available_clinical_cases():
         Q(current_revision__primary_disorder__isnull=True)
         | Q(current_revision__primary_disorder__is_active=True)
     )
+
+
+def public_available_clinical_cases():
+    from .cms_case_publication import blocked_current_case_ids
+    return available_clinical_cases().exclude(pk__in=blocked_current_case_ids())
 
 
 def current_case_revision_prefetch():
@@ -177,8 +183,10 @@ def clinical_case_is_runnable(clinical_case):
         return False
     entry_step = revision.entry_step if revision.entry_step_id else None
     primary_disorder = revision.primary_disorder if revision.primary_disorder_id else None
+    from .cms_case_publication import current_publication_allowed
     return bool(
-        clinical_case.is_active
+        current_publication_allowed(clinical_case)
+        and clinical_case.is_active
         and revision.case_id == clinical_case.id
         and revision.status == atlas_models.CaseRevision.Status.PUBLISHED
         and entry_step is not None
@@ -191,7 +199,7 @@ def clinical_case_is_runnable(clinical_case):
 
 def case_attempt_state_queryset():
     return (
-        CaseAttempt.objects.select_related(
+        CaseAttempt.objects.filter(case_id__in=public_items(ClinicalCase.objects.all())).select_related(
             "case",
             "revision",
             "revision__primary_disorder",
@@ -257,7 +265,7 @@ def logout(request):
 def categories(request):
     data = []
     qs = (
-        Category.objects.filter(is_active=True)
+        public_resources(Category).filter(is_active=True)
         .annotate(disorder_count=Count("disorders", filter=Q(disorders__is_active=True)))
         .filter(disorder_count__gt=0)
     )
@@ -266,17 +274,17 @@ def categories(request):
             "slug": category.slug,
             "name_en": category.name_en,
             "name_fa": category.name_fa,
-            "description": category.description,
+            "description": public_summary(category, category.description),
             "disorder_count": category.disorder_count,
         })
     return Response(data)
 
 
-class DisorderListView(generics.ListAPIView):
+class DisorderListView(PublicReadMixin, generics.ListAPIView):
     serializer_class = DisorderListSerializer
 
     def get_queryset(self):
-        qs = Disorder.objects.filter(is_active=True).select_related("category")
+        qs = public_resources(Disorder).filter(is_active=True).select_related("category")
         category = self.request.query_params.get("category")
         q = self.request.query_params.get("q", "").strip()
         if category:
@@ -306,7 +314,7 @@ class DisorderListView(generics.ListAPIView):
         return qs
 
 
-class DisorderDetailView(generics.RetrieveAPIView):
+class DisorderDetailView(PublicReadMixin, generics.RetrieveAPIView):
     serializer_class = DisorderDetailSerializer
     lookup_field = "slug"
     queryset = (
@@ -335,7 +343,7 @@ def compare_disorders(request):
     if len(set(slugs)) != len(slugs):
         return Response({"detail": "هر اختلال فقط یک بار می‌تواند در مقایسه باشد."}, status=400)
     qs = (
-        Disorder.objects.filter(slug__in=slugs, is_active=True)
+        public_resources(Disorder).filter(slug__in=slugs, is_active=True)
         .select_related("category")
         .prefetch_related(
             "symptom_links__symptom",
@@ -357,12 +365,12 @@ def compare_disorders(request):
     return Response(DisorderDetailSerializer(ordered, many=True).data)
 
 
-class QuizListView(generics.ListAPIView):
+class QuizListView(PublicReadMixin, generics.ListAPIView):
     serializer_class = QuizListSerializer
     queryset = available_quizzes().select_related("disorder", "disorder__category").prefetch_related("questions").order_by("title", "id")
 
 
-class QuizDetailView(generics.RetrieveAPIView):
+class QuizDetailView(PublicReadMixin, generics.RetrieveAPIView):
     serializer_class = QuizDetailSerializer
     lookup_field = "slug"
     queryset = available_quizzes().select_related("disorder", "disorder__category").prefetch_related("questions__choices")
@@ -371,7 +379,7 @@ class QuizDetailView(generics.RetrieveAPIView):
 @api_view(["POST"])
 @permission_classes([permissions.IsAuthenticated])
 def quiz_submit(request, slug):
-    quiz = get_object_or_404(available_quizzes().prefetch_related("questions__choices"), slug=slug)
+    quiz = get_object_or_404(public_items(available_quizzes()).prefetch_related("questions__choices"), slug=slug)
     payload = _object_payload(request)
     attempt, feedback = submit_quiz(user=request.user, quiz=quiz, answers=payload.get("answers", []))
     return Response({
@@ -383,8 +391,12 @@ def quiz_submit(request, slug):
     })
 
 
-class ClinicalCaseListView(generics.ListAPIView):
+class ClinicalCaseListView(PublicReadMixin, generics.ListAPIView):
     serializer_class = ClinicalCaseListSerializer
+
+    def get_queryset(self):
+        from .cms_case_publication import blocked_current_case_ids
+        return super().get_queryset().exclude(pk__in=blocked_current_case_ids())
     queryset = (
         available_clinical_cases()
         .select_related(
@@ -406,8 +418,12 @@ class ClinicalCaseListView(generics.ListAPIView):
     )
 
 
-class ClinicalCaseDetailView(generics.RetrieveAPIView):
+class ClinicalCaseDetailView(PublicReadMixin, generics.RetrieveAPIView):
     serializer_class = ClinicalCaseDetailSerializer
+
+    def get_queryset(self):
+        from .cms_case_publication import blocked_current_case_ids
+        return super().get_queryset().exclude(pk__in=blocked_current_case_ids())
     lookup_field = "slug"
     queryset = (
         available_clinical_cases()
@@ -423,7 +439,7 @@ class ClinicalCaseDetailView(generics.RetrieveAPIView):
 @api_view(["POST"])
 @permission_classes([permissions.IsAuthenticated])
 def case_submit(request, slug):
-    case = get_object_or_404(available_clinical_cases().prefetch_related("steps__questions__choices"), slug=slug)
+    case = get_object_or_404(public_items(public_available_clinical_cases()).prefetch_related("steps__questions__choices"), slug=slug)
     payload = _object_payload(request)
     attempt, feedback = submit_case(user=request.user, clinical_case=case, answers=payload.get("answers", []))
     return Response({
@@ -438,7 +454,7 @@ def case_submit(request, slug):
 @permission_classes([permissions.IsAuthenticated])
 def case_attempt_start(request, slug):
     clinical_case = get_object_or_404(
-        available_clinical_cases().select_related("current_revision__entry_step"),
+        public_items(public_available_clinical_cases()).select_related("current_revision__entry_step"),
         slug=slug,
     )
     attempt, created = start_or_resume_case_attempt(user=request.user, clinical_case=clinical_case)
@@ -480,7 +496,7 @@ def case_attempt_decision(request, attempt_id):
     raw_choice_id = payload.get("choice_id")
     choice_id = None if raw_choice_id is None else positive_int(raw_choice_id, field="choice_id")
 
-    owned_attempt = get_object_or_404(CaseAttempt, pk=attempt_id, user=request.user)
+    owned_attempt = get_object_or_404(case_attempt_state_queryset(), pk=attempt_id, user=request.user)
     attempt, event, idempotent = advance_case_attempt(
         user=request.user,
         attempt=owned_attempt,
@@ -505,7 +521,7 @@ def case_analytics_overview(request):
 @permission_classes([permissions.IsAuthenticated])
 def case_analytics_detail(request, slug):
     try:
-        clinical_case = ClinicalCase.objects.select_related(
+        clinical_case = public_resources(ClinicalCase).select_related(
             "current_revision",
             "current_revision__entry_step",
             "current_revision__primary_disorder",
@@ -548,7 +564,7 @@ def bookmarks(request):
     if not isinstance(slug, str) or not slug.strip():
         raise ValidationError({"slug": "شناسه اختلال باید یک slug معتبر باشد."})
     slug = slug.strip()
-    disorder = get_object_or_404(Disorder, slug=slug, is_active=True)
+    disorder = get_object_or_404(public_resources(Disorder), slug=slug, is_active=True)
     bookmark, created = Bookmark.objects.get_or_create(user=request.user, disorder=disorder)
     if created:
         record_activity(request.user, StudyActivity.Kind.BOOKMARK_SAVED, disorder=disorder)
@@ -565,7 +581,7 @@ def bookmark_delete(request, slug):
 @api_view(["POST"])
 @permission_classes([permissions.IsAuthenticated])
 def progress_view(request, slug):
-    disorder = get_object_or_404(Disorder, slug=slug, is_active=True)
+    disorder = get_object_or_404(public_resources(Disorder), slug=slug, is_active=True)
     progress, _ = UserProgress.objects.get_or_create(user=request.user, disorder=disorder)
     progress.progress_percent = max(progress.progress_percent, 25)
     progress.last_viewed_at = timezone.now()
@@ -588,7 +604,7 @@ def notes(request):
 @api_view(["GET", "PUT", "DELETE"])
 @permission_classes([permissions.IsAuthenticated])
 def note_detail(request, slug):
-    disorder = get_object_or_404(Disorder, slug=slug, is_active=True)
+    disorder = get_object_or_404(public_resources(Disorder), slug=slug, is_active=True)
     note = UserNote.objects.filter(user=request.user, disorder=disorder).first()
 
     if request.method == "GET":
@@ -631,8 +647,8 @@ def dashboard(request):
     progress_qs = UserProgress.objects.filter(user=request.user, disorder__is_active=True).select_related("disorder", "disorder__category").order_by("-last_viewed_at")
     quiz_attempts = request.user.quiz_attempts.filter(
         Q(quiz__disorder__isnull=True) | Q(quiz__disorder__is_active=True),
+        Q(quiz__is_active=True) | Q(quiz__archived_at__isnull=False),
         status="completed",
-        quiz__is_active=True,
     ).select_related("quiz", "quiz__disorder").order_by("-completed_at")
     case_attempts = request.user.case_attempts.filter(
         Q(revision__primary_disorder__isnull=True) | Q(revision__primary_disorder__is_active=True),
@@ -653,7 +669,7 @@ def dashboard(request):
         therapy__family__is_active=True,
     ).select_related("therapy", "therapy__family").order_by("-updated_at")
     concept_progress_qs = UserConceptProgress.objects.filter(user=request.user, concept__is_active=True).select_related("concept")
-    visible_cards = available_flashcards()
+    visible_cards = public_items(available_flashcards())
     due_flashcards = UserFlashcardProgress.objects.filter(
         user=request.user,
         flashcard_id__in=visible_cards.values_list("id", flat=True),
@@ -824,6 +840,7 @@ from .learning import (
     activity_heatmap,
     available_flashcards,
     challenge_attempt_for_today,
+    challenge_public_eligible,
     current_streak,
     get_recommendations,
     get_review_queue,
@@ -875,11 +892,11 @@ def _positive_int(value, *, field):
     return positive_int(value, field=field)
 
 
-class ConceptListView(generics.ListAPIView):
+class ConceptListView(PublicReadMixin, generics.ListAPIView):
     serializer_class = ConceptCatalogSerializer
 
     def get_queryset(self):
-        qs = Concept.objects.filter(is_active=True).prefetch_related(
+        qs = public_resources(Concept).filter(is_active=True).prefetch_related(
             "aliases",
             "disorder_links__disorder",
             "flashcards",
@@ -907,7 +924,7 @@ class ConceptListView(generics.ListAPIView):
         return qs
 
 
-class ConceptDetailView(generics.RetrieveAPIView):
+class ConceptDetailView(PublicReadMixin, generics.RetrieveAPIView):
     serializer_class = ConceptDetailSerializer
     lookup_field = "slug"
     queryset = (
@@ -930,11 +947,11 @@ class ConceptDetailView(generics.RetrieveAPIView):
     )
 
 
-class FlashcardListView(generics.ListAPIView):
+class FlashcardListView(PublicReadMixin, generics.ListAPIView):
     serializer_class = FlashcardSerializer
 
     def get_queryset(self):
-        qs = available_flashcards().select_related("concept", "disorder", "disorder__category")
+        qs = public_rights(available_flashcards(), "flashcard").select_related("concept", "disorder", "disorder__category")
         concept = self.request.query_params.get("concept", "").strip()
         disorder = self.request.query_params.get("disorder", "").strip()
         difficulty = self.request.query_params.get("difficulty", "").strip()
@@ -950,7 +967,7 @@ class FlashcardListView(generics.ListAPIView):
 @api_view(["POST"])
 @permission_classes([permissions.IsAuthenticated])
 def concept_view(request, slug):
-    concept = get_object_or_404(Concept, slug=slug, is_active=True)
+    concept = get_object_or_404(public_resources(Concept), slug=slug, is_active=True)
     progress = mark_concept_viewed(request.user, concept)
     return Response({
         "slug": concept.slug,
@@ -979,7 +996,7 @@ def global_search(request):
         return Response(empty_payload)
 
     disorders = (
-        Disorder.objects.filter(is_active=True)
+        public_resources(Disorder).filter(is_active=True)
         .filter(icontains_any(
             (
                 "slug",
@@ -1004,7 +1021,7 @@ def global_search(request):
         .distinct()[:10]
     )
     concepts = (
-        Concept.objects.filter(is_active=True)
+        public_resources(Concept).filter(is_active=True)
         .filter(icontains_any(
             (
                 "slug", "name_en", "name_fa", "simple_definition", "academic_definition", "example",
@@ -1021,7 +1038,7 @@ def global_search(request):
         ).distinct()[:10]
     )
     symptoms = list(
-        Symptom.objects.filter(disorder_links__disorder__is_active=True)
+        public_resources(Symptom).filter(disorder_links__disorder__is_active=True)
         .filter(icontains_any(("slug", "name_en", "name_fa", "description"), q))
         .prefetch_related("disorder_links__disorder__category")
         .distinct()[:10]
@@ -1033,7 +1050,7 @@ def global_search(request):
             return [row for row in rows if row._search_exact == 0]
         return rows
 
-    therapy_base = Therapy.objects.filter(is_active=True, family__is_active=True).select_related("family")
+    therapy_base = public_resources(Therapy).filter(is_active=True, family__is_active=True).select_related("family")
     therapy_exact = (
         Q(name_en__iexact=q)
         | Q(name_fa__iexact=q)
@@ -1067,7 +1084,7 @@ def global_search(request):
         .order_by("_search_exact", "name_en", "id")[:10]
     )
 
-    technique_base = Technique.objects.filter(is_active=True)
+    technique_base = public_resources(Technique).filter(is_active=True)
     technique_exact = (
         Q(name_en__iexact=q)
         | Q(name_fa__iexact=q)
@@ -1096,7 +1113,7 @@ def global_search(request):
         .order_by("_search_exact", "name_en", "id")[:10]
     )
 
-    psychologist_base = atlas_models.Psychologist.objects.filter(is_active=True)
+    psychologist_base = public_resources(atlas_models.Psychologist).filter(is_active=True)
     psychologist_exact = (
         Q(name_en__iexact=q)
         | Q(name_fa__iexact=q)
@@ -1126,7 +1143,7 @@ def global_search(request):
         ).order_by("_search_exact", "name_en", "id")[:10]
     )
 
-    theory_base = atlas_models.Theory.objects.filter(is_active=True)
+    theory_base = public_resources(atlas_models.Theory).filter(is_active=True)
     theory_exact = (
         Q(name_en__iexact=q)
         | Q(name_fa__iexact=q)
@@ -1156,7 +1173,7 @@ def global_search(request):
         ).order_by("_search_exact", "name_en", "id")[:10]
     )
 
-    timeline_base = atlas_models.TimelineEvent.objects.filter(is_active=True)
+    timeline_base = public_resources(atlas_models.TimelineEvent).filter(is_active=True)
     timeline_exact = (
         Q(title_en__iexact=q)
         | Q(title_fa__iexact=q)
@@ -1189,6 +1206,7 @@ def global_search(request):
         ("slug", "name_en", "name_fa", "description_en", "description_fa"),
     )[:10]
     assessment_sets = public_sets()
+    from .cms_public_alias_disambiguation import public_exact_alias_disambiguation
     assessments = ranked_public_search(
         loaded_instruments(assessment_sets), q, assessment_sets["aliases"].filter(instrument_id=OuterRef("pk")),
         ("slug", "name_en", "name_fa", "description", "construct_overview"),
@@ -1196,6 +1214,10 @@ def global_search(request):
             icontains_any(("label", "key"), q))),
     )[:10]
 
+    # Reuse the already prefetched public aliases and their serializer gates.
+    # Separate exact-alias SQL queries broke the long-standing 13-query budget.
+    brain_payload = BrainAnatomyListSerializer(brain_entities, many=True).data
+    assessment_payload = AssessmentSerializer(assessments, many=True).data
     return Response({
         "query": q,
         "disorders": DisorderListSerializer(disorders, many=True).data,
@@ -1205,13 +1227,13 @@ def global_search(request):
                 "slug": symptom.slug,
                 "name_en": symptom.name_en,
                 "name_fa": symptom.name_fa,
-                "description": symptom.description,
+                "description": public_summary(symptom, symptom.description),
                 "domain": symptom.domain,
                 "disorders": DisorderListSerializer(
                     [
                         link.disorder
                         for link in symptom.disorder_links.all()
-                        if link.disorder.is_active
+                        if link.disorder.is_active and public_visible(link.disorder)
                     ][:4],
                     many=True,
                 ).data,
@@ -1223,8 +1245,9 @@ def global_search(request):
         "psychologists": PsychologistListSerializer(psychologists, many=True).data,
         "theories": TheoryListSerializer(theories, many=True).data,
         "timeline_events": TimelineEventListSerializer(timeline_events, many=True).data,
-        "brain_entities": BrainAnatomyListSerializer(brain_entities, many=True).data,
-        "assessments": AssessmentSerializer(assessments, many=True).data,
+        "brain_entities": brain_payload,
+        "assessments": assessment_payload,
+        "alias_disambiguation": public_exact_alias_disambiguation(q, brain_payload, assessment_payload),
     })
 
 
@@ -1232,6 +1255,8 @@ def _linked_dsm_nearby_edges():
     rows = (
         DSMRecordRelation.objects.filter(
             relationship_type=DSMRecordRelation.Kind.NEARBY,
+            source__in=public_resources(DSMRecord), target__in=public_resources(DSMRecord),
+            source__linked_disorder__in=public_resources(Disorder), target__linked_disorder__in=public_resources(Disorder),
             source__corpus__is_active=True,
             target__corpus__is_active=True,
             source__is_active=True,
@@ -1262,50 +1287,50 @@ def _linked_dsm_nearby_edges():
 
 @api_view(["GET"])
 def atlas_overview(request):
-    valid_quizzes = Quiz.objects.filter(is_active=True).filter(
+    valid_quizzes = public_resources(Quiz).filter(is_active=True).filter(
         Q(disorder__isnull=True) | Q(disorder__is_active=True)
     )
-    valid_cases = available_clinical_cases()
-    valid_challenges = DailyChallenge.objects.filter(is_active=True).filter(
+    valid_cases = public_rights(public_available_clinical_cases(), "clinical_case")
+    valid_challenges = DailyChallenge.objects.filter(is_active=True, archived_at__isnull=True).filter(
         Q(concept__isnull=True) | Q(concept__is_active=True),
         Q(disorder__isnull=True) | Q(disorder__is_active=True),
     )
     categories = list(
-        Category.objects.filter(is_active=True)
+        public_resources(Category).filter(is_active=True)
         .annotate(disorder_count=Count("disorders", filter=Q(disorders__is_active=True)))
         .filter(disorder_count__gt=0)
         .order_by("sort_order", "name_en")
     )
     concept_kinds = list(
-        Concept.objects.filter(is_active=True)
+        public_resources(Concept).filter(is_active=True)
         .values("kind")
         .annotate(count=Count("id"))
         .order_by("-count", "kind")
     )
     concept_domains = list(
-        Concept.objects.filter(is_active=True)
+        public_resources(Concept).filter(is_active=True)
         .values("domain")
         .annotate(count=Count("id"))
         .order_by("-count", "domain")
     )
     concept_subtypes = list(
-        Concept.objects.filter(is_active=True)
+        public_resources(Concept).filter(is_active=True)
         .values("subtype")
         .annotate(count=Count("id"))
         .order_by("-count", "subtype")
     )
     symptom_count = (
-        Symptom.objects.filter(
+        public_resources(Symptom).filter(
             Q(disorder_links__disorder__is_active=True) | Q(concept_links__concept__is_active=True)
         )
         .distinct()
         .count()
     )
-    therapy_count = Therapy.objects.filter(is_active=True, family__is_active=True).count()
-    technique_count = Technique.objects.filter(is_active=True).count()
-    psychologist_count = atlas_models.Psychologist.objects.filter(is_active=True).count()
-    theory_count = atlas_models.Theory.objects.filter(is_active=True).count()
-    timeline_event_count = atlas_models.TimelineEvent.objects.filter(is_active=True).count()
+    therapy_count = public_resources(Therapy).filter(is_active=True, family__is_active=True).count()
+    technique_count = public_resources(Technique).filter(is_active=True).count()
+    psychologist_count = public_resources(atlas_models.Psychologist).filter(is_active=True).count()
+    theory_count = public_resources(atlas_models.Theory).filter(is_active=True).count()
+    timeline_event_count = public_resources(atlas_models.TimelineEvent).filter(is_active=True).count()
     dsm_nearby_edges = _linked_dsm_nearby_edges()
     graph_edge_count = (
         ConceptRelationship.objects.filter(
@@ -1386,23 +1411,23 @@ def atlas_overview(request):
     return Response({
         "counts": {
             "categories": len(categories),
-            "disorders": Disorder.objects.filter(is_active=True).count(),
-            "concepts": Concept.objects.filter(is_active=True).count(),
+            "disorders": public_resources(Disorder).filter(is_active=True).count(),
+            "concepts": public_resources(Concept).filter(is_active=True).count(),
             "symptoms": symptom_count,
             "therapies": therapy_count,
             "techniques": technique_count,
             "psychologists": psychologist_count,
             "theories": theory_count,
             "timeline_events": timeline_event_count,
-            "flashcards": available_flashcards().count(),
+            "flashcards": public_rights(available_flashcards(), "flashcard").count(),
             "daily_challenges": valid_challenges.count(),
             "quizzes": valid_quizzes.count(),
             "clinical_cases": valid_cases.count(),
         },
         "graph": {
             "nodes": (
-                Disorder.objects.filter(is_active=True).count()
-                + Concept.objects.filter(is_active=True).count()
+                public_resources(Disorder).filter(is_active=True).count()
+                + public_resources(Concept).filter(is_active=True).count()
                 + symptom_count
                 + therapy_count
                 + technique_count
@@ -1494,7 +1519,7 @@ def flashcard_review(request, slug):
     if not isinstance(rating, str):
         raise ValidationError({"rating": "ارزیابی کارت معتبر نیست."})
     flashcard = get_object_or_404(
-        available_flashcards().select_related("concept", "disorder"),
+        public_items(available_flashcards()).select_related("concept", "disorder"),
         slug=slug,
     )
     try:
@@ -1516,7 +1541,7 @@ def concept_bookmarks(request):
     slug = payload.get("slug")
     if not isinstance(slug, str) or not slug.strip():
         raise ValidationError({"slug": "slug مفهوم معتبر نیست."})
-    concept = get_object_or_404(Concept, slug=slug.strip(), is_active=True)
+    concept = get_object_or_404(public_resources(Concept), slug=slug.strip(), is_active=True)
     bookmark, created = ConceptBookmark.objects.get_or_create(user=request.user, concept=concept)
     if created:
         record_activity(request.user, StudyActivity.Kind.BOOKMARK_SAVED, concept=concept)
@@ -1540,7 +1565,7 @@ def concept_notes(request):
 @api_view(["GET", "PUT", "DELETE"])
 @permission_classes([permissions.IsAuthenticated])
 def concept_note_detail(request, slug):
-    concept = get_object_or_404(Concept, slug=slug, is_active=True)
+    concept = get_object_or_404(public_resources(Concept), slug=slug, is_active=True)
     note = ConceptNote.objects.filter(user=request.user, concept=concept).first()
     if request.method == "GET":
         if not note:
@@ -1580,7 +1605,7 @@ def daily_challenge(request):
     if request.method == "GET":
         attempt = challenge_attempt_for_today(request.user) if request.user.is_authenticated else None
         challenge = attempt.challenge if attempt else today_challenge()
-        if not challenge:
+        if not challenge_public_eligible(challenge, allow_archived=bool(attempt)):
             return Response({"detail": "چالش روزانه هنوز آماده نشده است."}, status=404)
         data = DailyChallengeSerializer(challenge).data
         data["date"] = timezone.localdate().isoformat()
@@ -1598,6 +1623,8 @@ def daily_challenge(request):
 
     existing = challenge_attempt_for_today(request.user)
     if existing:
+        if not challenge_public_eligible(existing.challenge, allow_archived=True):
+            return Response({"detail": "چالش روزانه در دسترس نیست."}, status=404)
         return Response({
             "detail": "چالش امروز قبلاً پاسخ داده شده است.",
             "correct": existing.is_correct,
@@ -1612,7 +1639,15 @@ def daily_challenge(request):
     choice_id = _positive_int(payload.get("choice_id"), field="choice_id")
     choice = get_object_or_404(challenge.choices.filter(is_active=True), id=choice_id)
     try:
-        with transaction.atomic():
+        from .cms_policy import policy_lock
+        with policy_lock():
+            challenge = get_object_or_404(DailyChallenge.objects.select_for_update(), pk=challenge.pk, archived_at__isnull=True, is_active=True)
+            if not challenge_public_eligible(challenge):
+                return Response({"detail": "چالش روزانه در دسترس نیست."}, status=404)
+            choice = get_object_or_404(challenge.choices.filter(is_active=True), pk=choice_id)
+            active_choices = list(challenge.choices.filter(is_active=True))
+            if sum(1 for row in active_choices if row.is_correct) != 1:
+                return Response({"detail": "محتوای چالش ناسازگار است."}, status=409)
             attempt = DailyChallengeAttempt.objects.create(
                 user=request.user,
                 challenge=challenge,
@@ -1654,7 +1689,7 @@ def daily_challenge(request):
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
 def study_overview(request):
-    visible_cards = available_flashcards()
+    visible_cards = public_items(available_flashcards())
     visible_card_ids = visible_cards.values_list("id", flat=True)
     due_count = UserFlashcardProgress.objects.filter(
         user=request.user,
@@ -1741,18 +1776,18 @@ STRUCTURAL_EDGE_KINDS = {"dsm_nearby", "brain_part_of"}
 
 
 def _build_atlas_graph():
-    concepts = list(Concept.objects.filter(is_active=True).order_by("name_en"))
-    disorders = list(Disorder.objects.filter(is_active=True).select_related("category").order_by("name_en"))
+    concepts = list(public_resources(Concept).filter(is_active=True).order_by("name_en"))
+    disorders = list(public_resources(Disorder).filter(is_active=True).select_related("category").order_by("name_en"))
     therapies = list(
-        Therapy.objects.filter(is_active=True, family__is_active=True)
+        public_resources(Therapy).filter(is_active=True, family__is_active=True)
         .select_related("family")
         .order_by("name_en")
     )
-    techniques = list(Technique.objects.filter(is_active=True).order_by("name_en"))
-    psychologists = list(atlas_models.Psychologist.objects.filter(is_active=True).order_by("name_en"))
-    theories = list(atlas_models.Theory.objects.filter(is_active=True).order_by("name_en"))
+    techniques = list(public_resources(Technique).filter(is_active=True).order_by("name_en"))
+    psychologists = list(public_resources(atlas_models.Psychologist).filter(is_active=True).order_by("name_en"))
+    theories = list(public_resources(atlas_models.Theory).filter(is_active=True).order_by("name_en"))
     timeline_events = list(
-        atlas_models.TimelineEvent.objects.filter(is_active=True)
+        public_resources(atlas_models.TimelineEvent).filter(is_active=True)
         .order_by("year_start", "exact_date", "title_en", "id")
     )
     concept_ids = {concept.id for concept in concepts}
@@ -1777,7 +1812,7 @@ def _build_atlas_graph():
             "domain": concept.domain,
             "domain_label": concept.get_domain_display(),
             "subtype": concept.subtype,
-            "summary": concept.simple_definition,
+            "summary": public_summary(concept, concept.simple_definition),
             "href": f"/concepts/{concept.slug}",
         }
         for concept in concepts
@@ -1798,7 +1833,7 @@ def _build_atlas_graph():
                 "doi": source_link.source.doi,
                 "pmid": source_link.source.pmid,
             }
-            for source_link in link.source_links.all()
+            for source_link in link.source_links.all() if public_visible(source_link.source)
         ]
 
     def scientific_edge(source, target, kind, link):
@@ -1840,7 +1875,7 @@ def _build_atlas_graph():
 
     symptom_by_id = {}
     for link in (
-        ConceptSymptom.objects.filter(concept__is_active=True)
+        ConceptSymptom.objects.filter(concept_id__in=concept_ids, symptom__in=public_resources(Symptom))
         .select_related("concept", "symptom")
         .order_by("concept_id", "sort_order", "id")
     ):
@@ -1853,7 +1888,7 @@ def _build_atlas_graph():
         })
 
     for link in (
-        DisorderSymptom.objects.filter(disorder_id__in=disorder_ids)
+        DisorderSymptom.objects.filter(disorder_id__in=disorder_ids, symptom__in=public_resources(Symptom))
         .select_related("disorder", "symptom")
         .order_by("disorder_id", "sort_order", "id")
     ):
@@ -2217,10 +2252,10 @@ def _build_atlas_graph():
         "label": disorder.name_fa or disorder.name_en,
         "name_en": disorder.name_en,
         "name_fa": disorder.name_fa,
-        "kind": disorder.category.slug,
-        "group": disorder.category.name_fa or disorder.category.name_en,
-        "category": disorder.category.slug,
-        "summary": disorder.short_description,
+        "kind": disorder.category.slug if public_visible(disorder.category) else "",
+        "group": (disorder.category.name_fa or disorder.category.name_en) if public_visible(disorder.category) else "",
+        "category": disorder.category.slug if public_visible(disorder.category) else "",
+        "summary": public_summary(disorder, disorder.short_description),
         "href": f"/disorders/{disorder.slug}",
     } for disorder in disorders)
 
@@ -2235,7 +2270,7 @@ def _build_atlas_graph():
         "group": therapy.family.name_fa or therapy.family.name_en,
         "family": therapy.family.slug,
         "review_status": therapy.review_status,
-        "summary": therapy.summary,
+        "summary": public_summary(therapy, therapy.summary),
         "href": f"/therapies/{therapy.slug}",
     } for therapy in therapies)
 
@@ -2249,7 +2284,7 @@ def _build_atlas_graph():
         "kind": "technique",
         "group": "تکنیک درمانی",
         "review_status": technique.review_status,
-        "summary": technique.summary,
+        "summary": public_summary(technique, technique.summary),
         "href": f"/techniques/{technique.slug}",
     } for technique in techniques)
 
@@ -2263,7 +2298,7 @@ def _build_atlas_graph():
         "kind": "psychologist",
         "group": psychologist.role_fa or psychologist.role_en or "روان‌شناس",
         "review_status": psychologist.review_status,
-        "summary": psychologist.summary_fa or psychologist.summary_en,
+        "summary": public_summary(psychologist, psychologist.summary_en, psychologist.summary_fa),
         "role": psychologist.role_fa or psychologist.role_en,
         "nationality": psychologist.nationality_fa or psychologist.nationality_en,
         "birth_year": psychologist.birth_year,
@@ -2282,7 +2317,7 @@ def _build_atlas_graph():
         "group": theory.domain or "نظریه",
         "domain": theory.domain,
         "review_status": theory.review_status,
-        "summary": theory.summary_fa or theory.summary_en or theory.core_proposition_fa or theory.core_proposition_en,
+        "summary": public_summary(theory, theory.summary_en or theory.core_proposition_en, theory.summary_fa or theory.core_proposition_fa),
         "period_text": theory.period_text,
         "modern_status": theory.modern_status,
         "href": f"/theories/{theory.slug}",
@@ -2299,7 +2334,7 @@ def _build_atlas_graph():
         "group": event.category or event.get_event_type_display(),
         "category": event.category,
         "review_status": event.review_status,
-        "summary": event.description_fa or event.description_en or event.historical_importance_fa or event.historical_importance_en,
+        "summary": public_summary(event, event.description_en or event.historical_importance_en, event.description_fa or event.historical_importance_fa),
         "event_type": event.event_type,
         "date_precision": event.date_precision,
         "date_text": event.date_text,
@@ -2311,7 +2346,7 @@ def _build_atlas_graph():
 
     dsm_by_disorder = {
         row.linked_disorder_id: row
-        for row in DSMRecord.objects.filter(
+        for row in public_resources(DSMRecord).filter(
             corpus__is_active=True,
             is_active=True,
             linked_disorder_id__in=disorder_ids,
@@ -2335,7 +2370,7 @@ def _build_atlas_graph():
         "name_fa": symptom.name_fa,
         "kind": symptom.domain,
         "group": symptom.get_domain_display(),
-        "summary": symptom.description,
+        "summary": public_summary(symptom, symptom.description),
         "href": f"/search?q={symptom.slug}",
     } for symptom in sorted(symptom_by_id.values(), key=lambda row: row.name_en))
 
@@ -2348,14 +2383,30 @@ def _build_atlas_graph():
             "id": f"brain_anatomy:{entity.slug}", "type": "brain_anatomy", "slug": entity.slug,
             "label": entity.name_fa or entity.name_en, "name_en": entity.name_en, "name_fa": entity.name_fa,
             "kind": entity.kind, "group": entity.get_kind_display(), "laterality": entity.laterality,
-            "domain": "brain_anatomy", "summary": entity.description_fa or entity.description_en,
+            "domain": "brain_anatomy", "summary": public_summary(entity, entity.description_en, entity.description_fa),
             "review_status": entity.review_status, "href": f"/brain/{entity.slug}",
             "aliases": [alias.text for alias in entity.public_aliases[:NESTED_LIMIT]],
             "aliases_truncated": len(entity.public_aliases) > NESTED_LIMIT,
         })
     anatomy_ids = {entity.pk for entity in anatomy}
+    # Public source metadata/rights predicates include expensive regex and
+    # lifecycle guards. Materialize only the sources relevant to displayed
+    # anatomy before the per-link EXISTS query: PostgreSQL otherwise expands
+    # the correlated public_sources() predicate for every hierarchy row and
+    # can exceed the CI statement timeout on a freshly published corpus.
+    link_source_ids = atlas_models.BrainHierarchyLinkSource.objects.filter(
+        relationship__child_id__in=anatomy_ids,
+        relationship__parent_id__in=anatomy_ids,
+        relationship__is_active=True,
+        relationship__review_status="reviewed",
+        relationship__source_version__regex=NONBLANK_PATTERN,
+        note__regex=NONBLANK_PATTERN,
+    ).order_by().values("source_id")
+    permitted_source_ids = list(
+        public_sources().filter(pk__in=link_source_ids).values_list("pk", flat=True)
+    )
     hierarchy_sources = atlas_models.BrainHierarchyLinkSource.objects.filter(
-        source__in=resolved_sources(), note__regex=NONBLANK_PATTERN,
+        source_id__in=permitted_source_ids, note__regex=NONBLANK_PATTERN,
     ).select_related("source").order_by("source_id", "pk")
     for link in atlas_models.BrainHierarchyLink.objects.filter(
         is_active=True, review_status="reviewed", child_id__in=anatomy_ids, parent_id__in=anatomy_ids,
@@ -2385,12 +2436,14 @@ def _build_atlas_graph():
             "label": instrument.name_fa or instrument.name_en,
             "name_en": instrument.name_en, "name_fa": instrument.name_fa,
             "kind": "instrument", "group": "Assessment", "domain": "assessment",
-            "summary": instrument.description, "review_status": instrument.review_status,
+            "summary": public_summary(instrument, instrument.description), "review_status": instrument.review_status,
             "href": "/assessments/" + instrument.slug,
             "aliases": [alias.text for alias in instrument.public_aliases[:NESTED_LIMIT]],
             "aliases_truncated": len(instrument.public_aliases) > NESTED_LIMIT,
         })
 
+    node_ids = {node["id"] for node in nodes}
+    edges = [edge for edge in edges if edge["source"] in node_ids and edge["target"] in node_ids]
     degree = {node["id"]: 0 for node in nodes}
     edge_kinds = {}
     for edge in edges:
@@ -2410,17 +2463,18 @@ def invalidate_atlas_graph_cache():
 
 def _get_atlas_graph():
     # Never share uncommitted data, including rolled-back curator previews.
+    today = timezone.localdate()
     payload = None
     if not connection.in_atomic_block:
         revision = cache.get_or_set("atlas_graph_revision", lambda: uuid4().hex, timeout=None)
         cached = cache.get("atlas_graph")
-        if isinstance(cached, dict) and cached.get("revision") == revision:
+        if isinstance(cached, dict) and cached.get("revision") == revision and cached.get("date") == today and public_cache_safe():
             payload = cached["payload"]
     if payload is None:
         payload = _build_atlas_graph()
         if not connection.in_atomic_block and cache.get("atlas_graph_revision") == revision:
             # Tagging also covers invalidation between the revision check and set.
-            cache.set("atlas_graph", {"revision": revision, "payload": payload}, timeout=300)
+            cache.set("atlas_graph", {"revision": revision, "date": today, "payload": payload}, timeout=300)
     nodes, edges, edge_kinds = payload
     return [dict(node) for node in nodes], [dict(edge) for edge in edges], dict(edge_kinds)
 
@@ -2535,7 +2589,7 @@ def concept_map(request):
 
 @api_view(["GET"])
 def concept_neighborhood(request, slug):
-    concept = get_object_or_404(Concept, slug=slug, is_active=True)
+    concept = get_object_or_404(public_resources(Concept), slug=slug, is_active=True)
     raw_depth = request.query_params.get("depth", "1").strip()
     if raw_depth not in {"1", "2"}:
         raise ValidationError({"depth": "عمق همسایگی باید ۱ یا ۲ باشد."})
@@ -2676,25 +2730,26 @@ def graph_path(request):
     })
 
 
+def _practice_choice_queryset():
+    return (CognitiveDistortionPracticeChoice.objects.filter(
+        is_active=True, concept__is_active=True,
+        concept__subtype=Concept.Subtype.COGNITIVE_DISTORTION,
+        concept__in=public_resources(Concept),
+    ).select_related("concept").order_by("sort_order", "id"))
+
+
 def _practice_item_queryset(*, difficulty=""):
     qs = (
         CognitiveDistortionPracticeItem.objects.filter(
-            is_active=True,
+            archived_at__isnull=True, is_active=True,
             target_concept__is_active=True,
             target_concept__subtype=Concept.Subtype.COGNITIVE_DISTORTION,
+            target_concept__in=public_resources(Concept),
         )
         .select_related("target_concept")
         .prefetch_related(Prefetch(
             "choices",
-            queryset=(
-                CognitiveDistortionPracticeChoice.objects.filter(
-                    is_active=True,
-                    concept__is_active=True,
-                    concept__subtype=Concept.Subtype.COGNITIVE_DISTORTION,
-                )
-                .select_related("concept")
-                .order_by("sort_order", "id")
-            ),
+            queryset=_practice_choice_queryset(),
             to_attr="active_choices",
         ))
         .order_by("sort_order", "id")
@@ -2713,7 +2768,7 @@ def _practice_item_is_valid(item):
 @api_view(["GET"])
 def cognitive_distortions_overview(request):
     distortions = (
-        Concept.objects.filter(is_active=True, subtype=Concept.Subtype.COGNITIVE_DISTORTION)
+        public_resources(Concept).filter(is_active=True, subtype=Concept.Subtype.COGNITIVE_DISTORTION)
         .prefetch_related(
             "aliases",
             "disorder_links__disorder",
@@ -2785,9 +2840,20 @@ def distortion_practice_submit(request, slug):
             {"detail": "محتوای این تمرین از نظر پاسخ صحیح ناسازگار است."},
             status=status.HTTP_409_CONFLICT,
         )
-    correct_choice = next(choice for choice in item.active_choices if choice.is_correct)
-
-    with transaction.atomic():
+    from .cms_policy import policy_lock
+    with policy_lock():
+        item = get_object_or_404(CognitiveDistortionPracticeItem.objects.select_for_update(),
+            pk=item.pk, archived_at__isnull=True, is_active=True, target_concept__is_active=True,
+            target_concept__subtype=Concept.Subtype.COGNITIVE_DISTORTION,
+            target_concept__in=public_resources(Concept))
+        item.active_choices = list(_practice_choice_queryset().filter(item=item))
+        choice = next((row for row in item.active_choices if row.pk == choice_id), None)
+        if choice is None:
+            return Response({"detail": "گزینه انتخاب‌شده معتبر نیست."}, status=status.HTTP_404_NOT_FOUND)
+        if not _practice_item_is_valid(item):
+            return Response({"detail": "محتوای این تمرین از نظر پاسخ صحیح ناسازگار است."},
+                            status=status.HTTP_409_CONFLICT)
+        correct_choice = next(row for row in item.active_choices if row.is_correct)
         attempt = CognitiveDistortionPracticeAttempt.objects.create(
             user=request.user,
             item=item,
@@ -2879,7 +2945,7 @@ def _therapy_detail_queryset():
         ),
     )
     return (
-        Therapy.objects.filter(is_active=True, family__is_active=True)
+        public_resources(Therapy).filter(is_active=True, family__is_active=True)
         .select_related("family")
         .prefetch_related(
             "aliases",
@@ -2892,12 +2958,12 @@ def _therapy_detail_queryset():
     )
 
 
-class TherapyListView(generics.ListAPIView):
+class TherapyListView(PublicReadMixin, generics.ListAPIView):
     serializer_class = TherapyListSerializer
 
     def get_queryset(self):
         qs = (
-            Therapy.objects.filter(is_active=True, family__is_active=True)
+            public_resources(Therapy).filter(is_active=True, family__is_active=True)
             .select_related("family")
             .prefetch_related(
                 "aliases",
@@ -2971,10 +3037,14 @@ class TherapyListView(generics.ListAPIView):
         return qs.distinct().order_by("name_en")
 
 
-class TherapyDetailView(generics.RetrieveAPIView):
+class TherapyDetailView(PublicReadMixin, generics.RetrieveAPIView):
     serializer_class = TherapyDetailSerializer
     lookup_field = "slug"
-    queryset = _therapy_detail_queryset()
+
+    def get_queryset(self):
+        # Rights scope depends on the current request and DB state. Never query
+        # SourceState/GovernanceRecord while Django imports URL configuration.
+        return _therapy_detail_queryset()
 
 
 @api_view(["GET"])
@@ -3037,7 +3107,7 @@ def therapy_bookmarks(request):
     slug = payload.get("slug")
     if not isinstance(slug, str) or not slug.strip():
         raise ValidationError({"slug": "شناسه درمان باید یک slug معتبر باشد."})
-    therapy = get_object_or_404(Therapy.objects.filter(is_active=True, family__is_active=True), slug=slug.strip())
+    therapy = get_object_or_404(public_resources(Therapy).filter(is_active=True, family__is_active=True), slug=slug.strip())
     bookmark, created = TherapyBookmark.objects.get_or_create(user=request.user, therapy=therapy)
     if created:
         record_activity(request.user, StudyActivity.Kind.BOOKMARK_SAVED, therapy=therapy)
@@ -3072,7 +3142,7 @@ def therapy_notes(request):
 @api_view(["GET", "PUT", "DELETE"])
 @permission_classes([permissions.IsAuthenticated])
 def therapy_note_detail(request, slug):
-    therapy = get_object_or_404(Therapy.objects.filter(is_active=True, family__is_active=True), slug=slug)
+    therapy = get_object_or_404(public_resources(Therapy).filter(is_active=True, family__is_active=True), slug=slug)
     note = TherapyNote.objects.filter(user=request.user, therapy=therapy).first()
 
     if request.method == "GET":
@@ -3109,11 +3179,11 @@ def therapy_note_detail(request, slug):
     return Response(data)
 
 
-class TechniqueListView(generics.ListAPIView):
+class TechniqueListView(PublicReadMixin, generics.ListAPIView):
     serializer_class = TechniqueListSerializer
 
     def get_queryset(self):
-        qs = Technique.objects.filter(is_active=True).prefetch_related(
+        qs = public_resources(Technique).filter(is_active=True).prefetch_related(
             "aliases",
             "therapy_links__therapy__family",
             "concept_links__concept",
@@ -3151,7 +3221,7 @@ class TechniqueListView(generics.ListAPIView):
         return qs.distinct().order_by("name_en")
 
 
-class TechniqueDetailView(generics.RetrieveAPIView):
+class TechniqueDetailView(PublicReadMixin, generics.RetrieveAPIView):
     serializer_class = TechniqueDetailSerializer
     lookup_field = "slug"
     queryset = Technique.objects.filter(is_active=True).prefetch_related(
@@ -3352,7 +3422,7 @@ def _v063_psychologist_detail_queryset():
             queryset=atlas_models.TimelinePsychologistSource.objects.select_related("source"),
         )
     )
-    qs = atlas_models.Psychologist.objects.filter(is_active=True).prefetch_related(
+    qs = public_resources(atlas_models.Psychologist).filter(is_active=True).prefetch_related(
         "aliases",
         Prefetch(
             "source_links",
@@ -3433,7 +3503,7 @@ def _v063_theory_detail_queryset():
             queryset=atlas_models.TimelineTheorySource.objects.select_related("source"),
         )
     )
-    qs = atlas_models.Theory.objects.filter(is_active=True).prefetch_related(
+    qs = public_resources(atlas_models.Theory).filter(is_active=True).prefetch_related(
         "aliases",
         Prefetch(
             "source_links",
@@ -3497,7 +3567,7 @@ def _v063_timeline_detail_queryset():
             queryset=atlas_models.TimelineConceptSource.objects.select_related("source"),
         )
     )
-    qs = atlas_models.TimelineEvent.objects.filter(is_active=True).prefetch_related(
+    qs = public_resources(atlas_models.TimelineEvent).filter(is_active=True).prefetch_related(
         Prefetch(
             "source_links",
             queryset=atlas_models.TimelineEventSource.objects.select_related("source").order_by("role", "id"),
@@ -3511,11 +3581,11 @@ def _v063_timeline_detail_queryset():
     return _v063_timeline_counts(qs)
 
 
-class PsychologistListView(generics.ListAPIView):
+class PsychologistListView(PublicReadMixin, generics.ListAPIView):
     serializer_class = PsychologistListSerializer
 
     def get_queryset(self):
-        qs = atlas_models.Psychologist.objects.filter(is_active=True).prefetch_related("aliases")
+        qs = public_resources(atlas_models.Psychologist).filter(is_active=True).prefetch_related("aliases")
         q = self.request.query_params.get("q", "").strip()
         review_status = _v063_choice_param(
             self.request,
@@ -3570,17 +3640,18 @@ class PsychologistListView(generics.ListAPIView):
         return _v063_psychologist_counts(qs.distinct()).order_by("name_en", "id")
 
 
-class PsychologistDetailView(generics.RetrieveAPIView):
+class PsychologistDetailView(PublicReadMixin, generics.RetrieveAPIView):
     serializer_class = PsychologistDetailSerializer
     lookup_field = "slug"
-    queryset = _v063_psychologist_detail_queryset()
+    def get_queryset(self):
+        return _v063_psychologist_detail_queryset()
 
 
-class TheoryListView(generics.ListAPIView):
+class TheoryListView(PublicReadMixin, generics.ListAPIView):
     serializer_class = TheoryListSerializer
 
     def get_queryset(self):
-        qs = atlas_models.Theory.objects.filter(is_active=True).prefetch_related("aliases")
+        qs = public_resources(atlas_models.Theory).filter(is_active=True).prefetch_related("aliases")
         q = self.request.query_params.get("q", "").strip()
         review_status = _v063_choice_param(
             self.request,
@@ -3638,17 +3709,18 @@ class TheoryListView(generics.ListAPIView):
         return _v063_theory_counts(qs.distinct()).order_by("name_en", "id")
 
 
-class TheoryDetailView(generics.RetrieveAPIView):
+class TheoryDetailView(PublicReadMixin, generics.RetrieveAPIView):
     serializer_class = TheoryDetailSerializer
     lookup_field = "slug"
-    queryset = _v063_theory_detail_queryset()
+    def get_queryset(self):
+        return _v063_theory_detail_queryset()
 
 
-class TimelineEventListView(generics.ListAPIView):
+class TimelineEventListView(PublicReadMixin, generics.ListAPIView):
     serializer_class = TimelineEventListSerializer
 
     def get_queryset(self):
-        qs = atlas_models.TimelineEvent.objects.filter(is_active=True)
+        qs = public_resources(atlas_models.TimelineEvent).filter(is_active=True)
         q = self.request.query_params.get("q", "").strip()
         event_type = _v063_choice_param(
             self.request,
@@ -3737,10 +3809,11 @@ class TimelineEventListView(generics.ListAPIView):
         return _v063_timeline_counts(qs.distinct()).order_by("year_start", "exact_date", "title_en", "id")
 
 
-class TimelineEventDetailView(generics.RetrieveAPIView):
+class TimelineEventDetailView(PublicReadMixin, generics.RetrieveAPIView):
     serializer_class = TimelineEventDetailSerializer
     lookup_field = "slug"
-    queryset = _v063_timeline_detail_queryset()
+    def get_queryset(self):
+        return _v063_timeline_detail_queryset()
 
 def _study_object_payload(request):
     if not isinstance(request.data, Mapping):

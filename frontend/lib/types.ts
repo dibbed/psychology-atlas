@@ -492,6 +492,15 @@ export type DailyChallenge = {
 
 export type SearchResults = {
   query: string;
+  alias_disambiguation?: {
+    scope: "public_brain_assessment_visible_search_page_only";
+    status: "multiple_exact_public_matches" | "one_exact_public_match" |
+      "no_exact_public_matches" | "not_checked_query_length" | "more_than_limit";
+    visible_count: number;
+    truncated: boolean;
+    matches: Array<{ domain: "brain_anatomy" | "assessment"; slug: string }>;
+    public_drafts_included: false;
+  };
   disorders: Disorder[];
   concepts: Concept[];
   therapies: Therapy[];

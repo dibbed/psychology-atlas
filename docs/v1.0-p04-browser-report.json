@@ -1,0 +1,79 @@
+{
+  "runtime": "Production Next / real Django session, MFA, CSRF, services / synthetic disposable SQLite / Chromium",
+  "checks": [
+    "Legacy entering CMS is not automatically reviewed",
+    "Category public gate requires its active synthetic child",
+    "Desktop evidence editor has no document overflow",
+    "Two separate review tasks bind the exact draft subject",
+    "Scientific approval is blocked until explicit source check",
+    "Solo-owner scientific approval is fresh and creates no public canonical row",
+    "Separate explicit self-review source/science decisions are retained",
+    "Decision history pins exact revision and dependency digests",
+    "A real source mutation invalidates the frozen approval without deleting history",
+    "320px stale approval detail has no document overflow",
+    "Policy UI performs bound MFA step-up and audited versioned mutation",
+    "Two-person reviewer lookup reports the author conflict",
+    "Two-person policy makes the author unavailable for self-assignment in UI",
+    "Forged owner self-assignment is independently rejected by service",
+    "Two-person proposal completes with an independent assigned reviewer",
+    "A deleted explicit source cannot leave any approval eligible",
+    "Missing evidence blocker is visible in Persian",
+    "Desktop assigned review queue has no document overflow",
+    "Invalidation and re-review preserve all four approvals across two subjects",
+    "Review and invalidation leave legacy canonical content unchanged",
+    "Review workflow stores no credentials or snapshots in localStorage",
+    "No unexplained browser console/runtime errors"
+  ],
+  "journey": [
+    {
+      "event": "submitted",
+      "version": 2,
+      "scientific_status": "unreviewed"
+    },
+    {
+      "event": "source_checked",
+      "version": 5,
+      "scientific_status": "source_checked"
+    },
+    {
+      "event": "approved",
+      "version": 6,
+      "scientific_status": "reviewed",
+      "eligible": true
+    },
+    {
+      "event": "source_invalidated",
+      "version": 6,
+      "scientific_status": "unreviewed",
+      "eligible": false,
+      "blockers": [
+        "DEPENDENCY_CHANGED"
+      ]
+    },
+    {
+      "event": "source_deleted",
+      "version": 13,
+      "scientific_status": "unreviewed",
+      "eligible": false,
+      "blockers": [
+        "DEPENDENCY_CHANGED",
+        "EVIDENCE_MISSING"
+      ]
+    }
+  ],
+  "browserErrors": [],
+  "screenshots": [
+    "p04-approved-desktop.png",
+    "p04-source-invalidated-desktop.png",
+    "p04-invalidated-320.png",
+    "p04-two-person-approved.png"
+  ],
+  "limitations": [
+    "Chromium desktop and 320px viewport only",
+    "Synthetic evidence, not scientific content",
+    "Source mutation is a guarded fixture injection; P05 source editor is separate",
+    "Local HTTP, no deployment rehearsal"
+  ],
+  "chromium": "156.0.8078.4",
+  "status": "passed"
+}
