@@ -297,6 +297,14 @@ READY_CAPABILITIES |= frozenset({
 READY_CAPABILITIES |= frozenset(f"cms_publication_{operation}_{domain}"
     for domain in ("learning", "brain", "assessment") for operation in ("freeze", "verify"))
 
+# W16-03: review *attestation* recording is ready for authorized independent
+# reviewers. This capability does NOT unlock publication, legal clearance,
+# generic Apply, or a public projection.
+READY_CAPABILITIES |= frozenset(
+    f"cms_publication_approve_{domain}"
+    for domain in ("learning", "brain", "assessment")
+)
+
 # P15 aggregate-only study telemetry; no private learner reads/corrections.
 READY_CAPABILITIES |= frozenset({"cms_study_view"})
 

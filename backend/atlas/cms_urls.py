@@ -30,6 +30,7 @@ from . import cms_publication_preflight as publication_preflight
 from . import cms_publication_selection_views as publication_selection
 from . import cms_publication_preparation_views as publication_preparation
 from . import cms_publication_manifest_views as publication_manifest
+from . import cms_publication_attestation_views as publication_attestations
 from . import cms_case_publication_views as case_publication
 from . import cms_admin_search as admin_search
 from . import cms_operations_health as operations_health
@@ -130,6 +131,7 @@ urlpatterns = [
     path("publication/preparations/<uuid:dossier_id>/dry-run/", publication_manifest.ManifestDryRunView.as_view()),
     path("publication/preparations/<uuid:dossier_id>/freeze/", publication_manifest.ManifestFreezeView.as_view()),
     path("publication/plans/<uuid:plan_id>/", publication_manifest.ManifestReadView.as_view()),
+    path("publication/plans/<uuid:plan_id>/attestations/", publication_attestations.PublicationAttestationsView.as_view()),
     path("publication/cases/<int:case_id>/revisions/<int:revision_id>/reviews/", case_publication.CasePublicationReviewView.as_view()),
     path("publication/cases/<int:case_id>/revisions/<int:revision_id>/freeze/", case_publication.CasePublicationFreezeView.as_view()),
     path("publication/cases/plans/<uuid:plan_id>/", case_publication.CasePublicationPlanView.as_view()),

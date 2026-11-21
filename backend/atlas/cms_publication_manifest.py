@@ -29,6 +29,12 @@ def _access(actor, session_id, dossier_id, *, ability):
     return dossier, selection
 
 
+def _sealed_review_policy():
+    from .cms_review_models import ReviewPolicy
+    row = ReviewPolicy.objects.select_for_update().get(pk=1)
+    return {"version": row.version, "mode": row.mode}
+
+
 def _manifest(actor_id, session_id, dossier_id):
     actor = get_user_model().objects.get(pk=actor_id)
     dossier, selection = _access(actor, session_id, dossier_id, ability="freeze")
@@ -81,6 +87,7 @@ def _manifest(actor_id, session_id, dossier_id):
         "dossier_id": str(dossier.pk),
         "dossier_digest": dossier.dossier_digest,
         "policy_version": selection.policy_version,
+        "review_policy": _sealed_review_policy(),
         "item_count": len(actions),
         "actions": actions,
         "review_blocker_count": len(current["review_blockers"]),
@@ -120,6 +127,10 @@ def _validated_manifest(plan):
             or manifest.get("selection_id") != str(selection.pk)
             or manifest.get("selection_digest") != selection.selection_digest
             or manifest.get("policy_version") != selection.policy_version
+            or type(manifest.get("review_policy")) is not dict
+            or set(manifest["review_policy"]) != {"version", "mode"}
+            or type(manifest["review_policy"]["version"]) is not int
+            or manifest["review_policy"]["mode"] not in {"solo_owner", "two_person"}
             or manifest.get("domain") != selection.domain
             or type(manifest.get("actions")) is not list
             or not 1 <= len(manifest["actions"]) <= 20
