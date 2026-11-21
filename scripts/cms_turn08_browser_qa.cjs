@@ -163,6 +163,23 @@ async function getPreview(page,dossierId){
       "W16-02 frozen-manifest panel does not overflow at 320px RTL");
     await page.screenshot({path:path.join(out,"turn08-frozen-manifest-320.png"),fullPage:true});
     report.screenshots.push("turn08-frozen-manifest-320.png");
+    // W16-03: a separate, non-authorizing reviewer page can read bounded
+    // receipt state but cannot display draft evidence or publicly Apply it.
+    await freezePanel.getByRole("link",{name:"بازکردن فرم مستقل ثبت سوابق بازبین"}).click();
+    await page.getByRole("heading",{name:"سوابق مستقل بازبینی مانیفست"}).waitFor();
+    await page.getByRole("button",{name:"بازخوانی وضعیت فعلی"}).click();
+    const attestationRegion=page.getByRole("region",{name:"وضعیت خصوصی بازبینی"});
+    await attestationRegion.waitFor();
+    check(await attestationRegion.getByText("بازبینی ثبت نشده",{exact:false}).count()===3,
+      "W16-03 reviewer page safely shows three independent missing attestations");
+    check(!(await page.locator("#cms-main").innerText()).includes("P16 PRIVATE SYNTHETIC SECRET"),
+      "W16-03 reviewer UI exposes no private candidate or scientific raw data");
+    check(await page.getByRole("button",{name:/Apply|انتشار عمومی/}).count()===0,
+      "W16-03 reviewer UI has no public Apply control");
+    check(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),
+      "W16-03 reviewer UI fits a 320px viewport");
+    await page.screenshot({path:path.join(out,"turn08-attestation-review-320.png"),fullPage:true});
+    report.screenshots.push("turn08-attestation-review-320.png");
     // W16-00: real Learning UI recheck after semantic subtype drift, using
     // synthetic records in the *same guarded disposable* browser database.
     const learningFixture=JSON.parse(exec(py,["-c",[

@@ -150,8 +150,16 @@ export default function FrozenManifestPanel({
         مشاهدهٔ رسید ثابت ثبت‌شده
       </button>
     </div>}
-    {receipt&&<p role="status">مانیفست بررسی منجمد شد. شناسه: <code dir="ltr" style={{overflowWrap:"anywhere"}}>
-      {receipt.id}</code>؛ این رسید تأیید علمی/حقوقی یا اجازهٔ Apply نیست.</p>}
+    {receipt&&<div className="stack" role="status">
+      <p>مانیفست بررسی منجمد شد. شناسه: <code dir="ltr" style={{overflowWrap:"anywhere"}}>
+        {receipt.id}</code>؛ این رسید تأیید علمی/حقوقی یا اجازهٔ Apply نیست.</p>
+      <a className="button secondary"
+        href={"/admin-console/publication-attestations?plan_id="+encodeURIComponent(receipt.id)+
+          "&domain="+encodeURIComponent(domain)}>
+        بازکردن فرم مستقل ثبت سوابق بازبین
+      </a>
+      <p className="muted">برای تصمیم مستقل، بازبین دیگری با مجوز منبع، علمی یا حقوق و شناسهٔ مانیفست لازم است.</p>
+    </div>}
     {error&&<p role="alert">{error}</p>}
   </section>;
 }
