@@ -10,7 +10,10 @@ type TimelineRow={id:number;cms_state_id?:string;slug:string;title_en:string;tit
 type DebtRow={id:number;cms_state_id?:string;name:string;source_count:number;checked_source_count:number;citation_debt:boolean;revision_status:string;auto_approval:false};
 type Results<T>=CmsPage<T>&{notice:string;scope?:string;date_inference?:string};
 const precisionLabels:Record<string,string>={exact_date:"تاریخ قطعی",year:"فقط سال",year_range:"بازهٔ سال",approximate_year:"سال تقریبی",unknown:"نامشخص"};
-const debtKinds=[{kind:"psychologist",label:"روان‌شناسان"},{kind:"theory",label:"نظریه‌ها"},{kind:"timeline-event",label:"رویدادها"}];
+const debtKinds=[{kind:"psychologist",label:"روان‌شناسان"},{kind:"theory",label:"نظریه‌ها"},{kind:"timeline-event",label:"رویدادها"}] as const;
+// Only trusted route segments may enter a CMS href, never unvalidated DOM text.
+const safeDebtKind=(input:string)=>debtKinds.find(row=>row.kind===input)?.kind??"timeline-event";
+const safeStateId=(input:unknown):input is string=>typeof input==="string"&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input);
 export default function HistoryChronology(){
   const {can}=useCms();
   const [mode,setMode]=useState<"timeline"|"debt">("timeline");
@@ -49,7 +52,7 @@ export default function HistoryChronology(){
         <label>قطعیت زمان<select value={precision} onChange={e=>{setPrecision(e.target.value);setPage(1);}}><option value="">همه</option>{Object.entries(precisionLabels).map(([k,v])=><option value={k} key={k}>{v}</option>)}</select></label>
         <label><input type="checkbox" checked={weak} onChange={e=>{setWeak(e.target.checked);setPage(1);}}/> فقط رویداد بدون منبع بررسی‌شده</label>
         <button className="button secondary" type="submit">جست‌وجو</button>
-      </form>:<label>نوع هویت<select value={kind} onChange={e=>{setKind(e.target.value);setPage(1);}}>{debtKinds.map(row=><option value={row.kind} key={row.kind}>{row.label}</option>)}</select></label>}
+      </form>:<label>نوع هویت<select value={kind} onChange={e=>{setKind(safeDebtKind(e.currentTarget.value));setPage(1);}}>{debtKinds.map(row=><option value={row.kind} key={row.kind}>{row.label}</option>)}</select></label>}
     </section>
     {error!=null?<CmsState error={error} retry={()=>setRetry(n=>n+1)}/>:!value?<CmsState loading/>:!value.results.length?<CmsState empty="برای این فیلتر رکوردی وجود ندارد."/>:<>
       <div className="cms-table-wrap" role="region" tabIndex={0} aria-label="مرور تاریخ و منبع">
@@ -59,9 +62,10 @@ export default function HistoryChronology(){
             const timeline=mode==="timeline"?record as TimelineRow:null;
             const label=timeline?(timeline.title_fa||timeline.title_en):(record as DebtRow).name;
             const state=record.cms_state_id;
+            const routeKind=mode==="timeline"?"timeline-event":safeDebtKind(kind);
             return <tr key={record.id}>
-              <th scope="row">{state?<a className="cms-link" href={`/admin-console/content/${mode==="timeline"?"timeline-event":kind}/${state}`}><bdi>{label}</bdi></a>:<bdi>{label}</bdi>}</th>
-              <td>{timeline?<><span>{precisionLabels[timeline.date_precision]||timeline.date_precision}</span><p><bdi>{timeline.exact_date||timeline.date_text||[timeline.year_start,timeline.year_end].filter(x=>x!==null).join(" تا ")||"نامشخص"}</bdi></p></>:kind}</td>
+              <th scope="row">{safeStateId(state)?<a className="cms-link" href={`/admin-console/content/${routeKind}/${state}`}><bdi>{label}</bdi></a>:<bdi>{label}</bdi>}</th>
+              <td>{timeline?<><span>{precisionLabels[timeline.date_precision]||timeline.date_precision}</span><p><bdi>{timeline.exact_date||timeline.date_text||[timeline.year_start,timeline.year_end].filter(x=>x!==null).join(" تا ")||"نامشخص"}</bdi></p></>:debtKinds.find(row=>row.kind===safeDebtKind(kind))?.label}</td>
               <td>{record.checked_source_count} منبع بررسی‌شده از {record.source_count}<p>{record.citation_debt?"نیازمند شواهد بهتر":"دارای ارجاع بررسی‌شده"}</p><small>{record.revision_status}</small></td>
               <td>{timeline?.origin?<>{timeline.origin.status==="linked"?<a className="cms-link" href={`/admin-console/research/records/${timeline.origin.records[0]?.record_id}`}>{timeline.origin.count} locator مجاز</a>:<span>{originLabels[timeline.origin.status]}</span>}{timeline.origin.restricted_count>0&&<p className="muted">بخشی خارج از scope</p>}</>:"—"}</td>
             </tr>;
