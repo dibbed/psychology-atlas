@@ -786,5 +786,10 @@ if phase == "p14":
                               "record_id": research_record.pk, "audit_id": audit.pk,
                               "alias_id": alias.pk}
 
-# Credentials go only to the harness's private pipe, never into reports or logs.
-print(json.dumps({"users": users, "category": str(state.pk), **review_fixture}))
+# This output is an IPC packet for execFileSync's captured pipe, not a log.
+# Refuse interactive terminal output so synthetic passwords/recovery tokens
+# cannot accidentally be printed on a developer console.
+if sys.stdout.isatty():
+    raise RuntimeError("Fixture credentials require the harness's captured pipe")
+sys.stdout.buffer.write(json.dumps({"users": users, "category": str(state.pk), **review_fixture}).encode("utf-8"))
+sys.stdout.buffer.flush()
