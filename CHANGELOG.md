@@ -6,6 +6,9 @@ All notable changes to Psychology Atlas. This project follows Semantic Versionin
 
 ### Added
 
+- Turn 08 W16-02: exact revision-bound, immutable private frozen review manifests for Learning, Brain and Assessment, with safe dry-run, idempotent freeze, actor-scoped receipt, a schema-checked digest, Persian UI and migration `0061`. **Review-only:** no public Apply/clearance or candidate data is exposed.
+- Turn 08 W16-03: independent reviewer source/scientific/rights **attestation records** for W16 frozen manifests, per-kind capability and two-person gates, append-only evidence/revocation, fresh policy and source checks, redacted API status and Persian reviewer form, migration `0062`. Attestations are **not** legal/scientific publication clearance or authority for Apply.
+- W16 plan-lineage schema preparation: migration `0063` adds a nullable self-reference and changes dossier binding to a foreign key for a possible later reinstatement plan. **No generic reinstatement operation is implemented.**
 - Turn 07 W13-02 follow-up: versioned `claim-context-v2` evidence fingerprints cover prompts, answer keys, choices and linked Concept/Disorder state across all four Learning authoring kinds; original explanation-only evidence stays marked for review after additive migration `0060`.
 - Permission-aware, paged, append-only Learning evidence history includes per-revision actor, timestamp, source changes/removal reasons and current-rights redaction. Historical source and learner data are not rewritten.
 - W13 private, versioned source locators for individual QuizQuestion explanations, Flashcards, Daily Challenges and Distortion Practice, with stale-source/rights indicators and no automatic scientific approval or publication. Legacy Learning transfer fails closed for actively sourced content until a provenance-preserving transfer format is authorized.
